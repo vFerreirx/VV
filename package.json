@@ -14,6 +14,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:setup": "tsx scripts/setup-db.ts",
+    "db:reset": "supabase db reset --no-seed && tsx scripts/setup-db.ts",
     "db:seed": "tsx scripts/seed.ts",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
@@ -62,6 +64,7 @@
     "eslint-config-next": "16.2.5",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "supabase": "^2.98.2",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"

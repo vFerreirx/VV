@@ -35,18 +35,14 @@ npm install
 
 ### 2. Iniciar Supabase local
 
-Na primeira vez:
-
-```bash
-npx supabase init
-```
-
-Em todo dia de trabalho:
+Em todo dia de trabalho (Docker Desktop precisa estar rodando):
 
 ```bash
 npm run supabase:start   # sobe Postgres + Auth + Realtime + Studio em containers
 npm run supabase:status  # exibe URLs e chaves locais
 ```
+
+> O `supabase init` já foi executado neste repositório — `supabase/config.toml` está versionado.
 
 ### 3. Variáveis de ambiente
 
@@ -63,12 +59,30 @@ Os valores que você precisa colar do `supabase status`:
 - `service_role key` → `SUPABASE_SERVICE_ROLE_KEY`
 - A `DB URL` já está no `.env.example` apontando pra porta padrão `54322`.
 
-### 4. Migrations + seeds (a partir da Fase 1)
+### 4. Setup do banco (schema + RLS + triggers)
 
 ```bash
-npm run db:generate   # gera SQL das migrations a partir do schema Drizzle
-npm run db:migrate    # aplica migrations no Postgres do Supabase local
-npm run db:seed       # popula 18 máquinas, 10 produtos, 5 usuários, 20 OPs
+npm run db:setup    # roda drizzle-kit migrate e aplica supabase/sql/*.sql em ordem
+```
+
+Esse comando aplica:
+
+1. As migrations do Drizzle (`drizzle/0000_initial_schema.sql` etc) — cria todas as tabelas e enums
+2. `supabase/sql/01_constraints.sql` — FK de `public.users` pra `auth.users` + FKs circulares users↔maquinas
+3. `supabase/sql/02_op_numero.sql` — sequência por ano e trigger que gera `OP-AAAA-NNNN`
+4. `supabase/sql/03_handle_new_user.sql` — trigger que cria `public.users` quando alguém é criado em `auth.users`
+5. `supabase/sql/04_rls.sql` — `auth.user_role()`, `auth.is_manager()` e policies por role em todas as tabelas
+
+Pra zerar o banco e refazer tudo do zero:
+
+```bash
+npm run db:reset    # supabase db reset + db:setup
+```
+
+### 5. Seeds (a partir da Fase 4)
+
+```bash
+npm run db:seed     # popula 18 máquinas, 10 produtos, 5 usuários, 20 OPs
 ```
 
 ### 5. Rodar o app
@@ -90,9 +104,11 @@ Supabase Studio em <http://127.0.0.1:54323>.
 | `npm run type-check` | `tsc --noEmit` em todo o projeto |
 | `npm run format` | Roda Prettier no repo |
 | `npm run db:generate` | Gera migration SQL a partir do schema Drizzle |
-| `npm run db:migrate` | Aplica migrations no banco |
+| `npm run db:migrate` | Aplica só as migrations Drizzle |
+| `npm run db:setup` | Drizzle migrate + aplica `supabase/sql/*.sql` |
+| `npm run db:reset` | `supabase db reset` + `db:setup` (banco zerado) |
 | `npm run db:studio` | Abre Drizzle Studio no browser |
-| `npm run supabase:reset` | Derruba volume e re-aplica migrations + seeds |
+| `npm run db:seed` | Popula seeds (Fase 4 em diante) |
 | `npm run test:e2e` | Roda os testes Playwright |
 
 ## Estrutura
@@ -118,9 +134,12 @@ src/
   hooks/
   types/
 supabase/
-  migrations/   # SQL de RLS, triggers, sequences
+  config.toml   # config do Supabase CLI
+  sql/          # FKs externas, triggers, RLS — aplicados por scripts/setup-db.ts
+drizzle/        # migrations geradas pelo drizzle-kit (schema do app)
 scripts/
-  seed.ts
+  setup-db.ts   # orquestrador: drizzle migrate + apply supabase/sql/
+  seed.ts       # seeds (Fase 4)
 tests/e2e/      # Playwright
 ```
 
