@@ -1,12 +1,73 @@
 import type { Metadata } from 'next'
 
+import {
+  listarOrdensProducao,
+  type KanbanFiltros,
+} from './actions'
+import { KanbanBoard } from './kanban-board'
+import { ProducaoFiltros } from './producao-filtros'
+import {
+  listarMaquinasParaOrdem,
+  listarResponsaveis,
+} from '@/app/(app)/ordens/actions'
+import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { canalValues } from '@/lib/validators/ordens'
+
 export const metadata: Metadata = { title: 'Produção — Malharia MVP' }
 
-export default function ProducaoPage() {
+export default async function ProducaoPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const user = await requireAuth()
+
+  const params = await searchParams
+  const flat: Record<string, string | undefined> = {}
+  for (const [k, v] of Object.entries(params)) {
+    flat[k] = Array.isArray(v) ? v[0] : v
+  }
+
+  // Validação leve dos filtros (a server action revalida).
+  const canal = (canalValues as readonly string[]).includes(flat.canal ?? '')
+    ? (flat.canal as KanbanFiltros['canal'])
+    : 'todos'
+  const filtros: KanbanFiltros = {
+    q: flat.q,
+    canal,
+    maquinaId: flat.maquinaId ?? 'todas',
+    responsavelId: flat.responsavelId ?? 'todos',
+  }
+
+  const [ordens, maquinas, responsaveis] = await Promise.all([
+    listarOrdensProducao(filtros),
+    listarMaquinasParaOrdem(),
+    listarResponsaveis(),
+  ])
+
+  // Manager: pode mover qualquer OP.
+  // Operador: pode mover (kanban respeita RLS via mudarStatusOrdemAction,
+  // que checa a máquina dele).
+  // Estoquista/vendas: somente leitura.
+  const podeMover = isManager(user.role) || user.role === 'operador'
+
   return (
-    <div>
-      <h1 className="text-2xl font-semibold">Produção</h1>
-      <p className="text-muted-foreground mt-1 text-sm">Kanban virá na Fase 8.</p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Produção (Kanban)</h1>
+        <p className="text-muted-foreground mt-1 text-sm">
+          {ordens.length} OP{ordens.length === 1 ? '' : 's'} ativas · arraste
+          os cards entre as colunas pra mover de status
+        </p>
+      </div>
+
+      <ProducaoFiltros
+        maquinas={maquinas}
+        responsaveis={responsaveis}
+        filtrosIniciais={filtros}
+      />
+
+      <KanbanBoard ordens={ordens} podeMover={podeMover} />
     </div>
   )
 }
