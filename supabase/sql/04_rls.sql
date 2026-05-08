@@ -1,10 +1,10 @@
 -- ============================================================
 -- 04_rls.sql
--- Row Level Security em todas as tabelas + helpers em auth.
+-- Row Level Security em todas as tabelas + helpers em public.
 --
 -- Helpers:
---   auth.user_role()  -> retorna o role do usuário logado (ou NULL)
---   auth.is_manager() -> true se admin ou gerente_producao
+--   public.user_role()  -> retorna o role do usuário logado (ou NULL)
+--   public.is_manager() -> true se admin ou gerente_producao
 --
 -- Política geral:
 --   - admin / gerente_producao: CRUD em tudo
@@ -17,10 +17,11 @@
 -- ============================================================
 
 -- ----------------------------------------------------------------
--- Helpers em auth (SECURITY DEFINER pra evitar recursão de policy)
+-- Helpers em public (SECURITY DEFINER pra evitar recursão de policy)
+-- Obs: Supabase Cloud não permite criar funções no schema auth.
 -- ----------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION auth.user_role()
+CREATE OR REPLACE FUNCTION public.user_role()
 RETURNS public.user_role
 LANGUAGE sql
 STABLE
@@ -30,7 +31,7 @@ AS $$
   SELECT role FROM public.users WHERE id = auth.uid()
 $$;
 
-CREATE OR REPLACE FUNCTION auth.is_manager()
+CREATE OR REPLACE FUNCTION public.is_manager()
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -59,21 +60,20 @@ ALTER TABLE public.eventos_kanban       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.movimentacoes_estoque ENABLE ROW LEVEL SECURITY;
 
 -- ----------------------------------------------------------------
--- Helper pra dropar policies idempotentemente
--- (DROP POLICY IF EXISTS é o caminho — uma por uma)
+-- Policies (DROP IF EXISTS antes de CREATE pra ser idempotente)
 -- ----------------------------------------------------------------
 
 -- ===== users =====
 DROP POLICY IF EXISTS users_select_authenticated ON public.users;
 CREATE POLICY users_select_authenticated ON public.users
   FOR SELECT TO authenticated
-  USING (deleted_at IS NULL OR auth.is_manager());
+  USING (deleted_at IS NULL OR public.is_manager());
 
 DROP POLICY IF EXISTS users_manager_all ON public.users;
 CREATE POLICY users_manager_all ON public.users
   FOR ALL TO authenticated
-  USING (auth.is_manager())
-  WITH CHECK (auth.is_manager());
+  USING (public.is_manager())
+  WITH CHECK (public.is_manager());
 
 DROP POLICY IF EXISTS users_self_update ON public.users;
 CREATE POLICY users_self_update ON public.users
@@ -82,7 +82,7 @@ CREATE POLICY users_self_update ON public.users
   WITH CHECK (
     id = auth.uid()
     -- não pode mudar o próprio role nem o flag ativo
-    AND role = auth.user_role()
+    AND role = public.user_role()
     AND ativo = (SELECT ativo FROM public.users WHERE id = auth.uid())
   );
 
@@ -90,13 +90,13 @@ CREATE POLICY users_self_update ON public.users
 DROP POLICY IF EXISTS produtos_select_authenticated ON public.produtos;
 CREATE POLICY produtos_select_authenticated ON public.produtos
   FOR SELECT TO authenticated
-  USING (deleted_at IS NULL OR auth.is_manager());
+  USING (deleted_at IS NULL OR public.is_manager());
 
 DROP POLICY IF EXISTS produtos_manager_all ON public.produtos;
 CREATE POLICY produtos_manager_all ON public.produtos
   FOR ALL TO authenticated
-  USING (auth.is_manager())
-  WITH CHECK (auth.is_manager());
+  USING (public.is_manager())
+  WITH CHECK (public.is_manager());
 
 -- ===== variacoes_produto =====
 DROP POLICY IF EXISTS variacoes_select_authenticated ON public.variacoes_produto;
@@ -106,20 +106,20 @@ CREATE POLICY variacoes_select_authenticated ON public.variacoes_produto
 DROP POLICY IF EXISTS variacoes_manager_all ON public.variacoes_produto;
 CREATE POLICY variacoes_manager_all ON public.variacoes_produto
   FOR ALL TO authenticated
-  USING (auth.is_manager())
-  WITH CHECK (auth.is_manager());
+  USING (public.is_manager())
+  WITH CHECK (public.is_manager());
 
 -- ===== maquinas =====
 DROP POLICY IF EXISTS maquinas_select_authenticated ON public.maquinas;
 CREATE POLICY maquinas_select_authenticated ON public.maquinas
   FOR SELECT TO authenticated
-  USING (deleted_at IS NULL OR auth.is_manager());
+  USING (deleted_at IS NULL OR public.is_manager());
 
 DROP POLICY IF EXISTS maquinas_manager_all ON public.maquinas;
 CREATE POLICY maquinas_manager_all ON public.maquinas
   FOR ALL TO authenticated
-  USING (auth.is_manager())
-  WITH CHECK (auth.is_manager());
+  USING (public.is_manager())
+  WITH CHECK (public.is_manager());
 
 -- Operador atualiza status / observacoes da própria máquina
 -- (campos efetivamente alteráveis são controlados pela server action).
@@ -127,11 +127,11 @@ DROP POLICY IF EXISTS maquinas_operador_update ON public.maquinas;
 CREATE POLICY maquinas_operador_update ON public.maquinas
   FOR UPDATE TO authenticated
   USING (
-    auth.user_role() = 'operador'
+    public.user_role() = 'operador'
     AND operador_atual_id = auth.uid()
   )
   WITH CHECK (
-    auth.user_role() = 'operador'
+    public.user_role() = 'operador'
     AND operador_atual_id = auth.uid()
   );
 
@@ -139,20 +139,20 @@ CREATE POLICY maquinas_operador_update ON public.maquinas
 DROP POLICY IF EXISTS ordens_select_authenticated ON public.ordens_producao;
 CREATE POLICY ordens_select_authenticated ON public.ordens_producao
   FOR SELECT TO authenticated
-  USING (deleted_at IS NULL OR auth.is_manager());
+  USING (deleted_at IS NULL OR public.is_manager());
 
 DROP POLICY IF EXISTS ordens_manager_all ON public.ordens_producao;
 CREATE POLICY ordens_manager_all ON public.ordens_producao
   FOR ALL TO authenticated
-  USING (auth.is_manager())
-  WITH CHECK (auth.is_manager());
+  USING (public.is_manager())
+  WITH CHECK (public.is_manager());
 
 -- Operador edita OPs alocadas em alguma máquina onde ele é operador atual.
 DROP POLICY IF EXISTS ordens_operador_update ON public.ordens_producao;
 CREATE POLICY ordens_operador_update ON public.ordens_producao
   FOR UPDATE TO authenticated
   USING (
-    auth.user_role() = 'operador'
+    public.user_role() = 'operador'
     AND EXISTS (
       SELECT 1 FROM public.maquinas m
       WHERE m.id = ordens_producao.maquina_id
@@ -160,7 +160,7 @@ CREATE POLICY ordens_operador_update ON public.ordens_producao
     )
   )
   WITH CHECK (
-    auth.user_role() = 'operador'
+    public.user_role() = 'operador'
     AND EXISTS (
       SELECT 1 FROM public.maquinas m
       WHERE m.id = ordens_producao.maquina_id
@@ -176,18 +176,18 @@ CREATE POLICY apontamentos_select_authenticated ON public.apontamentos_producao
 DROP POLICY IF EXISTS apontamentos_manager_all ON public.apontamentos_producao;
 CREATE POLICY apontamentos_manager_all ON public.apontamentos_producao
   FOR ALL TO authenticated
-  USING (auth.is_manager())
-  WITH CHECK (auth.is_manager());
+  USING (public.is_manager())
+  WITH CHECK (public.is_manager());
 
 DROP POLICY IF EXISTS apontamentos_operador_self ON public.apontamentos_producao;
 CREATE POLICY apontamentos_operador_self ON public.apontamentos_producao
   FOR ALL TO authenticated
   USING (
-    auth.user_role() = 'operador'
+    public.user_role() = 'operador'
     AND operador_id = auth.uid()
   )
   WITH CHECK (
-    auth.user_role() = 'operador'
+    public.user_role() = 'operador'
     AND operador_id = auth.uid()
   );
 
@@ -217,8 +217,8 @@ DROP POLICY IF EXISTS movimentacoes_estoquista_write ON public.movimentacoes_est
 CREATE POLICY movimentacoes_estoquista_write ON public.movimentacoes_estoque
   FOR ALL TO authenticated
   USING (
-    auth.user_role() IN ('admin', 'gerente_producao', 'estoquista')
+    public.user_role() IN ('admin', 'gerente_producao', 'estoquista')
   )
   WITH CHECK (
-    auth.user_role() IN ('admin', 'gerente_producao', 'estoquista')
+    public.user_role() IN ('admin', 'gerente_producao', 'estoquista')
   );
