@@ -4,6 +4,7 @@
 export * from './enums'
 export * from './users'
 export * from './produtos'
+export * from './cores'
 export * from './maquinas'
 export * from './ordens'
 export * from './estoque'

@@ -154,6 +154,7 @@ async function reset() {
       public.ordens_producao,
       public.variacoes_produto,
       public.produtos,
+      public.cores,
       public.maquinas,
       public.users,
       public.op_numero_counter
@@ -252,10 +253,37 @@ async function seedMaquinas(operadorId: string) {
 }
 
 // -----------------------------------------------------------------
+// Cores (catálogo)
+// -----------------------------------------------------------------
+
+const CORES_BASE: Array<{ nome: string; codigoHex: string }> = [
+  { nome: 'Branco', codigoHex: '#ffffff' },
+  { nome: 'Preto', codigoHex: '#111111' },
+  { nome: 'Cinza', codigoHex: '#9aa3ad' },
+  { nome: 'Azul Marinho', codigoHex: '#1f2c5c' },
+  { nome: 'Vermelho', codigoHex: '#c0392b' },
+  { nome: 'Verde', codigoHex: '#27ae60' },
+  { nome: 'Bege', codigoHex: '#d9c2a0' },
+  { nome: 'Rosa', codigoHex: '#f06292' },
+]
+
+async function seedCores() {
+  console.log('▶ Cadastrando cores…')
+  await db.insert(schema.cores).values(
+    CORES_BASE.map((c) => ({
+      nome: c.nome,
+      codigoHex: c.codigoHex,
+      ativo: true,
+    })),
+  )
+  console.log(`  • ${CORES_BASE.length} cores`)
+}
+
+// -----------------------------------------------------------------
 // Produtos + variações
 // -----------------------------------------------------------------
 
-const CORES = ['Branco', 'Preto', 'Cinza', 'Azul Marinho', 'Vermelho', 'Verde']
+const CORES = CORES_BASE.map((c) => c.nome)
 const TAMANHOS = ['P', 'M', 'G', 'GG']
 
 const PRODUTOS_BASE = [
@@ -405,9 +433,11 @@ async function seedProdutos() {
       while (coresUsadas.has(cor)) cor = randomChoice(CORES)
       coresUsadas.add(cor)
       const tamanho = randomChoice(TAMANHOS)
+      // Usa nome completo da cor (sem espaços) pra evitar colisões tipo
+      // "Verde" vs "Vermelho" gerando o mesmo prefixo "VER".
       variacoes.push({
         produtoId: p.id,
-        skuVariacao: `${p.sku}-${cor.replace(/\s/g, '').toUpperCase().slice(0, 3)}-${tamanho}`,
+        skuVariacao: `${p.sku}-${cor.replace(/\s/g, '').toUpperCase()}-${tamanho}`,
         cor,
         tamanho,
         precoAdicional: '0',
@@ -651,6 +681,7 @@ async function main() {
   const estoquistaId = idsByRole.get('estoquista')!
 
   const maquinas = await seedMaquinas(operadorId)
+  await seedCores()
   const { produtos, variacoes } = await seedProdutos()
   const ordens = await seedOrdens(produtos, variacoes, maquinas, idsByRole)
   await seedApontamentos(ordens, operadorId)

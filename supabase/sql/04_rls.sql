@@ -53,6 +53,7 @@ $$;
 ALTER TABLE public.users                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.produtos             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.variacoes_produto    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cores                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.maquinas             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ordens_producao      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.apontamentos_producao ENABLE ROW LEVEL SECURITY;
@@ -94,6 +95,18 @@ CREATE POLICY produtos_select_authenticated ON public.produtos
 
 DROP POLICY IF EXISTS produtos_manager_all ON public.produtos;
 CREATE POLICY produtos_manager_all ON public.produtos
+  FOR ALL TO authenticated
+  USING (public.is_manager())
+  WITH CHECK (public.is_manager());
+
+-- ===== cores =====
+DROP POLICY IF EXISTS cores_select_authenticated ON public.cores;
+CREATE POLICY cores_select_authenticated ON public.cores
+  FOR SELECT TO authenticated
+  USING (deleted_at IS NULL OR public.is_manager());
+
+DROP POLICY IF EXISTS cores_manager_all ON public.cores;
+CREATE POLICY cores_manager_all ON public.cores
   FOR ALL TO authenticated
   USING (public.is_manager())
   WITH CHECK (public.is_manager());

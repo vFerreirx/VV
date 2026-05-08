@@ -2,9 +2,16 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useTransition } from 'react'
-import { useFieldArray, useForm, useWatch, type Resolver } from 'react-hook-form'
+import { useMemo, useTransition } from 'react'
+import {
+  Controller,
+  useFieldArray,
+  useForm,
+  useWatch,
+  type Resolver,
+} from 'react-hook-form'
 import { toast } from 'sonner'
 
 import {
@@ -15,8 +22,16 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import type { Cor } from '@/lib/db/schema'
 import {
   produtoSchema,
   type ProdutoInput,
@@ -95,12 +110,26 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
 
 export function ProdutoForm({
   defaults = VAZIO,
+  cores,
 }: {
   defaults?: ProdutoFormDefaults
+  cores: Cor[]
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const isEdit = Boolean(defaults.id)
+
+  // Algumas variações antigas podem ter valor de cor que não está mais no
+  // catálogo (renomeada / inativada). Adicionamos esses valores como opções
+  // extras pra não perder a informação ao salvar de novo.
+  const legadosCor = useMemo(() => {
+    const nomesCadastrados = new Set(cores.map((c) => c.nome))
+    const extras = new Set<string>()
+    for (const v of defaults.variacoes) {
+      if (v.cor && !nomesCadastrados.has(v.cor)) extras.add(v.cor)
+    }
+    return [...extras].sort()
+  }, [cores, defaults.variacoes])
 
   const form = useForm<ProdutoInput>({
     // Tipos de input/output do Zod divergem por causa dos transforms;
@@ -412,11 +441,67 @@ export function ProdutoForm({
                       id={`variacoes.${index}.cor`}
                       error={ve?.cor?.message}
                     >
-                      <Input
-                        id={`variacoes.${index}.cor`}
-                        placeholder="Branco"
-                        disabled={isPending}
-                        {...form.register(`variacoes.${index}.cor`)}
+                      <Controller
+                        control={form.control}
+                        name={`variacoes.${index}.cor`}
+                        render={({ field: ctl }) => (
+                          <Select
+                            value={ctl.value ?? ''}
+                            onValueChange={(v) => ctl.onChange(v ?? '')}
+                            disabled={isPending}
+                          >
+                            <SelectTrigger
+                              id={`variacoes.${index}.cor`}
+                              className="w-full"
+                            >
+                              <SelectValue placeholder="Selecione…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {cores.length === 0 && legadosCor.length === 0 && (
+                                <div className="text-muted-foreground p-2 text-xs">
+                                  Nenhuma cor cadastrada.{' '}
+                                  <Link
+                                    href="/cores"
+                                    className="underline"
+                                    target="_blank"
+                                  >
+                                    Cadastre cores
+                                  </Link>
+                                  .
+                                </div>
+                              )}
+                              {cores
+                                .filter((c) => c.ativo)
+                                .map((c) => (
+                                  <SelectItem key={c.id} value={c.nome}>
+                                    <div className="flex items-center gap-2">
+                                      {c.codigoHex && (
+                                        <span
+                                          className="inline-block size-3 rounded-sm border ring-1 ring-foreground/10"
+                                          style={{
+                                            backgroundColor: c.codigoHex,
+                                          }}
+                                        />
+                                      )}
+                                      {c.nome}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              {legadosCor.length > 0 && (
+                                <>
+                                  {legadosCor.map((nome) => (
+                                    <SelectItem key={`legado-${nome}`} value={nome}>
+                                      {nome}{' '}
+                                      <span className="text-muted-foreground text-xs">
+                                        (legado)
+                                      </span>
+                                    </SelectItem>
+                                  ))}
+                                </>
+                              )}
+                            </SelectContent>
+                          </Select>
+                        )}
                       />
                     </Field>
                     <Field
