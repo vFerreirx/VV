@@ -4,32 +4,37 @@ import { z } from 'zod'
 // Helpers
 // -----------------------------------------------------------------
 
-// Campo numérico opcional vindo de input HTML (string).
-// Aceita '' como "não informado" → null. Valida que é número >= 0.
+// Campo numérico opcional vindo de input HTML.
+// Tolerante a null/undefined porque o zodResolver no cliente já aplica
+// o transform e a Server Action recebe o valor pós-transform — sem isso
+// o re-parse falha com "expected string, received null".
 const numericOpt = z
-  .string()
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (v == null || v === '' ? null : String(v)))
   .refine(
-    (v) => v === '' || (!Number.isNaN(Number(v)) && Number(v) >= 0),
+    (v) => v === null || (!Number.isNaN(Number(v)) && Number(v) >= 0),
     'Informe um número válido (>= 0)',
   )
-  .transform((v) => (v === '' ? null : v))
 
-// Campo numérico obrigatório (string vinda do form).
+// Campo numérico obrigatório.
 const numericReq = z
-  .string()
-  .min(1, 'Obrigatório')
+  .union([z.string(), z.number()])
+  .transform((v) => String(v))
+  .refine((v) => v.length > 0, 'Obrigatório')
   .refine(
     (v) => !Number.isNaN(Number(v)) && Number(v) >= 0,
     'Informe um número válido (>= 0)',
   )
 
-// String opcional → undefined quando vazia.
+// String opcional → undefined quando vazia. Tolera null no input.
 const stringOpt = (max: number, label = 'Texto') =>
   z
-    .string()
-    .max(max, `${label} muito longo`)
-    .optional()
-    .or(z.literal('').transform(() => undefined))
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((v) => (v == null || v === '' ? undefined : v))
+    .refine(
+      (v) => v === undefined || v.length <= max,
+      `${label} muito longo`,
+    )
 
 // -----------------------------------------------------------------
 // Variação (inline na tela do produto)
