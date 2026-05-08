@@ -57,11 +57,14 @@ function DropdownMenuLabel({
   className,
   inset,
   ...props
-}: MenuPrimitive.GroupLabel.Props & {
+}: React.ComponentProps<"div"> & {
   inset?: boolean
 }) {
+  // Renderiza como div ao invés de MenuPrimitive.GroupLabel — esse último
+  // exige <Menu.Group> ancestral no Base UI. Usado como "header" do menu
+  // (ex: nome do usuário), não como label de uma group de itens.
   return (
-    <MenuPrimitive.GroupLabel
+    <div
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
