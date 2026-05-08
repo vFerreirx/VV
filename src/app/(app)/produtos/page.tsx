@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
-import { listarCategorias, listarProdutos } from './actions'
+import { listarProdutos } from './actions'
 import { ProdutosList } from './produtos-list'
 import { Button } from '@/components/ui/button'
 import { isManager } from '@/lib/auth/require-auth'
@@ -30,10 +30,7 @@ export default async function ProdutosPage({
   const parsed = produtosFiltrosSchema.safeParse(raw)
   const filtros: ProdutosFiltros = parsed.success ? parsed.data : {}
 
-  const [produtos, categorias] = await Promise.all([
-    listarProdutos(filtros),
-    listarCategorias(),
-  ])
+  const produtos = await listarProdutos(filtros)
 
   return (
     <div className="space-y-6">
@@ -52,7 +49,6 @@ export default async function ProdutosPage({
 
       <ProdutosList
         produtos={produtos}
-        categorias={categorias}
         podeEditar={podeEditar}
         filtrosIniciais={filtros}
       />

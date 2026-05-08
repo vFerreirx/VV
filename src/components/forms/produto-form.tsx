@@ -44,16 +44,9 @@ export type ProdutoFormDefaults = {
   sku: string
   nome: string
   descricao: string | null
-  categoria: string | null
-  composicao: string | null
   gramatura: string | null
   larguraCm: string | null
   rendimentoKgPorMetro: string | null
-  custoProducao: string | null
-  precoMl: string | null
-  precoShopee: string | null
-  estoqueMinimoFullMl: string | null
-  estoqueMinimoFullShopee: string | null
   ativo: boolean
   variacoes: Array<{
     id?: string
@@ -68,16 +61,9 @@ const VAZIO: ProdutoFormDefaults = {
   sku: '',
   nome: '',
   descricao: null,
-  categoria: null,
-  composicao: null,
   gramatura: null,
   larguraCm: null,
   rendimentoKgPorMetro: null,
-  custoProducao: null,
-  precoMl: null,
-  precoShopee: null,
-  estoqueMinimoFullMl: '0',
-  estoqueMinimoFullShopee: '0',
   ativo: true,
   variacoes: [],
 }
@@ -87,16 +73,9 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
     sku: d.sku ?? '',
     nome: d.nome ?? '',
     descricao: d.descricao ?? '',
-    categoria: d.categoria ?? '',
-    composicao: d.composicao ?? '',
     gramatura: d.gramatura ?? '',
     larguraCm: d.larguraCm ?? '',
     rendimentoKgPorMetro: d.rendimentoKgPorMetro ?? '',
-    custoProducao: d.custoProducao ?? '',
-    precoMl: d.precoMl ?? '',
-    precoShopee: d.precoShopee ?? '',
-    estoqueMinimoFullMl: d.estoqueMinimoFullMl ?? '0',
-    estoqueMinimoFullShopee: d.estoqueMinimoFullShopee ?? '0',
     ativo: d.ativo ?? true,
     variacoes: d.variacoes.map((v) => ({
       id: v.id,
@@ -206,24 +185,6 @@ export function ProdutoForm({
             />
           </Field>
 
-          <Field label="Categoria" id="categoria" error={errs.categoria?.message}>
-            <Input
-              id="categoria"
-              placeholder="Cotton, PV, Sintético…"
-              disabled={isPending}
-              {...form.register('categoria')}
-            />
-          </Field>
-
-          <Field label="Composição" id="composicao" error={errs.composicao?.message}>
-            <Input
-              id="composicao"
-              placeholder="100% Algodão"
-              disabled={isPending}
-              {...form.register('composicao')}
-            />
-          </Field>
-
           <Field
             label="Descrição"
             id="descricao"
@@ -287,95 +248,6 @@ export function ProdutoForm({
               placeholder="0.3240"
               disabled={isPending}
               {...form.register('rendimentoKgPorMetro')}
-            />
-          </Field>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Custos e preços</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <Field label="Custo de produção (R$)" id="custoProducao" error={errs.custoProducao?.message}>
-            <Input
-              id="custoProducao"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              placeholder="22.50"
-              disabled={isPending}
-              {...form.register('custoProducao')}
-            />
-          </Field>
-
-          <Field label="Preço Full ML (R$)" id="precoMl" error={errs.precoMl?.message}>
-            <Input
-              id="precoMl"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              placeholder="38.90"
-              disabled={isPending}
-              {...form.register('precoMl')}
-            />
-          </Field>
-
-          <Field label="Preço Shopee (R$)" id="precoShopee" error={errs.precoShopee?.message}>
-            <Input
-              id="precoShopee"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              placeholder="36.90"
-              disabled={isPending}
-              {...form.register('precoShopee')}
-            />
-          </Field>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Estoque mínimo</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field
-            label="Mínimo Full ML (kg)"
-            id="estoqueMinimoFullMl"
-            error={errs.estoqueMinimoFullMl?.message}
-            required
-          >
-            <Input
-              id="estoqueMinimoFullMl"
-              type="number"
-              inputMode="decimal"
-              step="0.001"
-              min="0"
-              placeholder="50.000"
-              disabled={isPending}
-              {...form.register('estoqueMinimoFullMl')}
-            />
-          </Field>
-
-          <Field
-            label="Mínimo Full Shopee (kg)"
-            id="estoqueMinimoFullShopee"
-            error={errs.estoqueMinimoFullShopee?.message}
-            required
-          >
-            <Input
-              id="estoqueMinimoFullShopee"
-              type="number"
-              inputMode="decimal"
-              step="0.001"
-              min="0"
-              placeholder="30.000"
-              disabled={isPending}
-              {...form.register('estoqueMinimoFullShopee')}
             />
           </Field>
         </CardContent>

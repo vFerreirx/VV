@@ -16,16 +16,6 @@ const numericOpt = z
     'Informe um número válido (>= 0)',
   )
 
-// Campo numérico obrigatório.
-const numericReq = z
-  .union([z.string(), z.number()])
-  .transform((v) => String(v))
-  .refine((v) => v.length > 0, 'Obrigatório')
-  .refine(
-    (v) => !Number.isNaN(Number(v)) && Number(v) >= 0,
-    'Informe um número válido (>= 0)',
-  )
-
 // String opcional → undefined quando vazia. Tolera null no input.
 const stringOpt = (max: number, label = 'Texto') =>
   z
@@ -73,22 +63,11 @@ export const produtoSchema = z.object({
     ),
   nome: z.string().min(2, 'Nome obrigatório').max(120, 'Nome muito longo'),
   descricao: stringOpt(500, 'Descrição'),
-  categoria: stringOpt(80, 'Categoria'),
-  composicao: stringOpt(160, 'Composição'),
 
   // Características técnicas (todas opcionais; preenchidas conforme cadastro)
   gramatura: numericOpt,
   larguraCm: numericOpt,
   rendimentoKgPorMetro: numericOpt,
-
-  // Custos / preços
-  custoProducao: numericOpt,
-  precoMl: numericOpt,
-  precoShopee: numericOpt,
-
-  // Estoque mínimo (alerta visual em dashboard / listagens futuras)
-  estoqueMinimoFullMl: numericReq,
-  estoqueMinimoFullShopee: numericReq,
 
   ativo: z.boolean().default(true),
 
@@ -104,7 +83,6 @@ export type ProdutoOutput = z.output<typeof produtoSchema>
 
 export const produtosFiltrosSchema = z.object({
   q: z.string().trim().optional(),
-  categoria: z.string().trim().optional(),
   ativo: z
     .union([z.literal('true'), z.literal('false'), z.literal('todos')])
     .optional(),

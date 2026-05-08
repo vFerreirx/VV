@@ -32,7 +32,7 @@ export async function listarProdutos(
   filtros: ProdutosFiltros = {},
 ): Promise<ProdutoListItem[]> {
   const parsed = produtosFiltrosSchema.safeParse(filtros)
-  const { q, categoria, ativo } = parsed.success ? parsed.data : {}
+  const { q, ativo } = parsed.success ? parsed.data : {}
 
   const conditions = [isNull(produtos.deletedAt)]
   if (q && q.length > 0) {
@@ -42,9 +42,6 @@ export async function listarProdutos(
         ilike(produtos.nome, `%${q}%`),
       )!,
     )
-  }
-  if (categoria && categoria.length > 0) {
-    conditions.push(eq(produtos.categoria, categoria))
   }
   if (ativo === 'true') conditions.push(eq(produtos.ativo, true))
   else if (ativo === 'false') conditions.push(eq(produtos.ativo, false))
@@ -62,18 +59,11 @@ export async function listarProdutos(
       sku: produtos.sku,
       nome: produtos.nome,
       descricao: produtos.descricao,
-      categoria: produtos.categoria,
-      composicao: produtos.composicao,
       gramatura: produtos.gramatura,
       larguraCm: produtos.larguraCm,
       rendimentoKgPorMetro: produtos.rendimentoKgPorMetro,
-      custoProducao: produtos.custoProducao,
-      precoMl: produtos.precoMl,
-      precoShopee: produtos.precoShopee,
       mlbId: produtos.mlbId,
       shopeeItemId: produtos.shopeeItemId,
-      estoqueMinimoFullMl: produtos.estoqueMinimoFullMl,
-      estoqueMinimoFullShopee: produtos.estoqueMinimoFullShopee,
       ativo: produtos.ativo,
       createdAt: produtos.createdAt,
       updatedAt: produtos.updatedAt,
@@ -85,19 +75,6 @@ export async function listarProdutos(
     .orderBy(desc(produtos.ativo), asc(produtos.sku))
 
   return rows
-}
-
-// Lista categorias distintas pra montar o filtro.
-export async function listarCategorias(): Promise<string[]> {
-  const rows = await db
-    .selectDistinct({ categoria: produtos.categoria })
-    .from(produtos)
-    .where(and(isNull(produtos.deletedAt)))
-
-  return rows
-    .map((r) => r.categoria)
-    .filter((c): c is string => Boolean(c) && c!.trim().length > 0)
-    .sort()
 }
 
 // -----------------------------------------------------------------
@@ -161,16 +138,9 @@ export async function criarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
-        categoria: data.categoria ?? null,
-        composicao: data.composicao ?? null,
         gramatura: data.gramatura,
         larguraCm: data.larguraCm,
         rendimentoKgPorMetro: data.rendimentoKgPorMetro,
-        custoProducao: data.custoProducao,
-        precoMl: data.precoMl,
-        precoShopee: data.precoShopee,
-        estoqueMinimoFullMl: data.estoqueMinimoFullMl,
-        estoqueMinimoFullShopee: data.estoqueMinimoFullShopee,
         ativo: data.ativo,
       })
       .returning({ id: produtos.id })
@@ -245,16 +215,9 @@ export async function atualizarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
-        categoria: data.categoria ?? null,
-        composicao: data.composicao ?? null,
         gramatura: data.gramatura,
         larguraCm: data.larguraCm,
         rendimentoKgPorMetro: data.rendimentoKgPorMetro,
-        custoProducao: data.custoProducao,
-        precoMl: data.precoMl,
-        precoShopee: data.precoShopee,
-        estoqueMinimoFullMl: data.estoqueMinimoFullMl,
-        estoqueMinimoFullShopee: data.estoqueMinimoFullShopee,
         ativo: data.ativo,
       })
       .where(eq(produtos.id, id))

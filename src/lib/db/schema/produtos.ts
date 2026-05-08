@@ -2,7 +2,8 @@ import { sql } from 'drizzle-orm'
 import { boolean, index, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 // Catálogo de produtos da malharia (malhas).
-// Sem foto_url nesta fase (decisão de produto).
+// Versão enxuta: só os campos essenciais. Preços/custos/estoque mínimo
+// foram removidos — virão depois quando o cálculo de margem for definido.
 export const produtos = pgTable(
   'produtos',
   {
@@ -11,8 +12,6 @@ export const produtos = pgTable(
     nome: text().notNull(),
     descricao: text(),
 
-    categoria: text(),
-    composicao: text(),
     // gramatura em g/m²
     gramatura: numeric({ precision: 8, scale: 2 }),
     // largura útil da malha em cm
@@ -20,16 +19,9 @@ export const produtos = pgTable(
     // rendimento em kg por metro linear — usado pra calcular metragem da OP
     rendimentoKgPorMetro: numeric({ precision: 10, scale: 4 }),
 
-    custoProducao: numeric({ precision: 12, scale: 2 }),
-    precoMl: numeric({ precision: 12, scale: 2 }),
-    precoShopee: numeric({ precision: 12, scale: 2 }),
-
     // Identificadores externos (preenchidos quando integrar com ML/Shopee)
     mlbId: text(),
     shopeeItemId: text(),
-
-    estoqueMinimoFullMl: numeric({ precision: 12, scale: 3 }).default('0'),
-    estoqueMinimoFullShopee: numeric({ precision: 12, scale: 3 }).default('0'),
 
     ativo: boolean().notNull().default(true),
 
@@ -40,10 +32,7 @@ export const produtos = pgTable(
       .$onUpdate(() => sql`now()`),
     deletedAt: timestamp({ withTimezone: true }),
   },
-  (table) => [
-    index('produtos_categoria_idx').on(table.categoria),
-    index('produtos_ativo_idx').on(table.ativo),
-  ],
+  (table) => [index('produtos_ativo_idx').on(table.ativo)],
 )
 
 export const variacoesProduto = pgTable(

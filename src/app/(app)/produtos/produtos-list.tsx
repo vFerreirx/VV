@@ -36,14 +36,12 @@ import {
 
 type Props = {
   produtos: ProdutoListItem[]
-  categorias: string[]
   podeEditar: boolean
-  filtrosIniciais: { q?: string; categoria?: string; ativo?: string }
+  filtrosIniciais: { q?: string; ativo?: string }
 }
 
 export function ProdutosList({
   produtos,
-  categorias,
   podeEditar,
   filtrosIniciais,
 }: Props) {
@@ -100,25 +98,6 @@ export function ProdutosList({
 
         <div className="flex items-center gap-2">
           <Select
-            value={filtrosIniciais.categoria ?? 'todas'}
-            onValueChange={(v) =>
-              aplicarFiltro({ categoria: v === 'todas' ? undefined : v })
-            }
-          >
-            <SelectTrigger size="sm" className="min-w-[10rem]">
-              <SelectValue placeholder="Categoria" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas categorias</SelectItem>
-              {categorias.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select
             value={filtrosIniciais.ativo ?? 'todos'}
             onValueChange={(v) => aplicarFiltro({ ativo: v })}
           >
@@ -154,10 +133,9 @@ export function ProdutosList({
                 <TableRow>
                   <TableHead>SKU</TableHead>
                   <TableHead>Nome</TableHead>
-                  <TableHead>Categoria</TableHead>
+                  <TableHead className="text-right">Gramatura</TableHead>
+                  <TableHead className="text-right">Largura</TableHead>
                   <TableHead className="text-right">Variações</TableHead>
-                  <TableHead className="text-right">Preço ML</TableHead>
-                  <TableHead className="text-right">Preço Shopee</TableHead>
                   <TableHead>Status</TableHead>
                   {podeEditar && <TableHead className="w-24" />}
                 </TableRow>
@@ -174,17 +152,14 @@ export function ProdutosList({
                         {p.nome}
                       </Link>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {p.categoria ?? '—'}
+                    <TableCell className="text-muted-foreground text-right tabular-nums">
+                      {p.gramatura ? `${p.gramatura} g/m²` : '—'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-right tabular-nums">
+                      {p.larguraCm ? `${p.larguraCm} cm` : '—'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {p.totalVariacoes}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatBRL(p.precoMl)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatBRL(p.precoShopee)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={p.ativo ? 'default' : 'secondary'}>
@@ -226,21 +201,17 @@ export function ProdutosList({
                   </Badge>
                 </div>
                 <div className="text-muted-foreground mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <div>Categoria</div>
-                  <div className="text-right text-foreground">
-                    {p.categoria ?? '—'}
+                  <div>Gramatura</div>
+                  <div className="text-right text-foreground tabular-nums">
+                    {p.gramatura ? `${p.gramatura} g/m²` : '—'}
+                  </div>
+                  <div>Largura</div>
+                  <div className="text-right text-foreground tabular-nums">
+                    {p.larguraCm ? `${p.larguraCm} cm` : '—'}
                   </div>
                   <div>Variações</div>
                   <div className="text-right text-foreground tabular-nums">
                     {p.totalVariacoes}
-                  </div>
-                  <div>Preço ML</div>
-                  <div className="text-right text-foreground tabular-nums">
-                    {formatBRL(p.precoMl)}
-                  </div>
-                  <div>Preço Shopee</div>
-                  <div className="text-right text-foreground tabular-nums">
-                    {formatBRL(p.precoShopee)}
                   </div>
                 </div>
                 {podeEditar && (
@@ -330,17 +301,3 @@ function RowActions({ produto }: { produto: ProdutoListItem }) {
   )
 }
 
-// -----------------------------------------------------------------
-// Helpers
-// -----------------------------------------------------------------
-
-function formatBRL(v: string | null | undefined): string {
-  if (v === null || v === undefined || v === '') return '—'
-  const n = Number(v)
-  if (Number.isNaN(n)) return '—'
-  return n.toLocaleString('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
-  })
-}

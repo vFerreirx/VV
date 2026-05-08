@@ -15,6 +15,13 @@
       "when": 1778244128014,
       "tag": "0001_sturdy_nico_minoru",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778263711576,
+      "tag": "0002_wild_vulcan",
+      "breakpoints": true
     }
   ]
 }
