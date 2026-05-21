@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import type { Cor } from '@/lib/db/schema'
+import type { Cor, Modelo, Tamanho } from '@/lib/db/schema'
 import {
   produtoSchema,
   type ProdutoInput,
@@ -52,6 +52,7 @@ export type ProdutoFormDefaults = {
     id?: string
     skuVariacao: string
     cor: string | null
+    modelo: string | null
     tamanho: string | null
     precoAdicional: string | null
   }>
@@ -81,6 +82,7 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
       id: v.id,
       skuVariacao: v.skuVariacao,
       cor: v.cor ?? '',
+      modelo: v.modelo ?? '',
       tamanho: v.tamanho ?? '',
       precoAdicional: v.precoAdicional ?? '',
     })),
@@ -90,25 +92,46 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
 export function ProdutoForm({
   defaults = VAZIO,
   cores,
+  modelos,
+  tamanhos,
 }: {
   defaults?: ProdutoFormDefaults
   cores: Cor[]
+  modelos: Modelo[]
+  tamanhos: Tamanho[]
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const isEdit = Boolean(defaults.id)
 
-  // Algumas variações antigas podem ter valor de cor que não está mais no
-  // catálogo (renomeada / inativada). Adicionamos esses valores como opções
-  // extras pra não perder a informação ao salvar de novo.
+  // Valores de catálogo que podem ter sido renomeados/inativados — preservamos
+  // como opção "legada" no select pra não perder a informação histórica.
   const legadosCor = useMemo(() => {
-    const nomesCadastrados = new Set(cores.map((c) => c.nome))
+    const nomes = new Set(cores.map((c) => c.nome))
     const extras = new Set<string>()
     for (const v of defaults.variacoes) {
-      if (v.cor && !nomesCadastrados.has(v.cor)) extras.add(v.cor)
+      if (v.cor && !nomes.has(v.cor)) extras.add(v.cor)
     }
     return [...extras].sort()
   }, [cores, defaults.variacoes])
+
+  const legadosModelo = useMemo(() => {
+    const nomes = new Set(modelos.map((m) => m.nome))
+    const extras = new Set<string>()
+    for (const v of defaults.variacoes) {
+      if (v.modelo && !nomes.has(v.modelo)) extras.add(v.modelo)
+    }
+    return [...extras].sort()
+  }, [modelos, defaults.variacoes])
+
+  const legadosTamanho = useMemo(() => {
+    const nomes = new Set(tamanhos.map((t) => t.nome))
+    const extras = new Set<string>()
+    for (const v of defaults.variacoes) {
+      if (v.tamanho && !nomes.has(v.tamanho)) extras.add(v.tamanho)
+    }
+    return [...extras].sort()
+  }, [tamanhos, defaults.variacoes])
 
   const form = useForm<ProdutoInput>({
     // Tipos de input/output do Zod divergem por causa dos transforms;
@@ -259,7 +282,7 @@ export function ProdutoForm({
             <div>
               <CardTitle>Variações</CardTitle>
               <p className="text-muted-foreground mt-1 text-sm">
-                Cores e tamanhos. Cada variação tem seu próprio SKU.
+                Cor, modelo e tamanho. Cada variação tem seu próprio SKU.
               </p>
             </div>
             <Button
@@ -270,6 +293,7 @@ export function ProdutoForm({
                 variacoes.append({
                   skuVariacao: '',
                   cor: '',
+                  modelo: '',
                   tamanho: '',
                   precoAdicional: '',
                 })
@@ -293,7 +317,7 @@ export function ProdutoForm({
                 return (
                   <div
                     key={field.id}
-                    className="grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto]"
+                    className="grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto]"
                   >
                     <Field
                       label="SKU"
@@ -377,15 +401,124 @@ export function ProdutoForm({
                       />
                     </Field>
                     <Field
+                      label="Modelo"
+                      id={`variacoes.${index}.modelo`}
+                      error={ve?.modelo?.message}
+                    >
+                      <Controller
+                        control={form.control}
+                        name={`variacoes.${index}.modelo`}
+                        render={({ field: ctl }) => (
+                          <Select
+                            value={ctl.value || 'nenhum'}
+                            onValueChange={(v) =>
+                              ctl.onChange(v === 'nenhum' ? '' : v)
+                            }
+                            disabled={isPending}
+                          >
+                            <SelectTrigger
+                              id={`variacoes.${index}.modelo`}
+                              className="w-full"
+                            >
+                              <SelectValue placeholder="Selecione…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="nenhum">Sem modelo</SelectItem>
+                              {modelos.length === 0 && legadosModelo.length === 0 && (
+                                <div className="text-muted-foreground p-2 text-xs">
+                                  Nenhum modelo cadastrado.{' '}
+                                  <Link
+                                    href="/modelos"
+                                    className="underline"
+                                    target="_blank"
+                                  >
+                                    Cadastre modelos
+                                  </Link>
+                                  .
+                                </div>
+                              )}
+                              {modelos
+                                .filter((m) => m.ativo)
+                                .map((m) => (
+                                  <SelectItem key={m.id} value={m.nome}>
+                                    {m.nome}
+                                  </SelectItem>
+                                ))}
+                              {legadosModelo.map((nome) => (
+                                <SelectItem
+                                  key={`legado-mod-${nome}`}
+                                  value={nome}
+                                >
+                                  {nome}{' '}
+                                  <span className="text-muted-foreground text-xs">
+                                    (legado)
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </Field>
+                    <Field
                       label="Tamanho"
                       id={`variacoes.${index}.tamanho`}
                       error={ve?.tamanho?.message}
                     >
-                      <Input
-                        id={`variacoes.${index}.tamanho`}
-                        placeholder="M"
-                        disabled={isPending}
-                        {...form.register(`variacoes.${index}.tamanho`)}
+                      <Controller
+                        control={form.control}
+                        name={`variacoes.${index}.tamanho`}
+                        render={({ field: ctl }) => (
+                          <Select
+                            value={ctl.value || 'nenhum'}
+                            onValueChange={(v) =>
+                              ctl.onChange(v === 'nenhum' ? '' : v)
+                            }
+                            disabled={isPending}
+                          >
+                            <SelectTrigger
+                              id={`variacoes.${index}.tamanho`}
+                              className="w-full"
+                            >
+                              <SelectValue placeholder="Selecione…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="nenhum">Sem tamanho</SelectItem>
+                              {tamanhos.length === 0 &&
+                                legadosTamanho.length === 0 && (
+                                  <div className="text-muted-foreground p-2 text-xs">
+                                    Nenhum tamanho cadastrado.{' '}
+                                    <Link
+                                      href="/tamanhos"
+                                      className="underline"
+                                      target="_blank"
+                                    >
+                                      Cadastre tamanhos
+                                    </Link>
+                                    .
+                                  </div>
+                                )}
+                              {tamanhos
+                                .filter((t) => t.ativo)
+                                .map((t) => (
+                                  <SelectItem key={t.id} value={t.nome}>
+                                    {t.nome}
+                                  </SelectItem>
+                                ))}
+                              {legadosTamanho.map((nome) => (
+                                <SelectItem
+                                  key={`legado-tam-${nome}`}
+                                  value={nome}
+                                >
+                                  {nome}{' '}
+                                  <span className="text-muted-foreground text-xs">
+                                    (legado)
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       />
                     </Field>
                     <Field

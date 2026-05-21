@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { usernameSchema } from './auth'
+
 export const userRoleValues = [
   'admin',
   'gerente_producao',
@@ -16,17 +18,12 @@ const stringOpt = (max: number) =>
     .or(z.literal('').transform(() => undefined))
 
 // -----------------------------------------------------------------
-// Criar (admin define email + senha inicial)
+// Criar (admin define usuário + senha inicial)
 // -----------------------------------------------------------------
 
 export const criarUsuarioSchema = z.object({
   nome: z.string().trim().min(2, 'Nome muito curto').max(120, 'Nome muito longo'),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email('Email inválido')
-    .max(120, 'Email muito longo'),
+  username: usernameSchema,
   telefone: stringOpt(20),
   role: z.enum(userRoleValues),
   senha: z.string().min(6, 'Senha precisa de ao menos 6 caracteres'),

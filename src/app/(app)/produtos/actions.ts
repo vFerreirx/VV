@@ -151,6 +151,7 @@ export async function criarProdutoAction(
           produtoId: inserted!.id,
           skuVariacao: v.skuVariacao,
           cor: v.cor ?? null,
+          modelo: v.modelo ?? null,
           tamanho: v.tamanho ?? null,
           precoAdicional: v.precoAdicional ?? '0',
         })),
@@ -249,6 +250,7 @@ export async function atualizarProdutoAction(
           .set({
             skuVariacao: v.skuVariacao,
             cor: v.cor ?? null,
+            modelo: v.modelo ?? null,
             tamanho: v.tamanho ?? null,
             precoAdicional: v.precoAdicional ?? '0',
           })
@@ -258,6 +260,7 @@ export async function atualizarProdutoAction(
           produtoId: id,
           skuVariacao: v.skuVariacao,
           cor: v.cor ?? null,
+          modelo: v.modelo ?? null,
           tamanho: v.tamanho ?? null,
           precoAdicional: v.precoAdicional ?? '0',
         })

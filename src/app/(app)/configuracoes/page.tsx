@@ -29,7 +29,7 @@ export default async function ConfiguracoesPage() {
         <CardHeader>
           <CardTitle>Perfil</CardTitle>
           <CardDescription>
-            Email: <span className="text-foreground">{user.email}</span>
+            Usuário: <span className="text-foreground font-mono">{user.username}</span>
           </CardDescription>
         </CardHeader>
         <CardContent>

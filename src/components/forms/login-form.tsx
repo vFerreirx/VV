@@ -1,7 +1,6 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import Link from 'next/link'
 import { useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
@@ -17,7 +16,7 @@ export function LoginForm({ next }: { next?: string }) {
 
   const form = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', senha: '' },
+    defaultValues: { usuario: '', senha: '' },
   })
 
   const onSubmit = form.handleSubmit((values) => {
@@ -33,30 +32,26 @@ export function LoginForm({ next }: { next?: string }) {
   return (
     <form onSubmit={onSubmit} className="space-y-4" noValidate>
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="usuario">Usuário</Label>
         <Input
-          id="email"
-          type="email"
-          autoComplete="email"
+          id="usuario"
+          type="text"
+          autoComplete="username"
           autoFocus
+          autoCapitalize="none"
+          spellCheck={false}
           disabled={isPending}
-          {...form.register('email')}
+          {...form.register('usuario')}
         />
-        {form.formState.errors.email && (
-          <p className="text-destructive text-sm">{form.formState.errors.email.message}</p>
+        {form.formState.errors.usuario && (
+          <p className="text-destructive text-sm">
+            {form.formState.errors.usuario.message}
+          </p>
         )}
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="senha">Senha</Label>
-          <Link
-            href="/recuperar-senha"
-            className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
-          >
-            Esqueceu?
-          </Link>
-        </div>
+        <Label htmlFor="senha">Senha</Label>
         <Input
           id="senha"
           type="password"
@@ -65,13 +60,19 @@ export function LoginForm({ next }: { next?: string }) {
           {...form.register('senha')}
         />
         {form.formState.errors.senha && (
-          <p className="text-destructive text-sm">{form.formState.errors.senha.message}</p>
+          <p className="text-destructive text-sm">
+            {form.formState.errors.senha.message}
+          </p>
         )}
       </div>
 
       <Button type="submit" disabled={isPending} className="w-full">
         {isPending ? 'Entrando…' : 'Entrar'}
       </Button>
+
+      <p className="text-muted-foreground text-center text-xs">
+        Esqueceu a senha? Peça ao administrador pra resetar em Usuários.
+      </p>
     </form>
   )
 }

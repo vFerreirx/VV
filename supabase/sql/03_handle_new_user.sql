@@ -2,8 +2,12 @@
 -- 03_handle_new_user.sql
 -- Sincroniza auth.users -> public.users.
 -- Quando o admin cria um usuário via service role API, o trigger
--- copia id/email pra public.users e lê nome/role/telefone do
--- raw_user_meta_data (default role = 'operador').
+-- copia id/email pra public.users e lê username/nome/role/telefone
+-- do raw_user_meta_data (default role = 'operador').
+--
+-- Username é o identificador exibido pro usuário fazer login. O Supabase
+-- Auth sempre usa email internamente; nós montamos um email "interno"
+-- {username}@malharia.app na hora de criar o usuário pela Admin API.
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
@@ -14,13 +18,20 @@ SET search_path = public, auth
 AS $$
 DECLARE
   v_nome text;
+  v_username text;
   v_role public.user_role;
   v_telefone text;
 BEGIN
+  -- username vem do meta_data; fallback pro prefixo do email.
+  v_username := COALESCE(
+    NEW.raw_user_meta_data ->> 'username',
+    split_part(NEW.email, '@', 1)
+  );
+
   v_nome := COALESCE(
     NEW.raw_user_meta_data ->> 'nome',
     NEW.raw_user_meta_data ->> 'name',
-    split_part(NEW.email, '@', 1)
+    v_username
   );
 
   v_telefone := NEW.raw_user_meta_data ->> 'telefone';
@@ -35,10 +46,11 @@ BEGIN
     v_role := 'operador'::public.user_role;
   END;
 
-  INSERT INTO public.users (id, email, nome, telefone, role, ativo)
-  VALUES (NEW.id, NEW.email, v_nome, v_telefone, v_role, true)
+  INSERT INTO public.users (id, username, email, nome, telefone, role, ativo)
+  VALUES (NEW.id, v_username, NEW.email, v_nome, v_telefone, v_role, true)
   ON CONFLICT (id) DO UPDATE
     SET email = EXCLUDED.email,
+        username = COALESCE(public.users.username, EXCLUDED.username),
         nome = COALESCE(public.users.nome, EXCLUDED.nome),
         telefone = COALESCE(public.users.telefone, EXCLUDED.telefone),
         role = COALESCE(public.users.role, EXCLUDED.role);
@@ -55,6 +67,7 @@ CREATE TRIGGER on_auth_user_created
   EXECUTE FUNCTION public.handle_new_user();
 
 -- Sincroniza updates de email em auth.users de volta pra public.users.
+-- (Raramente acontece — o email é interno e o usuário não pode trocar.)
 CREATE OR REPLACE FUNCTION public.handle_user_email_update()
 RETURNS trigger
 LANGUAGE plpgsql

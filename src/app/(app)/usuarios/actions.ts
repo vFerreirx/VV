@@ -7,6 +7,7 @@ import { requireRole } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { users, type User } from '@/lib/db/schema'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { usernameToInternalEmail } from '@/lib/validators/auth'
 import {
   atualizarUsuarioSchema,
   criarUsuarioSchema,
@@ -51,22 +52,30 @@ export async function criarUsuarioAction(
   }
   const data = parsed.data
 
-  // Email único entre os ativos.
+  // Username único entre os ativos.
   const existing = await db
     .select({ id: users.id })
     .from(users)
-    .where(and(eq(users.email, data.email), isNull(users.deletedAt)))
+    .where(and(eq(users.username, data.username), isNull(users.deletedAt)))
     .limit(1)
   if (existing.length > 0) {
-    return { success: false, error: 'Já existe um usuário com esse email' }
+    return {
+      success: false,
+      error: `Já existe um usuário com o nome "${data.username}"`,
+    }
   }
+
+  // O Supabase Auth precisa de um email — montamos a partir do username.
+  // O usuário só conhece o username pra logar.
+  const internalEmail = usernameToInternalEmail(data.username)
 
   const supaAdmin = createAdminClient()
   const { data: created, error } = await supaAdmin.auth.admin.createUser({
-    email: data.email,
+    email: internalEmail,
     password: data.senha,
     email_confirm: true,
     user_metadata: {
+      username: data.username,
       nome: data.nome,
       telefone: data.telefone ?? null,
       role: data.role,

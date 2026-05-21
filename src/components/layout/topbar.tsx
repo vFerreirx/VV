@@ -4,7 +4,7 @@ import type { User } from '@/lib/db/schema'
 export function Topbar({
   user,
 }: {
-  user: Pick<User, 'nome' | 'email' | 'role'>
+  user: Pick<User, 'nome' | 'username' | 'role'>
 }) {
   return (
     <header className="border-border bg-background flex h-14 shrink-0 items-center justify-between border-b px-4">

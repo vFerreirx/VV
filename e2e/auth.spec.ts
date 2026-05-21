@@ -18,12 +18,12 @@ test.describe('Autenticação', () => {
 
   test('credencial errada mostra erro', async ({ page }) => {
     await page.goto('/login')
-    await page.getByLabel(/email/i).fill(TEST_USERS.admin.email)
+    await page.getByLabel(/usuário/i).fill(TEST_USERS.admin.username)
     await page.getByLabel(/senha/i).fill('senhaErradaXX')
     await page.getByRole('button', { name: /entrar/i }).click()
 
     // Toast / mensagem de erro
-    await expect(page.getByText(/email ou senha incorretos/i)).toBeVisible()
+    await expect(page.getByText(/usuário ou senha incorretos/i)).toBeVisible()
     await expect(page).toHaveURL(/\/login/)
   })
 

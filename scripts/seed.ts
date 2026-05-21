@@ -49,7 +49,7 @@ const supaAdmin = createSupabaseClient(SUPABASE_URL, SERVICE_ROLE, {
 // -----------------------------------------------------------------
 
 type SeedUser = {
-  email: string
+  username: string
   senha: string
   nome: string
   telefone: string
@@ -58,41 +58,45 @@ type SeedUser = {
 
 const SEED_USERS: SeedUser[] = [
   {
-    email: 'admin@malharia.dev',
+    username: 'admin',
     senha: 'Senha123!',
     nome: 'Admin Demo',
     telefone: '+5511999990001',
     role: 'admin',
   },
   {
-    email: 'gerente@malharia.dev',
+    username: 'gerente',
     senha: 'Senha123!',
     nome: 'Gerente de Produção',
     telefone: '+5511999990002',
     role: 'gerente_producao',
   },
   {
-    email: 'operador@malharia.dev',
+    username: 'operador',
     senha: 'Senha123!',
     nome: 'Operador de Tear',
     telefone: '+5511999990003',
     role: 'operador',
   },
   {
-    email: 'estoquista@malharia.dev',
+    username: 'estoquista',
     senha: 'Senha123!',
     nome: 'Estoquista',
     telefone: '+5511999990004',
     role: 'estoquista',
   },
   {
-    email: 'vendas@malharia.dev',
+    username: 'vendas',
     senha: 'Senha123!',
     nome: 'Vendas Online',
     telefone: '+5511999990005',
     role: 'vendas',
   },
 ]
+
+// Domínio interno usado pelo Supabase Auth (não é exibido pro usuário).
+const INTERNAL_DOMAIN = 'malharia.app'
+const internalEmail = (u: string) => `${u}@${INTERNAL_DOMAIN}`
 
 // -----------------------------------------------------------------
 // Helpers
@@ -155,14 +159,17 @@ async function reset() {
       public.variacoes_produto,
       public.produtos,
       public.cores,
+      public.modelos,
+      public.tamanhos,
       public.maquinas,
       public.users,
       public.op_numero_counter
     RESTART IDENTITY CASCADE
   `)
 
-  // Remove auth.users seedados anteriormente (com base em email).
-  const oldIds = await findAuthUsersByEmail(SEED_USERS.map((u) => u.email))
+  // Remove auth.users seedados anteriormente (com base no email interno).
+  const emailsAlvo = SEED_USERS.map((u) => internalEmail(u.username))
+  const oldIds = await findAuthUsersByEmail(emailsAlvo)
   for (const id of oldIds) {
     const { error } = await supaAdmin.auth.admin.deleteUser(id)
     if (error) throw error
@@ -182,20 +189,22 @@ async function seedUsuarios() {
 
   for (const u of SEED_USERS) {
     const { data, error } = await supaAdmin.auth.admin.createUser({
-      email: u.email,
+      email: internalEmail(u.username),
       password: u.senha,
       email_confirm: true,
       user_metadata: {
+        username: u.username,
         nome: u.nome,
         telefone: u.telefone,
         role: u.role,
       },
     })
-    if (error) throw new Error(`Falha ao criar ${u.email}: ${error.message}`)
-    if (!data.user) throw new Error(`Sem dados pra ${u.email}`)
+    if (error)
+      throw new Error(`Falha ao criar ${u.username}: ${error.message}`)
+    if (!data.user) throw new Error(`Sem dados pra ${u.username}`)
 
     idsByRole.set(u.role, data.user.id)
-    console.log(`  • ${u.role.padEnd(18)} ${u.email}`)
+    console.log(`  • ${u.role.padEnd(18)} ${u.username}`)
   }
 
   // O trigger handle_new_user já populou public.users, mas é assíncrono
@@ -280,11 +289,64 @@ async function seedCores() {
 }
 
 // -----------------------------------------------------------------
+// Modelos (catálogo de desenhos/estampas)
+// -----------------------------------------------------------------
+
+const MODELOS_BASE: Array<{ nome: string; descricao?: string }> = [
+  { nome: 'Liso', descricao: 'Sem estampa' },
+  { nome: 'Padrão Floral' },
+  { nome: 'Listrado Marinho' },
+  { nome: 'Estampa Cubos' },
+  { nome: 'Geométrico' },
+  { nome: 'Estampa Folhas' },
+]
+
+async function seedModelos() {
+  console.log('▶ Cadastrando modelos…')
+  await db.insert(schema.modelos).values(
+    MODELOS_BASE.map((m) => ({
+      nome: m.nome,
+      descricao: m.descricao ?? null,
+      ativo: true,
+    })),
+  )
+  console.log(`  • ${MODELOS_BASE.length} modelos`)
+}
+
+// -----------------------------------------------------------------
+// Tamanhos (catálogo)
+// -----------------------------------------------------------------
+
+const TAMANHOS_BASE: Array<{ nome: string; ordem: number }> = [
+  { nome: 'P', ordem: 10 },
+  { nome: 'M', ordem: 20 },
+  { nome: 'G', ordem: 30 },
+  { nome: 'GG', ordem: 40 },
+  { nome: 'Solteiro', ordem: 100 },
+  { nome: 'Casal', ordem: 110 },
+  { nome: 'Queen', ordem: 120 },
+  { nome: 'King', ordem: 130 },
+]
+
+async function seedTamanhos() {
+  console.log('▶ Cadastrando tamanhos…')
+  await db.insert(schema.tamanhos).values(
+    TAMANHOS_BASE.map((t) => ({
+      nome: t.nome,
+      ordem: t.ordem,
+      ativo: true,
+    })),
+  )
+  console.log(`  • ${TAMANHOS_BASE.length} tamanhos`)
+}
+
+// -----------------------------------------------------------------
 // Produtos + variações
 // -----------------------------------------------------------------
 
 const CORES = CORES_BASE.map((c) => c.nome)
-const TAMANHOS = ['P', 'M', 'G', 'GG']
+const MODELOS = MODELOS_BASE.map((m) => m.nome)
+const TAMANHOS = TAMANHOS_BASE.map((t) => t.nome)
 
 const PRODUTOS_BASE = [
   {
@@ -366,23 +428,33 @@ async function seedProdutos() {
     .values(PRODUTOS_BASE.map((p) => ({ ...p })))
     .returning()
 
-  // 2-3 variações por produto (cor + tamanho aleatório).
+  // 2-3 variações por produto (cor + modelo + tamanho aleatório).
   const variacoes: schema.NewVariacaoProduto[] = []
   for (const p of insertedProdutos) {
     const numVar = randomInt(2, 3)
-    const coresUsadas = new Set<string>()
+    // Garante que (cor, modelo, tamanho) seja único dentro do produto.
+    const usadas = new Set<string>()
     for (let i = 0; i < numVar; i++) {
       let cor = randomChoice(CORES)
-      // evita repetir cor no mesmo produto
-      while (coresUsadas.has(cor)) cor = randomChoice(CORES)
-      coresUsadas.add(cor)
-      const tamanho = randomChoice(TAMANHOS)
-      // Usa nome completo da cor (sem espaços) pra evitar colisões tipo
-      // "Verde" vs "Vermelho" gerando o mesmo prefixo "VER".
+      let modelo = randomChoice(MODELOS)
+      let tamanho = randomChoice(TAMANHOS)
+      let chave = `${cor}|${modelo}|${tamanho}`
+      let tentativas = 0
+      while (usadas.has(chave) && tentativas < 10) {
+        cor = randomChoice(CORES)
+        modelo = randomChoice(MODELOS)
+        tamanho = randomChoice(TAMANHOS)
+        chave = `${cor}|${modelo}|${tamanho}`
+        tentativas++
+      }
+      usadas.add(chave)
+      // Nome completo (sem espaços) pra evitar colisões tipo "Verde"/"Vermelho".
+      const slug = (s: string) => s.replace(/\s/g, '').toUpperCase()
       variacoes.push({
         produtoId: p.id,
-        skuVariacao: `${p.sku}-${cor.replace(/\s/g, '').toUpperCase()}-${tamanho}`,
+        skuVariacao: `${p.sku}-${slug(cor)}-${slug(modelo)}-${slug(tamanho)}`,
         cor,
+        modelo,
         tamanho,
         precoAdicional: '0',
       })
@@ -626,6 +698,8 @@ async function main() {
 
   const maquinas = await seedMaquinas(operadorId)
   await seedCores()
+  await seedModelos()
+  await seedTamanhos()
   const { produtos, variacoes } = await seedProdutos()
   const ordens = await seedOrdens(produtos, variacoes, maquinas, idsByRole)
   await seedApontamentos(ordens, operadorId)
@@ -634,7 +708,7 @@ async function main() {
   console.log('\n✅ Seed concluído.')
   console.log('\nLogins disponíveis (senha: Senha123!):')
   for (const u of SEED_USERS) {
-    console.log(`  • ${u.role.padEnd(18)} ${u.email}`)
+    console.log(`  • ${u.role.padEnd(18)} ${u.username}`)
   }
 }
 

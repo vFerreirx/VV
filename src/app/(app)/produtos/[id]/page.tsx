@@ -5,6 +5,8 @@ import { notFound } from 'next/navigation'
 
 import { obterProduto } from '../actions'
 import { listarCores } from '@/app/(app)/cores/actions'
+import { listarModelos } from '@/app/(app)/modelos/actions'
+import { listarTamanhos } from '@/app/(app)/tamanhos/actions'
 import { ProdutoForm, type ProdutoFormDefaults } from '@/components/forms/produto-form'
 import { Button } from '@/components/ui/button'
 import { requireRole } from '@/lib/auth/require-auth'
@@ -19,9 +21,11 @@ export default async function EditarProdutoPage({
   await requireRole(['admin', 'gerente_producao'])
   const { id } = await params
 
-  const [produto, cores] = await Promise.all([
+  const [produto, cores, modelos, tamanhos] = await Promise.all([
     obterProduto(id),
     listarCores(),
+    listarModelos(),
+    listarTamanhos(),
   ])
   if (!produto) notFound()
 
@@ -38,6 +42,7 @@ export default async function EditarProdutoPage({
       id: v.id,
       skuVariacao: v.skuVariacao,
       cor: v.cor,
+      modelo: v.modelo,
       tamanho: v.tamanho,
       precoAdicional: v.precoAdicional,
     })),
@@ -62,7 +67,12 @@ export default async function EditarProdutoPage({
         </div>
       </div>
 
-      <ProdutoForm defaults={defaults} cores={cores} />
+      <ProdutoForm
+        defaults={defaults}
+        cores={cores}
+        modelos={modelos}
+        tamanhos={tamanhos}
+      />
     </div>
   )
 }

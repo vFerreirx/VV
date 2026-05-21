@@ -9,6 +9,8 @@ import {
   LogOut,
   Package,
   Palette,
+  Ruler,
+  Shapes,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -31,6 +33,8 @@ const ITEMS: Item[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/produtos', label: 'Produtos', icon: Package },
   { href: '/cores', label: 'Cores', icon: Palette },
+  { href: '/modelos', label: 'Modelos', icon: Shapes },
+  { href: '/tamanhos', label: 'Tamanhos', icon: Ruler },
   { href: '/maquinas', label: 'Máquinas', icon: Factory },
   { href: '/producao', label: 'Produção', icon: KanbanSquare },
   { href: '/ordens', label: 'Ordens', icon: ListChecks },

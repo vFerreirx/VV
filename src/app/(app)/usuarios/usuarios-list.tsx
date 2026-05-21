@@ -94,7 +94,7 @@ export function UsuariosList({ usuarios, selfId }: Props) {
             <TableRow>
               <TableHead className="w-12" />
               <TableHead>Nome</TableHead>
-              <TableHead>Email</TableHead>
+              <TableHead>Usuário</TableHead>
               <TableHead>Telefone</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Status</TableHead>
@@ -117,8 +117,8 @@ export function UsuariosList({ usuarios, selfId }: Props) {
                     <span className="text-muted-foreground ml-1 text-xs">(você)</span>
                   )}
                 </TableCell>
-                <TableCell className="text-muted-foreground text-xs">
-                  {u.email}
+                <TableCell className="text-muted-foreground font-mono text-xs">
+                  {u.username}
                 </TableCell>
                 <TableCell className="text-muted-foreground text-xs">
                   {u.telefone ?? '—'}
@@ -186,8 +186,8 @@ export function UsuariosList({ usuarios, selfId }: Props) {
                     {u.ativo ? 'Ativo' : 'Inativo'}
                   </Badge>
                 </div>
-                <div className="text-muted-foreground truncate text-xs">
-                  {u.email}
+                <div className="text-muted-foreground truncate font-mono text-xs">
+                  {u.username}
                 </div>
                 <div className="mt-1">
                   <Badge className={ROLE_BADGE[u.role]}>
@@ -263,7 +263,7 @@ function CriarUsuarioDialog({
     resolver: zodResolver(criarUsuarioSchema) as unknown as Resolver<CriarUsuarioInput>,
     defaultValues: {
       nome: '',
-      email: '',
+      username: '',
       telefone: '',
       role: 'operador',
       senha: '',
@@ -300,8 +300,8 @@ function CriarUsuarioDialog({
         <DialogHeader>
           <DialogTitle>Novo usuário</DialogTitle>
           <DialogDescription>
-            Defina os dados básicos e uma senha inicial. O usuário pode trocar
-            depois em Configurações.
+            Defina nome, usuário de login e senha inicial. O usuário pode
+            trocar a senha depois em Configurações.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-3" noValidate>
@@ -313,12 +313,20 @@ function CriarUsuarioDialog({
               {...form.register('nome')}
             />
           </FieldRow>
-          <FieldRow label="Email" id="cu-email" error={errs.email?.message} required>
+          <FieldRow
+            label="Usuário"
+            id="cu-username"
+            error={errs.username?.message}
+            required
+          >
             <Input
-              id="cu-email"
-              type="email"
+              id="cu-username"
+              type="text"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="ex: joao.silva"
               disabled={isPending}
-              {...form.register('email')}
+              {...form.register('username')}
             />
           </FieldRow>
           <FieldRow label="Telefone" id="cu-tel" error={errs.telefone?.message}>
@@ -463,7 +471,9 @@ function EditarBody({
     <>
       <DialogHeader>
         <DialogTitle>Editar usuário</DialogTitle>
-        <DialogDescription>{usuario.email}</DialogDescription>
+        <DialogDescription>
+          <span className="font-mono">{usuario.username}</span>
+        </DialogDescription>
       </DialogHeader>
       <form onSubmit={onSubmit} className="space-y-3" noValidate>
         <FieldRow label="Nome" id="eu-nome" error={errs.nome?.message} required>
@@ -587,7 +597,7 @@ function ResetSenhaDialog({
         <DialogHeader>
           <DialogTitle>Resetar senha</DialogTitle>
           <DialogDescription>
-            {usuario?.nome} ({usuario?.email}) — informe a nova senha. O
+            {usuario?.nome} ({usuario?.username}) — informe a nova senha. O
             usuário poderá trocá-la depois em Configurações.
           </DialogDescription>
         </DialogHeader>
@@ -662,7 +672,7 @@ function ExcluirUsuarioDialog({
         <DialogHeader>
           <DialogTitle>Excluir usuário?</DialogTitle>
           <DialogDescription>
-            {usuario?.nome} ({usuario?.email}) será desativado e não poderá
+            {usuario?.nome} ({usuario?.username}) será desativado e não poderá
             mais fazer login. Os registros históricos (OPs criadas,
             apontamentos, etc.) ficam preservados.
           </DialogDescription>

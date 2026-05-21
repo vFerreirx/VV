@@ -42,7 +42,8 @@ export const variacaoSchema = z.object({
       'Use apenas letras, números, hífen, ponto, barra ou underline',
     ),
   cor: stringOpt(60, 'Cor'),
-  tamanho: stringOpt(30, 'Tamanho'),
+  modelo: stringOpt(80, 'Modelo'),
+  tamanho: stringOpt(40, 'Tamanho'),
   precoAdicional: numericOpt,
 })
 

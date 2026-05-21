@@ -18,7 +18,6 @@
 
 -- ----------------------------------------------------------------
 -- Helpers em public (SECURITY DEFINER pra evitar recursão de policy)
--- Obs: Supabase Cloud não permite criar funções no schema auth.
 -- ----------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.user_role()
@@ -46,14 +45,15 @@ AS $$
 $$;
 
 -- ----------------------------------------------------------------
--- ENABLE RLS em todas as tabelas de domínio
--- (op_numero_counter NÃO recebe RLS — só o trigger SECURITY DEFINER acessa)
+-- ENABLE RLS
 -- ----------------------------------------------------------------
 
 ALTER TABLE public.users                ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.produtos             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.variacoes_produto    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cores                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.modelos              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tamanhos             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.maquinas             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ordens_producao      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.apontamentos_producao ENABLE ROW LEVEL SECURITY;
@@ -82,7 +82,6 @@ CREATE POLICY users_self_update ON public.users
   USING (id = auth.uid())
   WITH CHECK (
     id = auth.uid()
-    -- não pode mudar o próprio role nem o flag ativo
     AND role = public.user_role()
     AND ativo = (SELECT ativo FROM public.users WHERE id = auth.uid())
   );
@@ -111,6 +110,30 @@ CREATE POLICY cores_manager_all ON public.cores
   USING (public.is_manager())
   WITH CHECK (public.is_manager());
 
+-- ===== modelos =====
+DROP POLICY IF EXISTS modelos_select_authenticated ON public.modelos;
+CREATE POLICY modelos_select_authenticated ON public.modelos
+  FOR SELECT TO authenticated
+  USING (deleted_at IS NULL OR public.is_manager());
+
+DROP POLICY IF EXISTS modelos_manager_all ON public.modelos;
+CREATE POLICY modelos_manager_all ON public.modelos
+  FOR ALL TO authenticated
+  USING (public.is_manager())
+  WITH CHECK (public.is_manager());
+
+-- ===== tamanhos =====
+DROP POLICY IF EXISTS tamanhos_select_authenticated ON public.tamanhos;
+CREATE POLICY tamanhos_select_authenticated ON public.tamanhos
+  FOR SELECT TO authenticated
+  USING (deleted_at IS NULL OR public.is_manager());
+
+DROP POLICY IF EXISTS tamanhos_manager_all ON public.tamanhos;
+CREATE POLICY tamanhos_manager_all ON public.tamanhos
+  FOR ALL TO authenticated
+  USING (public.is_manager())
+  WITH CHECK (public.is_manager());
+
 -- ===== variacoes_produto =====
 DROP POLICY IF EXISTS variacoes_select_authenticated ON public.variacoes_produto;
 CREATE POLICY variacoes_select_authenticated ON public.variacoes_produto
@@ -134,8 +157,6 @@ CREATE POLICY maquinas_manager_all ON public.maquinas
   USING (public.is_manager())
   WITH CHECK (public.is_manager());
 
--- Operador atualiza status / observacoes da própria máquina
--- (campos efetivamente alteráveis são controlados pela server action).
 DROP POLICY IF EXISTS maquinas_operador_update ON public.maquinas;
 CREATE POLICY maquinas_operador_update ON public.maquinas
   FOR UPDATE TO authenticated
@@ -160,7 +181,6 @@ CREATE POLICY ordens_manager_all ON public.ordens_producao
   USING (public.is_manager())
   WITH CHECK (public.is_manager());
 
--- Operador edita OPs alocadas em alguma máquina onde ele é operador atual.
 DROP POLICY IF EXISTS ordens_operador_update ON public.ordens_producao;
 CREATE POLICY ordens_operador_update ON public.ordens_producao
   FOR UPDATE TO authenticated
@@ -205,10 +225,6 @@ CREATE POLICY apontamentos_operador_self ON public.apontamentos_producao
   );
 
 -- ===== eventos_kanban =====
--- Auditoria: SELECT pra todos autenticados, INSERT pra qualquer um que
--- consiga atualizar a OP referenciada (delegamos pra app).
--- UPDATE/DELETE bloqueados (sem policy = nega tudo, mesmo pra is_manager;
--- por isso adicionamos manager INSERT/SELECT explícitos).
 DROP POLICY IF EXISTS eventos_kanban_select ON public.eventos_kanban;
 CREATE POLICY eventos_kanban_select ON public.eventos_kanban
   FOR SELECT TO authenticated USING (true);
@@ -216,10 +232,7 @@ CREATE POLICY eventos_kanban_select ON public.eventos_kanban
 DROP POLICY IF EXISTS eventos_kanban_insert ON public.eventos_kanban;
 CREATE POLICY eventos_kanban_insert ON public.eventos_kanban
   FOR INSERT TO authenticated
-  WITH CHECK (
-    -- escreve evento que atribui a si mesmo (ou anônimo, NULL)
-    usuario_id IS NULL OR usuario_id = auth.uid()
-  );
+  WITH CHECK (usuario_id IS NULL OR usuario_id = auth.uid());
 
 -- ===== movimentacoes_estoque =====
 DROP POLICY IF EXISTS movimentacoes_select_authenticated ON public.movimentacoes_estoque;
@@ -229,9 +242,5 @@ CREATE POLICY movimentacoes_select_authenticated ON public.movimentacoes_estoque
 DROP POLICY IF EXISTS movimentacoes_estoquista_write ON public.movimentacoes_estoque;
 CREATE POLICY movimentacoes_estoquista_write ON public.movimentacoes_estoque
   FOR ALL TO authenticated
-  USING (
-    public.user_role() IN ('admin', 'gerente_producao', 'estoquista')
-  )
-  WITH CHECK (
-    public.user_role() IN ('admin', 'gerente_producao', 'estoquista')
-  );
+  USING (public.user_role() IN ('admin', 'gerente_producao', 'estoquista'))
+  WITH CHECK (public.user_role() IN ('admin', 'gerente_producao', 'estoquista'));

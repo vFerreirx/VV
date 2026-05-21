@@ -43,7 +43,10 @@ export const variacoesProduto = pgTable(
       .notNull()
       .references(() => produtos.id, { onDelete: 'cascade' }),
     skuVariacao: text().notNull().unique(),
+    // Texto armazenado (nome do item do catálogo) — preserva histórico
+    // mesmo se a cor/modelo/tamanho for renomeado ou inativado.
     cor: text(),
+    modelo: text(),
     tamanho: text(),
     precoAdicional: numeric({ precision: 12, scale: 2 }).default('0'),
 
