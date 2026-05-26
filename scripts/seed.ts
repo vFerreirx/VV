@@ -521,9 +521,7 @@ async function seedOrdens(
     const produto = randomChoice(produtos)
     const varDoProduto = variacoes.filter((v) => v.produtoId === produto.id)
     const variacao = varDoProduto.length > 0 ? randomChoice(varDoProduto) : null
-    const quantidadeKg = randomInt(50, 400)
-    const rendimento = produto.rendimentoKgPorMetro ?? '0.3000'
-    const quantidadeMetros = (quantidadeKg / Number(rendimento)).toFixed(3)
+    const quantidade = randomInt(20, 300)
 
     // OPs em estados ativos têm máquina alocada
     const precisaMaquina = ![
@@ -560,9 +558,7 @@ async function seedOrdens(
       numero: '',
       produtoId: produto.id,
       variacaoId: variacao?.id ?? null,
-      quantidadeKg: String(quantidadeKg),
-      quantidadeMetros,
-      rendimentoSnapshot: rendimento,
+      quantidade,
       maquinaId: maquina?.id ?? null,
       canalDestino: randomChoice(CANAIS),
       prioridade: randomChoice(PRIORIDADES),
@@ -605,16 +601,16 @@ async function seedApontamentos(
     for (let i = 0; i < numApontamentos; i++) {
       const inicio = new Date(inicioBase.getTime() + i * 8 * 60 * 60 * 1000)
       const fim = new Date(inicio.getTime() + randomInt(4, 8) * 60 * 60 * 1000)
-      const kgProduzidos = (Number(op.quantidadeKg) / numApontamentos).toFixed(3)
-      const kgRefugo = (Number(kgProduzidos) * 0.02).toFixed(3)
+      const quantidadeProduzida = Math.floor(op.quantidade / numApontamentos)
+      const quantidadeRefugo = Math.max(0, Math.floor(quantidadeProduzida * 0.02))
       rows.push({
         ordemId: op.id,
         maquinaId: op.maquinaId!,
         operadorId,
         inicio,
         fim,
-        kgProduzidos,
-        kgRefugo,
+        quantidadeProduzida,
+        quantidadeRefugo,
       })
     }
   }
@@ -645,8 +641,7 @@ async function seedMovimentacoes(
         produtoId: op.produtoId,
         variacaoId: op.variacaoId ?? null,
         tipo: 'entrada_producao',
-        quantidadeKg: op.quantidadeKg,
-        quantidadeUnidades: '0',
+        quantidade: op.quantidade,
         referenciaId: op.id,
         referenciaTipo: 'ordem_producao',
         usuarioId: estoquistaId,
@@ -667,8 +662,7 @@ async function seedMovimentacoes(
         produtoId: op.produtoId,
         variacaoId: op.variacaoId ?? null,
         tipo,
-        quantidadeKg: op.quantidadeKg,
-        quantidadeUnidades: '0',
+        quantidade: op.quantidade,
         referenciaId: op.id,
         referenciaTipo: 'ordem_producao',
         usuarioId: estoquistaId,

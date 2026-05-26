@@ -42,7 +42,7 @@ export default async function EditarOrdemPage({
     numero: ordem.numero,
     produtoId: ordem.produtoId,
     variacaoId: ordem.variacaoId,
-    quantidadeKg: ordem.quantidadeKg,
+    quantidade: ordem.quantidade,
     maquinaId: ordem.maquinaId,
     canalDestino: ordem.canalDestino,
     prioridade: ordem.prioridade,
@@ -79,14 +79,9 @@ export default async function EditarOrdemPage({
           <CardTitle>Resumo</CardTitle>
         </CardHeader>
         <CardContent className="text-muted-foreground grid grid-cols-2 gap-x-4 gap-y-2 text-sm md:grid-cols-4">
-          <Info label="Quantidade kg" value={ordem.quantidadeKg} />
           <Info
-            label="Quantidade m"
-            value={ordem.quantidadeMetros ?? '—'}
-          />
-          <Info
-            label="Rendimento (snapshot)"
-            value={ordem.rendimentoSnapshot ?? '—'}
+            label="Quantidade"
+            value={`${ordem.quantidade.toLocaleString('pt-BR')} un`}
           />
           <Info
             label="Criada em"

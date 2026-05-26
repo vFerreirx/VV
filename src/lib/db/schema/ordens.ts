@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { index, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 import { ordemCanalEnum, ordemPrioridadeEnum, ordemStatusEnum } from './enums'
 import { maquinas } from './maquinas'
@@ -9,6 +9,7 @@ import { users } from './users'
 // Ordem de produção (OP).
 // O `numero` (formato OP-AAAA-NNNN) é preenchido por trigger Postgres
 // criado na Fase 2, usando uma sequence reiniciada por ano.
+// A quantidade é em PEÇAS (peseiras, capas de almofada, etc).
 export const ordensProducao = pgTable(
   'ordens_producao',
   {
@@ -20,13 +21,7 @@ export const ordensProducao = pgTable(
       .references(() => produtos.id),
     variacaoId: uuid().references(() => variacoesProduto.id),
 
-    // quantidade_metros é calculado no momento da criação da OP a partir
-    // de quantidade_kg / rendimento_kg_por_metro do produto.
-    quantidadeKg: numeric({ precision: 12, scale: 3 }).notNull(),
-    quantidadeMetros: numeric({ precision: 12, scale: 3 }),
-    // Snapshot do rendimento usado pra derivar quantidade_metros — preserva
-    // a metragem histórica caso o rendimento do produto seja alterado depois.
-    rendimentoSnapshot: numeric({ precision: 10, scale: 4 }),
+    quantidade: integer().notNull(),
 
     maquinaId: uuid().references(() => maquinas.id),
 
@@ -62,6 +57,7 @@ export const ordensProducao = pgTable(
 )
 
 // Apontamentos de produção — registros operacionais por turno/intervalo.
+// Quantidades em peças (mesma unidade da OP).
 export const apontamentosProducao = pgTable(
   'apontamentos_producao',
   {
@@ -79,8 +75,8 @@ export const apontamentosProducao = pgTable(
     inicio: timestamp({ withTimezone: true }).notNull(),
     fim: timestamp({ withTimezone: true }),
 
-    kgProduzidos: numeric({ precision: 12, scale: 3 }).notNull().default('0'),
-    kgRefugo: numeric({ precision: 12, scale: 3 }).notNull().default('0'),
+    quantidadeProduzida: integer().notNull().default(0),
+    quantidadeRefugo: integer().notNull().default(0),
 
     motivoParada: text(),
 

@@ -34,7 +34,7 @@ test.describe('Ordens — leitura', () => {
 
     // Os selects principais aparecem
     await expect(page.getByLabel(/^produto\s*\*?$/i)).toBeVisible()
-    await expect(page.getByLabel(/quantidade \(kg\)/i)).toBeVisible()
+    await expect(page.getByLabel(/quantidade \(peças\)/i)).toBeVisible()
     await expect(page.getByLabel(/canal de destino/i)).toBeVisible()
   })
 })

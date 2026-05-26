@@ -373,10 +373,7 @@ function KanbanCardContent({
 
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
         <span className="text-muted-foreground tabular-nums">
-          {Number(ordem.quantidadeKg).toLocaleString('pt-BR', {
-            maximumFractionDigits: 1,
-          })}{' '}
-          kg
+          {ordem.quantidade.toLocaleString('pt-BR')} un
         </span>
         {ordem.maquinaCodigo && (
           <span className="text-muted-foreground font-mono">

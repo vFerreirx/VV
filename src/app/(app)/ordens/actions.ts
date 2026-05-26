@@ -192,10 +192,10 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
 
 export type ProdutoComVariacoesParaForm = Pick<
   Produto,
-  'id' | 'sku' | 'nome' | 'rendimentoKgPorMetro'
+  'id' | 'sku' | 'nome'
 > & {
   variacoes: Array<
-    Pick<VariacaoProduto, 'id' | 'skuVariacao' | 'cor' | 'tamanho'>
+    Pick<VariacaoProduto, 'id' | 'skuVariacao' | 'cor' | 'modelo' | 'tamanho'>
   >
 }
 
@@ -209,7 +209,6 @@ export async function listarProdutosParaOrdem(): Promise<
       id: produtos.id,
       sku: produtos.sku,
       nome: produtos.nome,
-      rendimentoKgPorMetro: produtos.rendimentoKgPorMetro,
     })
     .from(produtos)
     .where(and(isNull(produtos.deletedAt), eq(produtos.ativo, true)))
@@ -223,6 +222,7 @@ export async function listarProdutosParaOrdem(): Promise<
       produtoId: variacoesProduto.produtoId,
       skuVariacao: variacoesProduto.skuVariacao,
       cor: variacoesProduto.cor,
+      modelo: variacoesProduto.modelo,
       tamanho: variacoesProduto.tamanho,
     })
     .from(variacoesProduto)
@@ -241,6 +241,7 @@ export async function listarProdutosParaOrdem(): Promise<
       id: v.id,
       skuVariacao: v.skuVariacao,
       cor: v.cor,
+      modelo: v.modelo,
       tamanho: v.tamanho,
     })),
   }))
@@ -286,33 +287,6 @@ export async function listarResponsaveis(): Promise<
 }
 
 // -----------------------------------------------------------------
-// Helpers internos
-// -----------------------------------------------------------------
-
-// Busca rendimento atual do produto pra calcular metros e snapshot.
-async function getRendimentoProduto(
-  produtoId: string,
-): Promise<string | null> {
-  const [p] = await db
-    .select({ rendimento: produtos.rendimentoKgPorMetro })
-    .from(produtos)
-    .where(eq(produtos.id, produtoId))
-    .limit(1)
-  return p?.rendimento ?? null
-}
-
-function calcularMetros(
-  quantidadeKg: string,
-  rendimento: string | null,
-): string | null {
-  if (!rendimento) return null
-  const kg = Number(quantidadeKg)
-  const r = Number(rendimento)
-  if (Number.isNaN(kg) || Number.isNaN(r) || r <= 0) return null
-  return (kg / r).toFixed(3)
-}
-
-// -----------------------------------------------------------------
 // Criar
 // -----------------------------------------------------------------
 
@@ -330,10 +304,6 @@ export async function criarOrdemAction(
   }
   const data = parsed.data
 
-  // Snapshot do rendimento e cálculo de metros.
-  const rendimento = await getRendimentoProduto(data.produtoId)
-  const metros = calcularMetros(data.quantidadeKg, rendimento)
-
   const novoId = await db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(ordensProducao)
@@ -342,9 +312,7 @@ export async function criarOrdemAction(
         numero: '',
         produtoId: data.produtoId,
         variacaoId: data.variacaoId,
-        quantidadeKg: data.quantidadeKg,
-        quantidadeMetros: metros,
-        rendimentoSnapshot: rendimento,
+        quantidade: data.quantidade,
         maquinaId: data.maquinaId,
         canalDestino: data.canalDestino,
         prioridade: data.prioridade,
@@ -402,19 +370,6 @@ export async function atualizarOrdemAction(
     return { success: false, error: 'OP não encontrada' }
   }
 
-  // Se trocou o produto OU mudou a quantidade, recalcula metros.
-  const produtoMudou = atual.produtoId !== data.produtoId
-  const qtdMudou = atual.quantidadeKg !== data.quantidadeKg
-
-  let novoRendimentoSnapshot = atual.rendimentoSnapshot
-  let novosMetros = atual.quantidadeMetros
-  if (produtoMudou) {
-    novoRendimentoSnapshot = await getRendimentoProduto(data.produtoId)
-    novosMetros = calcularMetros(data.quantidadeKg, novoRendimentoSnapshot)
-  } else if (qtdMudou) {
-    novosMetros = calcularMetros(data.quantidadeKg, atual.rendimentoSnapshot)
-  }
-
   const statusMudou = atual.status !== data.status
 
   await db.transaction(async (tx) => {
@@ -423,9 +378,7 @@ export async function atualizarOrdemAction(
       .set({
         produtoId: data.produtoId,
         variacaoId: data.variacaoId,
-        quantidadeKg: data.quantidadeKg,
-        quantidadeMetros: novosMetros,
-        rendimentoSnapshot: novoRendimentoSnapshot,
+        quantidade: data.quantidade,
         maquinaId: data.maquinaId,
         canalDestino: data.canalDestino,
         prioridade: data.prioridade,

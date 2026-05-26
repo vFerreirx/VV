@@ -159,7 +159,11 @@ function DetalheBody({ ordemId }: { ordemId: string }) {
               label="Variação"
               value={
                 ordem.variacao
-                  ? [ordem.variacao.cor, ordem.variacao.tamanho]
+                  ? [
+                      ordem.variacao.cor,
+                      ordem.variacao.modelo,
+                      ordem.variacao.tamanho,
+                    ]
                       .filter(Boolean)
                       .join(' / ') || ordem.variacao.skuVariacao
                   : '—'
@@ -167,15 +171,7 @@ function DetalheBody({ ordemId }: { ordemId: string }) {
             />
             <Detail
               label="Quantidade"
-              value={`${Number(ordem.quantidadeKg).toLocaleString('pt-BR')} kg`}
-            />
-            <Detail
-              label="Metros"
-              value={
-                ordem.quantidadeMetros
-                  ? `${Number(ordem.quantidadeMetros).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m`
-                  : '—'
-              }
+              value={`${ordem.quantidade.toLocaleString('pt-BR')} un`}
             />
             <Detail
               label="Máquina"

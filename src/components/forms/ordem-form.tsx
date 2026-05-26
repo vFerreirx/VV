@@ -40,7 +40,7 @@ export type OrdemFormDefaults = {
   numero?: string
   produtoId: string
   variacaoId: string | null
-  quantidadeKg: string
+  quantidade: number | string
   maquinaId: string | null
   canalDestino: (typeof canalValues)[number]
   prioridade: (typeof prioridadeValues)[number]
@@ -54,7 +54,7 @@ export type OrdemFormDefaults = {
 const VAZIO: OrdemFormDefaults = {
   produtoId: '',
   variacaoId: null,
-  quantidadeKg: '',
+  quantidade: '',
   maquinaId: null,
   canalDestino: 'estoque',
   prioridade: 'normal',
@@ -74,7 +74,7 @@ function toFormValues(d: OrdemFormDefaults): OrdemInput {
   return {
     produtoId: d.produtoId,
     variacaoId: d.variacaoId ?? '',
-    quantidadeKg: d.quantidadeKg,
+    quantidade: String(d.quantidade ?? ''),
     maquinaId: d.maquinaId ?? '',
     canalDestino: d.canalDestino,
     prioridade: d.prioridade,
@@ -108,12 +108,11 @@ export function OrdemForm({
     defaultValues: toFormValues(defaults),
   })
 
-  // Estado reativo dos campos que afetam UI (variações disponíveis, metros).
+  // Estado reativo só pra filtrar variações pelo produto selecionado.
   const produtoIdSelecionado = useWatch({
     control: form.control,
     name: 'produtoId',
   })
-  const quantidadeKg = useWatch({ control: form.control, name: 'quantidadeKg' })
 
   const produtoSelecionado = useMemo(
     () => produtos.find((p) => p.id === produtoIdSelecionado),
@@ -121,15 +120,6 @@ export function OrdemForm({
   )
 
   const variacoesDisponiveis = produtoSelecionado?.variacoes ?? []
-
-  // Cálculo dos metros (preview, mesma fórmula do servidor).
-  const metrosPreview = useMemo(() => {
-    if (!produtoSelecionado || !quantidadeKg) return null
-    const kg = Number(quantidadeKg)
-    const r = Number(produtoSelecionado.rendimentoKgPorMetro ?? '0')
-    if (Number.isNaN(kg) || Number.isNaN(r) || r <= 0) return null
-    return (kg / r).toFixed(2)
-  }, [produtoSelecionado, quantidadeKg])
 
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
@@ -242,28 +232,20 @@ export function OrdemForm({
           </Field>
 
           <Field
-            label="Quantidade (kg)"
-            id="quantidadeKg"
-            error={errs.quantidadeKg?.message}
+            label="Quantidade (peças)"
+            id="quantidade"
+            error={errs.quantidade?.message}
             required
-            hint={
-              metrosPreview
-                ? `≈ ${metrosPreview} m (a ${produtoSelecionado?.rendimentoKgPorMetro ?? '?'} kg/m)`
-                : produtoSelecionado &&
-                    !produtoSelecionado.rendimentoKgPorMetro
-                  ? 'Sem rendimento cadastrado no produto — metros não será calculado.'
-                  : undefined
-            }
           >
             <Input
-              id="quantidadeKg"
+              id="quantidade"
               type="number"
-              inputMode="decimal"
-              step="0.001"
-              min="0"
-              placeholder="100.000"
+              inputMode="numeric"
+              step="1"
+              min="1"
+              placeholder="100"
               disabled={isPending}
-              {...form.register('quantidadeKg')}
+              {...form.register('quantidade')}
             />
           </Field>
         </CardContent>

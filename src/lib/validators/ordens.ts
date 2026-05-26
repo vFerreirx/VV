@@ -1,13 +1,14 @@
 import { z } from 'zod'
 
 // Helpers (mesmo padrão dos outros validators)
-const numericReq = z
-  .string()
-  .min(1, 'Obrigatório')
-  .refine(
-    (v) => !Number.isNaN(Number(v)) && Number(v) > 0,
-    'Informe um número > 0',
-  )
+// Quantidade inteira positiva (peças). Aceita string vinda do form
+// ou number caso o caller pré-converta.
+const quantidadeReq = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v))
+  .refine((v) => v.length > 0, 'Obrigatório')
+  .refine((v) => /^\d+$/.test(v) && Number(v) > 0, 'Informe um inteiro > 0')
+  .transform((v) => Number(v))
 
 const dateOpt = z
   .string()
@@ -75,7 +76,7 @@ export const ordemSchema = z.object({
     ),
   variacaoId: uuidOpt,
 
-  quantidadeKg: numericReq,
+  quantidade: quantidadeReq,
 
   maquinaId: uuidOpt,
 

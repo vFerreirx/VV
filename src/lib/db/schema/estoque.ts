@@ -1,4 +1,4 @@
-import { index, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 import { movimentacaoTipoEnum } from './enums'
 import { produtos, variacoesProduto } from './produtos'
@@ -6,6 +6,7 @@ import { users } from './users'
 
 // Movimentações de estoque — fonte da verdade do saldo, agregado em queries.
 // `referencia_id` + `referencia_tipo` é polimórfico (ex: ordem_id, ajuste_id).
+// Quantidade sempre em peças (alinhado com OPs e apontamentos).
 export const movimentacoesEstoque = pgTable(
   'movimentacoes_estoque',
   {
@@ -16,8 +17,7 @@ export const movimentacoesEstoque = pgTable(
     variacaoId: uuid().references(() => variacoesProduto.id),
 
     tipo: movimentacaoTipoEnum().notNull(),
-    quantidadeKg: numeric({ precision: 12, scale: 3 }).notNull().default('0'),
-    quantidadeUnidades: numeric({ precision: 12, scale: 3 }).notNull().default('0'),
+    quantidade: integer().notNull().default(0),
 
     referenciaId: uuid(),
     referenciaTipo: text(),

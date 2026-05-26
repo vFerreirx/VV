@@ -191,7 +191,7 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
                 <TableRow>
                   <TableHead>Número</TableHead>
                   <TableHead>Produto</TableHead>
-                  <TableHead className="text-right">Qtd (kg)</TableHead>
+                  <TableHead className="text-right">Qtd (un)</TableHead>
                   <TableHead>Máquina</TableHead>
                   <TableHead>Canal</TableHead>
                   <TableHead>Prioridade</TableHead>
@@ -220,10 +220,7 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
                       </div>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {Number(o.quantidadeKg).toLocaleString('pt-BR', {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 3,
-                      })}
+                      {o.quantidade.toLocaleString('pt-BR')}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {o.maquinaCodigo ?? '—'}
@@ -307,7 +304,7 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
                 <div className="text-muted-foreground mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                   <div>Quantidade</div>
                   <div className="text-foreground text-right tabular-nums">
-                    {Number(o.quantidadeKg).toLocaleString('pt-BR')} kg
+                    {o.quantidade.toLocaleString('pt-BR')} un
                   </div>
                   <div>Máquina</div>
                   <div className="text-foreground text-right font-mono">

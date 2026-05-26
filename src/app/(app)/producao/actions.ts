@@ -28,9 +28,9 @@ export type KanbanCardData = {
   produtoNome: string
   produtoSku: string
   variacaoCor: string | null
+  variacaoModelo: string | null
   variacaoTamanho: string | null
-  quantidadeKg: string
-  quantidadeMetros: string | null
+  quantidade: number
   maquinaId: string | null
   maquinaCodigo: string | null
   responsavelId: string | null
@@ -88,6 +88,7 @@ export async function listarOrdensProducao(
       produtoNome: produtos.nome,
       produtoSku: produtos.sku,
       variacaoCor: variacoesProduto.cor,
+      variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
       maquinaCodigo: maquinas.codigo,
       responsavelNome: users.nome,
@@ -113,6 +114,7 @@ export async function listarOrdensProducao(
       produtoNome,
       produtoSku,
       variacaoCor,
+      variacaoModelo,
       variacaoTamanho,
       maquinaCodigo,
       responsavelNome,
@@ -125,9 +127,9 @@ export async function listarOrdensProducao(
       produtoNome,
       produtoSku,
       variacaoCor: variacaoCor ?? null,
+      variacaoModelo: variacaoModelo ?? null,
       variacaoTamanho: variacaoTamanho ?? null,
-      quantidadeKg: op.quantidadeKg,
-      quantidadeMetros: op.quantidadeMetros,
+      quantidade: op.quantidade,
       maquinaId: op.maquinaId,
       maquinaCodigo: maquinaCodigo ?? null,
       responsavelId: op.responsavelId,
