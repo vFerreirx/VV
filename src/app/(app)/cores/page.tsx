@@ -4,7 +4,7 @@ import { listarCores } from './actions'
 import { CoresList } from './cores-list'
 import { isManager, requireAuth } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Cores — Malharia MVP' }
+export const metadata: Metadata = { title: 'Cores — Vanvest' }
 
 export default async function CoresPage() {
   const user = await requireAuth()

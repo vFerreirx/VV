@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { requireRole } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Editar máquina — Malharia MVP' }
+export const metadata: Metadata = { title: 'Editar máquina — Vanvest' }
 
 export default async function EditarMaquinaPage({
   params,

@@ -9,7 +9,7 @@ import { ProdutoForm } from '@/components/forms/produto-form'
 import { Button } from '@/components/ui/button'
 import { requireRole } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Novo produto — Malharia MVP' }
+export const metadata: Metadata = { title: 'Novo produto — Vanvest' }
 
 export default async function NovoProdutoPage() {
   await requireRole(['admin', 'gerente_producao'])
@@ -33,7 +33,7 @@ export default async function NovoProdutoPage() {
         <div>
           <h1 className="text-2xl font-semibold">Novo produto</h1>
           <p className="text-muted-foreground text-sm">
-            Cadastre um produto da malharia e suas variações.
+            Cadastre um produto e suas variações.
           </p>
         </div>
       </div>

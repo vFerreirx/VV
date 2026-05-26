@@ -4,7 +4,7 @@ import { listarModelos } from './actions'
 import { ModelosList } from './modelos-list'
 import { isManager, requireAuth } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Modelos — Malharia MVP' }
+export const metadata: Metadata = { title: 'Modelos — Vanvest' }
 
 export default async function ModelosPage() {
   const user = await requireAuth()

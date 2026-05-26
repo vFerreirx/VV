@@ -13,7 +13,7 @@ import {
 import { isManager, requireAuth } from '@/lib/auth/require-auth'
 import { canalValues } from '@/lib/validators/ordens'
 
-export const metadata: Metadata = { title: 'Produção — Malharia MVP' }
+export const metadata: Metadata = { title: 'Produção — Vanvest' }
 
 export default async function ProducaoPage({
   searchParams,

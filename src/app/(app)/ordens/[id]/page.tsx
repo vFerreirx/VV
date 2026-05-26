@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { requireRole } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Editar OP — Malharia MVP' }
+export const metadata: Metadata = { title: 'Editar OP — Vanvest' }
 
 export default async function EditarOrdemPage({
   params,

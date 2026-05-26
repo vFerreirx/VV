@@ -19,6 +19,7 @@ import { usePathname } from 'next/navigation'
 import { useTransition } from 'react'
 
 import { logoutAction } from '@/app/(auth)/login/actions'
+import { Logo } from '@/components/brand/logo'
 import type { User } from '@/lib/db/schema'
 import { cn } from '@/lib/utils'
 
@@ -55,10 +56,16 @@ export function Sidebar({ role }: { role: User['role'] }) {
 
   return (
     <aside className="bg-sidebar border-sidebar-border hidden w-56 shrink-0 flex-col border-r md:flex">
-      <div className="border-sidebar-border flex h-14 items-center border-b px-5">
-        <span className="text-sidebar-foreground font-semibold tracking-tight">
-          Malharia
-        </span>
+      <div className="border-sidebar-border flex h-14 items-center gap-2.5 border-b px-4">
+        <Logo variant="mark" className="text-sidebar-primary size-7" />
+        <div className="leading-tight">
+          <div className="text-sidebar-foreground font-heading text-sm font-medium tracking-[0.18em] uppercase">
+            Vanvest
+          </div>
+          <div className="text-sidebar-foreground/60 text-[0.55rem] tracking-[0.3em] uppercase">
+            Home Decor
+          </div>
+        </div>
       </div>
       <nav className="flex-1 space-y-0.5 p-2">
         {items.map((item) => {

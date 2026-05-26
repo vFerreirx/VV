@@ -10,7 +10,7 @@ import {
   type OrdensFiltros,
 } from '@/lib/validators/ordens'
 
-export const metadata: Metadata = { title: 'Ordens — Malharia MVP' }
+export const metadata: Metadata = { title: 'Ordens — Vanvest' }
 
 export default async function OrdensPage({
   searchParams,

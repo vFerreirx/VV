@@ -28,7 +28,7 @@ import {
   statusValues,
 } from '@/lib/validators/ordens'
 
-export const metadata: Metadata = { title: 'Dashboard — Malharia MVP' }
+export const metadata: Metadata = { title: 'Dashboard — Vanvest' }
 
 const STATUS_COLOR: Record<(typeof statusValues)[number], string> = {
   aguardando_materia_prima: 'bg-zinc-500',

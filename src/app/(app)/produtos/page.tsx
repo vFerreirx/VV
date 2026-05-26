@@ -11,7 +11,7 @@ import {
   type ProdutosFiltros,
 } from '@/lib/validators/produtos'
 
-export const metadata: Metadata = { title: 'Produtos — Malharia MVP' }
+export const metadata: Metadata = { title: 'Produtos — Vanvest' }
 
 export default async function ProdutosPage({
   searchParams,

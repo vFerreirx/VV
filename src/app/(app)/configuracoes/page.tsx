@@ -12,7 +12,7 @@ import {
 import { requireAuth } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = {
-  title: 'Configurações — Malharia MVP',
+  title: 'Configurações — Vanvest',
 }
 
 export default async function ConfiguracoesPage() {

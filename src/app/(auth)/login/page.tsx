@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import { LoginForm } from '@/components/forms/login-form'
 
 export const metadata: Metadata = {
-  title: 'Entrar — Malharia MVP',
+  title: 'Entrar — Vanvest',
 }
 
 type SearchParams = { [key: string]: string | string[] | undefined }
@@ -20,7 +20,7 @@ export default async function LoginPage({
     <div className="space-y-6">
       <div className="space-y-1 text-center">
         <h1 className="text-2xl font-semibold">Entrar</h1>
-        <p className="text-muted-foreground text-sm">Acesse o painel da malharia</p>
+        <p className="text-muted-foreground text-sm">Acesse o painel</p>
       </div>
       <LoginForm next={next} />
     </div>

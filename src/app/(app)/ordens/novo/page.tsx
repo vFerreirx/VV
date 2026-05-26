@@ -11,7 +11,7 @@ import { OrdemForm } from '@/components/forms/ordem-form'
 import { Button } from '@/components/ui/button'
 import { requireRole } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Nova OP — Malharia MVP' }
+export const metadata: Metadata = { title: 'Nova OP — Vanvest' }
 
 export default async function NovaOrdemPage() {
   await requireRole(['admin', 'gerente_producao'])

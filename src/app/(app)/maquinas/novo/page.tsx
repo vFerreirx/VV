@@ -7,7 +7,7 @@ import { MaquinaForm } from '@/components/forms/maquina-form'
 import { Button } from '@/components/ui/button'
 import { requireRole } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Nova máquina — Malharia MVP' }
+export const metadata: Metadata = { title: 'Nova máquina — Vanvest' }
 
 export default async function NovaMaquinaPage() {
   await requireRole(['admin', 'gerente_producao'])

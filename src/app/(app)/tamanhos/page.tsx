@@ -4,7 +4,7 @@ import { listarTamanhos } from './actions'
 import { TamanhosList } from './tamanhos-list'
 import { isManager, requireAuth } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Tamanhos — Malharia MVP' }
+export const metadata: Metadata = { title: 'Tamanhos — Vanvest' }
 
 export default async function TamanhosPage() {
   const user = await requireAuth()

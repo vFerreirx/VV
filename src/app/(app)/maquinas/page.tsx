@@ -10,7 +10,7 @@ import {
   type MaquinasFiltros,
 } from '@/lib/validators/maquinas'
 
-export const metadata: Metadata = { title: 'Máquinas — Malharia MVP' }
+export const metadata: Metadata = { title: 'Máquinas — Vanvest' }
 
 export default async function MaquinasPage({
   searchParams,

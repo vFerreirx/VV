@@ -4,7 +4,7 @@ import { listarUsuarios } from './actions'
 import { UsuariosList } from './usuarios-list'
 import { requireRole } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Usuários — Malharia MVP' }
+export const metadata: Metadata = { title: 'Usuários — Vanvest' }
 
 export default async function UsuariosPage() {
   const adminUser = await requireRole(['admin'])

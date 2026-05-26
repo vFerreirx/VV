@@ -11,7 +11,7 @@ import { ProdutoForm, type ProdutoFormDefaults } from '@/components/forms/produt
 import { Button } from '@/components/ui/button'
 import { requireRole } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Editar produto — Malharia MVP' }
+export const metadata: Metadata = { title: 'Editar produto — Vanvest' }
 
 export default async function EditarProdutoPage({
   params,
