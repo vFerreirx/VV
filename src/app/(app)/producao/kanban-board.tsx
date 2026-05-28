@@ -192,7 +192,7 @@ export function KanbanBoard({ ordens, podeMover }: Props) {
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveId(null)}
       >
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 sm:snap-none">
           {grupos.map((g) => (
             <KanbanColumn
               key={g.status}
@@ -243,7 +243,7 @@ function KanbanColumn({
   const styles = COLUMN_STYLES[status]
 
   return (
-    <div className="flex w-72 shrink-0 flex-col">
+    <div className="flex w-[85vw] max-w-72 shrink-0 snap-start flex-col sm:w-72">
       <header
         className={cn(
           'mb-2 flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium',

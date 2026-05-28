@@ -1,52 +1,20 @@
 'use client'
 
-import {
-  Cog,
-  Factory,
-  KanbanSquare,
-  LayoutDashboard,
-  ListChecks,
-  LogOut,
-  Package,
-  Palette,
-  Ruler,
-  Shapes,
-  Users,
-  type LucideIcon,
-} from 'lucide-react'
+import { LogOut } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTransition } from 'react'
 
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
+import { visibleItems } from '@/components/layout/nav-items'
 import type { User } from '@/lib/db/schema'
 import { cn } from '@/lib/utils'
-
-type Item = {
-  href: string
-  label: string
-  icon: LucideIcon
-  roles?: User['role'][]
-}
-
-const ITEMS: Item[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/produtos', label: 'Produtos', icon: Package },
-  { href: '/cores', label: 'Cores', icon: Palette },
-  { href: '/modelos', label: 'Modelos', icon: Shapes },
-  { href: '/tamanhos', label: 'Tamanhos', icon: Ruler },
-  { href: '/maquinas', label: 'Máquinas', icon: Factory },
-  { href: '/producao', label: 'Produção', icon: KanbanSquare },
-  { href: '/ordens', label: 'Ordens', icon: ListChecks },
-  { href: '/usuarios', label: 'Usuários', icon: Users, roles: ['admin'] },
-  { href: '/configuracoes', label: 'Configurações', icon: Cog },
-]
 
 export function Sidebar({ role }: { role: User['role'] }) {
   const pathname = usePathname()
   const [isPending, startTransition] = useTransition()
-  const items = ITEMS.filter((it) => !it.roles || it.roles.includes(role))
+  const items = visibleItems(role)
 
   function handleLogout() {
     startTransition(async () => {

@@ -1,5 +1,6 @@
 import { listarNotificacoes } from '@/app/(app)/notificacoes/actions'
 import { Logo } from '@/components/brand/logo'
+import { MobileNav } from './mobile-nav'
 import { NotificationBell } from './notification-bell'
 import { ThemeToggle } from './theme-toggle'
 import { UserMenu } from './user-menu'
@@ -15,8 +16,9 @@ export async function Topbar({
   const notificacoes = await listarNotificacoes()
 
   return (
-    <header className="border-border bg-background flex h-14 shrink-0 items-center justify-between border-b px-4">
+    <header className="border-border bg-background flex h-14 shrink-0 items-center justify-between border-b px-3 sm:px-4">
       <div className="flex items-center gap-2 md:hidden">
+        <MobileNav role={user.role} />
         <Logo variant="mark" className="text-primary size-6" />
         <span className="font-heading text-sm font-medium tracking-[0.15em] uppercase">
           Vanvest
