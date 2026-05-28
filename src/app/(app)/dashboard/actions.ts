@@ -1,17 +1,18 @@
 'use server'
 
-import { and, asc, eq, gt, isNotNull, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, gte, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
+  apontamentosProducao,
   maquinas,
   ordensProducao,
   produtos,
   users,
   variacoesProduto,
 } from '@/lib/db/schema'
-import { type statusValues } from '@/lib/validators/ordens'
+import { type canalValues, type statusValues } from '@/lib/validators/ordens'
 
 // -----------------------------------------------------------------
 // KPIs principais
@@ -257,4 +258,128 @@ export async function listarProximasManutencoes(
       proximaManutencao: r.proximaManutencao,
       vencida: new Date(r.proximaManutencao).getTime() < now,
     }))
+}
+
+// -----------------------------------------------------------------
+// Produção dos últimos N dias (apontamentos por dia)
+// -----------------------------------------------------------------
+
+export type ProducaoDia = {
+  dia: string // YYYY-MM-DD
+  produzido: number
+  refugo: number
+}
+
+export async function listarProducaoUltimosDias(
+  dias = 14,
+): Promise<ProducaoDia[]> {
+  await requireAuth()
+
+  const inicio = new Date()
+  inicio.setHours(0, 0, 0, 0)
+  inicio.setDate(inicio.getDate() - (dias - 1))
+
+  // Agrupa apontamentos por data (na timezone do servidor) usando o início
+  // do apontamento como referência.
+  const rows = await db
+    .select({
+      dia: sql<string>`to_char(${apontamentosProducao.inicio}, 'YYYY-MM-DD')`,
+      produzido: sql<number>`coalesce(sum(${apontamentosProducao.quantidadeProduzida}), 0)::int`,
+      refugo: sql<number>`coalesce(sum(${apontamentosProducao.quantidadeRefugo}), 0)::int`,
+    })
+    .from(apontamentosProducao)
+    .where(gte(apontamentosProducao.inicio, inicio))
+    .groupBy(sql`to_char(${apontamentosProducao.inicio}, 'YYYY-MM-DD')`)
+
+  // Preenche dias sem apontamento com zero pra linha não ficar com gaps.
+  const map = new Map(rows.map((r) => [r.dia, r]))
+  const serie: ProducaoDia[] = []
+  for (let i = 0; i < dias; i++) {
+    const d = new Date(inicio)
+    d.setDate(inicio.getDate() + i)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const r = map.get(key)
+    serie.push({
+      dia: key,
+      produzido: r?.produzido ?? 0,
+      refugo: r?.refugo ?? 0,
+    })
+  }
+  return serie
+}
+
+// -----------------------------------------------------------------
+// OPs ativas por canal de destino
+// -----------------------------------------------------------------
+
+export type OpsPorCanal = {
+  canal: (typeof canalValues)[number]
+  total: number
+  unidades: number
+}
+
+export async function listarOpsPorCanal(): Promise<OpsPorCanal[]> {
+  await requireAuth()
+
+  const rows = await db
+    .select({
+      canal: ordensProducao.canalDestino,
+      total: sql<number>`count(*)::int`,
+      unidades: sql<number>`coalesce(sum(${ordensProducao.quantidade}), 0)::int`,
+    })
+    .from(ordensProducao)
+    .where(
+      and(
+        isNull(ordensProducao.deletedAt),
+        ne(ordensProducao.status, 'cancelado'),
+      ),
+    )
+    .groupBy(ordensProducao.canalDestino)
+
+  return rows
+}
+
+// -----------------------------------------------------------------
+// Top produtos do mês (por unidades em OPs criadas no mês corrente)
+// -----------------------------------------------------------------
+
+export type TopProdutoItem = {
+  produtoId: string
+  produtoNome: string
+  produtoSku: string
+  unidades: number
+  ops: number
+}
+
+export async function listarTopProdutosMes(
+  limit = 5,
+): Promise<TopProdutoItem[]> {
+  await requireAuth()
+
+  const inicioMes = new Date()
+  inicioMes.setDate(1)
+  inicioMes.setHours(0, 0, 0, 0)
+
+  const rows = await db
+    .select({
+      produtoId: produtos.id,
+      produtoNome: produtos.nome,
+      produtoSku: produtos.sku,
+      unidades: sql<number>`coalesce(sum(${ordensProducao.quantidade}), 0)::int`,
+      ops: sql<number>`count(${ordensProducao.id})::int`,
+    })
+    .from(ordensProducao)
+    .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
+    .where(
+      and(
+        isNull(ordensProducao.deletedAt),
+        ne(ordensProducao.status, 'cancelado'),
+        gte(ordensProducao.createdAt, inicioMes),
+      ),
+    )
+    .groupBy(produtos.id, produtos.nome, produtos.sku)
+    .orderBy(desc(sql`sum(${ordensProducao.quantidade})`))
+    .limit(limit)
+
+  return rows
 }

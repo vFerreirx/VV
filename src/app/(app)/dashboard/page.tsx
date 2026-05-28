@@ -12,11 +12,17 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 import {
+  listarOpsPorCanal,
   listarOpsUrgentes,
+  listarProducaoUltimosDias,
   listarProximasManutencoes,
+  listarTopProdutosMes,
   obterKPIs,
   type DashboardKPIs,
 } from './actions'
+import { CanaisChart } from '@/components/charts/canais-chart'
+import { ProducaoChart } from '@/components/charts/producao-chart'
+import { TopProdutosChart } from '@/components/charts/top-produtos-chart'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { requireAuth } from '@/lib/auth/require-auth'
@@ -50,11 +56,15 @@ const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
 
 export default async function DashboardPage() {
   const user = await requireAuth()
-  const [kpis, opsUrgentes, manutencoes] = await Promise.all([
-    obterKPIs(),
-    listarOpsUrgentes(5),
-    listarProximasManutencoes(5),
-  ])
+  const [kpis, opsUrgentes, manutencoes, producao14d, canais, topProdutos] =
+    await Promise.all([
+      obterKPIs(),
+      listarOpsUrgentes(5),
+      listarProximasManutencoes(5),
+      listarProducaoUltimosDias(14),
+      listarOpsPorCanal(),
+      listarTopProdutosMes(5),
+    ])
 
   return (
     <div className="space-y-6">
@@ -98,6 +108,16 @@ export default async function DashboardPage() {
           }
         />
       </div>
+
+      {/* Produção dos últimos 14 dias */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Produção dos últimos 14 dias</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ProducaoChart data={producao14d} />
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Distribuição por status */}
@@ -156,6 +176,26 @@ export default async function DashboardPage() {
                 ))}
               </ul>
             )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Canais + Top produtos */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>OPs por canal de destino</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CanaisChart data={canais} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Top produtos do mês</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TopProdutosChart data={topProdutos} />
           </CardContent>
         </Card>
       </div>
