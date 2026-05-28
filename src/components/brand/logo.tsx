@@ -53,28 +53,28 @@ function Mark({
     >
       {/* Moldura: retângulo aberto na parte inferior (formato U invertido) */}
       <path
-        d="M 18 40 L 18 25 L 82 25 L 82 40"
+        d="M 14 42 L 14 22 L 86 22 L 86 42"
         fill="none"
         stroke="currentColor"
         strokeWidth="3.5"
         strokeLinecap="square"
       />
-      {/* "V" dourado: duas linhas que se cruzam */}
+      {/* "V" dourado formado por duas linhas que se cruzam ligeiramente.
+          Cada linha vai de uma das pontas superiores e desce passando
+          pelo centro-baixo — o cruzamento delas forma o V duplo. */}
       <path
-        d="M 28 50 L 50 90 L 72 50"
+        d="M 24 44 L 60 92"
         fill="none"
         stroke="var(--logo-accent, #d9c167)"
-        strokeWidth="6"
-        strokeLinecap="square"
-        strokeLinejoin="miter"
+        strokeWidth="7"
+        strokeLinecap="round"
       />
       <path
-        d="M 36 50 L 50 78 L 64 50"
+        d="M 76 44 L 40 92"
         fill="none"
         stroke="var(--logo-accent, #d9c167)"
-        strokeWidth="6"
-        strokeLinecap="square"
-        strokeLinejoin="miter"
+        strokeWidth="7"
+        strokeLinecap="round"
       />
     </svg>
   )
