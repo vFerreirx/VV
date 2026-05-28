@@ -1,14 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Fundo grafite levemente azulado (mesmo tom do background dark) -->
+  <!-- Fundo grafite levemente azulado (mesmo tom do tema dark) -->
   <rect width="512" height="512" fill="#1f2329" rx="96"/>
-  <!-- Moldura cinza clara: retângulo aberto na parte inferior -->
-  <path d="M 92 220 L 92 112 L 420 112 L 420 220"
-        fill="none" stroke="#d6d9dd" stroke-width="20" stroke-linecap="square"/>
-  <!-- V duplo dourado -->
-  <g fill="none" stroke="#d9c167" stroke-width="26" stroke-linecap="square">
-    <path d="M 116 250 L 256 470"/>
-    <path d="M 396 250 L 256 470"/>
-    <path d="M 178 250 L 256 376"/>
-    <path d="M 334 250 L 256 376"/>
+  <!-- Monograma VV duplo dourado — dois Vs interlocados, um passando pelo outro -->
+  <g fill="none" stroke="#d9c167" stroke-linecap="butt" stroke-linejoin="miter">
+    <!-- V1 esquerdo -->
+    <path d="M 62 124 L 208 410 L 354 124" stroke-width="18"/>
+    <!-- V2 direito, deslocado: cruza V1 nos diagonais do meio -->
+    <path d="M 158 124 L 304 410 L 450 124" stroke-width="18"/>
+    <!-- Serifas finas nos 4 cantos superiores -->
+    <path d="M 36 124 L 88 124" stroke-width="7"/>
+    <path d="M 132 124 L 184 124" stroke-width="7"/>
+    <path d="M 328 124 L 380 124" stroke-width="7"/>
+    <path d="M 424 124 L 476 124" stroke-width="7"/>
+    <!-- Baseline editorial -->
+    <path d="M 112 466 L 400 466" stroke-width="5" opacity="0.5"/>
   </g>
 </svg>

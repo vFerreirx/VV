@@ -1,15 +1,18 @@
 import { cn } from '@/lib/utils'
 
 /**
- * Logo da Vanvest renderizada como SVG inline.
+ * Logo da Vanvest — monograma "VV" (duplo V) inspirado em marcas de
+ * decoração high-end (Bottega, Vogue): dois Vs lado a lado com leve
+ * sobreposição no topo, serifas finas nas pontas e uma baseline
+ * editorial embaixo.
  *
  * 3 variantes:
- *  - `full`    moldura + V dourado + texto "HOME DECOR". Pra hero/login.
- *  - `mark`    só a moldura + V. Pra sidebar/favicon (formato quadrado).
- *  - `word`    apenas o wordmark "VANVEST" em uppercase + opcional sub.
+ *  - `full`    monograma grande + wordmark "VANVEST" + tagline. Pra hero/login.
+ *  - `mark`    só o monograma "VV". Pra sidebar/favicon/PWA (formato quadrado).
+ *  - `word`    apenas o wordmark "VANVEST" em uppercase + tagline opcional.
  *
- * Cores ligadas a CSS vars do tema (tokens primary/accent/foreground)
- * pra acompanhar light/dark mode automaticamente.
+ * Cor do monograma vem do CSS var `--logo-accent` (dourado champagne) —
+ * acompanha light/dark mode automaticamente.
  */
 
 type Variant = 'full' | 'mark' | 'word'
@@ -28,13 +31,20 @@ export function Logo({
   showTagline = false,
   'aria-label': ariaLabel = 'Vanvest',
 }: Props) {
-  if (variant === 'word') return <Wordmark className={className} showTagline={showTagline} ariaLabel={ariaLabel} />
+  if (variant === 'word')
+    return (
+      <Wordmark
+        className={className}
+        showTagline={showTagline}
+        ariaLabel={ariaLabel}
+      />
+    )
   if (variant === 'full') return <Full className={className} ariaLabel={ariaLabel} />
   return <Mark className={className} ariaLabel={ariaLabel} />
 }
 
 // -----------------------------------------------------------------
-// Mark — moldura cinza com o "V" dourado dentro. ViewBox 100x100.
+// Mark — monograma VV duplo, dourado. ViewBox 100x100.
 // -----------------------------------------------------------------
 
 function Mark({
@@ -51,31 +61,25 @@ function Mark({
       aria-label={ariaLabel}
       className={cn('inline-block', className)}
     >
-      {/* Moldura: retângulo aberto na parte inferior */}
-      <path
-        d="M 14 44 L 14 20 L 86 20 L 86 44"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3.2"
-        strokeLinecap="square"
-      />
-      {/* V duplo: duas linhas externas longas (vão até o vértice no fundo)
-          e duas linhas internas mais curtas que param antes — cria o
-          formato característico do V vazado no centro. */}
       <g
         fill="none"
         stroke="var(--logo-accent, #d9c167)"
-        strokeWidth="4"
-        strokeLinecap="square"
+        strokeLinecap="butt"
+        strokeLinejoin="miter"
       >
-        {/* Externa esquerda */}
-        <path d="M 22 50 L 50 92" />
-        {/* Externa direita */}
-        <path d="M 78 50 L 50 92" />
-        {/* Interna esquerda (mais curta) */}
-        <path d="M 34 50 L 50 74" />
-        {/* Interna direita (mais curta) */}
-        <path d="M 66 50 L 50 74" />
+        {/* V1 — V esquerdo (vai de cima-esquerda até cima-meio) */}
+        <path d="M 12 22 L 40 78 L 68 22" strokeWidth="3.5" />
+        {/* V2 — V direito, deslocado: cruza o V1 nos diagonais do meio */}
+        <path d="M 32 22 L 60 78 L 88 22" strokeWidth="3.5" />
+
+        {/* Serifas finas nos 4 cantos superiores (toque high-end) */}
+        <path d="M 7 22 L 17 22" strokeWidth="1.4" />
+        <path d="M 27 22 L 37 22" strokeWidth="1.4" />
+        <path d="M 63 22 L 73 22" strokeWidth="1.4" />
+        <path d="M 83 22 L 93 22" strokeWidth="1.4" />
+
+        {/* Baseline editorial embaixo */}
+        <path d="M 22 90 L 78 90" strokeWidth="1" opacity="0.5" />
       </g>
     </svg>
   )
@@ -100,11 +104,11 @@ function Wordmark({
       aria-label={ariaLabel}
       className={cn('inline-flex flex-col leading-none', className)}
     >
-      <span className="font-heading text-current font-medium tracking-[0.18em] uppercase">
+      <span className="font-heading text-current font-medium tracking-[0.22em] uppercase">
         Vanvest
       </span>
       {showTagline && (
-        <span className="text-muted-foreground mt-0.5 text-[0.55em] tracking-[0.3em] uppercase">
+        <span className="text-muted-foreground mt-0.5 text-[0.55em] tracking-[0.32em] uppercase">
           Home Decor
         </span>
       )}
