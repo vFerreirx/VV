@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Fundo grafite levemente azulado (mesmo tom do background dark) -->
+  <rect width="512" height="512" fill="#1f2329" rx="96"/>
+  <!-- Moldura cinza clara: retângulo aberto na parte inferior -->
+  <path d="M 92 220 L 92 112 L 420 112 L 420 220"
+        fill="none" stroke="#d6d9dd" stroke-width="20" stroke-linecap="square"/>
+  <!-- V duplo dourado -->
+  <g fill="none" stroke="#d9c167" stroke-width="26" stroke-linecap="square">
+    <path d="M 116 250 L 256 470"/>
+    <path d="M 396 250 L 256 470"/>
+    <path d="M 178 250 L 256 376"/>
+    <path d="M 334 250 L 256 376"/>
+  </g>
+</svg>
