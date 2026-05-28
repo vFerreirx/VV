@@ -51,31 +51,32 @@ function Mark({
       aria-label={ariaLabel}
       className={cn('inline-block', className)}
     >
-      {/* Moldura: retângulo aberto na parte inferior (formato U invertido) */}
+      {/* Moldura: retângulo aberto na parte inferior */}
       <path
-        d="M 14 42 L 14 22 L 86 22 L 86 42"
+        d="M 14 44 L 14 20 L 86 20 L 86 44"
         fill="none"
         stroke="currentColor"
-        strokeWidth="3.5"
+        strokeWidth="3.2"
         strokeLinecap="square"
       />
-      {/* "V" dourado formado por duas linhas que se cruzam ligeiramente.
-          Cada linha vai de uma das pontas superiores e desce passando
-          pelo centro-baixo — o cruzamento delas forma o V duplo. */}
-      <path
-        d="M 24 44 L 60 92"
+      {/* V duplo: duas linhas externas longas (vão até o vértice no fundo)
+          e duas linhas internas mais curtas que param antes — cria o
+          formato característico do V vazado no centro. */}
+      <g
         fill="none"
         stroke="var(--logo-accent, #d9c167)"
-        strokeWidth="7"
-        strokeLinecap="round"
-      />
-      <path
-        d="M 76 44 L 40 92"
-        fill="none"
-        stroke="var(--logo-accent, #d9c167)"
-        strokeWidth="7"
-        strokeLinecap="round"
-      />
+        strokeWidth="4"
+        strokeLinecap="square"
+      >
+        {/* Externa esquerda */}
+        <path d="M 22 50 L 50 92" />
+        {/* Externa direita */}
+        <path d="M 78 50 L 50 92" />
+        {/* Interna esquerda (mais curta) */}
+        <path d="M 34 50 L 50 74" />
+        {/* Interna direita (mais curta) */}
+        <path d="M 66 50 L 50 74" />
+      </g>
     </svg>
   )
 }
