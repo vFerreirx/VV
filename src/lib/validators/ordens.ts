@@ -1,8 +1,12 @@
 import { z } from 'zod'
 
-// Helpers (mesmo padrão dos outros validators)
-// Quantidade inteira positiva (peças). Aceita string vinda do form
-// ou number caso o caller pré-converta.
+// Helpers (mesmo padrão dos outros validators).
+// Todos toleram tanto INPUT (string vinda do form) quanto OUTPUT
+// (já transformado: Date, number, null) — o form usa zodResolver que
+// aplica os transforms uma vez, e a Server Action re-valida com os
+// valores já transformados.
+
+// Quantidade inteira positiva (peças).
 const quantidadeReq = z
   .union([z.string(), z.number()])
   .transform((v) => String(v))
@@ -10,30 +14,44 @@ const quantidadeReq = z
   .refine((v) => /^\d+$/.test(v) && Number(v) > 0, 'Informe um inteiro > 0')
   .transform((v) => Number(v))
 
+// Data opcional vinda de <input type="date">. Aceita string 'YYYY-MM-DD',
+// Date já transformado, ou null/undefined.
 const dateOpt = z
-  .string()
-  .refine(
-    (v) => v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v),
-    'Data inválida (use YYYY-MM-DD)',
-  )
-  .transform((v) => (v === '' ? null : new Date(`${v}T00:00:00.000Z`)))
-
-const uuidOpt = z
-  .string()
+  .union([z.string(), z.date(), z.null(), z.undefined()])
+  .transform((v) => {
+    if (v == null) return null
+    if (v instanceof Date) return v
+    if (v === '') return null
+    return v
+  })
   .refine(
     (v) =>
-      v === '' ||
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
-    'ID inválido',
+      v === null ||
+      v instanceof Date ||
+      (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)),
+    'Data inválida (use YYYY-MM-DD)',
   )
-  .transform((v) => (v === '' ? null : v))
+  .transform((v) => {
+    if (v === null || v instanceof Date) return v
+    return new Date(`${v}T00:00:00.000Z`)
+  })
+
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+const uuidOpt = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (v == null || v === '' ? null : v))
+  .refine((v) => v === null || uuidRegex.test(v), 'ID inválido')
 
 const stringOpt = (max: number, label = 'Texto') =>
   z
-    .string()
-    .max(max, `${label} muito longo`)
-    .optional()
-    .or(z.literal('').transform(() => undefined))
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((v) => (v == null || v === '' ? undefined : v))
+    .refine(
+      (v) => v === undefined || v.length <= max,
+      `${label} muito longo`,
+    )
 
 // -----------------------------------------------------------------
 // Enums (espelham os enums do banco)
@@ -100,7 +118,7 @@ export type OrdemOutput = z.output<typeof ordemSchema>
 
 export const mudarStatusOrdemSchema = z.object({
   status: z.enum(statusValues),
-  observacao: stringOpt(300, 'Observação'),
+  observacao: stringOpt(300, 'Observação').optional(),
 })
 
 export type MudarStatusOrdemInput = z.input<typeof mudarStatusOrdemSchema>

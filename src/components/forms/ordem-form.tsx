@@ -180,9 +180,7 @@ export function OrdemForm({
                     )}
                     {produtos.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        <span className="font-mono text-xs">{p.sku}</span>
-                        <span>—</span>
-                        <span>{p.nome}</span>
+                        {`${p.sku} — ${p.nome}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -221,8 +219,9 @@ export function OrdemForm({
                     <SelectItem value="nenhuma">Sem variação</SelectItem>
                     {variacoesDisponiveis.map((v) => (
                       <SelectItem key={v.id} value={v.id}>
-                        {[v.cor, v.tamanho].filter(Boolean).join(' / ') ||
-                          v.skuVariacao}
+                        {[v.cor, v.modelo, v.tamanho]
+                          .filter(Boolean)
+                          .join(' / ') || v.skuVariacao}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -278,9 +277,7 @@ export function OrdemForm({
                     <SelectItem value="nenhuma">Sem máquina</SelectItem>
                     {maquinas.map((m) => (
                       <SelectItem key={m.id} value={m.id}>
-                        <span className="font-mono text-xs">{m.codigo}</span>
-                        <span>—</span>
-                        <span>{m.nome}</span>
+                        {`${m.codigo} — ${m.nome}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
