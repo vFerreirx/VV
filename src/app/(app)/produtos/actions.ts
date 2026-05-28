@@ -1,6 +1,16 @@
 'use server'
 
-import { and, asc, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireRole } from '@/lib/auth/require-auth'
@@ -297,4 +307,41 @@ export async function excluirProdutoAction(id: string): Promise<ActionResult> {
 
   revalidatePath('/produtos')
   return { success: true, message: 'Produto excluído' }
+}
+
+// -----------------------------------------------------------------
+// Excluir múltiplos (bulk delete)
+// -----------------------------------------------------------------
+
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export async function excluirMultiplosProdutosAction(
+  ids: string[],
+): Promise<ActionResult<{ excluidos: number }>> {
+  await requireRole(['admin', 'gerente_producao'])
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { success: false, error: 'Selecione ao menos um produto' }
+  }
+  const idsValidos = ids.filter((id) => uuidRegex.test(id))
+  if (idsValidos.length === 0) {
+    return { success: false, error: 'Nenhum ID válido na seleção' }
+  }
+
+  const result = await db
+    .update(produtos)
+    .set({ deletedAt: new Date(), ativo: false })
+    .where(and(inArray(produtos.id, idsValidos), isNull(produtos.deletedAt)))
+    .returning({ id: produtos.id })
+
+  revalidatePath('/produtos')
+  return {
+    success: true,
+    data: { excluidos: result.length },
+    message:
+      result.length === 1
+        ? '1 produto excluído'
+        : `${result.length} produtos excluídos`,
+  }
 }

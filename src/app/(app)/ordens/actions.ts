@@ -1,6 +1,16 @@
 'use server'
 
-import { and, asc, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import {
@@ -531,4 +541,84 @@ export async function excluirOrdemAction(id: string): Promise<ActionResult> {
   revalidatePath('/ordens')
   revalidatePath('/producao')
   return { success: true, message: 'OP excluída' }
+}
+
+// -----------------------------------------------------------------
+// Excluir múltiplas OPs (bulk delete)
+// -----------------------------------------------------------------
+
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export async function excluirMultiplasOrdensAction(
+  ids: string[],
+): Promise<ActionResult<{ excluidas: number }>> {
+  const user = await requireRole(['admin', 'gerente_producao'])
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { success: false, error: 'Selecione ao menos uma OP' }
+  }
+  const idsValidos = ids.filter((id) => uuidRegex.test(id))
+  if (idsValidos.length === 0) {
+    return { success: false, error: 'Nenhum ID válido na seleção' }
+  }
+
+  // Carrega as OPs ativas pra gerar eventos kanban depois.
+  const opsAtivas = await db
+    .select({ id: ordensProducao.id, status: ordensProducao.status })
+    .from(ordensProducao)
+    .where(
+      and(
+        inArray(ordensProducao.id, idsValidos),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
+
+  if (opsAtivas.length === 0) {
+    return { success: false, error: 'Nenhuma OP encontrada' }
+  }
+
+  await db.transaction(async (tx) => {
+    const now = new Date()
+    // Marca como cancelado quando não estava enviado/cancelado
+    await tx
+      .update(ordensProducao)
+      .set({ deletedAt: now })
+      .where(inArray(ordensProducao.id, opsAtivas.map((o) => o.id)))
+
+    // Vira "cancelado" só pras que ainda estavam ativas
+    const paraCancelar = opsAtivas
+      .filter((o) => o.status !== 'enviado' && o.status !== 'cancelado')
+      .map((o) => o.id)
+
+    if (paraCancelar.length > 0) {
+      await tx
+        .update(ordensProducao)
+        .set({ status: 'cancelado' })
+        .where(inArray(ordensProducao.id, paraCancelar))
+
+      // Gera eventos kanban (statusAnterior é o status antigo de cada OP)
+      const eventos = opsAtivas
+        .filter((o) => o.status !== 'enviado' && o.status !== 'cancelado')
+        .map((o) => ({
+          ordemId: o.id,
+          statusAnterior: o.status,
+          statusNovo: 'cancelado' as const,
+          usuarioId: user.id,
+          observacao: 'OP excluída em massa',
+        }))
+      await tx.insert(eventosKanban).values(eventos)
+    }
+  })
+
+  revalidatePath('/ordens')
+  revalidatePath('/producao')
+  return {
+    success: true,
+    data: { excluidas: opsAtivas.length },
+    message:
+      opsAtivas.length === 1
+        ? '1 OP excluída'
+        : `${opsAtivas.length} OPs excluídas`,
+  }
 }

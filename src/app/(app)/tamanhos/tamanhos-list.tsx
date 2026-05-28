@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useForm, useWatch, type Resolver } from 'react-hook-form'
 import { toast } from 'sonner'
 
@@ -11,9 +11,12 @@ import {
   atualizarTamanhoAction,
   criarTamanhoAction,
   excluirTamanhoAction,
+  excluirMultiplosTamanhosAction,
 } from './actions'
 import { Badge } from '@/components/ui/badge'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -44,6 +47,32 @@ type Props = {
 export function TamanhosList({ tamanhos, podeEditar }: Props) {
   const [editando, setEditando] = useState<Tamanho | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<Tamanho | null>(null)
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [bulkExcluindo, setBulkExcluindo] = useState(false)
+
+  function toggleOne(id: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleAll() {
+    setSelecionados((prev) => {
+      if (prev.size === tamanhos.length) return new Set()
+      return new Set(tamanhos.map((t) => t.id))
+    })
+  }
+  function limparSelecao() {
+    setSelecionados(new Set())
+  }
+  const allChecked = tamanhos.length > 0 && selecionados.size === tamanhos.length
+  const someChecked = selecionados.size > 0 && !allChecked
+  const idsSelecionados = useMemo(
+    () => Array.from(selecionados),
+    [selecionados],
+  )
 
   return (
     <div className="space-y-4">
@@ -54,6 +83,14 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
             Novo tamanho
           </Button>
         </div>
+      )}
+
+      {podeEditar && (
+        <BulkActionBar
+          count={selecionados.size}
+          onClear={limparSelecao}
+          onDelete={() => setBulkExcluindo(true)}
+        />
       )}
 
       {tamanhos.length === 0 ? (
@@ -78,6 +115,16 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {podeEditar && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        aria-label="Selecionar tudo"
+                        checked={allChecked}
+                        indeterminate={someChecked}
+                        onCheckedChange={toggleAll}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Nome</TableHead>
                   <TableHead className="w-24 text-right">Ordem</TableHead>
                   <TableHead>Status</TableHead>
@@ -86,7 +133,19 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
               </TableHeader>
               <TableBody>
                 {tamanhos.map((t) => (
-                  <TableRow key={t.id}>
+                  <TableRow
+                    key={t.id}
+                    data-state={selecionados.has(t.id) ? 'selected' : undefined}
+                  >
+                    {podeEditar && (
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`Selecionar ${t.nome}`}
+                          checked={selecionados.has(t.id)}
+                          onCheckedChange={() => toggleOne(t.id)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell className="font-medium">{t.nome}</TableCell>
                     <TableCell className="text-muted-foreground text-right tabular-nums">
                       {t.ordem}
@@ -131,11 +190,20 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                 key={t.id}
                 className="flex items-center justify-between rounded-lg border p-3"
               >
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{t.nome}</div>
-                  <Badge variant={t.ativo ? 'default' : 'secondary'}>
-                    {t.ativo ? 'Ativo' : 'Inativo'}
-                  </Badge>
+                <div className="flex min-w-0 items-center gap-2">
+                  {podeEditar && (
+                    <Checkbox
+                      aria-label={`Selecionar ${t.nome}`}
+                      checked={selecionados.has(t.id)}
+                      onCheckedChange={() => toggleOne(t.id)}
+                    />
+                  )}
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{t.nome}</div>
+                    <Badge variant={t.ativo ? 'default' : 'secondary'}>
+                      {t.ativo ? 'Ativo' : 'Inativo'}
+                    </Badge>
+                  </div>
                 </div>
                 {podeEditar && (
                   <div className="flex flex-col">
@@ -172,7 +240,69 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
         tamanho={excluindo}
         onClose={() => setExcluindo(null)}
       />
+      <BulkExcluirDialog
+        open={bulkExcluindo}
+        ids={idsSelecionados}
+        onClose={() => setBulkExcluindo(false)}
+        onDone={() => {
+          setBulkExcluindo(false)
+          limparSelecao()
+        }}
+      />
     </div>
+  )
+}
+
+function BulkExcluirDialog({
+  open,
+  ids,
+  onClose,
+  onDone,
+}: {
+  open: boolean
+  ids: string[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  function excluir() {
+    if (ids.length === 0) return
+    startTransition(async () => {
+      const result = await excluirMultiplosTamanhosAction(ids)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'Excluídos')
+      router.refresh()
+      onDone()
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Excluir {ids.length} tamanho{ids.length === 1 ? '' : 's'}?
+          </DialogTitle>
+          <DialogDescription>
+            Os tamanhos selecionados serão marcados como excluídos. As variações
+            que já os usam permanecem inalteradas.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={excluir} disabled={isPending}>
+            {isPending ? 'Excluindo…' : `Excluir ${ids.length}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

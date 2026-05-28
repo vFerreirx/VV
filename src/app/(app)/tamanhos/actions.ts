@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireAuth, requireRole } from '@/lib/auth/require-auth'
@@ -135,4 +135,41 @@ export async function excluirTamanhoAction(id: string): Promise<ActionResult> {
 
   revalidatePath('/tamanhos')
   return { success: true, message: 'Tamanho excluído' }
+}
+
+// -----------------------------------------------------------------
+// Excluir múltiplos (bulk delete)
+// -----------------------------------------------------------------
+
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export async function excluirMultiplosTamanhosAction(
+  ids: string[],
+): Promise<ActionResult<{ excluidos: number }>> {
+  await requireRole(['admin', 'gerente_producao'])
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { success: false, error: 'Selecione ao menos um tamanho' }
+  }
+  const idsValidos = ids.filter((id) => uuidRegex.test(id))
+  if (idsValidos.length === 0) {
+    return { success: false, error: 'Nenhum ID válido na seleção' }
+  }
+
+  const result = await db
+    .update(tamanhos)
+    .set({ deletedAt: new Date(), ativo: false })
+    .where(and(inArray(tamanhos.id, idsValidos), isNull(tamanhos.deletedAt)))
+    .returning({ id: tamanhos.id })
+
+  revalidatePath('/tamanhos')
+  return {
+    success: true,
+    data: { excluidos: result.length },
+    message:
+      result.length === 1
+        ? '1 tamanho excluído'
+        : `${result.length} tamanhos excluídos`,
+  }
 }

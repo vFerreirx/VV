@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireAuth, requireRole } from '@/lib/auth/require-auth'
@@ -135,4 +135,41 @@ export async function excluirModeloAction(id: string): Promise<ActionResult> {
 
   revalidatePath('/modelos')
   return { success: true, message: 'Modelo excluído' }
+}
+
+// -----------------------------------------------------------------
+// Excluir múltiplos (bulk delete)
+// -----------------------------------------------------------------
+
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export async function excluirMultiplosModelosAction(
+  ids: string[],
+): Promise<ActionResult<{ excluidos: number }>> {
+  await requireRole(['admin', 'gerente_producao'])
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { success: false, error: 'Selecione ao menos um modelo' }
+  }
+  const idsValidos = ids.filter((id) => uuidRegex.test(id))
+  if (idsValidos.length === 0) {
+    return { success: false, error: 'Nenhum ID válido na seleção' }
+  }
+
+  const result = await db
+    .update(modelos)
+    .set({ deletedAt: new Date(), ativo: false })
+    .where(and(inArray(modelos.id, idsValidos), isNull(modelos.deletedAt)))
+    .returning({ id: modelos.id })
+
+  revalidatePath('/modelos')
+  return {
+    success: true,
+    data: { excluidos: result.length },
+    message:
+      result.length === 1
+        ? '1 modelo excluído'
+        : `${result.length} modelos excluídos`,
+  }
 }

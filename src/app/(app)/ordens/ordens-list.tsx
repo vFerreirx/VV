@@ -5,12 +5,18 @@ import { ptBR } from 'date-fns/locale'
 import { CircleAlert, Pencil, Search, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-import { excluirOrdemAction, type OrdemListItem } from './actions'
+import {
+  excluirMultiplasOrdensAction,
+  excluirOrdemAction,
+  type OrdemListItem,
+} from './actions'
 import { Badge } from '@/components/ui/badge'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -77,6 +83,32 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
   const [isPending, startTransition] = useTransition()
   const [busca, setBusca] = useState(filtrosIniciais.q ?? '')
   const [excluindo, setExcluindo] = useState<OrdemListItem | null>(null)
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [bulkExcluindo, setBulkExcluindo] = useState(false)
+
+  function toggleOne(id: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleAll() {
+    setSelecionados((prev) => {
+      if (prev.size === ordens.length) return new Set()
+      return new Set(ordens.map((o) => o.id))
+    })
+  }
+  function limparSelecao() {
+    setSelecionados(new Set())
+  }
+  const allChecked = ordens.length > 0 && selecionados.size === ordens.length
+  const someChecked = selecionados.size > 0 && !allChecked
+  const idsSelecionados = useMemo(
+    () => Array.from(selecionados),
+    [selecionados],
+  )
 
   function aplicarFiltro(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -169,6 +201,14 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
         </div>
       </div>
 
+      {podeEditar && (
+        <BulkActionBar
+          count={selecionados.size}
+          onClear={limparSelecao}
+          onDelete={() => setBulkExcluindo(true)}
+        />
+      )}
+
       {ordens.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
           <p className="text-muted-foreground text-sm">Nenhuma OP encontrada.</p>
@@ -189,6 +229,16 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {podeEditar && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        aria-label="Selecionar tudo"
+                        checked={allChecked}
+                        indeterminate={someChecked}
+                        onCheckedChange={toggleAll}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Número</TableHead>
                   <TableHead>Produto</TableHead>
                   <TableHead className="text-right">Qtd (un)</TableHead>
@@ -202,7 +252,19 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
               </TableHeader>
               <TableBody>
                 {ordens.map((o) => (
-                  <TableRow key={o.id}>
+                  <TableRow
+                    key={o.id}
+                    data-state={selecionados.has(o.id) ? 'selected' : undefined}
+                  >
+                    {podeEditar && (
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`Selecionar ${o.numero}`}
+                          checked={selecionados.has(o.id)}
+                          onCheckedChange={() => toggleOne(o.id)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell className="font-mono text-xs">
                       <Link
                         href={`/ordens/${o.id}`}
@@ -282,20 +344,32 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
           {/* Mobile / tablet retrato */}
           <div className="space-y-3 md:hidden">
             {ordens.map((o) => (
-              <Link
+              <div
                 key={o.id}
-                href={`/ordens/${o.id}`}
-                className="block rounded-lg border p-4"
+                className="rounded-lg border p-4"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-mono text-xs">{o.numero}</div>
-                    <div className="truncate font-medium">{o.produtoNome}</div>
-                    <div className="text-muted-foreground text-xs">
-                      {[o.variacaoCor, o.variacaoTamanho]
-                        .filter(Boolean)
-                        .join(' / ') || o.produtoSku}
-                    </div>
+                  <div className="flex min-w-0 items-start gap-2">
+                    {podeEditar && (
+                      <Checkbox
+                        aria-label={`Selecionar ${o.numero}`}
+                        checked={selecionados.has(o.id)}
+                        onCheckedChange={() => toggleOne(o.id)}
+                        className="mt-1"
+                      />
+                    )}
+                    <Link
+                      href={`/ordens/${o.id}`}
+                      className="min-w-0 flex-1 hover:underline"
+                    >
+                      <div className="font-mono text-xs">{o.numero}</div>
+                      <div className="truncate font-medium">{o.produtoNome}</div>
+                      <div className="text-muted-foreground text-xs">
+                        {[o.variacaoCor, o.variacaoTamanho]
+                          .filter(Boolean)
+                          .join(' / ') || o.produtoSku}
+                      </div>
+                    </Link>
                   </div>
                   <Badge className={STATUS_BADGE[o.status]}>
                     {STATUS_LABEL_CURTO[o.status]}
@@ -334,14 +408,76 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
                       : '—'}
                   </div>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         </>
       )}
 
       <ExcluirDialog ordem={excluindo} onClose={() => setExcluindo(null)} />
+      <BulkExcluirDialog
+        open={bulkExcluindo}
+        ids={idsSelecionados}
+        onClose={() => setBulkExcluindo(false)}
+        onDone={() => {
+          setBulkExcluindo(false)
+          limparSelecao()
+        }}
+      />
     </div>
+  )
+}
+
+function BulkExcluirDialog({
+  open,
+  ids,
+  onClose,
+  onDone,
+}: {
+  open: boolean
+  ids: string[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  function excluir() {
+    if (ids.length === 0) return
+    startTransition(async () => {
+      const result = await excluirMultiplasOrdensAction(ids)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'Excluídas')
+      router.refresh()
+      onDone()
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Excluir {ids.length} OP{ids.length === 1 ? '' : 's'}?
+          </DialogTitle>
+          <DialogDescription>
+            As OPs selecionadas serão marcadas como canceladas e removidas do
+            kanban. Apontamentos e movimentações ficam preservados.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={excluir} disabled={isPending}>
+            {isPending ? 'Excluindo…' : `Excluir ${ids.length}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -3,12 +3,18 @@
 import { Pencil, Search, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-import { excluirProdutoAction, type ProdutoListItem } from './actions'
+import {
+  excluirMultiplosProdutosAction,
+  excluirProdutoAction,
+  type ProdutoListItem,
+} from './actions'
 import { Badge } from '@/components/ui/badge'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -51,6 +57,32 @@ export function ProdutosList({
   const [isPending, startTransition] = useTransition()
 
   const [busca, setBusca] = useState(filtrosIniciais.q ?? '')
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [bulkExcluindo, setBulkExcluindo] = useState(false)
+
+  function toggleOne(id: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleAll() {
+    setSelecionados((prev) => {
+      if (prev.size === produtos.length) return new Set()
+      return new Set(produtos.map((p) => p.id))
+    })
+  }
+  function limparSelecao() {
+    setSelecionados(new Set())
+  }
+  const allChecked = produtos.length > 0 && selecionados.size === produtos.length
+  const someChecked = selecionados.size > 0 && !allChecked
+  const idsSelecionados = useMemo(
+    () => Array.from(selecionados),
+    [selecionados],
+  )
 
   function aplicarFiltro(updates: Record<string, string | null | undefined>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -113,6 +145,14 @@ export function ProdutosList({
         </div>
       </div>
 
+      {podeEditar && (
+        <BulkActionBar
+          count={selecionados.size}
+          onClear={limparSelecao}
+          onDelete={() => setBulkExcluindo(true)}
+        />
+      )}
+
       {produtos.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
           <p className="text-muted-foreground text-sm">
@@ -131,6 +171,16 @@ export function ProdutosList({
             <Table>
               <TableHeader>
                 <TableRow>
+                  {podeEditar && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        aria-label="Selecionar tudo"
+                        checked={allChecked}
+                        indeterminate={someChecked}
+                        onCheckedChange={toggleAll}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>SKU</TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead className="text-right">Gramatura</TableHead>
@@ -142,7 +192,19 @@ export function ProdutosList({
               </TableHeader>
               <TableBody>
                 {produtos.map((p) => (
-                  <TableRow key={p.id}>
+                  <TableRow
+                    key={p.id}
+                    data-state={selecionados.has(p.id) ? 'selected' : undefined}
+                  >
+                    {podeEditar && (
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`Selecionar ${p.nome}`}
+                          checked={selecionados.has(p.id)}
+                          onCheckedChange={() => toggleOne(p.id)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell className="font-mono text-xs">{p.sku}</TableCell>
                     <TableCell>
                       <Link
@@ -180,21 +242,28 @@ export function ProdutosList({
           {/* Mobile/Tablet retrato: cards */}
           <div className="space-y-3 md:hidden">
             {produtos.map((p) => (
-              <div
-                key={p.id}
-                className="rounded-lg border p-4"
-              >
+              <div key={p.id} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      href={`/produtos/${p.id}`}
-                      className="block font-medium hover:underline"
-                    >
-                      {p.nome}
-                    </Link>
-                    <p className="text-muted-foreground font-mono text-xs">
-                      {p.sku}
-                    </p>
+                  <div className="flex min-w-0 flex-1 items-start gap-2">
+                    {podeEditar && (
+                      <Checkbox
+                        aria-label={`Selecionar ${p.nome}`}
+                        checked={selecionados.has(p.id)}
+                        onCheckedChange={() => toggleOne(p.id)}
+                        className="mt-0.5"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/produtos/${p.id}`}
+                        className="block font-medium hover:underline"
+                      >
+                        {p.nome}
+                      </Link>
+                      <p className="text-muted-foreground font-mono text-xs">
+                        {p.sku}
+                      </p>
+                    </div>
                   </div>
                   <Badge variant={p.ativo ? 'default' : 'secondary'}>
                     {p.ativo ? 'Ativo' : 'Inativo'}
@@ -224,7 +293,70 @@ export function ProdutosList({
           </div>
         </>
       )}
+
+      <BulkExcluirDialog
+        open={bulkExcluindo}
+        ids={idsSelecionados}
+        onClose={() => setBulkExcluindo(false)}
+        onDone={() => {
+          setBulkExcluindo(false)
+          limparSelecao()
+        }}
+      />
     </div>
+  )
+}
+
+function BulkExcluirDialog({
+  open,
+  ids,
+  onClose,
+  onDone,
+}: {
+  open: boolean
+  ids: string[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  function excluir() {
+    if (ids.length === 0) return
+    startTransition(async () => {
+      const result = await excluirMultiplosProdutosAction(ids)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'Excluídos')
+      router.refresh()
+      onDone()
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Excluir {ids.length} produto{ids.length === 1 ? '' : 's'}?
+          </DialogTitle>
+          <DialogDescription>
+            Os produtos selecionados serão marcados como excluídos. As variações
+            ficam preservadas pra histórico em OPs e movimentações.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={excluir} disabled={isPending}>
+            {isPending ? 'Excluindo…' : `Excluir ${ids.length}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

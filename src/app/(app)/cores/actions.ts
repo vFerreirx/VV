@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireAuth, requireRole } from '@/lib/auth/require-auth'
@@ -153,4 +153,43 @@ export async function excluirCorAction(id: string): Promise<ActionResult> {
 
   revalidatePath('/cores')
   return { success: true, message: 'Cor excluída' }
+}
+
+// -----------------------------------------------------------------
+// Excluir múltiplas (bulk delete)
+// -----------------------------------------------------------------
+
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export async function excluirMultiplasCoresAction(
+  ids: string[],
+): Promise<ActionResult<{ excluidas: number }>> {
+  await requireRole(['admin', 'gerente_producao'])
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { success: false, error: 'Selecione ao menos uma cor' }
+  }
+
+  const idsValidos = ids.filter((id) => uuidRegex.test(id))
+  if (idsValidos.length === 0) {
+    return { success: false, error: 'Nenhum ID válido na seleção' }
+  }
+
+  const now = new Date()
+  const result = await db
+    .update(cores)
+    .set({ deletedAt: now, ativo: false })
+    .where(and(inArray(cores.id, idsValidos), isNull(cores.deletedAt)))
+    .returning({ id: cores.id })
+
+  revalidatePath('/cores')
+  return {
+    success: true,
+    data: { excluidas: result.length },
+    message:
+      result.length === 1
+        ? '1 cor excluída'
+        : `${result.length} cores excluídas`,
+  }
 }

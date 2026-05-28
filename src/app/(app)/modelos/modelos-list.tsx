@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useForm, useWatch, type Resolver } from 'react-hook-form'
 import { toast } from 'sonner'
 
@@ -11,9 +11,12 @@ import {
   atualizarModeloAction,
   criarModeloAction,
   excluirModeloAction,
+  excluirMultiplosModelosAction,
 } from './actions'
 import { Badge } from '@/components/ui/badge'
+import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -45,6 +48,32 @@ type Props = {
 export function ModelosList({ modelos, podeEditar }: Props) {
   const [editando, setEditando] = useState<Modelo | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<Modelo | null>(null)
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
+  const [bulkExcluindo, setBulkExcluindo] = useState(false)
+
+  function toggleOne(id: string) {
+    setSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  function toggleAll() {
+    setSelecionados((prev) => {
+      if (prev.size === modelos.length) return new Set()
+      return new Set(modelos.map((m) => m.id))
+    })
+  }
+  function limparSelecao() {
+    setSelecionados(new Set())
+  }
+  const allChecked = modelos.length > 0 && selecionados.size === modelos.length
+  const someChecked = selecionados.size > 0 && !allChecked
+  const idsSelecionados = useMemo(
+    () => Array.from(selecionados),
+    [selecionados],
+  )
 
   return (
     <div className="space-y-4">
@@ -55,6 +84,14 @@ export function ModelosList({ modelos, podeEditar }: Props) {
             Novo modelo
           </Button>
         </div>
+      )}
+
+      {podeEditar && (
+        <BulkActionBar
+          count={selecionados.size}
+          onClear={limparSelecao}
+          onDelete={() => setBulkExcluindo(true)}
+        />
       )}
 
       {modelos.length === 0 ? (
@@ -79,6 +116,16 @@ export function ModelosList({ modelos, podeEditar }: Props) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  {podeEditar && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        aria-label="Selecionar tudo"
+                        checked={allChecked}
+                        indeterminate={someChecked}
+                        onCheckedChange={toggleAll}
+                      />
+                    </TableHead>
+                  )}
                   <TableHead>Nome</TableHead>
                   <TableHead>Descrição</TableHead>
                   <TableHead>Status</TableHead>
@@ -87,7 +134,19 @@ export function ModelosList({ modelos, podeEditar }: Props) {
               </TableHeader>
               <TableBody>
                 {modelos.map((m) => (
-                  <TableRow key={m.id}>
+                  <TableRow
+                    key={m.id}
+                    data-state={selecionados.has(m.id) ? 'selected' : undefined}
+                  >
+                    {podeEditar && (
+                      <TableCell>
+                        <Checkbox
+                          aria-label={`Selecionar ${m.nome}`}
+                          checked={selecionados.has(m.id)}
+                          onCheckedChange={() => toggleOne(m.id)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell className="font-medium">{m.nome}</TableCell>
                     <TableCell className="text-muted-foreground text-xs">
                       {m.descricao ?? '—'}
@@ -132,13 +191,22 @@ export function ModelosList({ modelos, podeEditar }: Props) {
                 key={m.id}
                 className="flex items-center justify-between rounded-lg border p-3"
               >
-                <div className="min-w-0">
-                  <div className="truncate font-medium">{m.nome}</div>
-                  {m.descricao && (
-                    <div className="text-muted-foreground truncate text-xs">
-                      {m.descricao}
-                    </div>
+                <div className="flex min-w-0 items-center gap-3">
+                  {podeEditar && (
+                    <Checkbox
+                      aria-label={`Selecionar ${m.nome}`}
+                      checked={selecionados.has(m.id)}
+                      onCheckedChange={() => toggleOne(m.id)}
+                    />
                   )}
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{m.nome}</div>
+                    {m.descricao && (
+                      <div className="text-muted-foreground truncate text-xs">
+                        {m.descricao}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex items-center gap-1">
                   <Badge variant={m.ativo ? 'default' : 'secondary'}>
@@ -179,7 +247,69 @@ export function ModelosList({ modelos, podeEditar }: Props) {
         modelo={excluindo}
         onClose={() => setExcluindo(null)}
       />
+      <BulkExcluirDialog
+        open={bulkExcluindo}
+        ids={idsSelecionados}
+        onClose={() => setBulkExcluindo(false)}
+        onDone={() => {
+          setBulkExcluindo(false)
+          limparSelecao()
+        }}
+      />
     </div>
+  )
+}
+
+function BulkExcluirDialog({
+  open,
+  ids,
+  onClose,
+  onDone,
+}: {
+  open: boolean
+  ids: string[]
+  onClose: () => void
+  onDone: () => void
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  function excluir() {
+    if (ids.length === 0) return
+    startTransition(async () => {
+      const result = await excluirMultiplosModelosAction(ids)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'Excluídos')
+      router.refresh()
+      onDone()
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            Excluir {ids.length} modelo{ids.length === 1 ? '' : 's'}?
+          </DialogTitle>
+          <DialogDescription>
+            Os modelos selecionados serão marcados como excluídos. As variações
+            que já os usam permanecem inalteradas.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={excluir} disabled={isPending}>
+            {isPending ? 'Excluindo…' : `Excluir ${ids.length}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
