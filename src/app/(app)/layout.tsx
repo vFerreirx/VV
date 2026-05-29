@@ -19,7 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Suspense fallback={<TopbarFallback user={user} />}>
           <Topbar user={user} />
         </Suspense>
-        <main className="flex-1 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] md:p-6 md:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+        <main className="flex-1 overflow-y-auto pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] md:pt-6 md:pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pl-[max(1.5rem,env(safe-area-inset-left))] md:pr-[max(1.5rem,env(safe-area-inset-right))]">
           <PageTransition>{children}</PageTransition>
         </main>
       </div>
