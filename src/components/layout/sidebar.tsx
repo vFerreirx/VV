@@ -3,7 +3,7 @@
 import { LogOut } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useTransition } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
@@ -15,6 +15,22 @@ export function Sidebar({ role }: { role: User['role'] }) {
   const pathname = usePathname()
   const [isPending, startTransition] = useTransition()
   const items = visibleItems(role)
+
+  // Indicator deslizante: mede a posição do item ativo e move uma barra.
+  const navRef = useRef<HTMLElement>(null)
+  const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(
+    null,
+  )
+  useEffect(() => {
+    const nav = navRef.current
+    if (!nav) return
+    const ativo = nav.querySelector<HTMLElement>('[data-active="true"]')
+    if (!ativo) {
+      setIndicator(null)
+      return
+    }
+    setIndicator({ top: ativo.offsetTop, height: ativo.offsetHeight })
+  }, [pathname, items.length])
 
   function handleLogout() {
     startTransition(async () => {
@@ -35,7 +51,14 @@ export function Sidebar({ role }: { role: User['role'] }) {
           </div>
         </div>
       </div>
-      <nav className="flex-1 space-y-0.5 p-2">
+      <nav ref={navRef} className="relative flex-1 space-y-0.5 p-2">
+        {indicator && (
+          <span
+            aria-hidden
+            className="bg-sidebar-primary absolute left-1 w-0.5 rounded-full transition-all duration-300 ease-out"
+            style={{ top: indicator.top, height: indicator.height }}
+          />
+        )}
         {items.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(`${item.href}/`)
@@ -43,6 +66,7 @@ export function Sidebar({ role }: { role: User['role'] }) {
             <Link
               key={item.href}
               href={item.href}
+              data-active={active}
               className={cn(
                 'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
                 active

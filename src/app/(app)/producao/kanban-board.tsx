@@ -353,7 +353,11 @@ function KanbanCardContent({
           {ordem.numero}
         </span>
         <Badge
-          className={cn('shrink-0 text-[10px]', PRIORIDADE_BADGE[ordem.prioridade])}
+          className={cn(
+            'shrink-0 text-[10px]',
+            PRIORIDADE_BADGE[ordem.prioridade],
+            ordem.prioridade === 'urgente' && 'pulse-urgente',
+          )}
         >
           {PRIORIDADE_LABEL[ordem.prioridade]}
         </Badge>

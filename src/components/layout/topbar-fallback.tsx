@@ -18,7 +18,7 @@ export function TopbarFallback({
   user: Pick<User, 'nome' | 'username' | 'role'>
 }) {
   return (
-    <header className="border-border bg-background flex h-14 shrink-0 items-center justify-between border-b px-3 sm:px-4">
+    <header className="border-border bg-background/80 supports-[backdrop-filter]:bg-background/65 sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b px-3 backdrop-blur-md sm:px-4">
       <div className="flex items-center gap-2 md:hidden">
         <MobileNav role={user.role} />
         <Logo variant="mark" className="text-primary size-6" />

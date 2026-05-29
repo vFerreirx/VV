@@ -162,3 +162,51 @@
     @apply font-sans;
   }
 }
+
+/* ──────────────────────────────────────────────────────────
+ * Animações de polidez (shimmer de skeleton + pulse de urgência)
+ * ────────────────────────────────────────────────────────── */
+
+@keyframes vv-shimmer {
+  0% {
+    background-position: -150% 0;
+  }
+  100% {
+    background-position: 150% 0;
+  }
+}
+
+/* Brilho que percorre o skeleton — sobreposto à cor de fundo (bg-muted). */
+.skeleton-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--foreground) 9%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: vv-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes vv-pulse-urgente {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--destructive) 50%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 5px color-mix(in oklch, var(--destructive) 0%, transparent);
+  }
+}
+
+/* Anel pulsante discreto pra badges/itens urgentes. */
+.pulse-urgente {
+  animation: vv-pulse-urgente 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer,
+  .pulse-urgente {
+    animation: none;
+  }
+}

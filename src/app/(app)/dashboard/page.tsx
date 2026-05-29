@@ -23,6 +23,7 @@ import { ProducaoChart } from '@/components/charts/producao-chart'
 import { TopProdutosChart } from '@/components/charts/top-produtos-chart'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { CountUp } from '@/components/ui/count-up'
 import { requireAuth } from '@/lib/auth/require-auth'
 import { cn } from '@/lib/utils'
 import {
@@ -188,7 +189,13 @@ export default async function DashboardPage() {
                       )}
                     </div>
                   </div>
-                  <Badge className={cn('shrink-0', PRIORIDADE_BADGE[op.prioridade])}>
+                  <Badge
+                    className={cn(
+                      'shrink-0',
+                      PRIORIDADE_BADGE[op.prioridade],
+                      op.prioridade === 'urgente' && 'pulse-urgente',
+                    )}
+                  >
                     {PRIORIDADE_LABEL[op.prioridade]}
                   </Badge>
                   <Badge variant="secondary" className="shrink-0">
@@ -255,7 +262,7 @@ function KPICard({
             alerta && 'text-destructive',
           )}
         >
-          {value}
+          {typeof value === 'number' ? <CountUp value={value} /> : value}
         </div>
         {subtitle && (
           <div className="text-muted-foreground mt-0.5 text-xs">{subtitle}</div>
