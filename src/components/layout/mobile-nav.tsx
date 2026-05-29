@@ -51,7 +51,7 @@ export function MobileNav({ role }: { role: User['role'] }) {
       <SheetContent side="left" className="w-72 max-w-[85vw] p-0">
         <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
         <div className="flex h-full flex-col">
-          <div className="border-border flex h-14 items-center gap-2.5 border-b px-4">
+          <div className="border-border flex h-[calc(3.5rem_+_env(safe-area-inset-top))] items-center gap-2.5 border-b px-4 pt-[env(safe-area-inset-top)]">
             <Logo variant="mark" className="text-primary size-7" />
             <div className="leading-tight">
               <div className="font-heading text-sm font-medium tracking-[0.18em] uppercase">
