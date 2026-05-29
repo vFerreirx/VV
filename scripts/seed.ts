@@ -4,7 +4,7 @@
  * Cria:
  *   - 5 usuários (1 por role) via Supabase Admin API
  *     → trigger handle_new_user popula public.users
- *   - 18 máquinas TC-01..TC-18 com tipos/finuras variados
+ *   - 18 máquinas M-01..M-18 com status variados
  *   - 10 produtos com 2-3 variações cada
  *   - 20 OPs distribuídas pelos estados do kanban (numero via trigger)
  *   - apontamentos para OPs em produção
@@ -226,34 +226,21 @@ async function seedUsuarios() {
 // Máquinas (TC-01..TC-18)
 // -----------------------------------------------------------------
 
-const TIPOS = ['circular_pequeno', 'circular_medio', 'circular_grande'] as const
 const STATUSES_INICIAIS = ['operando', 'parada', 'manutencao', 'setup'] as const
 
 async function seedMaquinas(operadorId: string) {
-  console.log('▶ Criando 18 máquinas (TC-01..TC-18)…')
+  console.log('▶ Criando 18 máquinas (M-01..M-18)…')
   const rows: schema.NewMaquina[] = []
   for (let i = 1; i <= 18; i++) {
-    const codigo = `TC-${String(i).padStart(2, '0')}`
-    const tipo = TIPOS[(i - 1) % TIPOS.length]!
-    const diametros = { circular_pequeno: 22, circular_medio: 30, circular_grande: 36 }
-    const finuras = { circular_pequeno: 24, circular_medio: 22, circular_grande: 20 }
-    const alimentadores = { circular_pequeno: 48, circular_medio: 72, circular_grande: 96 }
-    const capacidades = { circular_pequeno: 8, circular_medio: 12, circular_grande: 16 }
+    const codigo = `M-${String(i).padStart(2, '0')}`
 
     rows.push({
       codigo,
-      nome: `Tear Circular ${codigo}`,
-      tipo,
-      diametroPolegadas: String(diametros[tipo]),
-      finura: finuras[tipo],
-      numAlimentadores: alimentadores[tipo],
-      capacidadeKgPorHora: String(capacidades[tipo]),
+      nome: `Máquina ${codigo}`,
       // Distribui status iniciais; 1ª máquina sempre 'operando' pra ter algo no dashboard
       status: i === 1 ? 'operando' : STATUSES_INICIAIS[i % STATUSES_INICIAIS.length]!,
       // Atribui operador às 3 primeiras pra ter dados de RLS / kanban
       operadorAtualId: i <= 3 ? operadorId : null,
-      ultimaManutencao: daysFromNow(-randomInt(5, 60)),
-      proximaManutencao: daysFromNow(randomInt(15, 90)),
     })
   }
 

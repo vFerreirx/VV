@@ -6,7 +6,6 @@ import {
   CircleAlert,
   Factory,
   Package,
-  Wrench,
 } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
@@ -15,7 +14,6 @@ import {
   listarOpsPorCanal,
   listarOpsUrgentes,
   listarProducaoUltimosDias,
-  listarProximasManutencoes,
   listarTopProdutosMes,
   obterKPIs,
   type DashboardKPIs,
@@ -56,11 +54,10 @@ const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
 
 export default async function DashboardPage() {
   const user = await requireAuth()
-  const [kpis, opsUrgentes, manutencoes, producao14d, canais, topProdutos] =
+  const [kpis, opsUrgentes, producao14d, canais, topProdutos] =
     await Promise.all([
       obterKPIs(),
       listarOpsUrgentes(5),
-      listarProximasManutencoes(5),
       listarProducaoUltimosDias(14),
       listarOpsPorCanal(),
       listarTopProdutosMes(5),
@@ -119,66 +116,15 @@ export default async function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Distribuição por status */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Fluxo do kanban</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <DistribuicaoStatus kpis={kpis} />
-          </CardContent>
-        </Card>
-
-        {/* Manutenções */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle>Próximas manutenções</CardTitle>
-              <Wrench className="text-muted-foreground size-4" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {manutencoes.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                Nenhuma manutenção agendada.
-              </p>
-            ) : (
-              <ul className="space-y-2 text-sm">
-                {manutencoes.map((m) => (
-                  <li
-                    key={m.id}
-                    className="flex items-center justify-between gap-2"
-                  >
-                    <Link
-                      href={`/maquinas/${m.id}`}
-                      className="min-w-0 hover:underline"
-                    >
-                      <span className="font-mono text-xs">{m.codigo}</span>
-                      <span className="text-muted-foreground ml-2 text-xs">
-                        — {m.nome}
-                      </span>
-                    </Link>
-                    <span
-                      className={cn(
-                        'inline-flex shrink-0 items-center gap-1 tabular-nums text-xs',
-                        m.vencida
-                          ? 'text-destructive font-medium'
-                          : 'text-muted-foreground',
-                      )}
-                    >
-                      {m.vencida && <CircleAlert className="size-3.5" />}
-                      {format(new Date(m.proximaManutencao), 'dd/MM/yy', {
-                        locale: ptBR,
-                      })}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Distribuição por status */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Fluxo do kanban</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DistribuicaoStatus kpis={kpis} />
+        </CardContent>
+      </Card>
 
       {/* Canais + Top produtos */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

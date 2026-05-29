@@ -9,13 +9,6 @@ export const userRoleEnum = pgEnum('user_role', [
   'vendas',
 ])
 
-// Tipo do tear circular
-export const maquinaTipoEnum = pgEnum('maquina_tipo', [
-  'circular_pequeno',
-  'circular_medio',
-  'circular_grande',
-])
-
 // Estado operacional da máquina
 export const maquinaStatusEnum = pgEnum('maquina_status', [
   'operando',

@@ -4,15 +4,14 @@ import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm'
 
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { maquinas, ordensProducao, produtos } from '@/lib/db/schema'
+import { ordensProducao, produtos } from '@/lib/db/schema'
 
 // Notificações derivadas do estado atual (sem tabela persistente).
-// Quando o assunto é resolvido (OP enviada, manutenção registrada),
-// o alerta some sozinho.
+// Quando o assunto é resolvido (OP enviada), o alerta some sozinho.
 
 export type Notificacao = {
   id: string
-  tipo: 'op_atrasada' | 'manutencao_vencida'
+  tipo: 'op_atrasada'
   titulo: string
   descricao: string
   href: string
@@ -50,25 +49,6 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
     .orderBy(asc(ordensProducao.dataPrevistaFim))
     .limit(50)
 
-  // 2) Máquinas com manutenção vencida (proximaManutencao < now e não excluída)
-  const manutVencidas = await db
-    .select({
-      id: maquinas.id,
-      codigo: maquinas.codigo,
-      nome: maquinas.nome,
-      proximaManutencao: maquinas.proximaManutencao,
-    })
-    .from(maquinas)
-    .where(
-      and(
-        isNull(maquinas.deletedAt),
-        isNotNull(maquinas.proximaManutencao),
-        sql`${maquinas.proximaManutencao} < now()`,
-      ),
-    )
-    .orderBy(asc(maquinas.proximaManutencao))
-    .limit(50)
-
   const notificacoes: Notificacao[] = []
 
   for (const op of opsAtrasadas) {
@@ -84,23 +64,6 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
           : `${op.produtoNome} — ${diasAtraso} dia${diasAtraso === 1 ? '' : 's'} de atraso`,
       href: `/ordens/${op.id}`,
       severidade: diasAtraso >= 3 ? 'critico' : 'aviso',
-      referenciaEm: data,
-    })
-  }
-
-  for (const m of manutVencidas) {
-    const data = new Date(m.proximaManutencao!)
-    const diasAtraso = Math.floor((now - data.getTime()) / DIAS)
-    notificacoes.push({
-      id: `maq-${m.id}`,
-      tipo: 'manutencao_vencida',
-      titulo: `Manutenção ${m.codigo} vencida`,
-      descricao:
-        diasAtraso === 0
-          ? `${m.nome} — vence hoje`
-          : `${m.nome} — ${diasAtraso} dia${diasAtraso === 1 ? '' : 's'} sem manutenção`,
-      href: `/maquinas/${m.id}`,
-      severidade: diasAtraso >= 7 ? 'critico' : 'aviso',
       referenciaEm: data,
     })
   }

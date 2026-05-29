@@ -30,7 +30,6 @@ export type ActionResult<T = undefined> =
 export type MaquinaListItem = Maquina & {
   operadorNome: string | null
   operadorEmail: string | null
-  manutencaoVencida: boolean
 }
 
 export async function listarMaquinas(
@@ -39,11 +38,10 @@ export async function listarMaquinas(
   await requireAuth()
 
   const parsed = maquinasFiltrosSchema.safeParse(filtros)
-  const { status, tipo } = parsed.success ? parsed.data : {}
+  const { status } = parsed.success ? parsed.data : {}
 
   const conditions = [isNull(maquinas.deletedAt)]
   if (status && status !== 'todos') conditions.push(eq(maquinas.status, status))
-  if (tipo && tipo !== 'todos') conditions.push(eq(maquinas.tipo, tipo))
 
   // LEFT JOIN com users pra trazer o nome do operador atual.
   const rows = await db
@@ -57,14 +55,10 @@ export async function listarMaquinas(
     .where(and(...conditions))
     .orderBy(asc(maquinas.codigo))
 
-  const now = Date.now()
   return rows.map(({ m, operadorNome, operadorEmail }) => ({
     ...m,
     operadorNome: operadorNome ?? null,
     operadorEmail: operadorEmail ?? null,
-    manutencaoVencida: m.proximaManutencao
-      ? new Date(m.proximaManutencao).getTime() < now
-      : false,
   }))
 }
 
@@ -128,15 +122,8 @@ export async function criarMaquinaAction(
     .values({
       codigo: codigoUpper,
       nome: data.nome,
-      tipo: data.tipo,
       status: data.status,
-      diametroPolegadas: data.diametroPolegadas,
-      finura: data.finura,
-      numAlimentadores: data.numAlimentadores,
-      capacidadeKgPorHora: data.capacidadeKgPorHora,
       operadorAtualId: data.operadorAtualId,
-      ultimaManutencao: data.ultimaManutencao,
-      proximaManutencao: data.proximaManutencao,
       observacoes: data.observacoes ?? null,
     })
     .returning({ id: maquinas.id })
@@ -192,15 +179,8 @@ export async function atualizarMaquinaAction(
     .set({
       codigo: codigoUpper,
       nome: data.nome,
-      tipo: data.tipo,
       status: data.status,
-      diametroPolegadas: data.diametroPolegadas,
-      finura: data.finura,
-      numAlimentadores: data.numAlimentadores,
-      capacidadeKgPorHora: data.capacidadeKgPorHora,
       operadorAtualId: data.operadorAtualId,
-      ultimaManutencao: data.ultimaManutencao,
-      proximaManutencao: data.proximaManutencao,
       observacoes: data.observacoes ?? null,
     })
     .where(eq(maquinas.id, id))

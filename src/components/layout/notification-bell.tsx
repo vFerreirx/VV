@@ -2,7 +2,7 @@
 
 import { format, formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { AlertTriangle, Bell, CircleAlert, Wrench } from 'lucide-react'
+import { AlertTriangle, Bell, CircleAlert } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
@@ -37,11 +37,6 @@ export function NotificationBell({
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'ordens_producao' },
-        () => refetch(),
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'maquinas' },
         () => refetch(),
       )
       .subscribe()
@@ -122,7 +117,7 @@ export function NotificationBell({
 }
 
 function NotificacaoItem({ n }: { n: Notificacao }) {
-  const Icon = n.tipo === 'op_atrasada' ? AlertTriangle : Wrench
+  const Icon = AlertTriangle
   const ago = formatDistanceToNow(new Date(n.referenciaEm), {
     addSuffix: false,
     locale: ptBR,

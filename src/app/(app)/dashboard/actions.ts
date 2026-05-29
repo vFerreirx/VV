@@ -205,62 +205,6 @@ export async function listarOpsUrgentes(
 }
 
 // -----------------------------------------------------------------
-// Próximas manutenções
-// -----------------------------------------------------------------
-
-export type ManutencaoProxItem = {
-  id: string
-  codigo: string
-  nome: string
-  status:
-    | 'operando'
-    | 'parada'
-    | 'manutencao'
-    | 'setup'
-    | 'desativada'
-  proximaManutencao: Date
-  vencida: boolean
-}
-
-export async function listarProximasManutencoes(
-  limit = 5,
-): Promise<ManutencaoProxItem[]> {
-  await requireAuth()
-
-  const rows = await db
-    .select({
-      id: maquinas.id,
-      codigo: maquinas.codigo,
-      nome: maquinas.nome,
-      status: maquinas.status,
-      proximaManutencao: maquinas.proximaManutencao,
-    })
-    .from(maquinas)
-    .where(
-      and(
-        isNull(maquinas.deletedAt),
-        isNotNull(maquinas.proximaManutencao),
-      ),
-    )
-    .orderBy(asc(maquinas.proximaManutencao))
-    .limit(limit)
-
-  const now = Date.now()
-  return rows
-    .filter((r): r is typeof r & { proximaManutencao: Date } =>
-      Boolean(r.proximaManutencao),
-    )
-    .map((r) => ({
-      id: r.id,
-      codigo: r.codigo,
-      nome: r.nome,
-      status: r.status,
-      proximaManutencao: r.proximaManutencao,
-      vencida: new Date(r.proximaManutencao).getTime() < now,
-    }))
-}
-
-// -----------------------------------------------------------------
 // Produção dos últimos N dias (apontamentos por dia)
 // -----------------------------------------------------------------
 

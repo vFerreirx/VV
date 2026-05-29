@@ -31,15 +31,8 @@ export default async function EditarMaquinaPage({
     id: maquina.id,
     codigo: maquina.codigo,
     nome: maquina.nome,
-    tipo: maquina.tipo,
     status: maquina.status,
-    diametroPolegadas: maquina.diametroPolegadas,
-    finura: maquina.finura,
-    numAlimentadores: maquina.numAlimentadores,
-    capacidadeKgPorHora: maquina.capacidadeKgPorHora,
     operadorAtualId: maquina.operadorAtualId,
-    ultimaManutencao: maquina.ultimaManutencao,
-    proximaManutencao: maquina.proximaManutencao,
     observacoes: maquina.observacoes,
   }
 

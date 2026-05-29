@@ -1,9 +1,6 @@
 'use client'
 
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 import {
-  CircleAlert,
   Cog,
   Pause,
   Pencil,
@@ -44,9 +41,7 @@ import { cn } from '@/lib/utils'
 import {
   STATUS_LABEL,
   STATUS_ORDER,
-  TIPO_LABEL,
   maquinaStatusValues,
-  maquinaTipoValues,
   type MaquinasFiltros,
 } from '@/lib/validators/maquinas'
 
@@ -144,23 +139,6 @@ export function MaquinasGrid({
             ))}
           </SelectContent>
         </Select>
-
-        <Select
-          value={filtrosIniciais.tipo ?? 'todos'}
-          onValueChange={(v) => aplicarFiltro({ tipo: v ?? undefined })}
-        >
-          <SelectTrigger size="sm" className="min-w-[12rem]">
-            <SelectValue placeholder="Tipo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos tipos</SelectItem>
-            {maquinaTipoValues.map((t) => (
-              <SelectItem key={t} value={t}>
-                {TIPO_LABEL[t]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       {maquinas.length === 0 ? (
@@ -236,11 +214,6 @@ function MaquinaCard({
   const [statusPending, startStatusTransition] = useTransition()
   const styles = STATUS_STYLES[maquina.status]
 
-  const proximaManutencao = maquina.proximaManutencao
-    ? new Date(maquina.proximaManutencao)
-    : null
-  const manutencaoVencida = maquina.manutencaoVencida
-
   function alterarStatus(novoStatus: typeof maquina.status) {
     startStatusTransition(async () => {
       const result = await trocarStatusAction(maquina.id, {
@@ -273,7 +246,7 @@ function MaquinaCard({
             </Badge>
           </div>
           <p className="text-muted-foreground mt-0.5 truncate text-xs">
-            {TIPO_LABEL[maquina.tipo]}
+            {maquina.nome}
           </p>
         </div>
         {podeEditar && (
@@ -299,71 +272,20 @@ function MaquinaCard({
         )}
       </header>
 
-      <div className="text-muted-foreground grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-        {maquina.diametroPolegadas && (
+      <div className="border-foreground/10 flex flex-wrap items-center gap-2 border-t pt-2">
+        {maquina.operadorNome ? (
           <>
-            <span>Diâmetro</span>
-            <span className="text-foreground text-right tabular-nums">
-              {maquina.diametroPolegadas}&quot;
-            </span>
+            <Avatar className="size-6">
+              <AvatarFallback className="text-[10px]">
+                {initials(maquina.operadorNome)}
+              </AvatarFallback>
+            </Avatar>
+            <span className="truncate text-xs">{maquina.operadorNome}</span>
           </>
-        )}
-        {maquina.finura !== null && (
-          <>
-            <span>Finura</span>
-            <span className="text-foreground text-right tabular-nums">
-              {maquina.finura}
-            </span>
-          </>
-        )}
-        {maquina.numAlimentadores !== null && (
-          <>
-            <span>Alimentadores</span>
-            <span className="text-foreground text-right tabular-nums">
-              {maquina.numAlimentadores}
-            </span>
-          </>
-        )}
-        {maquina.capacidadeKgPorHora && (
-          <>
-            <span>Capacidade</span>
-            <span className="text-foreground text-right tabular-nums">
-              {maquina.capacidadeKgPorHora} kg/h
-            </span>
-          </>
-        )}
-      </div>
-
-      <div className="border-foreground/10 flex flex-wrap items-center justify-between gap-2 border-t pt-2">
-        <div className="flex items-center gap-2">
-          {maquina.operadorNome ? (
-            <>
-              <Avatar className="size-6">
-                <AvatarFallback className="text-[10px]">
-                  {initials(maquina.operadorNome)}
-                </AvatarFallback>
-              </Avatar>
-              <span className="truncate text-xs">{maquina.operadorNome}</span>
-            </>
-          ) : (
-            <span className="text-muted-foreground flex items-center gap-1 text-xs">
-              <UserIcon className="size-3.5" />
-              Sem operador
-            </span>
-          )}
-        </div>
-        {proximaManutencao && (
-          <span
-            className={cn(
-              'flex items-center gap-1 text-xs',
-              manutencaoVencida
-                ? 'text-destructive'
-                : 'text-muted-foreground',
-            )}
-          >
-            {manutencaoVencida && <CircleAlert className="size-3.5" />}
-            <Wrench className="size-3.5" />
-            {format(proximaManutencao, "dd/MM/yy", { locale: ptBR })}
+        ) : (
+          <span className="text-muted-foreground flex items-center gap-1 text-xs">
+            <UserIcon className="size-3.5" />
+            Sem operador
           </span>
         )}
       </div>

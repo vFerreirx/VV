@@ -26,9 +26,7 @@ import type { User } from '@/lib/db/schema'
 import {
   maquinaSchema,
   STATUS_LABEL,
-  TIPO_LABEL,
   maquinaStatusValues,
-  maquinaTipoValues,
   type MaquinaInput,
 } from '@/lib/validators/maquinas'
 
@@ -36,52 +34,25 @@ export type MaquinaFormDefaults = {
   id?: string
   codigo: string
   nome: string
-  tipo: (typeof maquinaTipoValues)[number]
   status: (typeof maquinaStatusValues)[number]
-  diametroPolegadas: string | null
-  finura: number | null
-  numAlimentadores: number | null
-  capacidadeKgPorHora: string | null
   operadorAtualId: string | null
-  ultimaManutencao: Date | null
-  proximaManutencao: Date | null
   observacoes: string | null
 }
 
 const VAZIO: MaquinaFormDefaults = {
   codigo: '',
   nome: '',
-  tipo: 'circular_medio',
   status: 'parada',
-  diametroPolegadas: null,
-  finura: null,
-  numAlimentadores: null,
-  capacidadeKgPorHora: null,
   operadorAtualId: null,
-  ultimaManutencao: null,
-  proximaManutencao: null,
   observacoes: null,
-}
-
-function dateToInput(d: Date | null): string {
-  if (!d) return ''
-  // Componente UTC -> YYYY-MM-DD
-  return d.toISOString().slice(0, 10)
 }
 
 function toFormValues(d: MaquinaFormDefaults): MaquinaInput {
   return {
     codigo: d.codigo ?? '',
     nome: d.nome ?? '',
-    tipo: d.tipo,
     status: d.status,
-    diametroPolegadas: d.diametroPolegadas ?? '',
-    finura: d.finura !== null ? String(d.finura) : '',
-    numAlimentadores: d.numAlimentadores !== null ? String(d.numAlimentadores) : '',
-    capacidadeKgPorHora: d.capacidadeKgPorHora ?? '',
     operadorAtualId: d.operadorAtualId ?? '',
-    ultimaManutencao: dateToInput(d.ultimaManutencao),
-    proximaManutencao: dateToInput(d.proximaManutencao),
     observacoes: d.observacoes ?? '',
   }
 }
@@ -139,7 +110,7 @@ export function MaquinaForm({
           <Field label="Código" id="codigo" error={errs.codigo?.message} required>
             <Input
               id="codigo"
-              placeholder="TC-19"
+              placeholder="M-01"
               autoComplete="off"
               disabled={isPending}
               {...form.register('codigo')}
@@ -149,34 +120,9 @@ export function MaquinaForm({
           <Field label="Nome" id="nome" error={errs.nome?.message} required>
             <Input
               id="nome"
-              placeholder="Tear Circular TC-19"
+              placeholder="Overlock M-01"
               disabled={isPending}
               {...form.register('nome')}
-            />
-          </Field>
-
-          <Field label="Tipo" id="tipo" error={errs.tipo?.message} required>
-            <Controller
-              control={form.control}
-              name="tipo"
-              render={({ field: ctl }) => (
-                <Select
-                  value={ctl.value}
-                  onValueChange={(v) => v && ctl.onChange(v)}
-                  disabled={isPending}
-                >
-                  <SelectTrigger id="tipo" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {maquinaTipoValues.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {TIPO_LABEL[t]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
             />
           </Field>
 
@@ -204,85 +150,7 @@ export function MaquinaForm({
               )}
             />
           </Field>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Especificações técnicas</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field
-            label="Diâmetro (polegadas)"
-            id="diametroPolegadas"
-            error={errs.diametroPolegadas?.message}
-          >
-            <Input
-              id="diametroPolegadas"
-              type="number"
-              inputMode="decimal"
-              step="0.5"
-              min="0"
-              placeholder="30"
-              disabled={isPending}
-              {...form.register('diametroPolegadas')}
-            />
-          </Field>
-
-          <Field label="Finura" id="finura" error={errs.finura?.message}>
-            <Input
-              id="finura"
-              type="number"
-              inputMode="numeric"
-              step="1"
-              min="0"
-              placeholder="22"
-              disabled={isPending}
-              {...form.register('finura')}
-            />
-          </Field>
-
-          <Field
-            label="Alimentadores"
-            id="numAlimentadores"
-            error={errs.numAlimentadores?.message}
-          >
-            <Input
-              id="numAlimentadores"
-              type="number"
-              inputMode="numeric"
-              step="1"
-              min="0"
-              placeholder="72"
-              disabled={isPending}
-              {...form.register('numAlimentadores')}
-            />
-          </Field>
-
-          <Field
-            label="Capacidade (kg/h)"
-            id="capacidadeKgPorHora"
-            error={errs.capacidadeKgPorHora?.message}
-          >
-            <Input
-              id="capacidadeKgPorHora"
-              type="number"
-              inputMode="decimal"
-              step="0.1"
-              min="0"
-              placeholder="12.5"
-              disabled={isPending}
-              {...form.register('capacidadeKgPorHora')}
-            />
-          </Field>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Operação</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
           <Field
             label="Operador atual"
             id="operadorAtualId"
@@ -316,34 +184,6 @@ export function MaquinaForm({
                   </SelectContent>
                 </Select>
               )}
-            />
-          </Field>
-
-          <div /> {/* placeholder pra grid */}
-
-          <Field
-            label="Última manutenção"
-            id="ultimaManutencao"
-            error={errs.ultimaManutencao?.message}
-          >
-            <Input
-              id="ultimaManutencao"
-              type="date"
-              disabled={isPending}
-              {...form.register('ultimaManutencao')}
-            />
-          </Field>
-
-          <Field
-            label="Próxima manutenção"
-            id="proximaManutencao"
-            error={errs.proximaManutencao?.message}
-          >
-            <Input
-              id="proximaManutencao"
-              type="date"
-              disabled={isPending}
-              {...form.register('proximaManutencao')}
             />
           </Field>
 
