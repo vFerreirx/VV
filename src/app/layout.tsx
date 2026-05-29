@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 
 import { PWARegister } from '@/components/pwa-register'
+import { SafeAreaSync } from '@/components/layout/safe-area-sync'
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
@@ -59,6 +60,7 @@ export default function RootLayout({
         >
           {children}
           <Toaster richColors closeButton position="top-right" />
+          <SafeAreaSync />
           <PWARegister />
         </ThemeProvider>
       </body>
