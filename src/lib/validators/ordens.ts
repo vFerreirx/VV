@@ -35,6 +35,9 @@ const dateOpt = z
     if (v === null || v instanceof Date) return v
     return new Date(`${v}T00:00:00.000Z`)
   })
+  // .optional(): a Server Action do Next descarta undefined, então a chave
+  // pode chegar AUSENTE — sem optional o Zod 4 falha com "expected nonoptional".
+  .optional()
 
 const uuidRegex =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -43,6 +46,7 @@ const uuidOpt = z
   .union([z.string(), z.null(), z.undefined()])
   .transform((v) => (v == null || v === '' ? null : v))
   .refine((v) => v === null || uuidRegex.test(v), 'ID inválido')
+  .optional()
 
 const stringOpt = (max: number, label = 'Texto') =>
   z
@@ -52,6 +56,7 @@ const stringOpt = (max: number, label = 'Texto') =>
       (v) => v === undefined || v.length <= max,
       `${label} muito longo`,
     )
+    .optional()
 
 // -----------------------------------------------------------------
 // Enums (espelham os enums do banco)

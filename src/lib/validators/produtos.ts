@@ -6,8 +6,10 @@ import { z } from 'zod'
 
 // Campo numérico opcional vindo de input HTML.
 // Tolerante a null/undefined porque o zodResolver no cliente já aplica
-// o transform e a Server Action recebe o valor pós-transform — sem isso
-// o re-parse falha com "expected string, received null".
+// o transform e a Server Action recebe o valor pós-transform.
+// `.optional()` no fim é essencial: a serialização da Server Action do
+// Next descarta valores undefined, então a CHAVE pode chegar AUSENTE ao
+// servidor — sem optional, o Zod 4 falha com "expected nonoptional".
 const numericOpt = z
   .union([z.string(), z.null(), z.undefined()])
   .transform((v) => (v == null || v === '' ? null : String(v)))
@@ -15,8 +17,9 @@ const numericOpt = z
     (v) => v === null || (!Number.isNaN(Number(v)) && Number(v) >= 0),
     'Informe um número válido (>= 0)',
   )
+  .optional()
 
-// String opcional → undefined quando vazia. Tolera null no input.
+// String opcional → undefined quando vazia. Tolera null e chave ausente.
 const stringOpt = (max: number, label = 'Texto') =>
   z
     .union([z.string(), z.null(), z.undefined()])
@@ -25,6 +28,7 @@ const stringOpt = (max: number, label = 'Texto') =>
       (v) => v === undefined || v.length <= max,
       `${label} muito longo`,
     )
+    .optional()
 
 // -----------------------------------------------------------------
 // Variação (inline na tela do produto)
@@ -44,7 +48,6 @@ export const variacaoSchema = z.object({
   cor: stringOpt(60, 'Cor'),
   modelo: stringOpt(80, 'Modelo'),
   tamanho: stringOpt(40, 'Tamanho'),
-  precoAdicional: numericOpt,
 })
 
 export type VariacaoInput = z.infer<typeof variacaoSchema>

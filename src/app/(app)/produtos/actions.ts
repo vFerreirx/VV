@@ -161,7 +161,6 @@ export async function criarProdutoAction(
           cor: v.cor ?? null,
           modelo: v.modelo ?? null,
           tamanho: v.tamanho ?? null,
-          precoAdicional: v.precoAdicional ?? '0',
         })),
       )
     }
@@ -259,7 +258,6 @@ export async function atualizarProdutoAction(
             cor: v.cor ?? null,
             modelo: v.modelo ?? null,
             tamanho: v.tamanho ?? null,
-            precoAdicional: v.precoAdicional ?? '0',
           })
           .where(eq(variacoesProduto.id, v.id))
       } else {
@@ -269,7 +267,6 @@ export async function atualizarProdutoAction(
           cor: v.cor ?? null,
           modelo: v.modelo ?? null,
           tamanho: v.tamanho ?? null,
-          precoAdicional: v.precoAdicional ?? '0',
         })
       }
     }

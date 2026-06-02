@@ -383,7 +383,6 @@ async function seedProdutos() {
         cor,
         modelo,
         tamanho,
-        precoAdicional: '0',
       })
     }
   }

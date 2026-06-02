@@ -53,7 +53,6 @@ export type ProdutoFormDefaults = {
     cor: string | null
     modelo: string | null
     tamanho: string | null
-    precoAdicional: string | null
   }>
 }
 
@@ -81,7 +80,6 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
       cor: v.cor ?? '',
       modelo: v.modelo ?? '',
       tamanho: v.tamanho ?? '',
-      precoAdicional: v.precoAdicional ?? '',
     })),
   }
 }
@@ -278,7 +276,6 @@ export function ProdutoForm({
                   cor: '',
                   modelo: '',
                   tamanho: '',
-                  precoAdicional: '',
                 })
               }
               disabled={isPending}
@@ -300,7 +297,7 @@ export function ProdutoForm({
                 return (
                   <div
                     key={field.id}
-                    className="grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_1fr_1fr_1fr_1fr_auto]"
+                    className="grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto]"
                   >
                     <Field
                       label="SKU"
@@ -502,22 +499,6 @@ export function ProdutoForm({
                             </SelectContent>
                           </Select>
                         )}
-                      />
-                    </Field>
-                    <Field
-                      label="Preço adicional (R$)"
-                      id={`variacoes.${index}.precoAdicional`}
-                      error={ve?.precoAdicional?.message}
-                    >
-                      <Input
-                        id={`variacoes.${index}.precoAdicional`}
-                        type="number"
-                        inputMode="decimal"
-                        step="0.01"
-                        min="0"
-                        placeholder="0.00"
-                        disabled={isPending}
-                        {...form.register(`variacoes.${index}.precoAdicional`)}
                       />
                     </Field>
                     <div className="flex items-end justify-end">

@@ -43,7 +43,6 @@ export default async function EditarProdutoPage({
       cor: v.cor,
       modelo: v.modelo,
       tamanho: v.tamanho,
-      precoAdicional: v.precoAdicional,
     })),
   }
 

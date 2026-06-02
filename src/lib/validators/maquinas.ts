@@ -1,21 +1,27 @@
 import { z } from 'zod'
 
 // Helpers (mesmo padrão de validators/produtos.ts).
+// `.optional()` no fim é essencial: a Server Action do Next descarta valores
+// undefined, então a chave pode chegar AUSENTE ao servidor — sem optional o
+// Zod 4 falha com "expected nonoptional, received undefined".
 const stringOpt = (max: number, label = 'Texto') =>
   z
-    .string()
-    .max(max, `${label} muito longo`)
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((v) => (v == null || v === '' ? undefined : v))
+    .refine((v) => v === undefined || v.length <= max, `${label} muito longo`)
     .optional()
-    .or(z.literal('').transform(() => undefined))
 
-// uuid opcional — '' significa nenhum operador atribuído.
+// uuid opcional — '' / null / ausente significam nenhum operador atribuído.
 const uuidOpt = z
-  .string()
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (v == null || v === '' ? null : v))
   .refine(
-    (v) => v === '' || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
+    (v) =>
+      v === null ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
     'ID inválido',
   )
-  .transform((v) => (v === '' ? null : v))
+  .optional()
 
 // -----------------------------------------------------------------
 // Máquina

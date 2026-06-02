@@ -46,7 +46,6 @@ export const variacoesProduto = pgTable(
     cor: text(),
     modelo: text(),
     tamanho: text(),
-    precoAdicional: numeric({ precision: 12, scale: 2 }).default('0'),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
