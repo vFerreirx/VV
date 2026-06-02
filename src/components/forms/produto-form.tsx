@@ -37,6 +37,17 @@ import {
   type ProdutoInput,
 } from '@/lib/validators/produtos'
 
+// Normaliza um texto pra virar segmento de SKU: sem acento, MAIÚSCULO,
+// espaços/símbolos viram hífen. Ex: "Âmbar Dourado" -> "AMBAR-DOURADO".
+function skuSegmento(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // remove acentos (marcas combinantes)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-') // não-alfanumérico vira hífen
+    .replace(/^-+|-+$/g, '') // tira hífens das pontas
+}
+
 // O componente recebe defaults serializáveis (string|null|boolean) que
 // vêm direto do banco — convertemos pra string nos inputs.
 export type ProdutoFormDefaults = {
@@ -323,7 +334,20 @@ export function ProdutoForm({
                         render={({ field: ctl }) => (
                           <Select
                             value={ctl.value ?? ''}
-                            onValueChange={(v) => ctl.onChange(v ?? '')}
+                            onValueChange={(v) => {
+                              const cor = v ?? ''
+                              ctl.onChange(cor)
+                              // Gera o SKU da variação a partir do SKU base do
+                              // produto + a cor em MAIÚSCULO. Ex: 095-PC-ROSE.
+                              const base = (form.getValues('sku') ?? '').trim()
+                              if (base && cor) {
+                                form.setValue(
+                                  `variacoes.${index}.skuVariacao`,
+                                  `${base}-${skuSegmento(cor)}`,
+                                  { shouldDirty: true, shouldValidate: true },
+                                )
+                              }
+                            }}
                             disabled={isPending}
                           >
                             <SelectTrigger
