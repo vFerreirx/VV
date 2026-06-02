@@ -3,6 +3,7 @@
 // as rotas e respeitar roles.
 
 import {
+  CalendarDays,
   Cog,
   Factory,
   KanbanSquare,
@@ -34,6 +35,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: '/maquinas', label: 'Máquinas', icon: Factory },
   { href: '/producao', label: 'Produção', icon: KanbanSquare },
   { href: '/ordens', label: 'Ordens', icon: ListChecks },
+  { href: '/calendario', label: 'Calendário', icon: CalendarDays },
   { href: '/usuarios', label: 'Usuários', icon: Users, roles: ['admin'] },
   { href: '/configuracoes', label: 'Configurações', icon: Cog },
 ]

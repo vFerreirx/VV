@@ -1,5 +1,6 @@
 import { listarNotificacoes } from '@/app/(app)/notificacoes/actions'
 import { Logo } from '@/components/brand/logo'
+import { GlobalSearch } from './global-search'
 import { MobileNav } from './mobile-nav'
 import { NotificationBell } from './notification-bell'
 import { ThemeToggle } from './theme-toggle'
@@ -25,6 +26,7 @@ export async function Topbar({
         </span>
       </div>
       <div className="ml-auto flex items-center gap-1">
+        <GlobalSearch />
         <NotificationBell initial={notificacoes} />
         <ThemeToggle />
         <UserMenu user={user} />

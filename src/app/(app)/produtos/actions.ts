@@ -13,7 +13,7 @@ import {
 } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireRole } from '@/lib/auth/require-auth'
+import { requireAuth, requireRole } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   produtos,
@@ -37,6 +37,42 @@ export type ActionResult<T = undefined> =
 // -----------------------------------------------------------------
 
 export type ProdutoListItem = Produto & { totalVariacoes: number }
+
+// -----------------------------------------------------------------
+// Busca rápida (topbar) — leve, por SKU ou nome
+// -----------------------------------------------------------------
+
+export type ProdutoBuscaItem = {
+  id: string
+  sku: string
+  nome: string
+  ativo: boolean
+}
+
+export async function buscarProdutosRapido(
+  q: string,
+): Promise<ProdutoBuscaItem[]> {
+  await requireAuth()
+  const termo = q.trim()
+  if (termo.length < 1) return []
+
+  return db
+    .select({
+      id: produtos.id,
+      sku: produtos.sku,
+      nome: produtos.nome,
+      ativo: produtos.ativo,
+    })
+    .from(produtos)
+    .where(
+      and(
+        isNull(produtos.deletedAt),
+        or(ilike(produtos.sku, `%${termo}%`), ilike(produtos.nome, `%${termo}%`)),
+      ),
+    )
+    .orderBy(desc(produtos.ativo), asc(produtos.sku))
+    .limit(8)
+}
 
 export async function listarProdutos(
   filtros: ProdutosFiltros = {},

@@ -3,7 +3,7 @@
 // pulo visual.
 
 import { Logo } from '@/components/brand/logo'
-import { Bell } from 'lucide-react'
+import { Bell, Search } from 'lucide-react'
 
 import { MobileNav } from '@/components/layout/mobile-nav'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,9 @@ export function TopbarFallback({
         </span>
       </div>
       <div className="ml-auto flex items-center gap-1">
+        <Button variant="ghost" size="icon-sm" aria-label="Buscar" disabled>
+          <Search />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"
