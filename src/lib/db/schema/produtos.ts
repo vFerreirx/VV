@@ -1,14 +1,22 @@
 import { sql } from 'drizzle-orm'
-import { boolean, index, numeric, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import {
+  boolean,
+  index,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core'
 
-// Catálogo de produtos da malharia (malhas).
-// Versão enxuta: só os campos essenciais. Preços/custos/estoque mínimo
-// foram removidos — virão depois quando o cálculo de margem for definido.
+// Catálogo de produtos. SKU é único apenas entre produtos NÃO excluídos
+// (índice parcial) — assim o SKU de um produto excluído pode ser reusado.
 export const produtos = pgTable(
   'produtos',
   {
     id: uuid().primaryKey().defaultRandom(),
-    sku: text().notNull().unique(),
+    sku: text().notNull(),
     nome: text().notNull(),
     descricao: text(),
 
@@ -30,7 +38,12 @@ export const produtos = pgTable(
       .$onUpdate(() => sql`now()`),
     deletedAt: timestamp({ withTimezone: true }),
   },
-  (table) => [index('produtos_ativo_idx').on(table.ativo)],
+  (table) => [
+    index('produtos_ativo_idx').on(table.ativo),
+    uniqueIndex('produtos_sku_ativo_uidx')
+      .on(table.sku)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
 )
 
 export const variacoesProduto = pgTable(
@@ -40,7 +53,7 @@ export const variacoesProduto = pgTable(
     produtoId: uuid()
       .notNull()
       .references(() => produtos.id, { onDelete: 'cascade' }),
-    skuVariacao: text().notNull().unique(),
+    skuVariacao: text().notNull(),
     // Texto armazenado (nome do item do catálogo) — preserva histórico
     // mesmo se a cor/modelo/tamanho for renomeado ou inativado.
     cor: text(),
@@ -52,8 +65,16 @@ export const variacoesProduto = pgTable(
       .notNull()
       .defaultNow()
       .$onUpdate(() => sql`now()`),
+    // Soft delete: acompanha o do produto pai. A linha continua existindo
+    // (referências de OPs/movimentações intactas), mas libera o SKU.
+    deletedAt: timestamp({ withTimezone: true }),
   },
-  (table) => [index('variacoes_produto_id_idx').on(table.produtoId)],
+  (table) => [
+    index('variacoes_produto_id_idx').on(table.produtoId),
+    uniqueIndex('variacoes_sku_ativo_uidx')
+      .on(table.skuVariacao)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
 )
 
 export type Produto = typeof produtos.$inferSelect

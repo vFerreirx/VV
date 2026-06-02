@@ -92,11 +92,12 @@ export async function listarProdutos(
   if (ativo === 'true') conditions.push(eq(produtos.ativo, true))
   else if (ativo === 'false') conditions.push(eq(produtos.ativo, false))
 
-  // Conta variações via subquery agregada — evita N+1.
+  // Conta variações via subquery agregada — evita N+1. Só as ativas.
   const totalVariacoesSql = sql<number>`(
     SELECT COUNT(*)::int
     FROM ${variacoesProduto}
     WHERE ${variacoesProduto.produtoId} = ${produtos.id}
+      AND ${variacoesProduto.deletedAt} IS NULL
   )`.as('total_variacoes')
 
   const rows = await db
@@ -142,7 +143,12 @@ export async function obterProduto(
   const variacoes = await db
     .select()
     .from(variacoesProduto)
-    .where(eq(variacoesProduto.produtoId, id))
+    .where(
+      and(
+        eq(variacoesProduto.produtoId, id),
+        isNull(variacoesProduto.deletedAt),
+      ),
+    )
     .orderBy(asc(variacoesProduto.skuVariacao))
 
   return { ...produto, variacoes }
@@ -166,11 +172,11 @@ export async function criarProdutoAction(
   }
   const data = parsed.data
 
-  // SKU único — checa antes pra dar mensagem amigável.
+  // SKU único entre produtos ATIVOS (excluídos liberam o SKU).
   const existing = await db
     .select({ id: produtos.id })
     .from(produtos)
-    .where(eq(produtos.sku, data.sku))
+    .where(and(eq(produtos.sku, data.sku), isNull(produtos.deletedAt)))
     .limit(1)
   if (existing.length > 0) {
     return { success: false, error: `Já existe um produto com SKU "${data.sku}"` }
@@ -346,18 +352,29 @@ export async function duplicarProdutoAction(
   const variacoes = await db
     .select()
     .from(variacoesProduto)
-    .where(eq(variacoesProduto.produtoId, id))
+    .where(
+      and(
+        eq(variacoesProduto.produtoId, id),
+        isNull(variacoesProduto.deletedAt),
+      ),
+    )
     .orderBy(asc(variacoesProduto.skuVariacao))
 
-  // Conjuntos de SKUs já existentes pra garantir unicidade.
+  // Conjuntos de SKUs ATIVOS já existentes pra garantir unicidade.
   const skusProduto = new Set(
-    (await db.select({ sku: produtos.sku }).from(produtos)).map((r) => r.sku),
+    (
+      await db
+        .select({ sku: produtos.sku })
+        .from(produtos)
+        .where(isNull(produtos.deletedAt))
+    ).map((r) => r.sku),
   )
   const skusVariacao = new Set(
     (
       await db
         .select({ sku: variacoesProduto.skuVariacao })
         .from(variacoesProduto)
+        .where(isNull(variacoesProduto.deletedAt))
     ).map((r) => r.sku),
   )
 
@@ -416,10 +433,23 @@ export async function excluirProdutoAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Produto não encontrado' }
   }
 
-  await db
-    .update(produtos)
-    .set({ deletedAt: new Date(), ativo: false })
-    .where(eq(produtos.id, id))
+  // Soft-delete do produto + suas variações (libera os SKUs pra reuso).
+  const agora = new Date()
+  await db.transaction(async (tx) => {
+    await tx
+      .update(produtos)
+      .set({ deletedAt: agora, ativo: false })
+      .where(eq(produtos.id, id))
+    await tx
+      .update(variacoesProduto)
+      .set({ deletedAt: agora })
+      .where(
+        and(
+          eq(variacoesProduto.produtoId, id),
+          isNull(variacoesProduto.deletedAt),
+        ),
+      )
+  })
 
   revalidatePath('/produtos')
   return { success: true, message: 'Produto excluído' }
@@ -445,11 +475,27 @@ export async function excluirMultiplosProdutosAction(
     return { success: false, error: 'Nenhum ID válido na seleção' }
   }
 
-  const result = await db
-    .update(produtos)
-    .set({ deletedAt: new Date(), ativo: false })
-    .where(and(inArray(produtos.id, idsValidos), isNull(produtos.deletedAt)))
-    .returning({ id: produtos.id })
+  const agora = new Date()
+  const result = await db.transaction(async (tx) => {
+    const r = await tx
+      .update(produtos)
+      .set({ deletedAt: agora, ativo: false })
+      .where(and(inArray(produtos.id, idsValidos), isNull(produtos.deletedAt)))
+      .returning({ id: produtos.id })
+    const ids = r.map((x) => x.id)
+    if (ids.length > 0) {
+      await tx
+        .update(variacoesProduto)
+        .set({ deletedAt: agora })
+        .where(
+          and(
+            inArray(variacoesProduto.produtoId, ids),
+            isNull(variacoesProduto.deletedAt),
+          ),
+        )
+    }
+    return r
+  })
 
   revalidatePath('/produtos')
   return {
