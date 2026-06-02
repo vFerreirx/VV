@@ -1,10 +1,10 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Sparkles, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import {
   Controller,
   useFieldArray,
@@ -20,6 +20,14 @@ import {
 } from '@/app/(app)/produtos/actions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -32,6 +40,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { Cor, Modelo, Tamanho } from '@/lib/db/schema'
+import { cn } from '@/lib/utils'
 import {
   produtoSchema,
   type ProdutoInput,
@@ -147,6 +156,20 @@ export function ProdutoForm({
   })
 
   const variacoes = useFieldArray({ control: form.control, name: 'variacoes' })
+
+  // Gerador de variações em massa.
+  const [gerarOpen, setGerarOpen] = useState(false)
+  const skuAtual = useWatch({ control: form.control, name: 'sku' })
+  const variacoesAtuais = useWatch({ control: form.control, name: 'variacoes' })
+  const skusExistentes = useMemo(
+    () =>
+      new Set(
+        (variacoesAtuais ?? [])
+          .map((v) => v?.skuVariacao)
+          .filter((s): s is string => Boolean(s)),
+      ),
+    [variacoesAtuais],
+  )
 
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
@@ -277,23 +300,35 @@ export function ProdutoForm({
                 Cor, modelo e tamanho. Cada variação tem seu próprio SKU.
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                variacoes.append({
-                  skuVariacao: '',
-                  cor: '',
-                  modelo: '',
-                  tamanho: '',
-                })
-              }
-              disabled={isPending}
-            >
-              <Plus />
-              Adicionar variação
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="default"
+                size="sm"
+                onClick={() => setGerarOpen(true)}
+                disabled={isPending}
+              >
+                <Sparkles />
+                Gerar variações
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  variacoes.append({
+                    skuVariacao: '',
+                    cor: '',
+                    modelo: '',
+                    tamanho: '',
+                  })
+                }
+                disabled={isPending}
+              >
+                <Plus />
+                Adicionar uma
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -558,7 +593,208 @@ export function ProdutoForm({
           {isPending ? 'Salvando…' : isEdit ? 'Salvar alterações' : 'Criar produto'}
         </Button>
       </div>
+
+      <GerarVariacoesDialog
+        open={gerarOpen}
+        onClose={() => setGerarOpen(false)}
+        cores={cores}
+        modelos={modelos}
+        tamanhos={tamanhos}
+        baseSku={skuAtual ?? ''}
+        existentes={skusExistentes}
+        onGerar={(novas) => {
+          for (const v of novas) variacoes.append(v)
+        }}
+      />
     </form>
+  )
+}
+
+// -----------------------------------------------------------------
+// Gerador de variações em massa (cor × modelo × tamanho)
+// -----------------------------------------------------------------
+
+type NovaVariacao = {
+  skuVariacao: string
+  cor: string
+  modelo: string
+  tamanho: string
+}
+
+function GerarVariacoesDialog({
+  open,
+  onClose,
+  cores,
+  modelos,
+  tamanhos,
+  baseSku,
+  existentes,
+  onGerar,
+}: {
+  open: boolean
+  onClose: () => void
+  cores: Cor[]
+  modelos: Modelo[]
+  tamanhos: Tamanho[]
+  baseSku: string
+  existentes: Set<string>
+  onGerar: (novas: NovaVariacao[]) => void
+}) {
+  const [coresSel, setCoresSel] = useState<string[]>([])
+  const [modelosSel, setModelosSel] = useState<string[]>([])
+  const [tamanhosSel, setTamanhosSel] = useState<string[]>([])
+
+  function toggle(
+    lista: string[],
+    set: (v: string[]) => void,
+    nome: string,
+  ) {
+    set(lista.includes(nome) ? lista.filter((x) => x !== nome) : [...lista, nome])
+  }
+
+  // Combinações (produto cartesiano). Dimensão vazia = um único valor undefined,
+  // pra não multiplicar. SKU = base-COR (+ modelo/tamanho só se houver mais de um).
+  const novas = useMemo<NovaVariacao[]>(() => {
+    const base = baseSku.trim()
+    const corList = coresSel.length ? coresSel : [undefined]
+    const modList = modelosSel.length ? modelosSel : [undefined]
+    const tamList = tamanhosSel.length ? tamanhosSel : [undefined]
+    const usados = new Set(existentes)
+    const out: NovaVariacao[] = []
+    for (const cor of corList) {
+      for (const mod of modList) {
+        for (const tam of tamList) {
+          const segs: string[] = []
+          if (cor) segs.push(skuSegmento(cor))
+          if (modList.length > 1 && mod) segs.push(skuSegmento(mod))
+          if (tamList.length > 1 && tam) segs.push(skuSegmento(tam))
+          const sku = base ? [base, ...segs].join('-') : segs.join('-')
+          if (!sku || usados.has(sku)) continue
+          usados.add(sku)
+          out.push({
+            skuVariacao: sku,
+            cor: cor ?? '',
+            modelo: mod ?? '',
+            tamanho: tam ?? '',
+          })
+        }
+      }
+    }
+    return out
+  }, [coresSel, modelosSel, tamanhosSel, baseSku, existentes])
+
+  function fechar() {
+    setCoresSel([])
+    setModelosSel([])
+    setTamanhosSel([])
+    onClose()
+  }
+
+  function gerar() {
+    if (novas.length === 0) return
+    onGerar(novas)
+    fechar()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && fechar()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Gerar variações</DialogTitle>
+          <DialogDescription>
+            Marque as cores, o modelo e o tamanho. O sistema cria todas as
+            combinações com o SKU já pronto.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[55vh] space-y-4 overflow-y-auto">
+          <SecaoOpcoes
+            titulo="Cores"
+            itens={cores.filter((c) => c.ativo).map((c) => c.nome)}
+            selecionados={coresSel}
+            onToggle={(n) => toggle(coresSel, setCoresSel, n)}
+            vazio="Nenhuma cor cadastrada."
+          />
+          <SecaoOpcoes
+            titulo="Modelo"
+            itens={modelos.filter((m) => m.ativo).map((m) => m.nome)}
+            selecionados={modelosSel}
+            onToggle={(n) => toggle(modelosSel, setModelosSel, n)}
+            vazio="Nenhum modelo cadastrado."
+          />
+          <SecaoOpcoes
+            titulo="Tamanho"
+            itens={tamanhos.filter((t) => t.ativo).map((t) => t.nome)}
+            selecionados={tamanhosSel}
+            onToggle={(n) => toggle(tamanhosSel, setTamanhosSel, n)}
+            vazio="Nenhum tamanho cadastrado."
+          />
+        </div>
+
+        <DialogFooter>
+          <span className="text-muted-foreground mr-auto self-center text-sm">
+            {novas.length} variaç{novas.length === 1 ? 'ão' : 'ões'} a gerar
+          </span>
+          <Button variant="outline" onClick={fechar}>
+            Cancelar
+          </Button>
+          <Button onClick={gerar} disabled={novas.length === 0}>
+            Gerar{novas.length > 0 ? ` ${novas.length}` : ''}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function SecaoOpcoes({
+  titulo,
+  itens,
+  selecionados,
+  onToggle,
+  vazio,
+}: {
+  titulo: string
+  itens: string[]
+  selecionados: string[]
+  onToggle: (nome: string) => void
+  vazio: string
+}) {
+  return (
+    <div>
+      <p className="mb-1.5 text-sm font-medium">
+        {titulo}{' '}
+        {selecionados.length > 0 && (
+          <span className="text-muted-foreground font-normal">
+            ({selecionados.length})
+          </span>
+        )}
+      </p>
+      {itens.length === 0 ? (
+        <p className="text-muted-foreground text-xs">{vazio}</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {itens.map((nome) => {
+            const ativo = selecionados.includes(nome)
+            return (
+              <button
+                key={nome}
+                type="button"
+                onClick={() => onToggle(nome)}
+                className={cn(
+                  'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                  ativo
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'hover:bg-accent',
+                )}
+              >
+                {nome}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
