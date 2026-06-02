@@ -1,12 +1,13 @@
 'use client'
 
-import { Pencil, Search, Trash2 } from 'lucide-react'
+import { Copy, Pencil, Search, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
+  duplicarProdutoAction,
   excluirMultiplosProdutosAction,
   excluirProdutoAction,
   type ProdutoListItem,
@@ -368,6 +369,7 @@ function RowActions({ produto }: { produto: ProdutoListItem }) {
   const router = useRouter()
   const [confirmando, setConfirmando] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [duplicando, startDuplicar] = useTransition()
 
   function excluir() {
     startTransition(async () => {
@@ -382,6 +384,23 @@ function RowActions({ produto }: { produto: ProdutoListItem }) {
     })
   }
 
+  function duplicar() {
+    startDuplicar(async () => {
+      const result = await duplicarProdutoAction(produto.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'Produto duplicado')
+      // Abre o novo produto na edição pra ajustar (ex: trocar o tamanho).
+      if ('data' in result && result.data) {
+        router.push(`/produtos/${result.data.id}`)
+      } else {
+        router.refresh()
+      }
+    })
+  }
+
   return (
     <div className="flex items-center justify-end gap-1">
       <Button
@@ -391,6 +410,16 @@ function RowActions({ produto }: { produto: ProdutoListItem }) {
         aria-label="Editar"
       >
         <Pencil />
+      </Button>
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        onClick={duplicar}
+        disabled={duplicando}
+        aria-label="Duplicar"
+        title="Duplicar produto com as variações"
+      >
+        <Copy />
       </Button>
       <Button
         size="icon-sm"

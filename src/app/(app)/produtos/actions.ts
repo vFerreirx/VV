@@ -314,6 +314,92 @@ export async function atualizarProdutoAction(
 }
 
 // -----------------------------------------------------------------
+// Duplicar (copia produto + variações com SKUs novos)
+// -----------------------------------------------------------------
+
+// Gera um SKU único a partir de um base, registrando no conjunto usado.
+function gerarSkuUnico(base: string, usados: Set<string>): string {
+  let cand = base
+  let n = 2
+  while (usados.has(cand)) {
+    cand = `${base}-${n}`
+    n++
+  }
+  usados.add(cand)
+  return cand
+}
+
+export async function duplicarProdutoAction(
+  id: string,
+): Promise<ActionResult<{ id: string }>> {
+  await requireRole(['admin', 'gerente_producao'])
+
+  const [orig] = await db
+    .select()
+    .from(produtos)
+    .where(and(eq(produtos.id, id), isNull(produtos.deletedAt)))
+    .limit(1)
+  if (!orig) {
+    return { success: false, error: 'Produto não encontrado' }
+  }
+
+  const variacoes = await db
+    .select()
+    .from(variacoesProduto)
+    .where(eq(variacoesProduto.produtoId, id))
+    .orderBy(asc(variacoesProduto.skuVariacao))
+
+  // Conjuntos de SKUs já existentes pra garantir unicidade.
+  const skusProduto = new Set(
+    (await db.select({ sku: produtos.sku }).from(produtos)).map((r) => r.sku),
+  )
+  const skusVariacao = new Set(
+    (
+      await db
+        .select({ sku: variacoesProduto.skuVariacao })
+        .from(variacoesProduto)
+    ).map((r) => r.sku),
+  )
+
+  const novoSku = gerarSkuUnico(`${orig.sku}-COPIA`, skusProduto)
+
+  const novoId = await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(produtos)
+      .values({
+        sku: novoSku,
+        nome: `${orig.nome} (cópia)`,
+        descricao: orig.descricao,
+        comprimentoCm: orig.comprimentoCm,
+        larguraCm: orig.larguraCm,
+        ativo: orig.ativo,
+      })
+      .returning({ id: produtos.id })
+
+    if (variacoes.length > 0) {
+      await tx.insert(variacoesProduto).values(
+        variacoes.map((v) => ({
+          produtoId: inserted!.id,
+          skuVariacao: gerarSkuUnico(`${v.skuVariacao}-COPIA`, skusVariacao),
+          cor: v.cor,
+          modelo: v.modelo,
+          tamanho: v.tamanho,
+        })),
+      )
+    }
+
+    return inserted!.id
+  })
+
+  revalidatePath('/produtos')
+  return {
+    success: true,
+    data: { id: novoId },
+    message: `Produto duplicado (${variacoes.length} variaç${variacoes.length === 1 ? 'ão' : 'ões'})`,
+  }
+}
+
+// -----------------------------------------------------------------
 // Soft delete
 // -----------------------------------------------------------------
 
