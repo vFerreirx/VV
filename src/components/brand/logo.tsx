@@ -102,13 +102,15 @@ function Wordmark({
     <span
       role="img"
       aria-label={ariaLabel}
-      className={cn('inline-flex flex-col leading-none', className)}
+      className={cn('inline-flex flex-col items-center leading-none', className)}
     >
-      <span className="font-heading text-current font-medium tracking-[0.22em] uppercase">
+      {/* pl compensa o espaço extra que o letter-spacing adiciona à direita,
+          centralizando os glifos de fato (senão a linha fica deslocada). */}
+      <span className="font-heading text-current font-medium tracking-[0.22em] pl-[0.22em] uppercase">
         Vanvest
       </span>
       {showTagline && (
-        <span className="text-muted-foreground mt-0.5 text-[0.55em] tracking-[0.32em] uppercase">
+        <span className="text-muted-foreground mt-0.5 text-[0.55em] tracking-[0.32em] pl-[0.32em] uppercase">
           Home Decor
         </span>
       )}
