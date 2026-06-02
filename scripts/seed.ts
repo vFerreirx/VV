@@ -336,76 +336,16 @@ const MODELOS = MODELOS_BASE.map((m) => m.nome)
 const TAMANHOS = TAMANHOS_BASE.map((t) => t.nome)
 
 const PRODUTOS_BASE = [
-  {
-    sku: 'MAL-001',
-    nome: 'Malha Cotton 30/1',
-    gramatura: '180.00',
-    larguraCm: '180.00',
-    rendimentoKgPorMetro: '0.3240',
-  },
-  {
-    sku: 'MAL-002',
-    nome: 'Malha PV (Poliéster/Viscose)',
-    gramatura: '160.00',
-    larguraCm: '180.00',
-    rendimentoKgPorMetro: '0.2880',
-  },
-  {
-    sku: 'MAL-003',
-    nome: 'Malha Suplex',
-    gramatura: '220.00',
-    larguraCm: '160.00',
-    rendimentoKgPorMetro: '0.3520',
-  },
-  {
-    sku: 'MAL-004',
-    nome: 'Malha Ribana 1x1',
-    gramatura: '210.00',
-    larguraCm: '90.00',
-    rendimentoKgPorMetro: '0.1890',
-  },
-  {
-    sku: 'MAL-005',
-    nome: 'Malha Moletom Felpado',
-    gramatura: '290.00',
-    larguraCm: '180.00',
-    rendimentoKgPorMetro: '0.5220',
-  },
-  {
-    sku: 'MAL-006',
-    nome: 'Malha Piquet',
-    gramatura: '200.00',
-    larguraCm: '180.00',
-    rendimentoKgPorMetro: '0.3600',
-  },
-  {
-    sku: 'MAL-007',
-    nome: 'Malha Visco-Elastano',
-    gramatura: '170.00',
-    larguraCm: '170.00',
-    rendimentoKgPorMetro: '0.2890',
-  },
-  {
-    sku: 'MAL-008',
-    nome: 'Malha Crepe',
-    gramatura: '180.00',
-    larguraCm: '160.00',
-    rendimentoKgPorMetro: '0.2880',
-  },
-  {
-    sku: 'MAL-009',
-    nome: 'Malha Helanca',
-    gramatura: '150.00',
-    larguraCm: '180.00',
-    rendimentoKgPorMetro: '0.2700',
-  },
-  {
-    sku: 'MAL-010',
-    nome: 'Malha Canelada',
-    gramatura: '230.00',
-    larguraCm: '90.00',
-    rendimentoKgPorMetro: '0.2070',
-  },
+  { sku: 'PES-001', nome: 'Peseira Solteiro', comprimentoCm: '160.00', larguraCm: '50.00' },
+  { sku: 'PES-002', nome: 'Peseira Casal', comprimentoCm: '200.00', larguraCm: '50.00' },
+  { sku: 'PES-003', nome: 'Peseira Queen', comprimentoCm: '220.00', larguraCm: '60.00' },
+  { sku: 'PES-004', nome: 'Peseira King', comprimentoCm: '240.00', larguraCm: '60.00' },
+  { sku: 'CAP-001', nome: 'Capa de Almofada 45x45', comprimentoCm: '45.00', larguraCm: '45.00' },
+  { sku: 'CAP-002', nome: 'Capa de Almofada 50x50', comprimentoCm: '50.00', larguraCm: '50.00' },
+  { sku: 'CAP-003', nome: 'Capa de Almofada 60x60', comprimentoCm: '60.00', larguraCm: '60.00' },
+  { sku: 'CAP-004', nome: 'Capa de Almofada Retangular', comprimentoCm: '50.00', larguraCm: '30.00' },
+  { sku: 'PES-005', nome: 'Peseira Super King', comprimentoCm: '260.00', larguraCm: '70.00' },
+  { sku: 'CAP-005', nome: 'Capa de Almofada Lombar', comprimentoCm: '55.00', larguraCm: '35.00' },
 ] as const
 
 async function seedProdutos() {

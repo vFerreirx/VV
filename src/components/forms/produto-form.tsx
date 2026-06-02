@@ -44,9 +44,8 @@ export type ProdutoFormDefaults = {
   sku: string
   nome: string
   descricao: string | null
-  gramatura: string | null
+  comprimentoCm: string | null
   larguraCm: string | null
-  rendimentoKgPorMetro: string | null
   ativo: boolean
   variacoes: Array<{
     id?: string
@@ -62,9 +61,8 @@ const VAZIO: ProdutoFormDefaults = {
   sku: '',
   nome: '',
   descricao: null,
-  gramatura: null,
+  comprimentoCm: null,
   larguraCm: null,
-  rendimentoKgPorMetro: null,
   ativo: true,
   variacoes: [],
 }
@@ -74,9 +72,8 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
     sku: d.sku ?? '',
     nome: d.nome ?? '',
     descricao: d.descricao ?? '',
-    gramatura: d.gramatura ?? '',
+    comprimentoCm: d.comprimentoCm ?? '',
     larguraCm: d.larguraCm ?? '',
-    rendimentoKgPorMetro: d.rendimentoKgPorMetro ?? '',
     ativo: d.ativo ?? true,
     variacoes: d.variacoes.map((v) => ({
       id: v.id,
@@ -227,19 +224,23 @@ export function ProdutoForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Características técnicas</CardTitle>
+          <CardTitle>Dimensões</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-3">
-          <Field label="Gramatura (g/m²)" id="gramatura" error={errs.gramatura?.message}>
+        <CardContent className="grid gap-4 md:grid-cols-2">
+          <Field
+            label="Comprimento (cm)"
+            id="comprimentoCm"
+            error={errs.comprimentoCm?.message}
+          >
             <Input
-              id="gramatura"
+              id="comprimentoCm"
               type="number"
               inputMode="decimal"
               step="0.01"
               min="0"
-              placeholder="180.00"
+              placeholder="200.00"
               disabled={isPending}
-              {...form.register('gramatura')}
+              {...form.register('comprimentoCm')}
             />
           </Field>
 
@@ -250,27 +251,9 @@ export function ProdutoForm({
               inputMode="decimal"
               step="0.01"
               min="0"
-              placeholder="180.00"
+              placeholder="50.00"
               disabled={isPending}
               {...form.register('larguraCm')}
-            />
-          </Field>
-
-          <Field
-            label="Rendimento (kg/m)"
-            id="rendimentoKgPorMetro"
-            error={errs.rendimentoKgPorMetro?.message}
-            hint="Usado para calcular metragem da OP a partir do peso"
-          >
-            <Input
-              id="rendimentoKgPorMetro"
-              type="number"
-              inputMode="decimal"
-              step="0.0001"
-              min="0"
-              placeholder="0.3240"
-              disabled={isPending}
-              {...form.register('rendimentoKgPorMetro')}
             />
           </Field>
         </CardContent>

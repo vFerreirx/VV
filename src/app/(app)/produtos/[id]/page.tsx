@@ -34,9 +34,8 @@ export default async function EditarProdutoPage({
     sku: produto.sku,
     nome: produto.nome,
     descricao: produto.descricao,
-    gramatura: produto.gramatura,
+    comprimentoCm: produto.comprimentoCm,
     larguraCm: produto.larguraCm,
-    rendimentoKgPorMetro: produto.rendimentoKgPorMetro,
     ativo: produto.ativo,
     variacoes: produto.variacoes.map((v) => ({
       id: v.id,

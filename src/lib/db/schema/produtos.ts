@@ -12,12 +12,10 @@ export const produtos = pgTable(
     nome: text().notNull(),
     descricao: text(),
 
-    // gramatura em g/m²
-    gramatura: numeric({ precision: 8, scale: 2 }),
-    // largura útil da malha em cm
+    // comprimento da peça em cm
+    comprimentoCm: numeric({ precision: 8, scale: 2 }),
+    // largura da peça em cm
     larguraCm: numeric({ precision: 8, scale: 2 }),
-    // rendimento em kg por metro linear — usado pra calcular metragem da OP
-    rendimentoKgPorMetro: numeric({ precision: 10, scale: 4 }),
 
     // Identificadores externos (preenchidos quando integrar com ML/Shopee)
     mlbId: text(),

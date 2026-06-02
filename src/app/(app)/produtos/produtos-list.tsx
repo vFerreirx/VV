@@ -183,7 +183,7 @@ export function ProdutosList({
                   )}
                   <TableHead>SKU</TableHead>
                   <TableHead>Nome</TableHead>
-                  <TableHead className="text-right">Gramatura</TableHead>
+                  <TableHead className="text-right">Comprimento</TableHead>
                   <TableHead className="text-right">Largura</TableHead>
                   <TableHead className="text-right">Variações</TableHead>
                   <TableHead>Status</TableHead>
@@ -215,7 +215,7 @@ export function ProdutosList({
                       </Link>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-right tabular-nums">
-                      {p.gramatura ? `${p.gramatura} g/m²` : '—'}
+                      {p.comprimentoCm ? `${p.comprimentoCm} cm` : '—'}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-right tabular-nums">
                       {p.larguraCm ? `${p.larguraCm} cm` : '—'}
@@ -270,9 +270,9 @@ export function ProdutosList({
                   </Badge>
                 </div>
                 <div className="text-muted-foreground mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <div>Gramatura</div>
+                  <div>Comprimento</div>
                   <div className="text-right text-foreground tabular-nums">
-                    {p.gramatura ? `${p.gramatura} g/m²` : '—'}
+                    {p.comprimentoCm ? `${p.comprimentoCm} cm` : '—'}
                   </div>
                   <div>Largura</div>
                   <div className="text-right text-foreground tabular-nums">

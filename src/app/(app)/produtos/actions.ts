@@ -69,9 +69,8 @@ export async function listarProdutos(
       sku: produtos.sku,
       nome: produtos.nome,
       descricao: produtos.descricao,
-      gramatura: produtos.gramatura,
+      comprimentoCm: produtos.comprimentoCm,
       larguraCm: produtos.larguraCm,
-      rendimentoKgPorMetro: produtos.rendimentoKgPorMetro,
       mlbId: produtos.mlbId,
       shopeeItemId: produtos.shopeeItemId,
       ativo: produtos.ativo,
@@ -148,9 +147,8 @@ export async function criarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
-        gramatura: data.gramatura,
+        comprimentoCm: data.comprimentoCm,
         larguraCm: data.larguraCm,
-        rendimentoKgPorMetro: data.rendimentoKgPorMetro,
         ativo: data.ativo,
       })
       .returning({ id: produtos.id })
@@ -226,9 +224,8 @@ export async function atualizarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
-        gramatura: data.gramatura,
+        comprimentoCm: data.comprimentoCm,
         larguraCm: data.larguraCm,
-        rendimentoKgPorMetro: data.rendimentoKgPorMetro,
         ativo: data.ativo,
       })
       .where(eq(produtos.id, id))

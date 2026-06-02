@@ -65,10 +65,9 @@ export const produtoSchema = z.object({
   nome: z.string().min(2, 'Nome obrigatório').max(120, 'Nome muito longo'),
   descricao: stringOpt(500, 'Descrição'),
 
-  // Características técnicas (todas opcionais; preenchidas conforme cadastro)
-  gramatura: numericOpt,
+  // Dimensões da peça em cm (opcionais; preenchidas conforme cadastro)
+  comprimentoCm: numericOpt,
   larguraCm: numericOpt,
-  rendimentoKgPorMetro: numericOpt,
 
   ativo: z.boolean().default(true),
 
