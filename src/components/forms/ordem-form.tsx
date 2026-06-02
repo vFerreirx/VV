@@ -119,7 +119,43 @@ export function OrdemForm({
     [produtos, produtoIdSelecionado],
   )
 
-  const variacoesDisponiveis = produtoSelecionado?.variacoes ?? []
+  const variacoesDisponiveis = useMemo(
+    () => produtoSelecionado?.variacoes ?? [],
+    [produtoSelecionado],
+  )
+
+  // Mapas valor→rótulo: o Base UI Select usa `items` pra exibir o NOME do
+  // item selecionado no gatilho (senão mostraria o valor cru — o ID).
+  const produtosItems = useMemo(
+    () => produtos.map((p) => ({ value: p.id, label: `${p.sku} — ${p.nome}` })),
+    [produtos],
+  )
+  const variacoesItems = useMemo(
+    () => [
+      { value: 'nenhuma', label: 'Sem variação' },
+      ...variacoesDisponiveis.map((v) => ({
+        value: v.id,
+        label:
+          [v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') ||
+          v.skuVariacao,
+      })),
+    ],
+    [variacoesDisponiveis],
+  )
+  const maquinasItems = useMemo(
+    () => [
+      { value: 'nenhuma', label: 'Sem máquina' },
+      ...maquinas.map((m) => ({ value: m.id, label: `${m.codigo} — ${m.nome}` })),
+    ],
+    [maquinas],
+  )
+  const responsaveisItems = useMemo(
+    () => [
+      { value: 'nenhum', label: 'Sem responsável' },
+      ...responsaveis.map((r) => ({ value: r.id, label: r.nome })),
+    ],
+    [responsaveis],
+  )
 
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
@@ -161,6 +197,7 @@ export function OrdemForm({
               name="produtoId"
               render={({ field: ctl }) => (
                 <Select
+                  items={produtosItems}
                   value={ctl.value || ''}
                   onValueChange={(v) => {
                     ctl.onChange(v ?? '')
@@ -204,6 +241,7 @@ export function OrdemForm({
               name="variacaoId"
               render={({ field: ctl }) => (
                 <Select
+                  items={variacoesItems}
                   value={ctl.value || 'nenhuma'}
                   onValueChange={(v) => ctl.onChange(v === 'nenhuma' ? '' : v)}
                   disabled={
@@ -266,6 +304,7 @@ export function OrdemForm({
               name="maquinaId"
               render={({ field: ctl }) => (
                 <Select
+                  items={maquinasItems}
                   value={ctl.value || 'nenhuma'}
                   onValueChange={(v) => ctl.onChange(v === 'nenhuma' ? '' : v)}
                   disabled={isPending}
@@ -296,6 +335,7 @@ export function OrdemForm({
               name="responsavelId"
               render={({ field: ctl }) => (
                 <Select
+                  items={responsaveisItems}
                   value={ctl.value || 'nenhum'}
                   onValueChange={(v) => ctl.onChange(v === 'nenhum' ? '' : v)}
                   disabled={isPending}
@@ -327,6 +367,7 @@ export function OrdemForm({
               name="canalDestino"
               render={({ field: ctl }) => (
                 <Select
+                  items={CANAL_LABEL}
                   value={ctl.value}
                   onValueChange={(v) => v && ctl.onChange(v)}
                   disabled={isPending}
@@ -357,6 +398,7 @@ export function OrdemForm({
               name="prioridade"
               render={({ field: ctl }) => (
                 <Select
+                  items={PRIORIDADE_LABEL}
                   value={ctl.value}
                   onValueChange={(v) => v && ctl.onChange(v)}
                   disabled={isPending}
@@ -387,6 +429,7 @@ export function OrdemForm({
               name="status"
               render={({ field: ctl }) => (
                 <Select
+                  items={STATUS_LABEL}
                   value={ctl.value}
                   onValueChange={(v) => v && ctl.onChange(v)}
                   disabled={isPending}
