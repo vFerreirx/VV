@@ -14,6 +14,8 @@ export const maquinas = pgTable(
 
     status: maquinaStatusEnum().notNull().default('parada'),
     operadorAtualId: uuid(),
+    // Estação (grupo) à qual a máquina pertence. FK via SQL.
+    estacaoId: uuid(),
 
     observacoes: text(),
 

@@ -342,10 +342,11 @@ function KanbanCardContent({
   return (
     <article
       style={
-        ordem.responsavelCor
-          ? { borderLeftColor: ordem.responsavelCor, borderLeftWidth: 4 }
+        ordem.estacaoCor
+          ? { borderLeftColor: ordem.estacaoCor, borderLeftWidth: 4 }
           : undefined
       }
+      title={ordem.estacaoNome ?? undefined}
       className={cn(
         'bg-card rounded-lg border p-3 text-sm shadow-sm transition-shadow',
         dragging
@@ -412,10 +413,10 @@ function KanbanCardContent({
         )}
         {ordem.responsavelNome && (
           <span className="text-muted-foreground inline-flex items-center gap-1 truncate text-[11px]">
-            {ordem.responsavelCor && (
+            {ordem.estacaoCor && (
               <span
                 className="inline-block size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: ordem.responsavelCor }}
+                style={{ backgroundColor: ordem.estacaoCor }}
               />
             )}
             {ordem.responsavelNome.split(' ')[0]}

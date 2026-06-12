@@ -1,10 +1,12 @@
 'use server'
 
 import { and, asc, desc, eq, ilike, isNull, ne, or } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
+  estacoes,
   eventosKanban,
   maquinas,
   ordensProducao,
@@ -35,7 +37,8 @@ export type KanbanCardData = {
   maquinaCodigo: string | null
   responsavelId: string | null
   responsavelNome: string | null
-  responsavelCor: string | null
+  estacaoCor: string | null
+  estacaoNome: string | null
   dataPrevistaFim: Date | null
   atrasada: boolean
   observacoes: string | null
@@ -83,6 +86,10 @@ export async function listarOrdensProducao(
     conditions.push(eq(ordensProducao.responsavelId, filtros.responsavelId))
   }
 
+  // Estação via máquina (rota principal) e via responsável (fallback).
+  const estMaq = alias(estacoes, 'est_maq')
+  const estResp = alias(estacoes, 'est_resp')
+
   const rows = await db
     .select({
       op: ordensProducao,
@@ -93,7 +100,10 @@ export async function listarOrdensProducao(
       variacaoTamanho: variacoesProduto.tamanho,
       maquinaCodigo: maquinas.codigo,
       responsavelNome: users.nome,
-      responsavelCor: users.cor,
+      estacaoCorMaq: estMaq.cor,
+      estacaoNomeMaq: estMaq.nome,
+      estacaoCorResp: estResp.cor,
+      estacaoNomeResp: estResp.nome,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -103,6 +113,20 @@ export async function listarOrdensProducao(
     )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
+    .leftJoin(
+      estMaq,
+      and(eq(estMaq.id, maquinas.estacaoId), isNull(estMaq.deletedAt)),
+    )
+    .leftJoin(
+      estResp,
+      and(
+        or(
+          eq(estResp.operadorDiaId, ordensProducao.responsavelId),
+          eq(estResp.operadorNoiteId, ordensProducao.responsavelId),
+        ),
+        isNull(estResp.deletedAt),
+      ),
+    )
     .where(and(...conditions))
     .orderBy(
       asc(ordensProducao.prioridade),
@@ -120,7 +144,10 @@ export async function listarOrdensProducao(
       variacaoTamanho,
       maquinaCodigo,
       responsavelNome,
-      responsavelCor,
+      estacaoCorMaq,
+      estacaoNomeMaq,
+      estacaoCorResp,
+      estacaoNomeResp,
     }) => ({
       id: op.id,
       numero: op.numero,
@@ -137,7 +164,8 @@ export async function listarOrdensProducao(
       maquinaCodigo: maquinaCodigo ?? null,
       responsavelId: op.responsavelId,
       responsavelNome: responsavelNome ?? null,
-      responsavelCor: responsavelCor ?? null,
+      estacaoCor: estacaoCorMaq ?? estacaoCorResp ?? null,
+      estacaoNome: estacaoNomeMaq ?? estacaoNomeResp ?? null,
       dataPrevistaFim: op.dataPrevistaFim,
       atrasada:
         op.dataPrevistaFim !== null &&

@@ -17,32 +17,6 @@ const stringOpt = (max: number) =>
     .optional()
     .or(z.literal('').transform(() => undefined))
 
-// Paleta de cores pros operadores (hex). Distintas e legíveis.
-export const OPERADOR_CORES = [
-  '#ef4444', // vermelho
-  '#f97316', // laranja
-  '#f59e0b', // âmbar
-  '#eab308', // amarelo
-  '#84cc16', // lima
-  '#22c55e', // verde
-  '#14b8a6', // teal
-  '#06b6d4', // ciano
-  '#3b82f6', // azul
-  '#6366f1', // índigo
-  '#a855f7', // roxo
-  '#ec4899', // rosa
-] as const
-
-// Cor opcional em hex (#rrggbb). À prova de chave ausente.
-const corOpt = z
-  .union([z.string(), z.null(), z.undefined()])
-  .transform((v) => (v == null || v === '' ? undefined : v))
-  .refine(
-    (v) => v === undefined || /^#[0-9a-fA-F]{6}$/.test(v),
-    'Cor inválida',
-  )
-  .optional()
-
 // -----------------------------------------------------------------
 // Criar (admin define usuário + senha inicial)
 // -----------------------------------------------------------------
@@ -52,7 +26,6 @@ export const criarUsuarioSchema = z.object({
   username: usernameSchema,
   telefone: stringOpt(20),
   role: z.enum(userRoleValues),
-  cor: corOpt,
   senha: z.string().min(6, 'Senha precisa de ao menos 6 caracteres'),
 })
 
@@ -66,7 +39,6 @@ export const atualizarUsuarioSchema = z.object({
   nome: z.string().trim().min(2, 'Nome muito curto').max(120, 'Nome muito longo'),
   telefone: stringOpt(20),
   role: z.enum(userRoleValues),
-  cor: corOpt,
   ativo: z.boolean(),
 })
 
