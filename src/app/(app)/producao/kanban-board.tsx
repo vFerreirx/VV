@@ -471,6 +471,30 @@ function KanbanCardContent({
         </span>
       </div>
 
+      {ordem.produzido > 0 && (
+        <div className="mt-2">
+          <div className="text-muted-foreground flex justify-between text-[10px] tabular-nums">
+            <span>Produzido</span>
+            <span>
+              {ordem.produzido}/{ordem.quantidade}
+            </span>
+          </div>
+          <div className="bg-muted mt-0.5 h-1.5 overflow-hidden rounded-full">
+            <div
+              className={cn(
+                'h-full rounded-full',
+                ordem.produzido >= ordem.quantidade
+                  ? 'bg-emerald-500'
+                  : 'bg-primary',
+              )}
+              style={{
+                width: `${Math.min(100, (ordem.produzido / ordem.quantidade) * 100)}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <footer className="border-foreground/10 mt-2 flex items-center justify-between gap-2 border-t pt-2 text-xs">
         {ordem.dataPrevistaFim ? (
           <span

@@ -1,11 +1,12 @@
 'use server'
 
-import { and, asc, desc, eq, ilike, isNull, ne, or } from 'drizzle-orm'
+import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
+  apontamentosProducao,
   estacoes,
   eventosKanban,
   maquinas,
@@ -39,6 +40,7 @@ export type KanbanCardData = {
   responsavelNome: string | null
   estacaoCor: string | null
   estacaoNome: string | null
+  produzido: number
   dataPrevistaFim: Date | null
   atrasada: boolean
   observacoes: string | null
@@ -106,6 +108,11 @@ export async function listarOrdensProducao(
       estacaoNomeMaq: estMaq.nome,
       estacaoCorResp: estResp.cor,
       estacaoNomeResp: estResp.nome,
+      produzido: sql<number>`(
+        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)::int
+        FROM ${apontamentosProducao}
+        WHERE ${apontamentosProducao.ordemId} = ${ordensProducao.id}
+      )`,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -150,6 +157,7 @@ export async function listarOrdensProducao(
       estacaoNomeMaq,
       estacaoCorResp,
       estacaoNomeResp,
+      produzido,
     }) => ({
       id: op.id,
       numero: op.numero,
@@ -168,6 +176,7 @@ export async function listarOrdensProducao(
       responsavelNome: responsavelNome ?? null,
       estacaoCor: estacaoCorMaq ?? estacaoCorResp ?? null,
       estacaoNome: estacaoNomeMaq ?? estacaoNomeResp ?? null,
+      produzido: produzido ?? 0,
       dataPrevistaFim: op.dataPrevistaFim,
       atrasada:
         op.dataPrevistaFim !== null &&

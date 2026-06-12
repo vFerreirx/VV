@@ -65,9 +65,8 @@ export const apontamentosProducao = pgTable(
     ordemId: uuid()
       .notNull()
       .references(() => ordensProducao.id, { onDelete: 'cascade' }),
-    maquinaId: uuid()
-      .notNull()
-      .references(() => maquinas.id),
+    // Máquina é opcional: no fluxo puxado o operador aponta sem máquina.
+    maquinaId: uuid().references(() => maquinas.id),
     operadorId: uuid()
       .notNull()
       .references(() => users.id),

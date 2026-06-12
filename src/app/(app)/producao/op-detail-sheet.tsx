@@ -5,6 +5,7 @@ import { ptBR } from 'date-fns/locale'
 import {
   CheckCircle2,
   ChevronRight,
+  ClipboardList,
   ExternalLink,
   Hand,
   Loader2,
@@ -21,11 +22,14 @@ import {
   type EventoKanbanComUsuario,
 } from './actions'
 import {
+  apontarProducaoAction,
   excluirOrdemAction,
+  listarApontamentos,
   mudarStatusOrdemAction,
   obterOrdem,
   pegarOrdemAction,
   soltarOrdemAction,
+  type ApontamentoItem,
   type OrdemDetalhe,
 } from '@/app/(app)/ordens/actions'
 import { Badge } from '@/components/ui/badge'
@@ -52,6 +56,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import {
@@ -108,10 +114,44 @@ function DetalheBody({
   const router = useRouter()
   const [ordem, setOrdem] = useState<OrdemDetalhe | null>(null)
   const [eventos, setEventos] = useState<EventoKanbanComUsuario[]>([])
+  const [apontamentos, setApontamentos] = useState<ApontamentoItem[]>([])
+  const [produzido, setProduzido] = useState(0)
+  const [refugoTotal, setRefugoTotal] = useState(0)
   const [, startTransition] = useTransition()
   const [confirmarExcluir, setConfirmarExcluir] = useState(false)
   const [excluindo, startExcluir] = useTransition()
   const [acaoPend, startAcao] = useTransition()
+  const [apontarOpen, setApontarOpen] = useState(false)
+  const [qtdProduzida, setQtdProduzida] = useState('')
+  const [qtdRefugo, setQtdRefugo] = useState('')
+  const [apontando, startApontar] = useTransition()
+
+  async function recarregarApontamentos(id: string) {
+    const a = await listarApontamentos(id)
+    setApontamentos(a.itens)
+    setProduzido(a.totalProduzido)
+    setRefugoTotal(a.totalRefugo)
+  }
+
+  function apontar() {
+    if (!ordem) return
+    startApontar(async () => {
+      const result = await apontarProducaoAction(ordem.id, {
+        produzida: qtdProduzida,
+        refugo: qtdRefugo,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'Apontado')
+      setQtdProduzida('')
+      setQtdRefugo('')
+      setApontarOpen(false)
+      await recarregarApontamentos(ordem.id)
+      router.refresh()
+    })
+  }
 
   function pegarOuSoltar(pegar: boolean) {
     if (!ordem) return
@@ -147,13 +187,18 @@ function DetalheBody({
 
   useEffect(() => {
     let cancelado = false
-    Promise.all([obterOrdem(ordemId), listarEventosOrdem(ordemId)]).then(
-      ([o, e]) => {
-        if (cancelado) return
-        setOrdem(o)
-        setEventos(e)
-      },
-    )
+    Promise.all([
+      obterOrdem(ordemId),
+      listarEventosOrdem(ordemId),
+      listarApontamentos(ordemId),
+    ]).then(([o, e, a]) => {
+      if (cancelado) return
+      setOrdem(o)
+      setEventos(e)
+      setApontamentos(a.itens)
+      setProduzido(a.totalProduzido)
+      setRefugoTotal(a.totalRefugo)
+    })
     return () => {
       cancelado = true
     }
@@ -270,9 +315,70 @@ function DetalheBody({
                   )}
                 </Button>
               )}
+
+              {meu && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={acaoPend}
+                  onClick={() => setApontarOpen(true)}
+                >
+                  <ClipboardList />
+                  Apontar produção
+                </Button>
+              )}
             </section>
           )
         })()}
+
+        {/* Produção (progresso + apontamentos) */}
+        <section className="space-y-2">
+          <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            Produção
+          </h3>
+          <div className="text-muted-foreground flex justify-between text-xs tabular-nums">
+            <span>Produzido</span>
+            <span className="text-foreground font-medium">
+              {produzido}/{ordem.quantidade} un
+              {refugoTotal > 0 && (
+                <span className="text-destructive ml-2">
+                  {refugoTotal} refugo
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="bg-muted h-2 overflow-hidden rounded-full">
+            <div
+              className={cn(
+                'h-full rounded-full',
+                produzido >= ordem.quantidade
+                  ? 'bg-emerald-500'
+                  : 'bg-primary',
+              )}
+              style={{
+                width: `${Math.min(100, ordem.quantidade > 0 ? (produzido / ordem.quantidade) * 100 : 0)}%`,
+              }}
+            />
+          </div>
+          {apontamentos.length > 0 && (
+            <ul className="text-muted-foreground space-y-1 pt-1 text-xs">
+              {apontamentos.slice(0, 5).map((a) => (
+                <li key={a.id} className="flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    {a.operadorNome ?? 'Operador'} ·{' '}
+                    {format(new Date(a.em), "dd/MM HH:mm", { locale: ptBR })}
+                  </span>
+                  <span className="text-foreground shrink-0 tabular-nums">
+                    +{a.produzida}
+                    {a.refugo > 0 && (
+                      <span className="text-destructive"> /{a.refugo}r</span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <section className="space-y-2">
           <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
@@ -481,6 +587,61 @@ function DetalheBody({
               disabled={excluindo}
             >
               {excluindo ? 'Excluindo…' : 'Excluir'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={apontarOpen} onOpenChange={(o) => !o && setApontarOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Apontar produção</DialogTitle>
+            <DialogDescription>
+              Quantas peças ficaram prontas agora? Vai somando ao total
+              ({produzido}/{ordem.quantidade}).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="ap-prod">Prontas</Label>
+              <Input
+                id="ap-prod"
+                type="number"
+                inputMode="numeric"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={qtdProduzida}
+                onChange={(e) => setQtdProduzida(e.target.value)}
+                disabled={apontando}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ap-refugo">Refugo</Label>
+              <Input
+                id="ap-refugo"
+                type="number"
+                inputMode="numeric"
+                min="0"
+                step="1"
+                placeholder="0"
+                value={qtdRefugo}
+                onChange={(e) => setQtdRefugo(e.target.value)}
+                disabled={apontando}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setApontarOpen(false)}
+              disabled={apontando}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={apontar} disabled={apontando}>
+              {apontando ? 'Salvando…' : 'Apontar'}
             </Button>
           </DialogFooter>
         </DialogContent>

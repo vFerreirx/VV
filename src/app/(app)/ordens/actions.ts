@@ -20,6 +20,7 @@ import {
 } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
+  apontamentosProducao,
   eventosKanban,
   maquinas,
   ordensProducao,
@@ -33,9 +34,11 @@ import {
   type VariacaoProduto,
 } from '@/lib/db/schema'
 import {
+  apontamentoSchema,
   mudarStatusOrdemSchema,
   ordemSchema,
   ordensFiltrosSchema,
+  type ApontamentoInput,
   type MudarStatusOrdemInput,
   type OrdemInput,
   type OrdensFiltros,
@@ -563,6 +566,102 @@ export async function soltarOrdemAction(id: string): Promise<ActionResult> {
   revalidatePath('/producao')
   revalidatePath('/ordens')
   return { success: true, message: 'OP voltou pra fila' }
+}
+
+// -----------------------------------------------------------------
+// Apontar produção + listar apontamentos
+// -----------------------------------------------------------------
+
+export type ApontamentoItem = {
+  id: string
+  operadorNome: string | null
+  produzida: number
+  refugo: number
+  em: Date
+}
+
+export async function listarApontamentos(ordemId: string): Promise<{
+  itens: ApontamentoItem[]
+  totalProduzido: number
+  totalRefugo: number
+}> {
+  await requireAuth()
+  if (!uuidRe.test(ordemId)) {
+    return { itens: [], totalProduzido: 0, totalRefugo: 0 }
+  }
+
+  const rows = await db
+    .select({
+      id: apontamentosProducao.id,
+      produzida: apontamentosProducao.quantidadeProduzida,
+      refugo: apontamentosProducao.quantidadeRefugo,
+      em: apontamentosProducao.inicio,
+      operadorNome: users.nome,
+    })
+    .from(apontamentosProducao)
+    .leftJoin(users, eq(users.id, apontamentosProducao.operadorId))
+    .where(eq(apontamentosProducao.ordemId, ordemId))
+    .orderBy(desc(apontamentosProducao.inicio))
+
+  const itens: ApontamentoItem[] = rows.map((r) => ({
+    id: r.id,
+    operadorNome: r.operadorNome ?? null,
+    produzida: r.produzida,
+    refugo: r.refugo,
+    em: r.em,
+  }))
+  return {
+    itens,
+    totalProduzido: itens.reduce((s, i) => s + i.produzida, 0),
+    totalRefugo: itens.reduce((s, i) => s + i.refugo, 0),
+  }
+}
+
+export async function apontarProducaoAction(
+  ordemId: string,
+  input: ApontamentoInput,
+): Promise<ActionResult> {
+  const user = await requireAuth()
+  if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
+
+  const parsed = apontamentoSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? 'Dados inválidos',
+    }
+  }
+  const data = parsed.data
+
+  const [op] = await db
+    .select({
+      id: ordensProducao.id,
+      responsavelId: ordensProducao.responsavelId,
+    })
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
+    .limit(1)
+  if (!op) return { success: false, error: 'OP não encontrada' }
+
+  const pode = isManagerRole(user.role) || op.responsavelId === user.id
+  if (!pode) {
+    return { success: false, error: 'Pegue a OP pra você antes de apontar' }
+  }
+
+  const agora = new Date()
+  await db.insert(apontamentosProducao).values({
+    ordemId,
+    operadorId: user.id,
+    inicio: agora,
+    fim: agora,
+    quantidadeProduzida: data.produzida,
+    quantidadeRefugo: data.refugo,
+  })
+
+  revalidatePath('/producao')
+  revalidatePath('/dashboard')
+  revalidatePath(`/ordens/${ordemId}`)
+  return { success: true, message: 'Apontamento registrado' }
 }
 
 // -----------------------------------------------------------------

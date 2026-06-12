@@ -129,6 +129,30 @@ export const mudarStatusOrdemSchema = z.object({
 export type MudarStatusOrdemInput = z.input<typeof mudarStatusOrdemSchema>
 
 // -----------------------------------------------------------------
+// Apontar produção (operador registra produzido/refugo)
+// -----------------------------------------------------------------
+
+const intNaoNeg = z
+  .union([z.string(), z.number()])
+  .transform((v) => (v === '' ? 0 : Number(v)))
+  .refine(
+    (v) => Number.isInteger(v) && v >= 0,
+    'Informe um inteiro >= 0',
+  )
+
+export const apontamentoSchema = z
+  .object({
+    produzida: intNaoNeg,
+    refugo: intNaoNeg,
+  })
+  .refine((d) => d.produzida + d.refugo > 0, {
+    message: 'Informe ao menos uma quantidade',
+    path: ['produzida'],
+  })
+
+export type ApontamentoInput = z.input<typeof apontamentoSchema>
+
+// -----------------------------------------------------------------
 // Filtros
 // -----------------------------------------------------------------
 
