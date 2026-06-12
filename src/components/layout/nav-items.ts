@@ -1,6 +1,5 @@
-// Lista de items de navegação compartilhada entre Sidebar (desktop) e
-// MobileNav (Sheet/drawer no mobile). Mantém um único lugar pra editar
-// as rotas e respeitar roles.
+// Navegação compartilhada entre Sidebar (desktop) e MobileNav (drawer).
+// Agrupada em seções pra não virar uma lista enorme.
 
 import {
   CalendarDays,
@@ -27,26 +26,58 @@ export type NavItem = {
   roles?: User['role'][]
 }
 
-export const NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/produtos', label: 'Produtos', icon: Package },
-  { href: '/cores', label: 'Cores', icon: Palette },
-  { href: '/modelos', label: 'Modelos', icon: Shapes },
-  { href: '/tamanhos', label: 'Tamanhos', icon: Ruler },
-  { href: '/maquinas', label: 'Máquinas', icon: Factory },
+export type NavGroup = {
+  titulo: string
+  items: NavItem[]
+}
+
+export const NAV_GROUPS: NavGroup[] = [
   {
-    href: '/estacoes',
-    label: 'Estações',
-    icon: Grid2x2,
-    roles: ['admin', 'gerente_producao'],
+    titulo: 'Geral',
+    items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }],
   },
-  { href: '/producao', label: 'Produção', icon: KanbanSquare },
-  { href: '/ordens', label: 'Ordens', icon: ListChecks },
-  { href: '/calendario', label: 'Calendário', icon: CalendarDays },
-  { href: '/usuarios', label: 'Usuários', icon: Users, roles: ['admin'] },
-  { href: '/configuracoes', label: 'Configurações', icon: Cog },
+  {
+    titulo: 'Produção',
+    items: [
+      { href: '/producao', label: 'Produção', icon: KanbanSquare },
+      { href: '/ordens', label: 'Ordens', icon: ListChecks },
+      { href: '/calendario', label: 'Calendário', icon: CalendarDays },
+    ],
+  },
+  {
+    titulo: 'Fábrica',
+    items: [
+      { href: '/maquinas', label: 'Máquinas', icon: Factory },
+      {
+        href: '/estacoes',
+        label: 'Estações',
+        icon: Grid2x2,
+        roles: ['admin', 'gerente_producao'],
+      },
+    ],
+  },
+  {
+    titulo: 'Catálogo',
+    items: [
+      { href: '/produtos', label: 'Produtos', icon: Package },
+      { href: '/cores', label: 'Cores', icon: Palette },
+      { href: '/modelos', label: 'Modelos', icon: Shapes },
+      { href: '/tamanhos', label: 'Tamanhos', icon: Ruler },
+    ],
+  },
+  {
+    titulo: 'Administração',
+    items: [
+      { href: '/usuarios', label: 'Usuários', icon: Users, roles: ['admin'] },
+      { href: '/configuracoes', label: 'Configurações', icon: Cog },
+    ],
+  },
 ]
 
-export function visibleItems(role: User['role']): NavItem[] {
-  return NAV_ITEMS.filter((it) => !it.roles || it.roles.includes(role))
+// Grupos filtrados por role (descarta grupos que ficaram vazios).
+export function visibleGroups(role: User['role']): NavGroup[] {
+  return NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((it) => !it.roles || it.roles.includes(role)),
+  })).filter((g) => g.items.length > 0)
 }

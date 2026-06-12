@@ -11,7 +11,7 @@ import { useState, useTransition } from 'react'
 
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
-import { visibleItems } from '@/components/layout/nav-items'
+import { visibleGroups } from '@/components/layout/nav-items'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -26,7 +26,7 @@ export function MobileNav({ role }: { role: User['role'] }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const items = visibleItems(role)
+  const grupos = visibleGroups(role)
 
   function handleLogout() {
     startTransition(async () => {
@@ -62,27 +62,35 @@ export function MobileNav({ role }: { role: User['role'] }) {
               </div>
             </div>
           </div>
-          <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
-            {items.map((item) => {
-              const active =
-                pathname === item.href || pathname.startsWith(`${item.href}/`)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className={cn(
-                    'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors',
-                    active
-                      ? 'bg-accent text-accent-foreground font-medium'
-                      : 'hover:bg-accent/50',
-                  )}
-                >
-                  <item.icon className="size-4" />
-                  {item.label}
-                </Link>
-              )
-            })}
+          <nav className="flex-1 space-y-3 overflow-y-auto p-2">
+            {grupos.map((grupo) => (
+              <div key={grupo.titulo} className="space-y-0.5">
+                <div className="text-muted-foreground px-3 pb-0.5 text-[0.6rem] font-medium tracking-[0.12em] uppercase">
+                  {grupo.titulo}
+                </div>
+                {grupo.items.map((item) => {
+                  const active =
+                    pathname === item.href ||
+                    pathname.startsWith(`${item.href}/`)
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors',
+                        active
+                          ? 'bg-accent text-accent-foreground font-medium'
+                          : 'hover:bg-accent/50',
+                      )}
+                    >
+                      <item.icon className="size-4" />
+                      {item.label}
+                    </Link>
+                  )
+                })}
+              </div>
+            ))}
           </nav>
           <div className="border-border border-t p-2">
             <button

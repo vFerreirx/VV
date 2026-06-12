@@ -7,14 +7,14 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
-import { visibleItems } from '@/components/layout/nav-items'
+import { visibleGroups } from '@/components/layout/nav-items'
 import type { User } from '@/lib/db/schema'
 import { cn } from '@/lib/utils'
 
 export function Sidebar({ role }: { role: User['role'] }) {
   const pathname = usePathname()
   const [isPending, startTransition] = useTransition()
-  const items = visibleItems(role)
+  const grupos = visibleGroups(role)
 
   // Indicator deslizante: mede a posição do item ativo e move uma barra.
   const navRef = useRef<HTMLElement>(null)
@@ -30,7 +30,7 @@ export function Sidebar({ role }: { role: User['role'] }) {
       return
     }
     setIndicator({ top: ativo.offsetTop, height: ativo.offsetHeight })
-  }, [pathname, items.length])
+  }, [pathname, grupos.length])
 
   function handleLogout() {
     startTransition(async () => {
@@ -51,7 +51,10 @@ export function Sidebar({ role }: { role: User['role'] }) {
           </div>
         </div>
       </div>
-      <nav ref={navRef} className="relative flex-1 space-y-0.5 p-2">
+      <nav
+        ref={navRef}
+        className="relative flex-1 space-y-3 overflow-y-auto p-2"
+      >
         {indicator && (
           <span
             aria-hidden
@@ -59,26 +62,33 @@ export function Sidebar({ role }: { role: User['role'] }) {
             style={{ top: indicator.top, height: indicator.height }}
           />
         )}
-        {items.map((item) => {
-          const active =
-            pathname === item.href || pathname.startsWith(`${item.href}/`)
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              data-active={active}
-              className={cn(
-                'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
-                active
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
-              )}
-            >
-              <item.icon className="size-4" />
-              {item.label}
-            </Link>
-          )
-        })}
+        {grupos.map((grupo) => (
+          <div key={grupo.titulo} className="space-y-0.5">
+            <div className="text-sidebar-foreground/45 px-2.5 pb-0.5 text-[0.6rem] font-medium tracking-[0.12em] uppercase">
+              {grupo.titulo}
+            </div>
+            {grupo.items.map((item) => {
+              const active =
+                pathname === item.href || pathname.startsWith(`${item.href}/`)
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  data-active={active}
+                  className={cn(
+                    'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
+                    active
+                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
+                  )}
+                >
+                  <item.icon className="size-4" />
+                  {item.label}
+                </Link>
+              )
+            })}
+          </div>
+        ))}
       </nav>
       <div className="border-sidebar-border border-t p-2">
         <button
