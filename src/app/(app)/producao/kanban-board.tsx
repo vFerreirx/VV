@@ -3,7 +3,7 @@
 import {
   DndContext,
   DragOverlay,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   pointerWithin,
   useDraggable,
@@ -138,11 +138,12 @@ export function KanbanBoard({ ordens, podeMover, currentUserId }: Props) {
   }, [router])
 
   const sensors = useSensors(
-    // Pointer com pequeno limiar pra clicks não virarem drag.
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    // Touch com delay curto pra distinguir de scroll/tap.
+    // Mouse (desktop): arrasta após pequeno movimento; clicks não viram drag.
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    // Toque (tablet): só arrasta com pressão longa (~0,25s parado). Deslize
+    // rápido rola o board nativamente, sem mover o card por engano.
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 5 },
+      activationConstraint: { delay: 250, tolerance: 8 },
     }),
   )
 
@@ -334,7 +335,7 @@ function KanbanCard({
         }
       }}
       className={cn(
-        'cursor-pointer touch-none select-none',
+        'cursor-pointer select-none',
         isDragging && 'opacity-30',
       )}
     >
