@@ -197,7 +197,8 @@ export const STATUS_LABEL_CURTO: Record<
   cancelado: 'Cancelado',
 }
 
-// Ordem do fluxo do kanban (cancelado fica de fora)
+// Ordem do fluxo do kanban. Cancelado e enviado (concluído) ficam de fora —
+// a OP enviada sai do board e vai pra "Concluídas" em Ordens.
 export const STATUS_KANBAN: (typeof statusValues)[number][] = [
   'aguardando_materia_prima',
   'programado',
@@ -205,5 +206,4 @@ export const STATUS_KANBAN: (typeof statusValues)[number][] = [
   'acabamento',
   'embalagem',
   'pronto_envio',
-  'enviado',
 ]

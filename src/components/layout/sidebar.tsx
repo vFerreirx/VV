@@ -1,6 +1,6 @@
 'use client'
 
-import { LogOut } from 'lucide-react'
+import { ChevronDown, LogOut } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
@@ -8,6 +8,7 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
 import { visibleGroups } from '@/components/layout/nav-items'
+import { useNavCollapse } from '@/components/layout/use-nav-collapse'
 import type { User } from '@/lib/db/schema'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +16,7 @@ export function Sidebar({ role }: { role: User['role'] }) {
   const pathname = usePathname()
   const [isPending, startTransition] = useTransition()
   const grupos = visibleGroups(role)
+  const { collapsed, toggle } = useNavCollapse()
 
   // Indicator deslizante: mede a posição do item ativo e move uma barra.
   const navRef = useRef<HTMLElement>(null)
@@ -30,7 +32,7 @@ export function Sidebar({ role }: { role: User['role'] }) {
       return
     }
     setIndicator({ top: ativo.offsetTop, height: ativo.offsetHeight })
-  }, [pathname, grupos.length])
+  }, [pathname, grupos.length, collapsed])
 
   function handleLogout() {
     startTransition(async () => {
@@ -62,33 +64,48 @@ export function Sidebar({ role }: { role: User['role'] }) {
             style={{ top: indicator.top, height: indicator.height }}
           />
         )}
-        {grupos.map((grupo) => (
-          <div key={grupo.titulo} className="space-y-0.5">
-            <div className="text-sidebar-foreground/45 px-2.5 pb-0.5 text-[0.6rem] font-medium tracking-[0.12em] uppercase">
-              {grupo.titulo}
-            </div>
-            {grupo.items.map((item) => {
-              const active =
-                pathname === item.href || pathname.startsWith(`${item.href}/`)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  data-active={active}
+        {grupos.map((grupo) => {
+          const fechado = collapsed[grupo.titulo]
+          return (
+            <div key={grupo.titulo} className="space-y-0.5">
+              <button
+                type="button"
+                onClick={() => toggle(grupo.titulo)}
+                className="text-sidebar-foreground/45 hover:text-sidebar-foreground/70 flex w-full items-center justify-between px-2.5 pb-0.5 text-[0.6rem] font-medium tracking-[0.12em] uppercase transition-colors"
+              >
+                {grupo.titulo}
+                <ChevronDown
                   className={cn(
-                    'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
-                    active
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
-                      : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
+                    'size-3 transition-transform',
+                    fechado && '-rotate-90',
                   )}
-                >
-                  <item.icon className="size-4" />
-                  {item.label}
-                </Link>
-              )
-            })}
-          </div>
-        ))}
+                />
+              </button>
+              {!fechado &&
+                grupo.items.map((item) => {
+                  const active =
+                    pathname === item.href ||
+                    pathname.startsWith(`${item.href}/`)
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      data-active={active}
+                      className={cn(
+                        'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
+                        active
+                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                          : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
+                      )}
+                    >
+                      <item.icon className="size-4" />
+                      {item.label}
+                    </Link>
+                  )
+                })}
+            </div>
+          )
+        })}
       </nav>
       <div className="border-sidebar-border border-t p-2">
         <button

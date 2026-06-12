@@ -126,8 +126,40 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
     aplicarFiltro({ q: busca.trim() || undefined })
   }
 
+  // Atalhos rápidos de status (Todas / Concluídas / Canceladas).
+  const statusAtual =
+    filtrosIniciais.status && filtrosIniciais.status !== 'todos'
+      ? filtrosIniciais.status
+      : undefined
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap gap-1.5">
+        {[
+          { label: 'Todas', val: undefined as string | undefined },
+          { label: 'Concluídas', val: 'enviado' },
+          { label: 'Canceladas', val: 'cancelado' },
+        ].map((chip) => {
+          const ativo = statusAtual === chip.val
+          return (
+            <button
+              key={chip.label}
+              type="button"
+              onClick={() => aplicarFiltro({ status: chip.val })}
+              disabled={isPending}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs transition-colors',
+                ativo
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'hover:bg-accent',
+              )}
+            >
+              {chip.label}
+            </button>
+          )
+        })}
+      </div>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <form onSubmit={onBuscaSubmit} className="flex flex-1 items-center gap-2">
           <div className="relative flex-1 sm:max-w-xs">
