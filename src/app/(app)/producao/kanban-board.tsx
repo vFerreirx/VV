@@ -223,6 +223,7 @@ export function KanbanBoard({ ordens, podeMover, currentUserId }: Props) {
       <OpDetailSheet
         ordemId={detalheId}
         onClose={() => setDetalheId(null)}
+        currentUserId={currentUserId}
       />
     </>
   )

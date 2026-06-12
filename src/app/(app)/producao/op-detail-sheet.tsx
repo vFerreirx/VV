@@ -2,7 +2,15 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ExternalLink, Loader2, Trash2 } from 'lucide-react'
+import {
+  CheckCircle2,
+  ChevronRight,
+  ExternalLink,
+  Hand,
+  Loader2,
+  Trash2,
+  Undo2,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
@@ -16,6 +24,8 @@ import {
   excluirOrdemAction,
   mudarStatusOrdemAction,
   obterOrdem,
+  pegarOrdemAction,
+  soltarOrdemAction,
   type OrdemDetalhe,
 } from '@/app/(app)/ordens/actions'
 import { Badge } from '@/components/ui/badge'
@@ -47,24 +57,35 @@ import { cn } from '@/lib/utils'
 import {
   CANAL_LABEL,
   PRIORIDADE_LABEL,
+  STATUS_KANBAN,
   STATUS_LABEL,
   STATUS_LABEL_CURTO,
   statusValues,
 } from '@/lib/validators/ordens'
 
+// Fluxo de avanço: as etapas do kanban + "enviado" (concluído) no fim.
+const FLUXO: (typeof statusValues)[number][] = [...STATUS_KANBAN, 'enviado']
+
 export function OpDetailSheet({
   ordemId,
   onClose,
+  currentUserId,
 }: {
   ordemId: string | null
   onClose: () => void
+  currentUserId: string
 }) {
   return (
     <Sheet open={ordemId !== null} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-md">
         {/* Key força remontagem ao trocar de OP — evita setState em effect. */}
         {ordemId && (
-          <DetalheBody key={ordemId} ordemId={ordemId} onClose={onClose} />
+          <DetalheBody
+            key={ordemId}
+            ordemId={ordemId}
+            onClose={onClose}
+            currentUserId={currentUserId}
+          />
         )}
       </SheetContent>
     </Sheet>
@@ -78,9 +99,11 @@ export function OpDetailSheet({
 function DetalheBody({
   ordemId,
   onClose,
+  currentUserId,
 }: {
   ordemId: string
   onClose: () => void
+  currentUserId: string
 }) {
   const router = useRouter()
   const [ordem, setOrdem] = useState<OrdemDetalhe | null>(null)
@@ -88,6 +111,24 @@ function DetalheBody({
   const [, startTransition] = useTransition()
   const [confirmarExcluir, setConfirmarExcluir] = useState(false)
   const [excluindo, startExcluir] = useTransition()
+  const [acaoPend, startAcao] = useTransition()
+
+  function pegarOuSoltar(pegar: boolean) {
+    if (!ordem) return
+    startAcao(async () => {
+      const result = pegar
+        ? await pegarOrdemAction(ordem.id)
+        : await soltarOrdemAction(ordem.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'Pronto')
+      const novo = await obterOrdem(ordem.id)
+      if (novo) setOrdem(novo)
+      router.refresh()
+    })
+  }
 
   function excluir() {
     if (!ordem) return
@@ -133,6 +174,15 @@ function DetalheBody({
         toast.error(result.error)
         return
       }
+      // Enviado/cancelado saem do kanban — fecha o painel e atualiza o board.
+      if (novoStatus === 'enviado' || novoStatus === 'cancelado') {
+        toast.success(
+          novoStatus === 'enviado' ? 'OP concluída e enviada' : 'OP cancelada',
+        )
+        onClose()
+        router.refresh()
+        return
+      }
       toast.success('Status atualizado')
       const novosEventos = await listarEventosOrdem(ordem.id)
       setEventos(novosEventos)
@@ -162,9 +212,71 @@ function DetalheBody({
       </SheetHeader>
 
       <div className="space-y-5 px-4 pb-4">
+        {/* Ações rápidas */}
+        {(() => {
+          const idx = FLUXO.indexOf(ordem.status)
+          const proximo = idx >= 0 ? FLUXO[idx + 1] : undefined
+          const concluir = proximo === 'enviado'
+          const semDono = !ordem.responsavel
+          const meu = ordem.responsavel?.id === currentUserId
+
+          return (
+            <section className="space-y-2">
+              <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                Ações
+              </h3>
+
+              {proximo && (
+                <Button
+                  className={cn(
+                    'w-full',
+                    concluir &&
+                      'bg-emerald-600 text-white hover:bg-emerald-700',
+                  )}
+                  disabled={acaoPend}
+                  onClick={() => handleMudarStatus(proximo)}
+                >
+                  {concluir ? (
+                    <>
+                      <CheckCircle2 />
+                      Concluir e enviar
+                    </>
+                  ) : (
+                    <>
+                      <ChevronRight />
+                      Avançar p/ {STATUS_LABEL[proximo]}
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {(semDono || meu) && (
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  disabled={acaoPend}
+                  onClick={() => pegarOuSoltar(semDono)}
+                >
+                  {semDono ? (
+                    <>
+                      <Hand />
+                      Pegar pra mim
+                    </>
+                  ) : (
+                    <>
+                      <Undo2 />
+                      Soltar (voltar pra fila)
+                    </>
+                  )}
+                </Button>
+              )}
+            </section>
+          )
+        })()}
+
         <section className="space-y-2">
           <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-            Status
+            Status manual
           </h3>
           <Select
             value={ordem.status}
