@@ -2,8 +2,9 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ExternalLink, Loader2 } from 'lucide-react'
+import { ExternalLink, Loader2, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
@@ -12,12 +13,21 @@ import {
   type EventoKanbanComUsuario,
 } from './actions'
 import {
+  excluirOrdemAction,
   mudarStatusOrdemAction,
   obterOrdem,
   type OrdemDetalhe,
 } from '@/app/(app)/ordens/actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Select,
   SelectContent,
@@ -53,7 +63,9 @@ export function OpDetailSheet({
     <Sheet open={ordemId !== null} onOpenChange={(o) => !o && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-md">
         {/* Key força remontagem ao trocar de OP — evita setState em effect. */}
-        {ordemId && <DetalheBody key={ordemId} ordemId={ordemId} />}
+        {ordemId && (
+          <DetalheBody key={ordemId} ordemId={ordemId} onClose={onClose} />
+        )}
       </SheetContent>
     </Sheet>
   )
@@ -63,10 +75,34 @@ export function OpDetailSheet({
 // Body — só monta quando ordemId existe (controlado pela key acima)
 // -----------------------------------------------------------------
 
-function DetalheBody({ ordemId }: { ordemId: string }) {
+function DetalheBody({
+  ordemId,
+  onClose,
+}: {
+  ordemId: string
+  onClose: () => void
+}) {
+  const router = useRouter()
   const [ordem, setOrdem] = useState<OrdemDetalhe | null>(null)
   const [eventos, setEventos] = useState<EventoKanbanComUsuario[]>([])
   const [, startTransition] = useTransition()
+  const [confirmarExcluir, setConfirmarExcluir] = useState(false)
+  const [excluindo, startExcluir] = useTransition()
+
+  function excluir() {
+    if (!ordem) return
+    startExcluir(async () => {
+      const result = await excluirOrdemAction(ordem.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'OP excluída')
+      setConfirmarExcluir(false)
+      onClose()
+      router.refresh()
+    })
+  }
 
   useEffect(() => {
     let cancelado = false
@@ -286,7 +322,16 @@ function DetalheBody({ ordemId }: { ordemId: string }) {
           )}
         </section>
 
-        <div className="flex justify-end pt-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setConfirmarExcluir(true)}
+            disabled={excluindo}
+          >
+            <Trash2 className="text-destructive" />
+            Excluir OP
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -297,6 +342,37 @@ function DetalheBody({ ordemId }: { ordemId: string }) {
           </Button>
         </div>
       </div>
+
+      <Dialog
+        open={confirmarExcluir}
+        onOpenChange={(o) => !o && setConfirmarExcluir(false)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Excluir OP {ordem.numero}?</DialogTitle>
+            <DialogDescription>
+              A ordem será cancelada e removida do kanban. O histórico fica
+              preservado para referência.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmarExcluir(false)}
+              disabled={excluindo}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={excluir}
+              disabled={excluindo}
+            >
+              {excluindo ? 'Excluindo…' : 'Excluir'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
