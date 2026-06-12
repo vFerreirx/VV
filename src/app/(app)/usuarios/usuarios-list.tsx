@@ -1,7 +1,7 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Ban, KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import {
@@ -48,7 +48,9 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { User } from '@/lib/db/schema'
+import { cn } from '@/lib/utils'
 import {
+  OPERADOR_CORES,
   ROLE_LABEL,
   atualizarUsuarioSchema,
   criarUsuarioSchema,
@@ -105,7 +107,12 @@ export function UsuariosList({ usuarios, selfId }: Props) {
             {usuarios.map((u) => (
               <TableRow key={u.id}>
                 <TableCell>
-                  <Avatar className="size-7">
+                  <Avatar
+                    className="size-7"
+                    style={
+                      u.cor ? { boxShadow: `0 0 0 2px ${u.cor}` } : undefined
+                    }
+                  >
                     <AvatarFallback className="text-[10px]">
                       {initials(u.nome)}
                     </AvatarFallback>
@@ -173,7 +180,10 @@ export function UsuariosList({ usuarios, selfId }: Props) {
         {usuarios.map((u) => (
           <div key={u.id} className="rounded-lg border p-4">
             <div className="flex items-start gap-3">
-              <Avatar className="size-9 shrink-0">
+              <Avatar
+                className="size-9 shrink-0"
+                style={u.cor ? { boxShadow: `0 0 0 2px ${u.cor}` } : undefined}
+              >
                 <AvatarFallback>{initials(u.nome)}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
@@ -266,6 +276,7 @@ function CriarUsuarioDialog({
       username: '',
       telefone: '',
       role: 'operador',
+      cor: undefined,
       senha: '',
     },
   })
@@ -361,6 +372,23 @@ function CriarUsuarioDialog({
             />
           </FieldRow>
           <FieldRow
+            label="Cor no kanban"
+            id="cu-cor"
+            error={errs.cor?.message}
+          >
+            <Controller
+              control={form.control}
+              name="cor"
+              render={({ field }) => (
+                <CorPicker
+                  value={field.value ?? undefined}
+                  onChange={field.onChange}
+                  disabled={isPending}
+                />
+              )}
+            />
+          </FieldRow>
+          <FieldRow
             label="Senha inicial"
             id="cu-senha"
             error={errs.senha?.message}
@@ -446,6 +474,7 @@ function EditarBody({
       nome: usuario.nome,
       telefone: usuario.telefone ?? '',
       role: usuario.role,
+      cor: usuario.cor ?? undefined,
       ativo: usuario.ativo,
     },
   })
@@ -519,6 +548,19 @@ function EditarBody({
               Você não pode alterar a própria role.
             </p>
           )}
+        </FieldRow>
+        <FieldRow label="Cor no kanban" id="eu-cor" error={errs.cor?.message}>
+          <Controller
+            control={form.control}
+            name="cor"
+            render={({ field }) => (
+              <CorPicker
+                value={field.value ?? undefined}
+                onChange={field.onChange}
+                disabled={isPending}
+              />
+            )}
+          />
         </FieldRow>
         <div className="flex items-center justify-between rounded-md border p-2">
           <Label htmlFor="eu-ativo" className="text-sm">
@@ -719,6 +761,54 @@ function FieldRow({
       </Label>
       {children}
       {error && <p className="text-destructive text-xs">{error}</p>}
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------
+// CorPicker — paleta de cores do operador (swatches)
+// -----------------------------------------------------------------
+
+function CorPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value?: string
+  onChange: (v: string | undefined) => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        onClick={() => onChange(undefined)}
+        disabled={disabled}
+        aria-label="Sem cor"
+        title="Sem cor"
+        className={cn(
+          'text-muted-foreground flex size-7 items-center justify-center rounded-full border-2',
+          !value ? 'border-foreground' : 'border-border',
+        )}
+      >
+        <Ban className="size-3.5" />
+      </button>
+      {OPERADOR_CORES.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          disabled={disabled}
+          aria-label={`Cor ${c}`}
+          style={{ backgroundColor: c }}
+          className={cn(
+            'size-7 rounded-full border-2 transition-transform hover:scale-110',
+            value === c
+              ? 'border-foreground ring-foreground/20 ring-2'
+              : 'border-transparent',
+          )}
+        />
+      ))}
     </div>
   )
 }

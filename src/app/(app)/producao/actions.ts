@@ -35,6 +35,7 @@ export type KanbanCardData = {
   maquinaCodigo: string | null
   responsavelId: string | null
   responsavelNome: string | null
+  responsavelCor: string | null
   dataPrevistaFim: Date | null
   atrasada: boolean
   observacoes: string | null
@@ -92,6 +93,7 @@ export async function listarOrdensProducao(
       variacaoTamanho: variacoesProduto.tamanho,
       maquinaCodigo: maquinas.codigo,
       responsavelNome: users.nome,
+      responsavelCor: users.cor,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -118,6 +120,7 @@ export async function listarOrdensProducao(
       variacaoTamanho,
       maquinaCodigo,
       responsavelNome,
+      responsavelCor,
     }) => ({
       id: op.id,
       numero: op.numero,
@@ -134,6 +137,7 @@ export async function listarOrdensProducao(
       maquinaCodigo: maquinaCodigo ?? null,
       responsavelId: op.responsavelId,
       responsavelNome: responsavelNome ?? null,
+      responsavelCor: responsavelCor ?? null,
       dataPrevistaFim: op.dataPrevistaFim,
       atrasada:
         op.dataPrevistaFim !== null &&

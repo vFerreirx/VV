@@ -19,6 +19,8 @@ export const users = pgTable(
     email: text().notNull().unique(),
     telefone: text(),
     role: userRoleEnum().notNull().default('operador'),
+    // Cor do operador (hex) — usada pra colorir os cards dele no kanban.
+    cor: text(),
     ativo: boolean().notNull().default(true),
     maquinaAtualId: uuid(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

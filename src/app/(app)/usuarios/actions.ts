@@ -89,12 +89,15 @@ export async function criarUsuarioAction(
     }
   }
 
-  // O trigger handle_new_user já populou public.users. Apenas garante
-  // que telefone foi setado (o trigger faz COALESCE conservador).
-  if (data.telefone) {
+  // O trigger handle_new_user já populou public.users. Garante telefone
+  // e cor (que o trigger não conhece).
+  if (data.telefone || data.cor) {
     await db
       .update(users)
-      .set({ telefone: data.telefone })
+      .set({
+        ...(data.telefone ? { telefone: data.telefone } : {}),
+        ...(data.cor ? { cor: data.cor } : {}),
+      })
       .where(eq(users.id, created.user.id))
   }
 
@@ -178,11 +181,13 @@ export async function atualizarUsuarioAction(
       nome: data.nome,
       telefone: data.telefone ?? null,
       role: data.role,
+      cor: data.cor ?? null,
       ativo: data.ativo,
     })
     .where(eq(users.id, id))
 
   revalidatePath('/usuarios')
+  revalidatePath('/producao')
   return { success: true, message: 'Usuário atualizado' }
 }
 
