@@ -27,3 +27,14 @@ playground.
 
 Se precisar testar com dados de demonstração, **avise antes** e proponha
 inserir só linhas extras, nunca substituir.
+
+## Permissões — REGRAS FIXAS
+
+- **Admin** tem SEMPRE todas as permissões (acesso e ações em tudo).
+- **Gerente de produção** tem controle total de tudo que é produção
+  (OPs/kanban, estações, máquinas, mover qualquer status, etc.).
+  O helper `isManager` (admin + gerente_producao) deve liberar essas ações.
+- **Operador** age sobre o que é dele: pode mover/apontar a OP cujo
+  `responsavelId` é ele (no fluxo puxado ele "pega" a OP pra virar dono).
+- Ao criar qualquer ação/guarda nova, verifique que admin e gerente não
+  ficam bloqueados.

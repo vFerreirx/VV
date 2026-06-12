@@ -452,19 +452,20 @@ export async function mudarStatusOrdemAction(
     return { success: false, error: 'OP não encontrada' }
   }
 
-  // Manager pode tudo. Operador só pode editar OP cuja máquina é a dele.
+  // Admin e gerente de produção podem tudo. Operador pode mover a OP que é
+  // dele (responsável). Se ainda não é dele, precisa pegar primeiro.
   const podeEditar = isManagerRole(user.role)
-  let podeOperador = false
-  if (!podeEditar && user.role === 'operador' && atual.maquinaId) {
-    const [m] = await db
-      .select({ operadorAtualId: maquinas.operadorAtualId })
-      .from(maquinas)
-      .where(eq(maquinas.id, atual.maquinaId))
-      .limit(1)
-    podeOperador = m?.operadorAtualId === user.id
-  }
+  const podeOperador =
+    !podeEditar &&
+    user.role === 'operador' &&
+    atual.responsavelId === user.id
   if (!podeEditar && !podeOperador) {
-    return { success: false, error: 'Sem permissão pra alterar essa OP' }
+    return {
+      success: false,
+      error: atual.responsavelId
+        ? 'Essa OP é de outro operador'
+        : 'Pegue a OP pra você antes de mover',
+    }
   }
 
   if (atual.status === data.status) {
