@@ -15,14 +15,18 @@ import {
 } from '@dnd-kit/core'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CircleAlert } from 'lucide-react'
+import { CircleAlert, Hand, Undo2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useOptimistic, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import type { KanbanCardData } from './actions'
 import { OpDetailSheet } from './op-detail-sheet'
-import { mudarStatusOrdemAction } from '@/app/(app)/ordens/actions'
+import {
+  mudarStatusOrdemAction,
+  pegarOrdemAction,
+  soltarOrdemAction,
+} from '@/app/(app)/ordens/actions'
 import { Badge } from '@/components/ui/badge'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -88,9 +92,10 @@ const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
 type Props = {
   ordens: KanbanCardData[]
   podeMover: boolean
+  currentUserId: string
 }
 
-export function KanbanBoard({ ordens, podeMover }: Props) {
+export function KanbanBoard({ ordens, podeMover, currentUserId }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -199,6 +204,7 @@ export function KanbanBoard({ ordens, podeMover }: Props) {
               status={g.status}
               ordens={g.ordens}
               podeMover={podeMover}
+              currentUserId={currentUserId}
               isPending={isPending}
               onAbrirDetalhe={(id) => setDetalheId(id)}
             />
@@ -230,12 +236,14 @@ function KanbanColumn({
   status,
   ordens,
   podeMover,
+  currentUserId,
   isPending,
   onAbrirDetalhe,
 }: {
   status: (typeof statusValues)[number]
   ordens: KanbanCardData[]
   podeMover: boolean
+  currentUserId: string
   isPending: boolean
   onAbrirDetalhe: (id: string) => void
 }) {
@@ -275,6 +283,7 @@ function KanbanColumn({
             key={o.id}
             ordem={o}
             podeMover={podeMover}
+            currentUserId={currentUserId}
             isPending={isPending}
             onAbrirDetalhe={onAbrirDetalhe}
           />
@@ -291,11 +300,13 @@ function KanbanColumn({
 function KanbanCard({
   ordem,
   podeMover,
+  currentUserId,
   isPending,
   onAbrirDetalhe,
 }: {
   ordem: KanbanCardData
   podeMover: boolean
+  currentUserId: string
   isPending: boolean
   onAbrirDetalhe: (id: string) => void
 }) {
@@ -326,8 +337,69 @@ function KanbanCard({
         isDragging && 'opacity-30',
       )}
     >
-      <KanbanCardContent ordem={ordem} />
+      <KanbanCardContent
+        ordem={ordem}
+        currentUserId={currentUserId}
+      />
     </div>
+  )
+}
+
+// Botão "Pegar pra mim" / "Soltar" (fluxo puxado).
+function PegarSoltar({
+  ordem,
+  currentUserId,
+}: {
+  ordem: KanbanCardData
+  currentUserId: string
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const semDono = !ordem.responsavelId
+  const meu = ordem.responsavelId === currentUserId
+
+  function agir(fn: typeof pegarOrdemAction) {
+    startTransition(async () => {
+      const result = await fn(ordem.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'Pronto')
+      router.refresh()
+    })
+  }
+
+  // OP de outra pessoa: não mostra ação (só o nome no rodapé).
+  if (!semDono && !meu) return null
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        agir(semDono ? pegarOrdemAction : soltarOrdemAction)
+      }}
+      disabled={isPending}
+      className={cn(
+        'mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border py-1.5 text-xs font-medium transition-colors disabled:opacity-60',
+        semDono
+          ? 'border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground'
+          : 'border-border text-muted-foreground hover:bg-muted',
+      )}
+    >
+      {semDono ? (
+        <>
+          <Hand className="size-3.5" />
+          Pegar pra mim
+        </>
+      ) : (
+        <>
+          <Undo2 className="size-3.5" />
+          Soltar
+        </>
+      )}
+    </button>
   )
 }
 
@@ -335,9 +407,11 @@ function KanbanCard({
 function KanbanCardContent({
   ordem,
   dragging,
+  currentUserId,
 }: {
   ordem: KanbanCardData
   dragging?: boolean
+  currentUserId?: string
 }) {
   return (
     <article
@@ -423,6 +497,10 @@ function KanbanCardContent({
           </span>
         )}
       </footer>
+
+      {currentUserId && (
+        <PegarSoltar ordem={ordem} currentUserId={currentUserId} />
+      )}
     </article>
   )
 }

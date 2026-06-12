@@ -23,7 +23,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import type { Maquina, User } from '@/lib/db/schema'
 import {
   CANAL_LABEL,
   PRIORIDADE_LABEL,
@@ -86,18 +85,12 @@ function toFormValues(d: OrdemFormDefaults): OrdemInput {
   }
 }
 
-type Operador = Pick<User, 'id' | 'nome' | 'email' | 'role'>
-
 export function OrdemForm({
   defaults = VAZIO,
   produtos,
-  maquinas,
-  responsaveis,
 }: {
   defaults?: OrdemFormDefaults
   produtos: ProdutoComVariacoesParaForm[]
-  maquinas: Array<Pick<Maquina, 'id' | 'codigo' | 'nome' | 'status'>>
-  responsaveis: Operador[]
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -142,21 +135,6 @@ export function OrdemForm({
     ],
     [variacoesDisponiveis],
   )
-  const maquinasItems = useMemo(
-    () => [
-      { value: 'nenhuma', label: 'Sem máquina' },
-      ...maquinas.map((m) => ({ value: m.id, label: `${m.codigo} — ${m.nome}` })),
-    ],
-    [maquinas],
-  )
-  const responsaveisItems = useMemo(
-    () => [
-      { value: 'nenhum', label: 'Sem responsável' },
-      ...responsaveis.map((r) => ({ value: r.id, label: r.nome })),
-    ],
-    [responsaveis],
-  )
-
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
       const result = isEdit
@@ -291,71 +269,12 @@ export function OrdemForm({
       <Card>
         <CardHeader>
           <CardTitle>Roteiro de produção</CardTitle>
+          <p className="text-muted-foreground text-sm">
+            Máquina e responsável são definidos depois — a OP entra na fila e o
+            operador puxa pra ele no kanban.
+          </p>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field
-            label="Máquina"
-            id="maquinaId"
-            error={errs.maquinaId?.message}
-            hint="Pode ser definida agora ou depois ao iniciar a produção."
-          >
-            <Controller
-              control={form.control}
-              name="maquinaId"
-              render={({ field: ctl }) => (
-                <Select
-                  items={maquinasItems}
-                  value={ctl.value || 'nenhuma'}
-                  onValueChange={(v) => ctl.onChange(v === 'nenhuma' ? '' : v)}
-                  disabled={isPending}
-                >
-                  <SelectTrigger id="maquinaId" className="w-full">
-                    <SelectValue placeholder="Selecione…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nenhuma">Sem máquina</SelectItem>
-                    {maquinas.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {`${m.codigo} — ${m.nome}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </Field>
-
-          <Field
-            label="Responsável"
-            id="responsavelId"
-            error={errs.responsavelId?.message}
-          >
-            <Controller
-              control={form.control}
-              name="responsavelId"
-              render={({ field: ctl }) => (
-                <Select
-                  items={responsaveisItems}
-                  value={ctl.value || 'nenhum'}
-                  onValueChange={(v) => ctl.onChange(v === 'nenhum' ? '' : v)}
-                  disabled={isPending}
-                >
-                  <SelectTrigger id="responsavelId" className="w-full">
-                    <SelectValue placeholder="Selecione…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nenhum">Sem responsável</SelectItem>
-                    {responsaveis.map((r) => (
-                      <SelectItem key={r.id} value={r.id}>
-                        {r.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </Field>
-
           <Field
             label="Canal de destino"
             id="canalDestino"

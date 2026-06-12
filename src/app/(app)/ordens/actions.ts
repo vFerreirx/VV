@@ -503,6 +503,68 @@ export async function mudarStatusOrdemAction(
 }
 
 // -----------------------------------------------------------------
+// Pegar / soltar OP (fluxo puxado: operador assume a OP da fila)
+// -----------------------------------------------------------------
+
+const uuidRe =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export async function pegarOrdemAction(id: string): Promise<ActionResult> {
+  const user = await requireAuth()
+  if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
+
+  const [atual] = await db
+    .select({ id: ordensProducao.id, responsavelId: ordensProducao.responsavelId })
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.id, id), isNull(ordensProducao.deletedAt)))
+    .limit(1)
+  if (!atual) return { success: false, error: 'OP não encontrada' }
+
+  if (atual.responsavelId && atual.responsavelId !== user.id) {
+    return { success: false, error: 'Essa OP já foi pega por outro operador' }
+  }
+
+  await db
+    .update(ordensProducao)
+    .set({ responsavelId: user.id })
+    .where(eq(ordensProducao.id, id))
+
+  revalidatePath('/producao')
+  revalidatePath('/ordens')
+  return { success: true, message: 'OP é sua agora' }
+}
+
+export async function soltarOrdemAction(id: string): Promise<ActionResult> {
+  const user = await requireAuth()
+  if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
+
+  const [atual] = await db
+    .select({ id: ordensProducao.id, responsavelId: ordensProducao.responsavelId })
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.id, id), isNull(ordensProducao.deletedAt)))
+    .limit(1)
+  if (!atual) return { success: false, error: 'OP não encontrada' }
+
+  // Só o próprio responsável ou um gerente pode soltar.
+  if (
+    atual.responsavelId &&
+    atual.responsavelId !== user.id &&
+    !isManagerRole(user.role)
+  ) {
+    return { success: false, error: 'Só quem pegou pode soltar' }
+  }
+
+  await db
+    .update(ordensProducao)
+    .set({ responsavelId: null })
+    .where(eq(ordensProducao.id, id))
+
+  revalidatePath('/producao')
+  revalidatePath('/ordens')
+  return { success: true, message: 'OP voltou pra fila' }
+}
+
+// -----------------------------------------------------------------
 // Soft delete (cancela e marca deletedAt)
 // -----------------------------------------------------------------
 

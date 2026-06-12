@@ -67,7 +67,11 @@ export default async function ProducaoPage({
         filtrosIniciais={filtros}
       />
 
-      <KanbanBoard ordens={ordens} podeMover={podeMover} />
+      <KanbanBoard
+        ordens={ordens}
+        podeMover={podeMover}
+        currentUserId={user.id}
+      />
     </div>
   )
 }

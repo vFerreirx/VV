@@ -2,11 +2,7 @@ import { ArrowLeft } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
-import {
-  listarMaquinasParaOrdem,
-  listarProdutosParaOrdem,
-  listarResponsaveis,
-} from '../actions'
+import { listarProdutosParaOrdem } from '../actions'
 import { OrdemForm } from '@/components/forms/ordem-form'
 import { Button } from '@/components/ui/button'
 import { requireRole } from '@/lib/auth/require-auth'
@@ -16,11 +12,7 @@ export const metadata: Metadata = { title: 'Nova OP — Vanvest' }
 export default async function NovaOrdemPage() {
   await requireRole(['admin', 'gerente_producao'])
 
-  const [produtos, maquinas, responsaveis] = await Promise.all([
-    listarProdutosParaOrdem(),
-    listarMaquinasParaOrdem(),
-    listarResponsaveis(),
-  ])
+  const produtos = await listarProdutosParaOrdem()
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -41,11 +33,7 @@ export default async function NovaOrdemPage() {
         </div>
       </div>
 
-      <OrdemForm
-        produtos={produtos}
-        maquinas={maquinas}
-        responsaveis={responsaveis}
-      />
+      <OrdemForm produtos={produtos} />
     </div>
   )
 }

@@ -5,12 +5,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import {
-  listarMaquinasParaOrdem,
-  listarProdutosParaOrdem,
-  listarResponsaveis,
-  obterOrdem,
-} from '../actions'
+import { listarProdutosParaOrdem, obterOrdem } from '../actions'
 import {
   OrdemForm,
   type OrdemFormDefaults,
@@ -29,11 +24,9 @@ export default async function EditarOrdemPage({
   await requireRole(['admin', 'gerente_producao'])
   const { id } = await params
 
-  const [ordem, produtos, maquinas, responsaveis] = await Promise.all([
+  const [ordem, produtos] = await Promise.all([
     obterOrdem(id),
     listarProdutosParaOrdem(),
-    listarMaquinasParaOrdem(),
-    listarResponsaveis(),
   ])
   if (!ordem) notFound()
 
@@ -121,12 +114,7 @@ export default async function EditarOrdemPage({
         </CardContent>
       </Card>
 
-      <OrdemForm
-        defaults={defaults}
-        produtos={produtos}
-        maquinas={maquinas}
-        responsaveis={responsaveis}
-      />
+      <OrdemForm defaults={defaults} produtos={produtos} />
     </div>
   )
 }
