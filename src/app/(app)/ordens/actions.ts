@@ -23,6 +23,7 @@ import {
   apontamentosProducao,
   eventosKanban,
   maquinas,
+  movimentacoesEstoque,
   ordensProducao,
   produtos,
   users,
@@ -498,11 +499,46 @@ export async function mudarStatusOrdemAction(
       usuarioId: user.id,
       observacao: data.observacao ?? null,
     })
+
+    // OP concluída (enviado) pro canal "Estoque" entra no estoque — uma vez só.
+    if (data.status === 'enviado' && atual.canalDestino === 'estoque') {
+      const [existente] = await tx
+        .select({ id: movimentacoesEstoque.id })
+        .from(movimentacoesEstoque)
+        .where(
+          and(
+            eq(movimentacoesEstoque.referenciaId, id),
+            eq(movimentacoesEstoque.tipo, 'entrada_producao'),
+          ),
+        )
+        .limit(1)
+      if (!existente) {
+        const [agg] = await tx
+          .select({
+            total: sql<number>`coalesce(sum(${apontamentosProducao.quantidadeProduzida}), 0)::int`,
+          })
+          .from(apontamentosProducao)
+          .where(eq(apontamentosProducao.ordemId, id))
+        const qtd = (agg?.total ?? 0) > 0 ? agg!.total : atual.quantidade
+        if (qtd > 0) {
+          await tx.insert(movimentacoesEstoque).values({
+            produtoId: atual.produtoId,
+            variacaoId: atual.variacaoId,
+            tipo: 'entrada_producao',
+            quantidade: qtd,
+            referenciaId: id,
+            referenciaTipo: 'ordem',
+            usuarioId: user.id,
+          })
+        }
+      }
+    }
   })
 
   revalidatePath('/ordens')
   revalidatePath(`/ordens/${id}`)
   revalidatePath('/producao')
+  revalidatePath('/estoque')
   return { success: true, message: 'Status atualizado' }
 }
 

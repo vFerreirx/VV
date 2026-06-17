@@ -2,6 +2,7 @@
 // Agrupada em seções pra não virar uma lista enorme.
 
 import {
+  Boxes,
   CalendarDays,
   Cog,
   Factory,
@@ -53,6 +54,17 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Estações',
         icon: Grid2x2,
         roles: ['admin', 'gerente_producao'],
+      },
+    ],
+  },
+  {
+    titulo: 'Estoque & Vendas',
+    items: [
+      {
+        href: '/estoque',
+        label: 'Estoque',
+        icon: Boxes,
+        roles: ['admin', 'gerente_producao', 'estoquista'],
       },
     ],
   },
