@@ -37,10 +37,12 @@ import {
 import {
   apontamentoSchema,
   mudarStatusOrdemSchema,
+  ordemRapidaSchema,
   ordemSchema,
   ordensFiltrosSchema,
   type ApontamentoInput,
   type MudarStatusOrdemInput,
+  type OrdemRapidaInput,
   type OrdemInput,
   type OrdensFiltros,
 } from '@/lib/validators/ordens'
@@ -346,6 +348,59 @@ export async function criarOrdemAction(
       statusNovo: data.status,
       usuarioId: user.id,
       observacao: 'OP criada',
+    })
+
+    return inserted!.id
+  })
+
+  revalidatePath('/ordens')
+  revalidatePath('/producao')
+  return { success: true, data: { id: novoId }, message: 'OP criada' }
+}
+
+// -----------------------------------------------------------------
+// Criar OP rápida (no próprio kanban) — operador também pode
+// -----------------------------------------------------------------
+
+export async function criarOrdemRapidaAction(
+  input: OrdemRapidaInput,
+): Promise<ActionResult<{ id: string }>> {
+  const user = await requireRole(['admin', 'gerente_producao', 'operador'])
+
+  const parsed = ordemRapidaSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? 'Dados inválidos',
+    }
+  }
+  const data = parsed.data
+
+  // Operador que cria a corridinha já fica como dono; gerente deixa na fila.
+  const responsavelId = user.role === 'operador' ? user.id : null
+
+  const novoId = await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(ordensProducao)
+      .values({
+        numero: '',
+        produtoId: data.produtoId,
+        variacaoId: data.variacaoId ?? null,
+        quantidade: data.quantidade,
+        canalDestino: data.canalDestino,
+        prioridade: data.prioridade,
+        status: 'programado',
+        criadoPor: user.id,
+        responsavelId,
+      })
+      .returning({ id: ordensProducao.id })
+
+    await tx.insert(eventosKanban).values({
+      ordemId: inserted!.id,
+      statusAnterior: null,
+      statusNovo: 'programado',
+      usuarioId: user.id,
+      observacao: 'OP rápida criada',
     })
 
     return inserted!.id

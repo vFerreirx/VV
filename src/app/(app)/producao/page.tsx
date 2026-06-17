@@ -8,6 +8,7 @@ import { KanbanBoard } from './kanban-board'
 import { ProducaoFiltros } from './producao-filtros'
 import {
   listarMaquinasParaOrdem,
+  listarProdutosParaOrdem,
   listarResponsaveis,
 } from '@/app/(app)/ordens/actions'
 import { isManager, requireAuth } from '@/lib/auth/require-auth'
@@ -39,17 +40,18 @@ export default async function ProducaoPage({
     responsavelId: flat.responsavelId ?? 'todos',
   }
 
-  const [ordens, maquinas, responsaveis] = await Promise.all([
+  const [ordens, maquinas, responsaveis, produtos] = await Promise.all([
     listarOrdensProducao(filtros),
     listarMaquinasParaOrdem(),
     listarResponsaveis(),
+    listarProdutosParaOrdem(),
   ])
 
   // Manager: pode mover qualquer OP.
-  // Operador: pode mover (kanban respeita RLS via mudarStatusOrdemAction,
-  // que checa a máquina dele).
+  // Operador: pode mover a OP que é dele.
   // Estoquista/vendas: somente leitura.
   const podeMover = isManager(user.role) || user.role === 'operador'
+  const podeCriar = podeMover // mesmos papéis criam OP rápida
 
   return (
     <div className="space-y-6">
@@ -71,6 +73,8 @@ export default async function ProducaoPage({
         ordens={ordens}
         podeMover={podeMover}
         currentUserId={user.id}
+        produtos={produtos}
+        podeCriar={podeCriar}
       />
     </div>
   )

@@ -118,6 +118,22 @@ export type OrdemInput = z.input<typeof ordemSchema>
 export type OrdemOutput = z.output<typeof ordemSchema>
 
 // -----------------------------------------------------------------
+// OP rápida (criada no próprio kanban — só o essencial)
+// -----------------------------------------------------------------
+
+export const ordemRapidaSchema = z.object({
+  produtoId: z
+    .string()
+    .refine((v) => uuidRegex.test(v), 'Selecione um produto'),
+  variacaoId: uuidOpt,
+  quantidade: quantidadeReq,
+  canalDestino: z.enum(canalValues),
+  prioridade: z.enum(prioridadeValues),
+})
+
+export type OrdemRapidaInput = z.input<typeof ordemRapidaSchema>
+
+// -----------------------------------------------------------------
 // Mudar status (usado pelo kanban)
 // -----------------------------------------------------------------
 

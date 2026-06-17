@@ -15,13 +15,16 @@ import {
 } from '@dnd-kit/core'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CircleAlert, Hand, Undo2 } from 'lucide-react'
+import { CircleAlert, Hand, Plus, Undo2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useOptimistic, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import type { KanbanCardData } from './actions'
 import { OpDetailSheet } from './op-detail-sheet'
+import { QuickOrdemDialog } from './quick-ordem-dialog'
+import type { ProdutoComVariacoesParaForm } from '@/app/(app)/ordens/actions'
+import { Button } from '@/components/ui/button'
 import {
   mudarStatusOrdemAction,
   pegarOrdemAction,
@@ -93,13 +96,22 @@ type Props = {
   ordens: KanbanCardData[]
   podeMover: boolean
   currentUserId: string
+  produtos: ProdutoComVariacoesParaForm[]
+  podeCriar: boolean
 }
 
-export function KanbanBoard({ ordens, podeMover, currentUserId }: Props) {
+export function KanbanBoard({
+  ordens,
+  podeMover,
+  currentUserId,
+  produtos,
+  podeCriar,
+}: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [detalheId, setDetalheId] = useState<string | null>(null)
+  const [novaOpOpen, setNovaOpOpen] = useState(false)
 
   // useOptimistic: durante a transição, exibimos `items` com o status novo;
   // quando o servidor responde e router.refresh() traz `ordens` atualizadas,
@@ -191,6 +203,15 @@ export function KanbanBoard({ ordens, podeMover, currentUserId }: Props) {
 
   return (
     <>
+      {podeCriar && (
+        <div className="mb-3 flex justify-end">
+          <Button size="sm" onClick={() => setNovaOpOpen(true)}>
+            <Plus />
+            Nova OP rápida
+          </Button>
+        </div>
+      )}
+
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
@@ -225,6 +246,12 @@ export function KanbanBoard({ ordens, podeMover, currentUserId }: Props) {
         ordemId={detalheId}
         onClose={() => setDetalheId(null)}
         currentUserId={currentUserId}
+      />
+
+      <QuickOrdemDialog
+        open={novaOpOpen}
+        onClose={() => setNovaOpOpen(false)}
+        produtos={produtos}
       />
     </>
   )
