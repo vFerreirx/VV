@@ -43,7 +43,10 @@ inserir só linhas extras, nunca substituir.
 
 - O **acesso a cada área/tela** é editável em `/permissoes` (só admin).
   Modelo "acesso por área": liga/desliga quais áreas cada cargo EDITÁVEL
-  (operador, estoquista, vendas) enxerga. Admin e gerente são travados.
+  (gerente_producao, operador, estoquista, vendas) enxerga. Só o **admin**
+  é travado (acesso total a tudo, nunca editável). O gerente passou a ser
+  editável a pedido do usuário — a escrita nas actions ainda usa
+  `isManager`, então o liga/desliga afeta o acesso/leitura das telas.
 - Fonte da verdade dos padrões + lógica pura:
   `src/lib/auth/permissoes.ts` (`AREAS`, `nivelEfetivo`). Overrides no banco
   (`permissoes_acesso`), carregadas em `src/lib/auth/permissoes-db.ts`.

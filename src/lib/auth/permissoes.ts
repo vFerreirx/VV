@@ -7,9 +7,9 @@ import type { User } from '@/lib/db/schema'
 // EDITÁVEL acessa. Dentro da área, quem cria/edita segue a regra fixa de
 // cada ação (não muda aqui).
 //
-// Travados (não editáveis):
-//   - admin  → sempre acesso total a tudo.
-//   - gerente_producao → sempre o nível padrão (produção/cadastros inteiros).
+// Travado (não editável):
+//   - admin → sempre acesso total a tudo.
+// Os demais cargos (gerente, operador, estoquista, vendas) são editáveis.
 //
 // As overrides (liga/desliga) ficam no banco; ver permissoes-db.ts.
 // -----------------------------------------------------------------
@@ -24,8 +24,14 @@ export const ROLES: Role[] = [
   'vendas',
 ]
 
-// Cargos cujo acesso o admin pode editar.
-export const ROLES_EDITAVEIS: Role[] = ['operador', 'estoquista', 'vendas']
+// Cargos cujo acesso o admin pode editar. (O admin nunca é editável: tem
+// sempre acesso total a tudo.)
+export const ROLES_EDITAVEIS: Role[] = [
+  'gerente_producao',
+  'operador',
+  'estoquista',
+  'vendas',
+]
 
 export const ROLE_INFO: Record<Role, { label: string; resumo: string }> = {
   admin: {
@@ -266,10 +272,12 @@ export function nivelEfetivo(
 ): Nivel {
   const area = AREA_MAP[areaKey]
   if (!area) return 'nenhum'
+  // Admin é sempre travado em acesso total.
   if (role === 'admin') return 'total'
-  if (role === 'gerente_producao') return area.nivelPadrao.gerente_producao
 
-  // Cargos editáveis (operador/estoquista/vendas).
+  // Cargos editáveis (gerente/operador/estoquista/vendas).
+  // Em áreas não editáveis (usuários, permissões, estações) cada cargo fica
+  // fixo no nível padrão.
   if (!area.editavel) return area.nivelPadrao[role]
 
   const liberadoPadrao = area.nivelPadrao[role] !== 'nenhum'
