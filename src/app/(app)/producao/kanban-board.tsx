@@ -16,7 +16,6 @@ import {
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
-  ChevronLeft,
   ChevronRight,
   CircleAlert,
   Clock,
@@ -42,7 +41,6 @@ import { Badge } from '@/components/ui/badge'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import {
-  CANAL_LABEL_CURTO,
   PRIORIDADE_LABEL,
   STATUS_KANBAN,
   STATUS_LABEL_CURTO,
@@ -415,7 +413,9 @@ function KanbanColumn({
       <div
         ref={setNodeRef}
         className={cn(
-          'flex-1 space-y-2 rounded-lg border border-dashed p-2 transition-colors',
+          // Altura limitada à viewport: a pilha de OPs rola DENTRO da coluna,
+          // sem esticar a página inteira.
+          'max-h-[calc(100dvh-12rem)] flex-1 space-y-1.5 overflow-y-auto rounded-lg border border-dashed p-2 transition-colors',
           isOver
             ? 'border-foreground/40 bg-muted/30'
             : 'border-border bg-muted/10',
@@ -542,7 +542,7 @@ function PegarSoltar({
       }}
       disabled={isPending}
       className={cn(
-        'mt-2 flex w-full items-center justify-center gap-1.5 rounded-md border py-1.5 text-xs font-medium transition-colors disabled:opacity-60',
+        'mt-1 flex w-full items-center justify-center gap-1.5 rounded border py-1 text-[11px] font-medium transition-colors disabled:opacity-60',
         semDono
           ? 'border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground'
           : 'border-border text-muted-foreground hover:bg-muted',
@@ -550,12 +550,12 @@ function PegarSoltar({
     >
       {semDono ? (
         <>
-          <Hand className="size-3.5" />
+          <Hand className="size-3" />
           Pegar pra mim
         </>
       ) : (
         <>
-          <Undo2 className="size-3.5" />
+          <Undo2 className="size-3" />
           Soltar
         </>
       )}
@@ -579,56 +579,67 @@ function KanbanCardContent({
 }) {
   const tempo = tempoNaEtapa(ordem.desdeStatus)
   const idx = STATUS_KANBAN.indexOf(ordem.status)
-  const anterior = idx > 0 ? STATUS_KANBAN[idx - 1] : null
   const proximo =
     idx >= 0 && idx < STATUS_KANBAN.length - 1 ? STATUS_KANBAN[idx + 1] : null
-  const mostrarSetas = !!onMover && !!podeMoverEsta && (anterior || proximo)
+  const variacao = [ordem.variacaoCor, ordem.variacaoTamanho]
+    .filter(Boolean)
+    .join('/')
+  const destaque =
+    ordem.prioridade === 'alta' || ordem.prioridade === 'urgente'
 
   return (
     <article
       style={
         ordem.estacaoCor
-          ? { borderLeftColor: ordem.estacaoCor, borderLeftWidth: 4 }
+          ? { borderLeftColor: ordem.estacaoCor, borderLeftWidth: 3 }
           : undefined
       }
       title={ordem.estacaoNome ?? undefined}
       className={cn(
-        'bg-card rounded-lg border p-2.5 text-xs shadow-sm transition-shadow',
+        'bg-card rounded-md border p-2 text-xs shadow-sm transition-shadow',
         dragging ? 'shadow-lg ring-1 ring-foreground/20' : 'hover:shadow-md',
       )}
     >
-      <header className="flex items-center justify-between gap-2">
-        <span className="text-muted-foreground truncate font-mono text-[11px]">
+      {/* Linha 1: número + produto + (prioridade alta) + avançar */}
+      <div className="flex items-center gap-1.5">
+        <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
           {ordem.numero}
         </span>
-        <Badge
-          className={cn(
-            'h-4 shrink-0 px-1.5 text-[10px]',
-            PRIORIDADE_BADGE[ordem.prioridade],
-            ordem.prioridade === 'urgente' && 'pulse-urgente',
-          )}
-        >
-          {PRIORIDADE_LABEL[ordem.prioridade]}
-        </Badge>
-      </header>
-
-      <div className="mt-0.5 line-clamp-1 text-[13px] font-medium leading-snug">
-        {ordem.produtoNome}
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">
+          {ordem.produtoNome}
+        </span>
+        {destaque && (
+          <Badge
+            className={cn(
+              'h-4 shrink-0 px-1 text-[9px]',
+              PRIORIDADE_BADGE[ordem.prioridade],
+              ordem.prioridade === 'urgente' && 'pulse-urgente',
+            )}
+          >
+            {PRIORIDADE_LABEL[ordem.prioridade]}
+          </Badge>
+        )}
+        {onMover && podeMoverEsta && proximo && (
+          <button
+            type="button"
+            title={`Avançar p/ ${STATUS_LABEL_CURTO[proximo]}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onMover(ordem.id, proximo)
+            }}
+            className="text-muted-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary flex size-5 shrink-0 items-center justify-center rounded border transition-colors"
+          >
+            <ChevronRight className="size-3.5" />
+          </button>
+        )}
       </div>
 
-      {(ordem.variacaoCor || ordem.variacaoTamanho) && (
-        <div className="text-muted-foreground truncate text-[11px]">
-          {[ordem.variacaoCor, ordem.variacaoTamanho]
-            .filter(Boolean)
-            .join(' / ')}
-        </div>
-      )}
-
-      <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+      {/* Linha 2: meta compacta */}
+      <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px]">
         <span className="tabular-nums">
           {ordem.quantidade.toLocaleString('pt-BR')} un
         </span>
-        <span>{CANAL_LABEL_CURTO[ordem.canalDestino]}</span>
+        {variacao && <span className="truncate">{variacao}</span>}
         <span
           className={cn(
             'inline-flex items-center gap-0.5',
@@ -636,7 +647,7 @@ function KanbanCardContent({
           )}
           title="Tempo nesta etapa"
         >
-          <Clock className="size-3" />
+          <Clock className="size-2.5" />
           {tempo.label}
         </span>
         {ordem.dataPrevistaFim && (
@@ -646,15 +657,26 @@ function KanbanCardContent({
               ordem.atrasada && 'text-destructive font-medium',
             )}
           >
-            {ordem.atrasada && <CircleAlert className="size-3" />}
+            {ordem.atrasada && <CircleAlert className="size-2.5" />}
             {format(new Date(ordem.dataPrevistaFim), 'dd/MM', { locale: ptBR })}
+          </span>
+        )}
+        {ordem.responsavelNome && (
+          <span className="inline-flex items-center gap-0.5">
+            {ordem.estacaoCor && (
+              <span
+                className="inline-block size-1.5 shrink-0 rounded-full"
+                style={{ backgroundColor: ordem.estacaoCor }}
+              />
+            )}
+            {ordem.responsavelNome.split(' ')[0]}
           </span>
         )}
       </div>
 
       {ordem.produzido > 0 && (
         <div
-          className="bg-muted mt-1.5 h-1 overflow-hidden rounded-full"
+          className="bg-muted mt-1 h-1 overflow-hidden rounded-full"
           title={`Produzido ${ordem.produzido}/${ordem.quantidade}`}
         >
           <div
@@ -668,50 +690,6 @@ function KanbanCardContent({
               width: `${Math.min(100, (ordem.produzido / ordem.quantidade) * 100)}%`,
             }}
           />
-        </div>
-      )}
-
-      {ordem.responsavelNome && (
-        <div className="text-muted-foreground mt-1.5 flex items-center gap-1 truncate text-[11px]">
-          {ordem.estacaoCor && (
-            <span
-              className="inline-block size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: ordem.estacaoCor }}
-            />
-          )}
-          {ordem.responsavelNome.split(' ')[0]}
-        </div>
-      )}
-
-      {mostrarSetas && (
-        <div className="mt-1.5 flex items-center gap-1">
-          {anterior && (
-            <button
-              type="button"
-              title={`Voltar p/ ${STATUS_LABEL_CURTO[anterior]}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                onMover?.(ordem.id, anterior)
-              }}
-              className="text-muted-foreground hover:bg-muted flex h-6 w-7 shrink-0 items-center justify-center rounded border transition-colors"
-            >
-              <ChevronLeft className="size-3.5" />
-            </button>
-          )}
-          {proximo && (
-            <button
-              type="button"
-              title={`Avançar p/ ${STATUS_LABEL_CURTO[proximo]}`}
-              onClick={(e) => {
-                e.stopPropagation()
-                onMover?.(ordem.id, proximo)
-              }}
-              className="border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground flex h-6 flex-1 items-center justify-center gap-1 rounded border text-[10px] font-medium transition-colors"
-            >
-              <span className="truncate">{STATUS_LABEL_CURTO[proximo]}</span>
-              <ChevronRight className="size-3.5 shrink-0" />
-            </button>
-          )}
         </div>
       )}
 
