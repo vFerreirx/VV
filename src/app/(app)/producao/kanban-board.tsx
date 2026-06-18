@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/core'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CircleAlert, Hand, Plus, Undo2 } from 'lucide-react'
+import { CircleAlert, Clock, Hand, Plus, Undo2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useOptimistic, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -88,6 +88,34 @@ const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
   urgente: 'bg-destructive/15 text-destructive',
 }
 
+// Limite de WIP (work-in-progress) por etapa. null = sem limite.
+// Ajuste os números conforme a capacidade real de cada etapa.
+const WIP_LIMITES: Partial<Record<(typeof statusValues)[number], number>> = {
+  em_producao: 18,
+  acabamento: 12,
+  embalagem: 12,
+}
+
+// A partir de quanto tempo parado na etapa o card é destacado (3 dias).
+const AGING_ALERTA_MS = 3 * 24 * 60 * 60 * 1000
+
+function tempoNaEtapa(desde: Date): { label: string; aging: boolean } {
+  const ms = Date.now() - new Date(desde).getTime()
+  const min = Math.max(0, Math.floor(ms / 60000))
+  const h = Math.floor(min / 60)
+  const d = Math.floor(h / 24)
+  const label = d >= 1 ? `há ${d}d` : h >= 1 ? `há ${h}h` : `há ${min}min`
+  return { label, aging: ms >= AGING_ALERTA_MS }
+}
+
+type FiltroChip = 'minhas' | 'urgentes' | 'atrasadas' | 'semDono'
+const FILTRO_LABEL: Record<FiltroChip, string> = {
+  minhas: 'Minhas',
+  urgentes: 'Urgentes',
+  atrasadas: 'Atrasadas',
+  semDono: 'Sem dono',
+}
+
 // -----------------------------------------------------------------
 // Board
 // -----------------------------------------------------------------
@@ -112,6 +140,16 @@ export function KanbanBoard({
   const [activeId, setActiveId] = useState<string | null>(null)
   const [detalheId, setDetalheId] = useState<string | null>(null)
   const [novaOpOpen, setNovaOpOpen] = useState(false)
+  const [filtros, setFiltros] = useState<Set<FiltroChip>>(new Set())
+
+  function toggleFiltro(f: FiltroChip) {
+    setFiltros((prev) => {
+      const next = new Set(prev)
+      if (next.has(f)) next.delete(f)
+      else next.add(f)
+      return next
+    })
+  }
 
   // useOptimistic: durante a transição, exibimos `items` com o status novo;
   // quando o servidor responde e router.refresh() traz `ordens` atualizadas,
@@ -159,12 +197,24 @@ export function KanbanBoard({
     }),
   )
 
+  const visiveis = useMemo(() => {
+    if (filtros.size === 0) return items
+    return items.filter((o) => {
+      if (filtros.has('minhas') && o.responsavelId !== currentUserId)
+        return false
+      if (filtros.has('urgentes') && o.prioridade !== 'urgente') return false
+      if (filtros.has('atrasadas') && !o.atrasada) return false
+      if (filtros.has('semDono') && o.responsavelId) return false
+      return true
+    })
+  }, [items, filtros, currentUserId])
+
   const grupos = useMemo(() => {
     return STATUS_KANBAN.map((status) => ({
       status,
-      ordens: items.filter((o) => o.status === status),
+      ordens: visiveis.filter((o) => o.status === status),
     }))
-  }, [items])
+  }, [visiveis])
 
   const activeOrdem = activeId ? items.find((o) => o.id === activeId) : null
 
@@ -203,14 +253,50 @@ export function KanbanBoard({
 
   return (
     <>
-      {podeCriar && (
-        <div className="mb-3 flex justify-end">
-          <Button size="sm" onClick={() => setNovaOpOpen(true)}>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(['minhas', 'urgentes', 'atrasadas', 'semDono'] as FiltroChip[]).map(
+            (f) => {
+              const ativo = filtros.has(f)
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => toggleFiltro(f)}
+                  aria-pressed={ativo}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    ativo
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  {FILTRO_LABEL[f]}
+                </button>
+              )
+            },
+          )}
+          {filtros.size > 0 && (
+            <button
+              type="button"
+              onClick={() => setFiltros(new Set())}
+              className="text-muted-foreground hover:text-foreground ml-1 text-xs underline"
+            >
+              limpar
+            </button>
+          )}
+        </div>
+        {podeCriar && (
+          <Button
+            size="sm"
+            className="ml-auto"
+            onClick={() => setNovaOpOpen(true)}
+          >
             <Plus />
             Nova OP rápida
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       <DndContext
         sensors={sensors}
@@ -278,6 +364,9 @@ function KanbanColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status })
   const styles = COLUMN_STYLES[status]
+  const limite = WIP_LIMITES[status]
+  const acima = limite != null && ordens.length > limite
+  const cheio = limite != null && ordens.length === limite
 
   return (
     <div className="flex w-[85vw] max-w-72 shrink-0 snap-start flex-col sm:w-72">
@@ -285,13 +374,27 @@ function KanbanColumn({
         className={cn(
           'mb-2 flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium',
           styles.header,
+          acima && 'ring-1 ring-destructive/50',
         )}
       >
         <span className="flex items-center gap-2">
           <span className={cn('inline-block h-2 w-2 rounded-full', styles.bar)} />
           {STATUS_LABEL_CURTO[status]}
         </span>
-        <span className="tabular-nums opacity-70">{ordens.length}</span>
+        <span
+          className={cn(
+            'tabular-nums',
+            acima
+              ? 'text-destructive font-semibold'
+              : cheio
+                ? 'font-semibold opacity-90'
+                : 'opacity-70',
+          )}
+          title={limite != null ? `Limite da etapa: ${limite}` : undefined}
+        >
+          {ordens.length}
+          {limite != null && `/${limite}`}
+        </span>
       </header>
       <div
         ref={setNodeRef}
@@ -442,6 +545,7 @@ function KanbanCardContent({
   dragging?: boolean
   currentUserId?: string
 }) {
+  const tempo = tempoNaEtapa(ordem.desdeStatus)
   return (
     <article
       style={
@@ -495,6 +599,16 @@ function KanbanCardContent({
         )}
         <span className="text-muted-foreground">
           {CANAL_LABEL_CURTO[ordem.canalDestino]}
+        </span>
+        <span
+          className={cn(
+            'inline-flex items-center gap-1',
+            tempo.aging ? 'text-destructive font-medium' : 'text-muted-foreground',
+          )}
+          title="Tempo nesta etapa"
+        >
+          <Clock className="size-3" />
+          {tempo.label}
         </span>
       </div>
 

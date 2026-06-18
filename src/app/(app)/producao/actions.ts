@@ -43,6 +43,8 @@ export type KanbanCardData = {
   produzido: number
   dataPrevistaFim: Date | null
   atrasada: boolean
+  // Quando a OP entrou no status atual (pra mostrar "tempo na etapa").
+  desdeStatus: Date
   observacoes: string | null
 }
 
@@ -113,6 +115,13 @@ export async function listarOrdensProducao(
         FROM ${apontamentosProducao}
         WHERE ${apontamentosProducao.ordemId} = ${ordensProducao.id}
       )`,
+      // Última entrada no status atual (pra calcular tempo na etapa).
+      desdeStatus: sql<string | null>`(
+        SELECT MAX(${eventosKanban.createdAt})
+        FROM ${eventosKanban}
+        WHERE ${eventosKanban.ordemId} = ${ordensProducao.id}
+          AND ${eventosKanban.statusNovo} = ${ordensProducao.status}
+      )`,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -158,6 +167,7 @@ export async function listarOrdensProducao(
       estacaoCorResp,
       estacaoNomeResp,
       produzido,
+      desdeStatus,
     }) => ({
       id: op.id,
       numero: op.numero,
@@ -182,6 +192,9 @@ export async function listarOrdensProducao(
         op.dataPrevistaFim !== null &&
         op.status !== 'enviado' &&
         new Date(op.dataPrevistaFim).getTime() < now,
+      desdeStatus: desdeStatus
+        ? new Date(desdeStatus)
+        : (op.updatedAt ?? op.createdAt),
       observacoes: op.observacoes,
     }),
   )
