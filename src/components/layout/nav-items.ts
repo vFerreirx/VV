@@ -8,6 +8,7 @@ import {
   Cog,
   Factory,
   Grid2x2,
+  FileBarChart,
   KanbanSquare,
   LayoutDashboard,
   ListChecks,
@@ -39,7 +40,15 @@ export type NavGroup = {
 export const NAV_GROUPS: NavGroup[] = [
   {
     titulo: 'Geral',
-    items: [{ href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard }],
+    items: [
+      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      {
+        href: '/relatorios',
+        label: 'Relatório mensal',
+        icon: FileBarChart,
+        area: 'relatorios',
+      },
+    ],
   },
   {
     titulo: 'Produção',
