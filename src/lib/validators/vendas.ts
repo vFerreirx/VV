@@ -1,5 +1,62 @@
 import { z } from 'zod'
 
+// -----------------------------------------------------------------
+// Catálogo de marketplaces e contas
+// -----------------------------------------------------------------
+
+export const MARKETPLACE_LABEL = {
+  mercado_livre: 'Mercado Livre',
+  shopee: 'Shopee',
+  shein: 'Shein',
+  tiktok: 'TikTok',
+  temu: 'Temu',
+} as const
+
+export type Marketplace = keyof typeof MARKETPLACE_LABEL
+
+// Contas reais (com a numeração que o usuário usa). `key` é estável e fica
+// salva no banco; `label` é o que aparece na tela dentro do marketplace.
+export const CONTAS_MARKETPLACE = [
+  { key: 'ml_1', marketplace: 'mercado_livre', label: 'Conta 1' },
+  { key: 'ml_3', marketplace: 'mercado_livre', label: 'Conta 3' },
+  { key: 'ml_4', marketplace: 'mercado_livre', label: 'Conta 4' },
+  { key: 'shopee_1', marketplace: 'shopee', label: 'Conta 1' },
+  { key: 'shopee_2', marketplace: 'shopee', label: 'Conta 2' },
+  { key: 'shopee_5', marketplace: 'shopee', label: 'Conta 5' },
+  { key: 'shein_1', marketplace: 'shein', label: 'Conta 1' },
+  { key: 'shein_5', marketplace: 'shein', label: 'Conta 5' },
+  { key: 'tiktok', marketplace: 'tiktok', label: 'TikTok' },
+  { key: 'temu', marketplace: 'temu', label: 'Temu' },
+] as const satisfies ReadonlyArray<{
+  key: string
+  marketplace: Marketplace
+  label: string
+}>
+
+export type ContaKey = (typeof CONTAS_MARKETPLACE)[number]['key']
+
+const CONTA_KEYS = CONTAS_MARKETPLACE.map((c) => c.key) as [
+  ContaKey,
+  ...ContaKey[],
+]
+
+export function marketplaceDaConta(key: string): Marketplace | null {
+  return CONTAS_MARKETPLACE.find((c) => c.key === key)?.marketplace ?? null
+}
+
+// Marketplaces na ordem de exibição, cada um com suas contas.
+export const MARKETPLACES_AGRUPADOS = (
+  Object.keys(MARKETPLACE_LABEL) as Marketplace[]
+).map((m) => ({
+  marketplace: m,
+  label: MARKETPLACE_LABEL[m],
+  contas: CONTAS_MARKETPLACE.filter((c) => c.marketplace === m),
+}))
+
+// -----------------------------------------------------------------
+// Helpers de validação
+// -----------------------------------------------------------------
+
 const stringOpt = (max: number, label = 'Texto') =>
   z
     .union([z.string(), z.null(), z.undefined()])
@@ -25,11 +82,21 @@ const valorOpt = z
   )
   .optional()
 
-export const vendaDiaSchema = z.object({
-  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
+// -----------------------------------------------------------------
+// Schemas
+// -----------------------------------------------------------------
+
+export const vendaContaSchema = z.object({
+  conta: z.enum(CONTA_KEYS),
   quantidade: intNaoNeg,
   faturamento: valorOpt,
-  observacao: stringOpt(300, 'Observação'),
 })
 
+export const vendaDiaSchema = z.object({
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
+  observacao: stringOpt(300, 'Observação'),
+  contas: z.array(vendaContaSchema).default([]),
+})
+
+export type VendaContaInput = z.input<typeof vendaContaSchema>
 export type VendaDiaInput = z.input<typeof vendaDiaSchema>

@@ -18,6 +18,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  MARKETPLACE_LABEL,
+  MARKETPLACES_AGRUPADOS,
+  marketplaceDaConta,
+  type ContaKey,
+  type Marketplace,
+} from '@/lib/validators/vendas'
 
 type Props = {
   data: string
@@ -56,11 +63,25 @@ function formatarDataCurta(iso: string): string {
   })
 }
 
-function formatarReais(v: string | null): string {
+function formatarReais(v: string | number | null): string {
   if (v == null) return '—'
   const n = Number(v)
   if (Number.isNaN(n)) return '—'
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+// Agrupa o detalhamento por marketplace, somando quantidade e faturamento.
+function resumoPorMarketplace(venda: VendaDia | null) {
+  const acc = new Map<Marketplace, { quantidade: number; faturamento: number }>()
+  for (const c of venda?.contas ?? []) {
+    const m = marketplaceDaConta(c.conta)
+    if (!m) continue
+    const cur = acc.get(m) ?? { quantidade: 0, faturamento: 0 }
+    cur.quantidade += c.quantidade
+    cur.faturamento += Number(c.faturamento ?? 0)
+    acc.set(m, cur)
+  }
+  return [...acc.entries()].map(([marketplace, v]) => ({ marketplace, ...v }))
 }
 
 export function VendasView({ data, vendaDoDia, recentes }: Props) {
@@ -72,6 +93,7 @@ export function VendasView({ data, vendaDoDia, recentes }: Props) {
 
   const hoje = hojeISO()
   const ehHoje = data === hoje
+  const resumo = resumoPorMarketplace(vendaDoDia)
 
   function irPara(novaData: string) {
     const params = new URLSearchParams(searchParams.toString())
@@ -143,6 +165,32 @@ export function VendasView({ data, vendaDoDia, recentes }: Props) {
           </div>
         </div>
 
+        {resumo.length > 0 && (
+          <div className="mt-6 border-t pt-4">
+            <div className="text-muted-foreground mb-2 text-xs tracking-wide uppercase">
+              Por marketplace
+            </div>
+            <div className="space-y-1.5">
+              {resumo.map((r) => (
+                <div
+                  key={r.marketplace}
+                  className="flex items-center justify-between gap-4 text-sm"
+                >
+                  <span className="font-medium">
+                    {MARKETPLACE_LABEL[r.marketplace]}
+                  </span>
+                  <span className="text-muted-foreground flex items-center gap-4 tabular-nums">
+                    <span>{r.quantidade} un.</span>
+                    <span className="w-28 text-right">
+                      {formatarReais(r.faturamento || null)}
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {vendaDoDia?.observacao && (
           <p className="text-muted-foreground mt-4 text-sm">
             {vendaDoDia.observacao}
@@ -207,8 +255,10 @@ export function VendasView({ data, vendaDoDia, recentes }: Props) {
 }
 
 // -----------------------------------------------------------------
-// Dialog: registrar/editar venda do dia
+// Dialog: registrar/editar venda do dia (detalhe por conta)
 // -----------------------------------------------------------------
+
+type CampoConta = { q: string; f: string }
 
 function EditarDialog({
   open,
@@ -223,27 +273,55 @@ function EditarDialog({
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [quantidade, setQuantidade] = useState('')
-  const [faturamento, setFaturamento] = useState('')
+  const [valores, setValores] = useState<Record<string, CampoConta>>({})
   const [observacao, setObservacao] = useState('')
 
   // Sincroniza os campos com a venda atual sempre que o dialog abre.
   const [abertoPara, setAbertoPara] = useState<string | null>(null)
   if (open && abertoPara !== data) {
     setAbertoPara(data)
-    setQuantidade(venda ? String(venda.quantidade) : '')
-    setFaturamento(venda?.faturamento ?? '')
+    const init: Record<string, CampoConta> = {}
+    for (const c of venda?.contas ?? []) {
+      init[c.conta] = {
+        q: c.quantidade ? String(c.quantidade) : '',
+        f: c.faturamento ?? '',
+      }
+    }
+    setValores(init)
     setObservacao(venda?.observacao ?? '')
   }
   if (!open && abertoPara !== null) setAbertoPara(null)
 
+  function set(conta: string, campo: keyof CampoConta, valor: string) {
+    setValores((prev) => {
+      const atual = prev[conta] ?? { q: '', f: '' }
+      return { ...prev, [conta]: { ...atual, [campo]: valor } }
+    })
+  }
+
+  const totalQtd = Object.values(valores).reduce(
+    (s, v) => s + (Number(v.q) || 0),
+    0,
+  )
+  const totalFat = Object.values(valores).reduce(
+    (s, v) => s + (Number(String(v.f).replace(',', '.')) || 0),
+    0,
+  )
+
   function salvar() {
+    const contas = Object.entries(valores)
+      .map(([conta, v]) => ({
+        conta: conta as ContaKey,
+        quantidade: v.q.trim() === '' ? 0 : v.q,
+        faturamento: v.f.trim() || undefined,
+      }))
+      .filter((c) => Number(c.quantidade) > 0 || c.faturamento !== undefined)
+
     startTransition(async () => {
       const result = await salvarVendaDiaAction({
         data,
-        quantidade: quantidade.trim() === '' ? 0 : quantidade,
-        faturamento: faturamento.trim() || undefined,
         observacao: observacao.trim() || undefined,
+        contas,
       })
       if (!result.success) {
         toast.error(result.error)
@@ -257,48 +335,65 @@ function EditarDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
+      <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="border-b p-6">
           <DialogTitle>Venda do dia</DialogTitle>
           <DialogDescription className="capitalize">
             {formatarData(data)}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="v-qtd">Unidades vendidas</Label>
-            <Input
-              id="v-qtd"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              step="1"
-              placeholder="0"
-              value={quantidade}
-              onChange={(e) => setQuantidade(e.target.value)}
-              disabled={isPending}
-              autoFocus
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="v-fat">Faturamento do dia (R$)</Label>
-            <Input
-              id="v-fat"
-              inputMode="decimal"
-              placeholder="0,00"
-              value={faturamento}
-              onChange={(e) => setFaturamento(e.target.value)}
-              disabled={isPending}
-            />
-          </div>
+        <div className="max-h-[55vh] space-y-5 overflow-y-auto p-6">
+          {MARKETPLACES_AGRUPADOS.map((grupo) => (
+            <div key={grupo.marketplace} className="space-y-2">
+              <div className="text-sm font-semibold">{grupo.label}</div>
+              <div className="space-y-2">
+                {grupo.contas.map((conta) => {
+                  const v = valores[conta.key] ?? { q: '', f: '' }
+                  return (
+                    <div
+                      key={conta.key}
+                      className="grid grid-cols-[1fr_5rem_7rem] items-center gap-2"
+                    >
+                      <Label
+                        htmlFor={`q-${conta.key}`}
+                        className="text-muted-foreground text-sm font-normal"
+                      >
+                        {conta.label}
+                      </Label>
+                      <Input
+                        id={`q-${conta.key}`}
+                        type="number"
+                        inputMode="numeric"
+                        min="0"
+                        step="1"
+                        placeholder="un."
+                        value={v.q}
+                        onChange={(e) => set(conta.key, 'q', e.target.value)}
+                        disabled={isPending}
+                        className="h-9"
+                      />
+                      <Input
+                        aria-label={`Faturamento ${grupo.label} ${conta.label}`}
+                        inputMode="decimal"
+                        placeholder="R$"
+                        value={v.f}
+                        onChange={(e) => set(conta.key, 'f', e.target.value)}
+                        disabled={isPending}
+                        className="h-9"
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
 
           <div className="space-y-1.5">
             <Label htmlFor="v-obs">Observação (opcional)</Label>
             <Textarea
               id="v-obs"
-              rows={3}
+              rows={2}
               placeholder="Algo que valha registrar sobre o dia…"
               value={observacao}
               onChange={(e) => setObservacao(e.target.value)}
@@ -307,13 +402,23 @@ function EditarDialog({
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
-            Cancelar
-          </Button>
-          <Button onClick={salvar} disabled={isPending}>
-            {isPending ? 'Salvando…' : 'Salvar'}
-          </Button>
+        <DialogFooter className="flex-row items-center justify-between border-t p-6 sm:justify-between">
+          <div className="text-sm">
+            <span className="text-muted-foreground">Total: </span>
+            <span className="font-semibold tabular-nums">{totalQtd} un.</span>
+            <span className="text-muted-foreground"> · </span>
+            <span className="font-semibold tabular-nums">
+              {formatarReais(totalFat || null)}
+            </span>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={onClose} disabled={isPending}>
+              Cancelar
+            </Button>
+            <Button onClick={salvar} disabled={isPending}>
+              {isPending ? 'Salvando…' : 'Salvar'}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

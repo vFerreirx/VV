@@ -14,7 +14,8 @@ import {
 import { users } from './users'
 
 // Resumo de vendas POR DIA: total de unidades vendidas + faturamento do
-// dia + observação. Um registro por dia (índice único).
+// dia + observação. Um registro por dia (índice único). Os totais são a
+// soma do detalhamento por conta de marketplace (vendas_marketplace).
 export const vendas = pgTable(
   'vendas',
   {
@@ -43,3 +44,37 @@ export const vendas = pgTable(
 
 export type Venda = typeof vendas.$inferSelect
 export type NewVenda = typeof vendas.$inferInsert
+
+// Detalhamento das vendas do dia por conta de marketplace.
+// `conta` é a chave estável da conta (ex.: 'ml_1', 'shopee_2', 'temu') e
+// `marketplace` o agrupador (ex.: 'mercado_livre'), conforme o catálogo
+// em src/lib/validators/vendas.ts. Uma linha por conta com venda no dia.
+export const vendasMarketplace = pgTable(
+  'vendas_marketplace',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    vendaId: uuid()
+      .notNull()
+      .references(() => vendas.id, { onDelete: 'cascade' }),
+    marketplace: text().notNull(),
+    conta: text().notNull(),
+    quantidade: integer().notNull().default(0),
+    faturamento: numeric({ precision: 12, scale: 2 }),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => sql`now()`),
+  },
+  (table) => [
+    index('vendas_marketplace_venda_idx').on(table.vendaId),
+    uniqueIndex('vendas_marketplace_venda_conta_idx').on(
+      table.vendaId,
+      table.conta,
+    ),
+  ],
+)
+
+export type VendaMarketplace = typeof vendasMarketplace.$inferSelect
+export type NewVendaMarketplace = typeof vendasMarketplace.$inferInsert
