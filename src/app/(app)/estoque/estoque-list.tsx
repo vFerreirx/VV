@@ -139,7 +139,7 @@ export function EstoqueList({ itens, podeMovimentar, buscaInicial }: Props) {
           </div>
 
           {/* Mobile */}
-          <div className="space-y-3 md:hidden">
+          <div className="vv-stagger space-y-3 md:hidden">
             {itens.map((i) => (
               <div key={i.variacaoId} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-2">

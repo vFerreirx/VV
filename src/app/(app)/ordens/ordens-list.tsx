@@ -374,7 +374,7 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
           </div>
 
           {/* Mobile / tablet retrato */}
-          <div className="space-y-3 md:hidden">
+          <div className="vv-stagger space-y-3 md:hidden">
             {ordens.map((o) => (
               <div
                 key={o.id}

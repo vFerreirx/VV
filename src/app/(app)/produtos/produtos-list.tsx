@@ -241,7 +241,7 @@ export function ProdutosList({
           </div>
 
           {/* Mobile/Tablet retrato: cards */}
-          <div className="space-y-3 md:hidden">
+          <div className="vv-stagger space-y-3 md:hidden">
             {produtos.map((p) => (
               <div key={p.id} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-2">

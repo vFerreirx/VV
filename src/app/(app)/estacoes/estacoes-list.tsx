@@ -65,7 +65,7 @@ export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <div className="vv-stagger grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
           {estacoes.map((e) => (
             <article
               key={e.id}

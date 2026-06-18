@@ -131,7 +131,7 @@ export function PermissoesEditor({
           <h2 className="text-muted-foreground text-sm font-semibold tracking-wide uppercase">
             {secao}
           </h2>
-          <div className="space-y-3">
+          <div className="vv-stagger space-y-3">
             {AREAS.filter((a) => a.secao === secao).map((area) => (
               <div key={area.key} className="rounded-lg border p-4">
                 <div className="flex items-center justify-between gap-2">

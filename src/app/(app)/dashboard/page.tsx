@@ -128,7 +128,7 @@ export default async function DashboardPage() {
       </Card>
 
       {/* Canais + Top produtos */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="vv-stagger grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>OPs por canal de destino</CardTitle>
