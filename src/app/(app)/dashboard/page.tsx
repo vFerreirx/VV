@@ -74,7 +74,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* KPI cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="vv-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
           label="OPs ativas"
           value={kpis.opsAtivas}
