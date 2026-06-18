@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 
-import { listarVendasDoDia } from './actions'
+import { listarVendasRecentes, obterVendaDoDia } from './actions'
 import { VendasView } from './vendas-view'
-import { listarProdutosParaOrdem } from '@/app/(app)/ordens/actions'
 import { requireRole } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Vendas — Vanvest' }
@@ -24,9 +23,9 @@ export default async function VendasPage({
   const data =
     dataParam && /^\d{4}-\d{2}-\d{2}$/.test(dataParam) ? dataParam : hojeISO()
 
-  const [vendas, produtos] = await Promise.all([
-    listarVendasDoDia(data),
-    listarProdutosParaOrdem(),
+  const [vendaDoDia, recentes] = await Promise.all([
+    obterVendaDoDia(data),
+    listarVendasRecentes(),
   ])
 
   return (
@@ -34,10 +33,10 @@ export default async function VendasPage({
       <div>
         <h1 className="text-2xl font-semibold">Vendas diárias</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Registro manual das vendas do dia, por canal.
+          Unidades vendidas e faturamento de cada dia.
         </p>
       </div>
-      <VendasView data={data} vendas={vendas} produtos={produtos} />
+      <VendasView data={data} vendaDoDia={vendaDoDia} recentes={recentes} />
     </div>
   )
 }

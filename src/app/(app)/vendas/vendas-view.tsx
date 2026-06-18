@@ -1,21 +1,12 @@
 'use client'
 
-import { addDays, format, parse } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
+import { ChevronLeft, ChevronRight, Pencil, Plus } from 'lucide-react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-import {
-  criarVendaAction,
-  excluirVendaAction,
-  type VendaItem,
-} from './actions'
-import type { ProdutoComVariacoesParaForm } from '@/app/(app)/ordens/actions'
-import { Badge } from '@/components/ui/badge'
+import { salvarVendaDiaAction, type VendaDia } from './actions'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -26,383 +17,302 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { cn } from '@/lib/utils'
-import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
-import { vendaCanalValues } from '@/lib/validators/vendas'
-
-const CANAL_BADGE: Record<(typeof vendaCanalValues)[number], string> = {
-  full_ml: 'bg-amber-400/20 text-amber-700 dark:text-amber-300',
-  full_shopee: 'bg-orange-500/20 text-orange-700 dark:text-orange-300',
-  venda_direta: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300',
-}
+import { Textarea } from '@/components/ui/textarea'
 
 type Props = {
   data: string
-  vendas: VendaItem[]
-  produtos: ProdutoComVariacoesParaForm[]
+  vendaDoDia: VendaDia | null
+  recentes: VendaDia[]
 }
 
-export function VendasView({ data, vendas, produtos }: Props) {
+function hojeISO(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Soma/subtrai dias de uma data YYYY-MM-DD sem fuso (meio-dia UTC).
+function addDias(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + n, 12))
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+}
+
+function formatarData(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+    timeZone: 'UTC',
+  })
+}
+
+function formatarDataCurta(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'UTC',
+  })
+}
+
+function formatarReais(v: string | null): string {
+  if (v == null) return '—'
+  const n = Number(v)
+  if (Number.isNaN(n)) return '—'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+export function VendasView({ data, vendaDoDia, recentes }: Props) {
   const router = useRouter()
-  const [novaOpen, setNovaOpen] = useState(false)
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const [isPending, startTransition] = useTransition()
+  const [editando, setEditando] = useState(false)
 
-  const refDate = useMemo(() => parse(data, 'yyyy-MM-dd', new Date()), [data])
+  const hoje = hojeISO()
+  const ehHoje = data === hoje
 
-  function irPara(d: Date) {
-    router.push(`/vendas?data=${format(d, 'yyyy-MM-dd')}`)
+  function irPara(novaData: string) {
+    const params = new URLSearchParams(searchParams.toString())
+    if (novaData === hoje) params.delete('data')
+    else params.set('data', novaData)
+    const qs = params.toString()
+    startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname))
   }
 
-  const totalPecas = vendas.reduce((s, v) => s + v.quantidade, 0)
-  const porCanal = vendaCanalValues.map((c) => ({
-    canal: c,
-    total: vendas
-      .filter((v) => v.canal === c)
-      .reduce((s, v) => s + v.quantidade, 0),
-  }))
-
   return (
-    <div className="space-y-4">
-      {/* Navegação de dia + ação */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5">
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label="Dia anterior"
-            onClick={() => irPara(addDays(refDate, -1))}
-          >
-            <ChevronLeft />
-          </Button>
-          <div className="min-w-40 text-center">
-            <div className="font-medium capitalize">
-              {format(refDate, "EEEE, dd 'de' MMM", { locale: ptBR })}
-            </div>
-            <div className="text-muted-foreground text-xs">
-              {format(refDate, 'yyyy', { locale: ptBR })}
-            </div>
+    <div className="space-y-6">
+      {/* Navegação de dia */}
+      <div className="flex items-center justify-between gap-2">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => irPara(addDias(data, -1))}
+          disabled={isPending}
+          aria-label="Dia anterior"
+        >
+          <ChevronLeft />
+        </Button>
+
+        <div className="text-center">
+          <div className="text-sm font-medium capitalize">
+            {formatarData(data)}
           </div>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            aria-label="Próximo dia"
-            onClick={() => irPara(addDays(refDate, 1))}
-          >
-            <ChevronRight />
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => irPara(new Date())}>
-            Hoje
-          </Button>
+          {!ehHoje && (
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground text-xs underline"
+              onClick={() => irPara(hoje)}
+              disabled={isPending}
+            >
+              Voltar pra hoje
+            </button>
+          )}
         </div>
-        <Button size="sm" onClick={() => setNovaOpen(true)}>
-          <Plus />
-          Registrar venda
+
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => irPara(addDias(data, 1))}
+          disabled={isPending || ehHoje}
+          aria-label="Próximo dia"
+        >
+          <ChevronRight />
         </Button>
       </div>
 
-      {/* Totais */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card size="sm">
-          <CardContent>
-            <div className="text-muted-foreground text-xs uppercase tracking-wide">
-              Total do dia
+      {/* Card do dia */}
+      <div className="rounded-xl border p-6">
+        <div className="grid grid-cols-2 gap-6">
+          <div>
+            <div className="text-muted-foreground text-xs tracking-wide uppercase">
+              Unidades vendidas
             </div>
-            <div className="text-2xl font-semibold tabular-nums">
-              {totalPecas}
+            <div className="mt-1 text-3xl font-semibold tabular-nums">
+              {vendaDoDia?.quantidade ?? 0}
             </div>
-          </CardContent>
-        </Card>
-        {porCanal.map((c) => (
-          <Card key={c.canal} size="sm">
-            <CardContent>
-              <div className="text-muted-foreground text-xs uppercase tracking-wide">
-                {CANAL_LABEL_CURTO[c.canal]}
-              </div>
-              <div className="text-2xl font-semibold tabular-nums">
-                {c.total}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs tracking-wide uppercase">
+              Faturamento
+            </div>
+            <div className="mt-1 text-3xl font-semibold tabular-nums">
+              {formatarReais(vendaDoDia?.faturamento ?? null)}
+            </div>
+          </div>
+        </div>
 
-      {/* Lista do dia */}
-      {vendas.length === 0 ? (
-        <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">
-            Nenhuma venda registrada nesse dia.
+        {vendaDoDia?.observacao && (
+          <p className="text-muted-foreground mt-4 text-sm">
+            {vendaDoDia.observacao}
           </p>
-          <Button size="sm" className="mt-3" onClick={() => setNovaOpen(true)}>
-            Registrar a primeira
+        )}
+
+        <div className="mt-6">
+          <Button onClick={() => setEditando(true)} disabled={isPending}>
+            {vendaDoDia ? (
+              <>
+                <Pencil />
+                Editar
+              </>
+            ) : (
+              <>
+                <Plus />
+                Registrar venda do dia
+              </>
+            )}
           </Button>
         </div>
-      ) : (
-        <ul className="divide-y rounded-lg border">
-          {vendas.map((v) => (
-            <li key={v.id} className="flex items-center gap-3 p-3">
-              <Badge className={cn('shrink-0', CANAL_BADGE[v.canal])}>
-                {CANAL_LABEL_CURTO[v.canal]}
-              </Badge>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">
-                  {v.produtoNome}
-                  {v.variacaoLabel && (
-                    <span className="text-muted-foreground font-normal">
-                      {' '}
-                      — {v.variacaoLabel}
-                    </span>
-                  )}
-                </div>
-                {v.observacao && (
-                  <div className="text-muted-foreground truncate text-xs">
-                    {v.observacao}
-                  </div>
-                )}
-              </div>
-              <div className="shrink-0 text-right tabular-nums">
-                <span className="font-semibold">{v.quantidade}</span>
-                <span className="text-muted-foreground text-xs"> un</span>
-              </div>
-              <ExcluirVenda id={v.id} />
-            </li>
-          ))}
-        </ul>
+      </div>
+
+      {/* Dias recentes */}
+      {recentes.length > 0 && (
+        <div>
+          <h2 className="text-muted-foreground mb-2 text-sm font-medium">
+            Dias recentes
+          </h2>
+          <div className="divide-y rounded-lg border">
+            {recentes.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => irPara(v.data)}
+                disabled={isPending}
+                className="hover:bg-muted/50 flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left text-sm"
+              >
+                <span className="font-medium tabular-nums">
+                  {formatarDataCurta(v.data)}
+                </span>
+                <span className="text-muted-foreground flex items-center gap-4 tabular-nums">
+                  <span>{v.quantidade} un.</span>
+                  <span className="w-24 text-right">
+                    {formatarReais(v.faturamento)}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
-      <NovaVendaDialog
-        open={novaOpen}
-        onClose={() => setNovaOpen(false)}
+      <EditarDialog
+        open={editando}
+        onClose={() => setEditando(false)}
         data={data}
-        produtos={produtos}
+        venda={vendaDoDia}
       />
     </div>
   )
 }
 
-function ExcluirVenda({ id }: { id: string }) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-
-  function excluir() {
-    startTransition(async () => {
-      const result = await excluirVendaAction(id)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success(result.message ?? 'Removida')
-      router.refresh()
-    })
-  }
-
-  return (
-    <Button
-      size="icon-sm"
-      variant="ghost"
-      onClick={excluir}
-      disabled={isPending}
-      aria-label="Excluir venda"
-    >
-      <Trash2 className="text-destructive" />
-    </Button>
-  )
-}
-
 // -----------------------------------------------------------------
-// Dialog: nova venda
+// Dialog: registrar/editar venda do dia
 // -----------------------------------------------------------------
 
-function NovaVendaDialog({
+function EditarDialog({
   open,
   onClose,
   data,
-  produtos,
+  venda,
 }: {
   open: boolean
   onClose: () => void
   data: string
-  produtos: ProdutoComVariacoesParaForm[]
+  venda: VendaDia | null
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [produtoId, setProdutoId] = useState('')
-  const [variacaoId, setVariacaoId] = useState('nenhuma')
   const [quantidade, setQuantidade] = useState('')
-  const [canal, setCanal] =
-    useState<(typeof vendaCanalValues)[number]>('venda_direta')
+  const [faturamento, setFaturamento] = useState('')
+  const [observacao, setObservacao] = useState('')
 
-  const produtoSel = useMemo(
-    () => produtos.find((p) => p.id === produtoId),
-    [produtos, produtoId],
-  )
-  const variacoes = useMemo(
-    () => produtoSel?.variacoes ?? [],
-    [produtoSel],
-  )
-
-  const produtosItems = useMemo(
-    () => produtos.map((p) => ({ value: p.id, label: `${p.sku} — ${p.nome}` })),
-    [produtos],
-  )
-  const variacoesItems = useMemo(
-    () => [
-      { value: 'nenhuma', label: 'Sem variação' },
-      ...variacoes.map((v) => ({
-        value: v.id,
-        label:
-          [v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') ||
-          v.skuVariacao,
-      })),
-    ],
-    [variacoes],
-  )
-  const canalItems = useMemo(
-    () =>
-      Object.fromEntries(
-        vendaCanalValues.map((c) => [c, CANAL_LABEL_CURTO[c]]),
-      ),
-    [],
-  )
-
-  function fechar() {
-    setProdutoId('')
-    setVariacaoId('nenhuma')
-    setQuantidade('')
-    setCanal('venda_direta')
-    onClose()
+  // Sincroniza os campos com a venda atual sempre que o dialog abre.
+  const [abertoPara, setAbertoPara] = useState<string | null>(null)
+  if (open && abertoPara !== data) {
+    setAbertoPara(data)
+    setQuantidade(venda ? String(venda.quantidade) : '')
+    setFaturamento(venda?.faturamento ?? '')
+    setObservacao(venda?.observacao ?? '')
   }
+  if (!open && abertoPara !== null) setAbertoPara(null)
 
   function salvar() {
     startTransition(async () => {
-      const result = await criarVendaAction({
-        produtoId,
-        variacaoId: variacaoId === 'nenhuma' ? undefined : variacaoId,
-        quantidade,
-        canal,
+      const result = await salvarVendaDiaAction({
         data,
+        quantidade: quantidade.trim() === '' ? 0 : quantidade,
+        faturamento: faturamento.trim() || undefined,
+        observacao: observacao.trim() || undefined,
       })
       if (!result.success) {
         toast.error(result.error)
         return
       }
-      toast.success(result.message ?? 'Registrada')
+      toast.success(result.message ?? 'Salvo')
       router.refresh()
-      fechar()
+      onClose()
     })
   }
 
-  const valido = produtoId !== '' && Number(quantidade) > 0
-
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && fechar()}>
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Registrar venda</DialogTitle>
-          <DialogDescription>
-            Dia {format(parse(data, 'yyyy-MM-dd', new Date()), 'dd/MM/yyyy')}.
+          <DialogTitle>Venda do dia</DialogTitle>
+          <DialogDescription className="capitalize">
+            {formatarData(data)}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="v-prod">Produto</Label>
-            <Select
-              items={produtosItems}
-              value={produtoId || ''}
-              onValueChange={(v) => {
-                setProdutoId(v ?? '')
-                setVariacaoId('nenhuma')
-              }}
+            <Label htmlFor="v-qtd">Unidades vendidas</Label>
+            <Input
+              id="v-qtd"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              step="1"
+              placeholder="0"
+              value={quantidade}
+              onChange={(e) => setQuantidade(e.target.value)}
               disabled={isPending}
-            >
-              <SelectTrigger id="v-prod" className="w-full">
-                <SelectValue placeholder="Selecione um produto…" />
-              </SelectTrigger>
-              <SelectContent>
-                {produtos.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {`${p.sku} — ${p.nome}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              autoFocus
+            />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="v-var">Variação</Label>
-            <Select
-              items={variacoesItems}
-              value={variacaoId}
-              onValueChange={(v) => v && setVariacaoId(v)}
-              disabled={isPending || !produtoSel || variacoes.length === 0}
-            >
-              <SelectTrigger id="v-var" className="w-full">
-                <SelectValue placeholder="Selecione…" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="nenhuma">Sem variação</SelectItem>
-                {variacoes.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {[v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') ||
-                      v.skuVariacao}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="v-fat">Faturamento do dia (R$)</Label>
+            <Input
+              id="v-fat"
+              inputMode="decimal"
+              placeholder="0,00"
+              value={faturamento}
+              onChange={(e) => setFaturamento(e.target.value)}
+              disabled={isPending}
+            />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="v-qtd">Quantidade</Label>
-              <Input
-                id="v-qtd"
-                type="number"
-                inputMode="numeric"
-                min="1"
-                step="1"
-                placeholder="0"
-                value={quantidade}
-                onChange={(e) => setQuantidade(e.target.value)}
-                disabled={isPending}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="v-canal">Canal</Label>
-              <Select
-                items={canalItems}
-                value={canal}
-                onValueChange={(v) =>
-                  v && setCanal(v as (typeof vendaCanalValues)[number])
-                }
-                disabled={isPending}
-              >
-                <SelectTrigger id="v-canal" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {vendaCanalValues.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {CANAL_LABEL_CURTO[c]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="v-obs">Observação (opcional)</Label>
+            <Textarea
+              id="v-obs"
+              rows={3}
+              placeholder="Algo que valha registrar sobre o dia…"
+              value={observacao}
+              onChange={(e) => setObservacao(e.target.value)}
+              disabled={isPending}
+            />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={fechar} disabled={isPending}>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={isPending || !valido}>
-            {isPending ? 'Salvando…' : 'Registrar'}
+          <Button onClick={salvar} disabled={isPending}>
+            {isPending ? 'Salvando…' : 'Salvar'}
           </Button>
         </DialogFooter>
       </DialogContent>

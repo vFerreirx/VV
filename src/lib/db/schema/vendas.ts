@@ -3,31 +3,25 @@ import {
   date,
   index,
   integer,
+  numeric,
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
 
-import { produtos, variacoesProduto } from './produtos'
 import { users } from './users'
 
-// Registro manual de vendas diárias. NÃO mexe no estoque — é só um
-// histórico do que foi vendido por dia/canal.
+// Resumo de vendas POR DIA: total de unidades vendidas + faturamento do
+// dia + observação. Um registro por dia (índice único).
 export const vendas = pgTable(
   'vendas',
   {
     id: uuid().primaryKey().defaultRandom(),
-    produtoId: uuid()
-      .notNull()
-      .references(() => produtos.id),
-    variacaoId: uuid().references(() => variacoesProduto.id),
-
-    quantidade: integer().notNull(),
-    // 'full_ml' | 'full_shopee' | 'venda_direta'
-    canal: text().notNull(),
-    // Dia da venda (sem hora).
     data: date().notNull(),
+    quantidade: integer().notNull().default(0),
+    faturamento: numeric({ precision: 12, scale: 2 }),
     observacao: text(),
 
     usuarioId: uuid().references(() => users.id),
@@ -41,7 +35,9 @@ export const vendas = pgTable(
   },
   (table) => [
     index('vendas_data_idx').on(table.data),
-    index('vendas_canal_idx').on(table.canal),
+    uniqueIndex('vendas_data_unica_idx')
+      .on(table.data)
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 )
 

@@ -5,8 +5,8 @@ import { revalidatePath } from 'next/cache'
 
 import { requireRole } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { produtos, users, variacoesProduto, vendas } from '@/lib/db/schema'
-import { vendaSchema, type VendaInput } from '@/lib/validators/vendas'
+import { vendas } from '@/lib/db/schema'
+import { vendaDiaSchema, type VendaDiaInput } from '@/lib/validators/vendas'
 
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
@@ -15,100 +15,102 @@ export type ActionResult<T = undefined> =
 const uuidRe =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// -----------------------------------------------------------------
-// Listar vendas de um dia
-// -----------------------------------------------------------------
-
-export type VendaItem = {
+export type VendaDia = {
   id: string
-  produtoNome: string
-  produtoSku: string
-  variacaoLabel: string | null
+  data: string
   quantidade: number
-  canal: 'full_ml' | 'full_shopee' | 'venda_direta'
+  faturamento: string | null
   observacao: string | null
-  usuarioNome: string | null
 }
 
-export async function listarVendasDoDia(data: string): Promise<VendaItem[]> {
-  await requireRole(['admin', 'gerente_producao', 'vendas'])
+// -----------------------------------------------------------------
+// Venda de um dia específico
+// -----------------------------------------------------------------
 
-  const rows = await db
+export async function obterVendaDoDia(data: string): Promise<VendaDia | null> {
+  await requireRole(['admin', 'gerente_producao', 'vendas'])
+  const [row] = await db
     .select({
       id: vendas.id,
-      produtoNome: produtos.nome,
-      produtoSku: produtos.sku,
-      cor: variacoesProduto.cor,
-      modelo: variacoesProduto.modelo,
-      tamanho: variacoesProduto.tamanho,
-      skuVariacao: variacoesProduto.skuVariacao,
+      data: vendas.data,
       quantidade: vendas.quantidade,
-      canal: vendas.canal,
+      faturamento: vendas.faturamento,
       observacao: vendas.observacao,
-      usuarioNome: users.nome,
     })
     .from(vendas)
-    .innerJoin(produtos, eq(produtos.id, vendas.produtoId))
-    .leftJoin(variacoesProduto, eq(variacoesProduto.id, vendas.variacaoId))
-    .leftJoin(users, eq(users.id, vendas.usuarioId))
     .where(and(eq(vendas.data, data), isNull(vendas.deletedAt)))
-    .orderBy(desc(vendas.createdAt))
+    .limit(1)
+  return row ?? null
+}
 
-  return rows.map((r) => ({
-    id: r.id,
-    produtoNome: r.produtoNome,
-    produtoSku: r.produtoSku,
-    variacaoLabel:
-      [r.cor, r.modelo, r.tamanho].filter(Boolean).join(' / ') ||
-      r.skuVariacao ||
-      null,
-    quantidade: r.quantidade,
-    canal: (r.canal === 'full_shopee'
-      ? 'full_shopee'
-      : r.canal === 'venda_direta'
-        ? 'venda_direta'
-        : 'full_ml') as 'full_ml' | 'full_shopee' | 'venda_direta',
-    observacao: r.observacao ?? null,
-    usuarioNome: r.usuarioNome ?? null,
-  }))
+// Últimos N dias com venda registrada (pra lista de referência).
+export async function listarVendasRecentes(limit = 14): Promise<VendaDia[]> {
+  await requireRole(['admin', 'gerente_producao', 'vendas'])
+  return db
+    .select({
+      id: vendas.id,
+      data: vendas.data,
+      quantidade: vendas.quantidade,
+      faturamento: vendas.faturamento,
+      observacao: vendas.observacao,
+    })
+    .from(vendas)
+    .where(isNull(vendas.deletedAt))
+    .orderBy(desc(vendas.data))
+    .limit(limit)
 }
 
 // -----------------------------------------------------------------
-// Criar / excluir venda
+// Salvar (upsert por dia) / excluir
 // -----------------------------------------------------------------
 
-export async function criarVendaAction(
-  input: VendaInput,
-): Promise<ActionResult<{ id: string }>> {
+export async function salvarVendaDiaAction(
+  input: VendaDiaInput,
+): Promise<ActionResult> {
   const user = await requireRole(['admin', 'gerente_producao', 'vendas'])
 
-  const parsed = vendaSchema.safeParse(input)
+  const parsed = vendaDiaSchema.safeParse(input)
   if (!parsed.success) {
     return {
       success: false,
       error: parsed.error.issues[0]?.message ?? 'Dados inválidos',
     }
   }
-  const data = parsed.data
+  const d = parsed.data
 
-  const [inserted] = await db
-    .insert(vendas)
-    .values({
-      produtoId: data.produtoId,
-      variacaoId: data.variacaoId ?? null,
-      quantidade: data.quantidade,
-      canal: data.canal,
-      data: data.data,
-      observacao: data.observacao ?? null,
+  const [existente] = await db
+    .select({ id: vendas.id })
+    .from(vendas)
+    .where(and(eq(vendas.data, d.data), isNull(vendas.deletedAt)))
+    .limit(1)
+
+  if (existente) {
+    await db
+      .update(vendas)
+      .set({
+        quantidade: d.quantidade,
+        faturamento: d.faturamento ?? null,
+        observacao: d.observacao ?? null,
+        usuarioId: user.id,
+      })
+      .where(eq(vendas.id, existente.id))
+  } else {
+    await db.insert(vendas).values({
+      data: d.data,
+      quantidade: d.quantidade,
+      faturamento: d.faturamento ?? null,
+      observacao: d.observacao ?? null,
       usuarioId: user.id,
     })
-    .returning({ id: vendas.id })
+  }
 
   revalidatePath('/vendas')
-  return { success: true, data: { id: inserted!.id }, message: 'Venda registrada' }
+  return { success: true, message: 'Vendas do dia salvas' }
 }
 
-export async function excluirVendaAction(id: string): Promise<ActionResult> {
+export async function excluirVendaDiaAction(
+  id: string,
+): Promise<ActionResult> {
   await requireRole(['admin', 'gerente_producao', 'vendas'])
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
 
@@ -118,5 +120,5 @@ export async function excluirVendaAction(id: string): Promise<ActionResult> {
     .where(and(eq(vendas.id, id), isNull(vendas.deletedAt)))
 
   revalidatePath('/vendas')
-  return { success: true, message: 'Venda removida' }
+  return { success: true, message: 'Registro removido' }
 }
