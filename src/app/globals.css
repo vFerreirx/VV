@@ -164,6 +164,67 @@
 }
 
 /* ──────────────────────────────────────────────────────────
+ * Refinamentos de superfície: seleção, scrollbar e scroll suave
+ * ────────────────────────────────────────────────────────── */
+
+::selection {
+  background-color: color-mix(in oklch, var(--primary) 20%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Scrollbar fina e discreta — só no desktop, pra não atrapalhar o
+ * scroll nativo do touch. */
+@media (min-width: 768px) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground) 22%, transparent)
+      transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklch, var(--foreground) 32%, transparent);
+  }
+}
+
+/* Hover-lift pra superfícies clicáveis que não são <Card>. */
+.vv-lift {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+.vv-lift:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklch, var(--foreground) 18%, transparent);
+  box-shadow: 0 8px 22px -10px color-mix(in oklch, var(--foreground) 30%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vv-lift {
+    transition: none;
+  }
+  .vv-lift:hover {
+    transform: none;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────
  * Animações de polidez (shimmer de skeleton + pulse de urgência)
  * ────────────────────────────────────────────────────────── */
 

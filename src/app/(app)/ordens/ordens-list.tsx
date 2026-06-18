@@ -2,7 +2,7 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CircleAlert, Pencil, Search, Trash2 } from 'lucide-react'
+import { CircleAlert, ClipboardList, Pencil, Search, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
@@ -25,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -242,18 +243,18 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
       )}
 
       {ordens.length === 0 ? (
-        <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">Nenhuma OP encontrada.</p>
-          {podeEditar && (
-            <Button
-              size="sm"
-              className="mt-3"
-              render={<Link href="/ordens/novo" />}
-            >
-              Criar primeira OP
-            </Button>
-          )}
-        </div>
+        <EmptyState
+          icon={ClipboardList}
+          title="Nenhuma OP encontrada"
+          description="Crie ordens de produção pra acompanhar no kanban e dar entrada no estoque."
+          action={
+            podeEditar ? (
+              <Button size="sm" render={<Link href="/ordens/novo" />}>
+                Criar primeira OP
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <>
           {/* Desktop */}

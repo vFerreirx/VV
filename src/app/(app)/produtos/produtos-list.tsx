@@ -1,6 +1,6 @@
 'use client'
 
-import { Copy, Pencil, Search, Trash2 } from 'lucide-react'
+import { Copy, PackageSearch, Pencil, Search, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
@@ -24,6 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -155,16 +156,18 @@ export function ProdutosList({
       )}
 
       {produtos.length === 0 ? (
-        <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">
-            Nenhum produto encontrado.
-          </p>
-          {podeEditar && (
-            <Button render={<Link href="/produtos/novo" />} className="mt-3" size="sm">
-              Cadastrar primeiro produto
-            </Button>
-          )}
-        </div>
+        <EmptyState
+          icon={PackageSearch}
+          title="Nenhum produto encontrado"
+          description="Cadastre seus produtos e variações pra usar nas OPs, no estoque e nas vendas."
+          action={
+            podeEditar ? (
+              <Button render={<Link href="/produtos/novo" />} size="sm">
+                Cadastrar primeiro produto
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <>
           {/* Desktop: tabela */}

@@ -92,13 +92,13 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
                       href={item.href}
                       data-active={active}
                       className={cn(
-                        'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
+                        'group/nav flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
                         active
                           ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
                           : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
                       )}
                     >
-                      <item.icon className="size-4" />
+                      <item.icon className="size-4 transition-transform duration-200 group-hover/nav:translate-x-0.5" />
                       {item.label}
                     </Link>
                   )

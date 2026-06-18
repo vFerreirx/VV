@@ -205,7 +205,7 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
       {/* KPIs */}
       <div className="vv-stagger grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 print:[&>*]:animate-none">
         {kpis.map((k) => (
-          <div key={k.label} className="rounded-xl border p-4">
+          <div key={k.label} className="vv-lift rounded-xl border p-4 print:border-foreground/20">
             <div className="text-muted-foreground text-xs tracking-wide uppercase">
               {k.label}
             </div>

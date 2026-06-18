@@ -1,6 +1,6 @@
 'use client'
 
-import { ArrowDownUp, Search } from 'lucide-react'
+import { ArrowDownUp, PackageSearch, Search } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -85,11 +86,15 @@ export function EstoqueList({ itens, podeMovimentar, buscaInicial }: Props) {
       </form>
 
       {itens.length === 0 ? (
-        <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">
-            Nenhuma variação encontrada.
-          </p>
-        </div>
+        <EmptyState
+          icon={PackageSearch}
+          title="Nenhuma variação encontrada"
+          description={
+            buscaInicial
+              ? 'Tente ajustar a busca por produto, SKU ou cor.'
+              : 'Cadastre produtos com variações pra acompanhar o saldo aqui.'
+          }
+        />
       ) : (
         <>
           {/* Desktop */}

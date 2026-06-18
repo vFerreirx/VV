@@ -246,7 +246,7 @@ function KPICard({
   alerta?: boolean
 }) {
   return (
-    <Card>
+    <Card className="vv-lift">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
