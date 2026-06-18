@@ -5,30 +5,14 @@ import { listarMaquinas } from './actions'
 import { MaquinasGrid } from './maquinas-grid'
 import { Button } from '@/components/ui/button'
 import { isManager, requireArea } from '@/lib/auth/require-auth'
-import {
-  maquinasFiltrosSchema,
-  type MaquinasFiltros,
-} from '@/lib/validators/maquinas'
 
 export const metadata: Metadata = { title: 'Máquinas — Vanvest' }
 
-export default async function MaquinasPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
-}) {
+export default async function MaquinasPage() {
   const user = await requireArea('maquinas')
   const podeEditar = isManager(user.role)
 
-  const params = await searchParams
-  const raw: Record<string, string | undefined> = {}
-  for (const [k, v] of Object.entries(params)) {
-    raw[k] = Array.isArray(v) ? v[0] : v
-  }
-  const parsed = maquinasFiltrosSchema.safeParse(raw)
-  const filtros: MaquinasFiltros = parsed.success ? parsed.data : {}
-
-  const maquinas = await listarMaquinas(filtros)
+  const maquinas = await listarMaquinas()
 
   return (
     <div className="space-y-6">
@@ -44,13 +28,7 @@ export default async function MaquinasPage({
         )}
       </div>
 
-      <MaquinasGrid
-        maquinas={maquinas}
-        podeEditar={podeEditar}
-        isOperador={user.role === 'operador'}
-        userId={user.id}
-        filtrosIniciais={filtros}
-      />
+      <MaquinasGrid maquinas={maquinas} podeEditar={podeEditar} />
     </div>
   )
 }
