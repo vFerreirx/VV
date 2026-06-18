@@ -14,6 +14,7 @@ import {
   Palette,
   Ruler,
   Shapes,
+  ShieldCheck,
   ShoppingCart,
   Users,
   type LucideIcon,
@@ -88,6 +89,12 @@ export const NAV_GROUPS: NavGroup[] = [
     titulo: 'Administração',
     items: [
       { href: '/usuarios', label: 'Usuários', icon: Users, roles: ['admin'] },
+      {
+        href: '/permissoes',
+        label: 'Permissões',
+        icon: ShieldCheck,
+        roles: ['admin'],
+      },
       { href: '/configuracoes', label: 'Configurações', icon: Cog },
     ],
   },
