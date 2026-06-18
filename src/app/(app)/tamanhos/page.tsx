@@ -2,13 +2,15 @@ import type { Metadata } from 'next'
 
 import { listarTamanhos } from './actions'
 import { TamanhosList } from './tamanhos-list'
-import { isManager, requireArea } from '@/lib/auth/require-auth'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
+import { requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Tamanhos — Vanvest' }
 
 export default async function TamanhosPage() {
   const user = await requireArea('tamanhos')
-  const podeEditar = isManager(user.role)
+  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'tamanhos'))
   const tamanhos = await listarTamanhos()
 
   return (

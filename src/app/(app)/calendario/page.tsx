@@ -10,7 +10,9 @@ import type { Metadata } from 'next'
 
 import { listarEventosFull, listarOpsComPrazo } from './actions'
 import { CalendarioView } from '@/components/calendario/calendario-view'
-import { isManager, requireArea } from '@/lib/auth/require-auth'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
+import { requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Calendário — Vanvest' }
 
@@ -25,7 +27,9 @@ export default async function CalendarioPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const user = await requireArea('calendario')
-  const podeEditar = isManager(user.role) || user.role === 'vendas'
+  const podeEditar = podeEscrever(
+    await nivelDaAreaPara(user.role, 'calendario'),
+  )
 
   const sp = await searchParams
   const mesParam = typeof sp.mes === 'string' ? sp.mes : undefined

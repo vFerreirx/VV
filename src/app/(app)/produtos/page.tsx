@@ -4,7 +4,8 @@ import Link from 'next/link'
 import { listarProdutos } from './actions'
 import { ProdutosList } from './produtos-list'
 import { Button } from '@/components/ui/button'
-import { isManager } from '@/lib/auth/require-auth'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
 import {
   produtosFiltrosSchema,
@@ -19,7 +20,7 @@ export default async function ProdutosPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const user = await requireArea('produtos')
-  const podeEditar = isManager(user.role)
+  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'produtos'))
 
   // Lê filtros do URL (sem string[] — pegamos o primeiro valor).
   const params = await searchParams

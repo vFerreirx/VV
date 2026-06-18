@@ -4,7 +4,9 @@ import Link from 'next/link'
 import { listarOrdens } from './actions'
 import { OrdensList } from './ordens-list'
 import { Button } from '@/components/ui/button'
-import { isManager, requireArea } from '@/lib/auth/require-auth'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
+import { requireArea } from '@/lib/auth/require-auth'
 import {
   ordensFiltrosSchema,
   type OrdensFiltros,
@@ -18,7 +20,7 @@ export default async function OrdensPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const user = await requireArea('ordens')
-  const podeEditar = isManager(user.role)
+  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'ordens'))
 
   const params = await searchParams
   const raw: Record<string, string | undefined> = {}

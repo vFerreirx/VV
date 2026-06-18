@@ -14,17 +14,18 @@ import { toast } from 'sonner'
 
 import { salvarPermissoesAction, type ItemPermissao } from './actions'
 import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
 import {
   AREAS,
   chaveOverride,
-  nivelConcedido,
   NIVEL_INFO,
+  NIVEL_OPCOES,
+  opcaoDoNivel,
   ROLE_INFO,
   ROLES,
   ROLES_EDITAVEIS,
   type AreaKey,
   type Nivel,
+  type OpcaoNivel,
   type OverridesAcesso,
   type Role,
 } from '@/lib/auth/permissoes'
@@ -61,14 +62,13 @@ function NivelMarca({ nivel }: { nivel: Nivel }) {
 
 const EDITAVEIS = new Set<Role>(ROLES_EDITAVEIS)
 
-function estadoInicial(overrides: OverridesAcesso): Record<string, boolean> {
-  const m: Record<string, boolean> = {}
+function estadoInicial(overrides: OverridesAcesso): Record<string, OpcaoNivel> {
+  const m: Record<string, OpcaoNivel> = {}
   for (const area of AREAS) {
     if (!area.editavel) continue
     for (const role of ROLES_EDITAVEIS) {
       const key = chaveOverride(role, area.key)
-      const padrao = area.nivelPadrao[role] !== 'nenhum'
-      m[key] = overrides[key] ?? padrao
+      m[key] = opcaoDoNivel(overrides[key] ?? area.nivelPadrao[role])
     }
   }
   return m
@@ -84,16 +84,16 @@ export function PermissoesEditor({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const inicial = useMemo(() => estadoInicial(overrides), [overrides])
-  const [valores, setValores] = useState<Record<string, boolean>>(inicial)
-  const [baseline, setBaseline] = useState<Record<string, boolean>>(inicial)
+  const [valores, setValores] = useState<Record<string, OpcaoNivel>>(inicial)
+  const [baseline, setBaseline] = useState<Record<string, OpcaoNivel>>(inicial)
 
   const sujo = useMemo(
     () => Object.keys(valores).some((k) => valores[k] !== baseline[k]),
     [valores, baseline],
   )
 
-  function toggle(role: Role, area: AreaKey, liberado: boolean) {
-    setValores((p) => ({ ...p, [chaveOverride(role, area)]: liberado }))
+  function definir(role: Role, area: AreaKey, nivel: OpcaoNivel) {
+    setValores((p) => ({ ...p, [chaveOverride(role, area)]: nivel }))
   }
 
   function salvar() {
@@ -104,7 +104,7 @@ export function PermissoesEditor({
         itens.push({
           role,
           area: area.key,
-          liberado: valores[chaveOverride(role, area.key)] ?? false,
+          nivel: valores[chaveOverride(role, area.key)] ?? 'nenhum',
         })
       }
     }
@@ -118,10 +118,6 @@ export function PermissoesEditor({
       setBaseline(valores)
       router.refresh()
     })
-  }
-
-  function descartar() {
-    setValores(baseline)
   }
 
   return (
@@ -149,42 +145,30 @@ export function PermissoesEditor({
                   )}
                 </div>
 
-                <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-3 space-y-2">
                   {ROLES.map((role) => {
                     const editavel = area.editavel && EDITAVEIS.has(role)
                     const key = chaveOverride(role, area.key)
-                    const liberado = valores[key] ?? false
-                    const nivelMostrado: Nivel = editavel
-                      ? liberado
-                        ? nivelConcedido(area, role)
-                        : 'nenhum'
-                      : role === 'admin'
-                        ? 'total'
-                        : area.nivelPadrao[role]
+                    const valor = valores[key] ?? 'nenhum'
+                    const nivelFixo: Nivel =
+                      role === 'admin' ? 'total' : area.nivelPadrao[role]
                     return (
                       <div
                         key={role}
-                        className="flex items-center justify-between gap-3 border-t pt-2 sm:border-t-0 sm:pt-0"
+                        className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 first:border-t-0 first:pt-0"
                       >
                         <span className="text-muted-foreground text-sm">
                           {ROLE_INFO[role].label}
                         </span>
                         {editavel ? (
-                          <div className="flex items-center gap-2">
-                            <span className="w-20 text-right">
-                              <NivelMarca nivel={nivelMostrado} />
-                            </span>
-                            <Switch
-                              checked={liberado}
-                              onCheckedChange={(c) =>
-                                toggle(role, area.key, c === true)
-                              }
-                              disabled={isPending}
-                            />
-                          </div>
+                          <SegNivel
+                            valor={valor}
+                            disabled={isPending}
+                            onChange={(n) => definir(role, area.key, n)}
+                          />
                         ) : (
                           <span className="inline-flex items-center gap-1.5">
-                            <NivelMarca nivel={nivelMostrado} />
+                            <NivelMarca nivel={nivelFixo} />
                             <Lock className="text-muted-foreground/40 size-3" />
                           </span>
                         )}
@@ -198,7 +182,6 @@ export function PermissoesEditor({
         </div>
       ))}
 
-      {/* Barra de salvar */}
       {sujo && (
         <div className="bg-background/90 fixed inset-x-0 bottom-0 z-20 border-t backdrop-blur-md">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 pl-[max(1rem,var(--sa-left,env(safe-area-inset-left)))] pr-[max(1rem,var(--sa-right,env(safe-area-inset-right)))]">
@@ -208,7 +191,7 @@ export function PermissoesEditor({
             <div className="flex gap-2">
               <Button
                 variant="outline"
-                onClick={descartar}
+                onClick={() => setValores(baseline)}
                 disabled={isPending}
               >
                 Descartar
@@ -220,6 +203,47 @@ export function PermissoesEditor({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Controle segmentado de 3 opções: Desativado / Só ver / Controle total.
+function SegNivel({
+  valor,
+  disabled,
+  onChange,
+}: {
+  valor: OpcaoNivel
+  disabled: boolean
+  onChange: (n: OpcaoNivel) => void
+}) {
+  return (
+    <div className="bg-muted/60 inline-flex shrink-0 rounded-md p-0.5">
+      {NIVEL_OPCOES.map((o) => {
+        const ativo = valor === o.value
+        return (
+          <button
+            key={o.value}
+            type="button"
+            disabled={disabled}
+            aria-pressed={ativo}
+            title={o.descricao}
+            onClick={() => onChange(o.value)}
+            className={cn(
+              'rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-60',
+              ativo
+                ? o.value === 'nenhum'
+                  ? 'bg-background text-muted-foreground shadow-sm'
+                  : o.value === 'ver'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {o.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

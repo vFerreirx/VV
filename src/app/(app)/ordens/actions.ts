@@ -18,6 +18,8 @@ import {
   requireAuth,
   requireRole,
 } from '@/lib/auth/require-auth'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { db } from '@/lib/db'
 import {
   apontamentosProducao,
@@ -365,7 +367,10 @@ export async function criarOrdemAction(
 export async function criarOrdemRapidaAction(
   input: OrdemRapidaInput,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requireRole(['admin', 'gerente_producao', 'operador'])
+  const user = await requireAuth()
+  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
+    return { success: false, error: 'Sem permissão pra criar OP no kanban' }
+  }
 
   const parsed = ordemRapidaSchema.safeParse(input)
   if (!parsed.success) {
@@ -511,14 +516,13 @@ export async function mudarStatusOrdemAction(
     return { success: false, error: 'OP não encontrada' }
   }
 
-  // Admin e gerente de produção podem tudo. Operador pode mover a OP que é
-  // dele (responsável). Se ainda não é dele, precisa pegar primeiro.
-  const podeEditar = isManagerRole(user.role)
-  const podeOperador =
-    !podeEditar &&
-    user.role === 'operador' &&
-    atual.responsavelId === user.id
-  if (!podeEditar && !podeOperador) {
+  // Permissão pelo nível do kanban (editável em /permissoes).
+  // O operador é sempre limitado à OP que é dele, mesmo com "controle total".
+  const nivelKanban = await nivelDaAreaPara(user.role, 'kanban')
+  if (!podeEscrever(nivelKanban)) {
+    return { success: false, error: 'Sem permissão pra mover OPs no kanban' }
+  }
+  if (user.role === 'operador' && atual.responsavelId !== user.id) {
     return {
       success: false,
       error: atual.responsavelId
@@ -608,6 +612,10 @@ export async function pegarOrdemAction(id: string): Promise<ActionResult> {
   const user = await requireAuth()
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
 
+  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
+    return { success: false, error: 'Sem permissão pra pegar OPs no kanban' }
+  }
+
   const [atual] = await db
     .select({ id: ordensProducao.id, responsavelId: ordensProducao.responsavelId })
     .from(ordensProducao)
@@ -632,6 +640,10 @@ export async function pegarOrdemAction(id: string): Promise<ActionResult> {
 export async function soltarOrdemAction(id: string): Promise<ActionResult> {
   const user = await requireAuth()
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
+
+  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
+    return { success: false, error: 'Sem permissão no kanban' }
+  }
 
   const [atual] = await db
     .select({ id: ordensProducao.id, responsavelId: ordensProducao.responsavelId })
@@ -734,6 +746,9 @@ export async function apontarProducaoAction(
     .limit(1)
   if (!op) return { success: false, error: 'OP não encontrada' }
 
+  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
+    return { success: false, error: 'Sem permissão pra apontar produção' }
+  }
   const pode = isManagerRole(user.role) || op.responsavelId === user.id
   if (!pode) {
     return { success: false, error: 'Pegue a OP pra você antes de apontar' }

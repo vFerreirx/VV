@@ -11,7 +11,9 @@ import {
   listarProdutosParaOrdem,
   listarResponsaveis,
 } from '@/app/(app)/ordens/actions'
-import { isManager, requireArea } from '@/lib/auth/require-auth'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
+import { requireArea } from '@/lib/auth/require-auth'
 import { canalValues } from '@/lib/validators/ordens'
 
 export const metadata: Metadata = { title: 'Produção — Vanvest' }
@@ -47,10 +49,9 @@ export default async function ProducaoPage({
     listarProdutosParaOrdem(),
   ])
 
-  // Manager: pode mover qualquer OP.
-  // Operador: pode mover a OP que é dele.
-  // Estoquista/vendas: somente leitura.
-  const podeMover = isManager(user.role) || user.role === 'operador'
+  // Nível do kanban (editável em /permissoes). "Controle total" move; "só
+  // ver" é leitura. O operador continua limitado à OP dele (na ação).
+  const podeMover = podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))
   const podeCriar = podeMover // mesmos papéis criam OP rápida
 
   return (

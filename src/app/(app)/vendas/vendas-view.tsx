@@ -30,6 +30,7 @@ type Props = {
   data: string
   vendaDoDia: VendaDia | null
   recentes: VendaDia[]
+  podeEditar: boolean
 }
 
 function hojeISO(): string {
@@ -84,7 +85,7 @@ function resumoPorMarketplace(venda: VendaDia | null) {
   return [...acc.entries()].map(([marketplace, v]) => ({ marketplace, ...v }))
 }
 
-export function VendasView({ data, vendaDoDia, recentes }: Props) {
+export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -197,21 +198,23 @@ export function VendasView({ data, vendaDoDia, recentes }: Props) {
           </p>
         )}
 
-        <div className="mt-6">
-          <Button onClick={() => setEditando(true)} disabled={isPending}>
-            {vendaDoDia ? (
-              <>
-                <Pencil />
-                Editar
-              </>
-            ) : (
-              <>
-                <Plus />
-                Registrar venda do dia
-              </>
-            )}
-          </Button>
-        </div>
+        {podeEditar && (
+          <div className="mt-6">
+            <Button onClick={() => setEditando(true)} disabled={isPending}>
+              {vendaDoDia ? (
+                <>
+                  <Pencil />
+                  Editar
+                </>
+              ) : (
+                <>
+                  <Plus />
+                  Registrar venda do dia
+                </>
+              )}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Dias recentes */}

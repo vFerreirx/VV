@@ -41,12 +41,19 @@ inserir só linhas extras, nunca substituir.
 
 ### Acesso por área (editável pelo admin)
 
-- O **acesso a cada área/tela** é editável em `/permissoes` (só admin).
-  Modelo "acesso por área": liga/desliga quais áreas cada cargo EDITÁVEL
-  (gerente_producao, operador, estoquista, vendas) enxerga. Só o **admin**
-  é travado (acesso total a tudo, nunca editável). O gerente passou a ser
-  editável a pedido do usuário — a escrita nas actions ainda usa
-  `isManager`, então o liga/desliga afeta o acesso/leitura das telas.
+- O **acesso a cada área/tela** é editável em `/permissoes` (só admin), com
+  **3 níveis** por (cargo, área): `nenhum` (desativado), `ver` (só ver) e
+  `total` (controle total). Cargos editáveis: gerente_producao, operador,
+  estoquista, vendas. Só o **admin** é travado (sempre `total`, nunca
+  editável).
+- Enforcement: `requireArea('<area>')` bloqueia a página quando `nenhum`;
+  as páginas calculam `podeEditar`/`podeMover` via
+  `podeEscrever(await nivelDaAreaPara(role, area))` (= nível `total`/`proprio`)
+  pra esconder a edição quando `ver`. O **kanban** valida de verdade nas
+  actions (mudarStatus/pegar/soltar/criarRápida/apontar) pelo nível; o
+  **operador** continua limitado à OP que é dele mesmo com "controle total".
+- O nível padrão de cada (cargo, área) vive em `AREAS[].nivelPadrao`
+  (`src/lib/auth/permissoes.ts`); as overrides ficam em `permissoes_acesso`.
 - Fonte da verdade dos padrões + lógica pura:
   `src/lib/auth/permissoes.ts` (`AREAS`, `nivelEfetivo`). Overrides no banco
   (`permissoes_acesso`), carregadas em `src/lib/auth/permissoes-db.ts`.

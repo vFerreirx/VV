@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 
 import { listarVendasRecentes, obterVendaDoDia } from './actions'
 import { VendasView } from './vendas-view'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Vendas — Vanvest' }
@@ -16,7 +18,8 @@ export default async function VendasPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireArea('vendas')
+  const user = await requireArea('vendas')
+  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'vendas'))
 
   const sp = await searchParams
   const dataParam = typeof sp.data === 'string' ? sp.data : undefined
@@ -36,7 +39,12 @@ export default async function VendasPage({
           Unidades vendidas e faturamento de cada dia.
         </p>
       </div>
-      <VendasView data={data} vendaDoDia={vendaDoDia} recentes={recentes} />
+      <VendasView
+        data={data}
+        vendaDoDia={vendaDoDia}
+        recentes={recentes}
+        podeEditar={podeEditar}
+      />
     </div>
   )
 }

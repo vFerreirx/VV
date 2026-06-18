@@ -250,19 +250,38 @@ export const AREA_MAP: Record<AreaKey, Area> = Object.fromEntries(
 // Overrides + nível efetivo
 // -----------------------------------------------------------------
 
-// Liga/desliga por (cargo editável, área editável). Chave: `${role}__${area}`.
-export type OverridesAcesso = Record<string, boolean>
+// Override por (cargo editável, área editável). Chave: `${role}__${area}`.
+// Valor = nível escolhido pelo admin ('nenhum' | 'ver' | 'total').
+export type OverridesAcesso = Record<string, Nivel>
 
 export function chaveOverride(role: Role, area: AreaKey): string {
   return `${role}__${area}`
 }
 
-// Nível que o cargo recebe quando a área está liberada. Se o padrão já é um
-// acesso (ver/proprio/total) usamos ele; se o padrão é "nenhum", liberar
-// concede leitura ('ver').
-export function nivelConcedido(area: Area, role: Role): Nivel {
-  const base = area.nivelPadrao[role]
-  return base !== 'nenhum' ? base : 'ver'
+// As 3 opções que o admin escolhe na tela (o 'proprio' do operador no kanban
+// aparece como 'total' e é tratado na ação do kanban).
+export type OpcaoNivel = 'nenhum' | 'ver' | 'total'
+
+export const NIVEL_OPCOES: {
+  value: OpcaoNivel
+  label: string
+  descricao: string
+}[] = [
+  { value: 'nenhum', label: 'Desativado', descricao: 'Sem acesso à área' },
+  { value: 'ver', label: 'Só ver', descricao: 'Abre, mas não altera' },
+  { value: 'total', label: 'Controle total', descricao: 'Ver e alterar' },
+]
+
+// Converte um nível efetivo na opção exibida nos 3 botões.
+export function opcaoDoNivel(n: Nivel): OpcaoNivel {
+  if (n === 'total' || n === 'proprio') return 'total'
+  if (n === 'ver') return 'ver'
+  return 'nenhum'
+}
+
+// Pode alterar (escrever) na área? total e proprio liberam; ver/nenhum não.
+export function podeEscrever(n: Nivel): boolean {
+  return n === 'total' || n === 'proprio'
 }
 
 export function nivelEfetivo(
@@ -275,15 +294,12 @@ export function nivelEfetivo(
   // Admin é sempre travado em acesso total.
   if (role === 'admin') return 'total'
 
-  // Cargos editáveis (gerente/operador/estoquista/vendas).
   // Em áreas não editáveis (usuários, permissões, estações) cada cargo fica
   // fixo no nível padrão.
   if (!area.editavel) return area.nivelPadrao[role]
 
-  const liberadoPadrao = area.nivelPadrao[role] !== 'nenhum'
-  const ov = overrides[chaveOverride(role, areaKey)]
-  const liberado = ov === undefined ? liberadoPadrao : ov
-  return liberado ? nivelConcedido(area, role) : 'nenhum'
+  // Cargos editáveis: usa a override escolhida pelo admin, senão o padrão.
+  return overrides[chaveOverride(role, areaKey)] ?? area.nivelPadrao[role]
 }
 
 // Áreas que o cargo NÃO acessa (nível nenhum) — pra esconder do menu.
