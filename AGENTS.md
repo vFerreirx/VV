@@ -38,3 +38,18 @@ inserir só linhas extras, nunca substituir.
   `responsavelId` é ele (no fluxo puxado ele "pega" a OP pra virar dono).
 - Ao criar qualquer ação/guarda nova, verifique que admin e gerente não
   ficam bloqueados.
+
+### Acesso por área (editável pelo admin)
+
+- O **acesso a cada área/tela** é editável em `/permissoes` (só admin).
+  Modelo "acesso por área": liga/desliga quais áreas cada cargo EDITÁVEL
+  (operador, estoquista, vendas) enxerga. Admin e gerente são travados.
+- Fonte da verdade dos padrões + lógica pura:
+  `src/lib/auth/permissoes.ts` (`AREAS`, `nivelEfetivo`). Overrides no banco
+  (`permissoes_acesso`), carregadas em `src/lib/auth/permissoes-db.ts`.
+- **Guarda de página**: use `requireArea('<areaKey>')` no topo do
+  `page.tsx` (em vez de `requireRole` pra leitura). O menu se esconde
+  sozinho via `areasBloqueadas(role)` no layout.
+- **Escrita continua por `requireRole`** nas actions (não muda com o
+  acesso por área). Ao adicionar uma área/tela nova, registre-a em `AREAS`
+  e ponha um item no nav com `area`.

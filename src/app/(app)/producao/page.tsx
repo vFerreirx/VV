@@ -11,7 +11,7 @@ import {
   listarProdutosParaOrdem,
   listarResponsaveis,
 } from '@/app/(app)/ordens/actions'
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireArea } from '@/lib/auth/require-auth'
 import { canalValues } from '@/lib/validators/ordens'
 
 export const metadata: Metadata = { title: 'Produção — Vanvest' }
@@ -21,7 +21,7 @@ export default async function ProducaoPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireAuth()
+  const user = await requireArea('kanban')
 
   const params = await searchParams
   const flat: Record<string, string | undefined> = {}

@@ -1,5 +1,6 @@
 // Navegação compartilhada entre Sidebar (desktop) e MobileNav (drawer).
-// Agrupada em seções pra não virar uma lista enorme.
+// Agrupada em seções pra não virar uma lista enorme. A visibilidade de cada
+// item segue o mapa de permissões (áreas bloqueadas vêm do servidor).
 
 import {
   Boxes,
@@ -20,13 +21,14 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
-import type { User } from '@/lib/db/schema'
+import type { AreaKey } from '@/lib/auth/permissoes'
 
 export type NavItem = {
   href: string
   label: string
   icon: LucideIcon
-  roles?: User['role'][]
+  // Área de permissão. Itens sem área aparecem pra todo mundo autenticado.
+  area?: AreaKey
 }
 
 export type NavGroup = {
@@ -42,68 +44,59 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     titulo: 'Produção',
     items: [
-      { href: '/producao', label: 'Produção', icon: KanbanSquare },
-      { href: '/ordens', label: 'Ordens', icon: ListChecks },
-      { href: '/calendario', label: 'Calendário', icon: CalendarDays },
+      { href: '/producao', label: 'Produção', icon: KanbanSquare, area: 'kanban' },
+      { href: '/ordens', label: 'Ordens', icon: ListChecks, area: 'ordens' },
+      {
+        href: '/calendario',
+        label: 'Calendário',
+        icon: CalendarDays,
+        area: 'calendario',
+      },
     ],
   },
   {
     titulo: 'Fábrica',
     items: [
-      { href: '/maquinas', label: 'Máquinas', icon: Factory },
-      {
-        href: '/estacoes',
-        label: 'Estações',
-        icon: Grid2x2,
-        roles: ['admin', 'gerente_producao'],
-      },
+      { href: '/maquinas', label: 'Máquinas', icon: Factory, area: 'maquinas' },
+      { href: '/estacoes', label: 'Estações', icon: Grid2x2, area: 'estacoes' },
     ],
   },
   {
     titulo: 'Estoque & Vendas',
     items: [
-      {
-        href: '/estoque',
-        label: 'Estoque',
-        icon: Boxes,
-        roles: ['admin', 'gerente_producao', 'estoquista'],
-      },
-      {
-        href: '/vendas',
-        label: 'Vendas',
-        icon: ShoppingCart,
-        roles: ['admin', 'gerente_producao', 'vendas'],
-      },
+      { href: '/estoque', label: 'Estoque', icon: Boxes, area: 'estoque' },
+      { href: '/vendas', label: 'Vendas', icon: ShoppingCart, area: 'vendas' },
     ],
   },
   {
     titulo: 'Catálogo',
     items: [
-      { href: '/produtos', label: 'Produtos', icon: Package },
-      { href: '/cores', label: 'Cores', icon: Palette },
-      { href: '/modelos', label: 'Modelos', icon: Shapes },
-      { href: '/tamanhos', label: 'Tamanhos', icon: Ruler },
+      { href: '/produtos', label: 'Produtos', icon: Package, area: 'produtos' },
+      { href: '/cores', label: 'Cores', icon: Palette, area: 'cores' },
+      { href: '/modelos', label: 'Modelos', icon: Shapes, area: 'modelos' },
+      { href: '/tamanhos', label: 'Tamanhos', icon: Ruler, area: 'tamanhos' },
     ],
   },
   {
     titulo: 'Administração',
     items: [
-      { href: '/usuarios', label: 'Usuários', icon: Users, roles: ['admin'] },
+      { href: '/usuarios', label: 'Usuários', icon: Users, area: 'usuarios' },
       {
         href: '/permissoes',
         label: 'Permissões',
         icon: ShieldCheck,
-        roles: ['admin'],
+        area: 'permissoes',
       },
       { href: '/configuracoes', label: 'Configurações', icon: Cog },
     ],
   },
 ]
 
-// Grupos filtrados por role (descarta grupos que ficaram vazios).
-export function visibleGroups(role: User['role']): NavGroup[] {
+// Grupos filtrados pelas áreas bloqueadas do cargo (descarta grupos vazios).
+export function visibleGroups(bloqueadas: AreaKey[] = []): NavGroup[] {
+  const bloq = new Set(bloqueadas)
   return NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((it) => !it.roles || it.roles.includes(role)),
+    items: g.items.filter((it) => !it.area || !bloq.has(it.area)),
   })).filter((g) => g.items.length > 0)
 }

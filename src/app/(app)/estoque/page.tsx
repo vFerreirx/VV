@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 
 import { listarEstoque } from './actions'
 import { EstoqueList } from './estoque-list'
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Estoque — Vanvest' }
 
@@ -11,7 +11,7 @@ export default async function EstoquePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireAuth()
+  const user = await requireArea('estoque')
   const podeMovimentar = isManager(user.role) || user.role === 'estoquista'
 
   const sp = await searchParams

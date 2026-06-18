@@ -9,13 +9,13 @@ import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
 import { visibleGroups } from '@/components/layout/nav-items'
 import { useNavCollapse } from '@/components/layout/use-nav-collapse'
-import type { User } from '@/lib/db/schema'
+import type { AreaKey } from '@/lib/auth/permissoes'
 import { cn } from '@/lib/utils'
 
-export function Sidebar({ role }: { role: User['role'] }) {
+export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
   const pathname = usePathname()
   const [isPending, startTransition] = useTransition()
-  const grupos = visibleGroups(role)
+  const grupos = visibleGroups(bloqueadas)
   const { collapsed, toggle } = useNavCollapse()
 
   // Indicator deslizante: mede a posição do item ativo e move uma barra.

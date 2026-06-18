@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 
 import { listarVendasRecentes, obterVendaDoDia } from './actions'
 import { VendasView } from './vendas-view'
-import { requireRole } from '@/lib/auth/require-auth'
+import { requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Vendas — Vanvest' }
 
@@ -16,7 +16,7 @@ export default async function VendasPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireRole(['admin', 'gerente_producao', 'vendas'])
+  await requireArea('vendas')
 
   const sp = await searchParams
   const dataParam = typeof sp.data === 'string' ? sp.data : undefined

@@ -6,12 +6,12 @@ import {
   listarOperadores,
 } from './actions'
 import { EstacoesList } from './estacoes-list'
-import { requireRole } from '@/lib/auth/require-auth'
+import { requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Estações — Vanvest' }
 
 export default async function EstacoesPage() {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireArea('estacoes')
 
   const [estacoes, operadores, maquinas] = await Promise.all([
     listarEstacoes(),

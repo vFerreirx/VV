@@ -2,12 +2,12 @@ import type { Metadata } from 'next'
 
 import { listarCores } from './actions'
 import { CoresList } from './cores-list'
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Cores — Vanvest' }
 
 export default async function CoresPage() {
-  const user = await requireAuth()
+  const user = await requireArea('cores')
   const podeEditar = isManager(user.role)
   const cores = await listarCores()
 

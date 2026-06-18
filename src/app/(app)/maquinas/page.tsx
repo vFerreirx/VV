@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { listarMaquinas } from './actions'
 import { MaquinasGrid } from './maquinas-grid'
 import { Button } from '@/components/ui/button'
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireArea } from '@/lib/auth/require-auth'
 import {
   maquinasFiltrosSchema,
   type MaquinasFiltros,
@@ -17,7 +17,7 @@ export default async function MaquinasPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireAuth()
+  const user = await requireArea('maquinas')
   const podeEditar = isManager(user.role)
 
   const params = await searchParams

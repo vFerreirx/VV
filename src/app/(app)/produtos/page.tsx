@@ -5,7 +5,7 @@ import { listarProdutos } from './actions'
 import { ProdutosList } from './produtos-list'
 import { Button } from '@/components/ui/button'
 import { isManager } from '@/lib/auth/require-auth'
-import { requireAuth } from '@/lib/auth/require-auth'
+import { requireArea } from '@/lib/auth/require-auth'
 import {
   produtosFiltrosSchema,
   type ProdutosFiltros,
@@ -18,7 +18,7 @@ export default async function ProdutosPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireAuth()
+  const user = await requireArea('produtos')
   const podeEditar = isManager(user.role)
 
   // Lê filtros do URL (sem string[] — pegamos o primeiro valor).

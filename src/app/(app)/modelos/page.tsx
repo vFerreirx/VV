@@ -2,12 +2,12 @@ import type { Metadata } from 'next'
 
 import { listarModelos } from './actions'
 import { ModelosList } from './modelos-list'
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Modelos — Vanvest' }
 
 export default async function ModelosPage() {
-  const user = await requireAuth()
+  const user = await requireArea('modelos')
   const podeEditar = isManager(user.role)
   const modelos = await listarModelos()
 

@@ -3,6 +3,8 @@ import 'server-only'
 import { redirect } from 'next/navigation'
 
 import { getCurrentUser, type AuthUser } from './get-user'
+import { carregarOverrides } from './permissoes-db'
+import { nivelEfetivo, type AreaKey } from './permissoes'
 import type { User } from '@/lib/db/schema'
 import { createClient } from '@/lib/supabase/server'
 
@@ -38,3 +40,14 @@ export async function requireRole(roles: User['role'][]): Promise<AuthUser> {
 
 export const isManager = (role: User['role']) =>
   role === 'admin' || role === 'gerente_producao'
+
+// Garante acesso a uma área (segundo o mapa de permissões editável pelo
+// admin). Redireciona pra /dashboard se o cargo não tem acesso à área.
+export async function requireArea(area: AreaKey): Promise<AuthUser> {
+  const user = await requireAuth()
+  const overrides = await carregarOverrides()
+  if (nivelEfetivo(user.role, area, overrides) === 'nenhum') {
+    redirect('/dashboard')
+  }
+  return user
+}

@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { listarOrdens } from './actions'
 import { OrdensList } from './ordens-list'
 import { Button } from '@/components/ui/button'
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireArea } from '@/lib/auth/require-auth'
 import {
   ordensFiltrosSchema,
   type OrdensFiltros,
@@ -17,7 +17,7 @@ export default async function OrdensPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const user = await requireAuth()
+  const user = await requireArea('ordens')
   const podeEditar = isManager(user.role)
 
   const params = await searchParams

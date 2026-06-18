@@ -2,12 +2,12 @@ import type { Metadata } from 'next'
 
 import { listarTamanhos } from './actions'
 import { TamanhosList } from './tamanhos-list'
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Tamanhos — Vanvest' }
 
 export default async function TamanhosPage() {
-  const user = await requireAuth()
+  const user = await requireArea('tamanhos')
   const podeEditar = isManager(user.role)
   const tamanhos = await listarTamanhos()
 

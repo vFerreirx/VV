@@ -20,14 +20,14 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
-import type { User } from '@/lib/db/schema'
+import type { AreaKey } from '@/lib/auth/permissoes'
 import { cn } from '@/lib/utils'
 
-export function MobileNav({ role }: { role: User['role'] }) {
+export function MobileNav({ bloqueadas }: { bloqueadas: AreaKey[] }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const grupos = visibleGroups(role)
+  const grupos = visibleGroups(bloqueadas)
   const { collapsed, toggle } = useNavCollapse()
 
   function handleLogout() {
