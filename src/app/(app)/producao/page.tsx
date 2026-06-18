@@ -73,6 +73,7 @@ export default async function ProducaoPage({
       <KanbanBoard
         ordens={ordens}
         podeMover={podeMover}
+        isOperador={user.role === 'operador'}
         currentUserId={user.id}
         produtos={produtos}
         podeCriar={podeCriar}

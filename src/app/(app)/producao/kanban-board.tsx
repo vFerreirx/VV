@@ -15,7 +15,15 @@ import {
 } from '@dnd-kit/core'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CircleAlert, Clock, Hand, Plus, Undo2 } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  Clock,
+  Hand,
+  Plus,
+  Undo2,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useOptimistic, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -123,6 +131,7 @@ const FILTRO_LABEL: Record<FiltroChip, string> = {
 type Props = {
   ordens: KanbanCardData[]
   podeMover: boolean
+  isOperador: boolean
   currentUserId: string
   produtos: ProdutoComVariacoesParaForm[]
   podeCriar: boolean
@@ -131,6 +140,7 @@ type Props = {
 export function KanbanBoard({
   ordens,
   podeMover,
+  isOperador,
   currentUserId,
   produtos,
   podeCriar,
@@ -222,16 +232,9 @@ export function KanbanBoard({
     setActiveId(String(event.active.id))
   }
 
-  function handleDragEnd(event: DragEndEvent) {
-    setActiveId(null)
-    const { active, over } = event
-    if (!over) return
-
-    const ordemId = String(active.id)
-    const novoStatus = String(over.id) as (typeof statusValues)[number]
+  function mover(ordemId: string, novoStatus: (typeof statusValues)[number]) {
     const ordem = items.find((o) => o.id === ordemId)
-    if (!ordem) return
-    if (ordem.status === novoStatus) return
+    if (!ordem || ordem.status === novoStatus) return
     if (!STATUS_KANBAN.includes(novoStatus)) return
 
     startTransition(async () => {
@@ -249,6 +252,13 @@ export function KanbanBoard({
       toast.success('Movida pra ' + STATUS_LABEL_CURTO[novoStatus])
       router.refresh()
     })
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null)
+    const { active, over } = event
+    if (!over) return
+    mover(String(active.id), String(over.id) as (typeof statusValues)[number])
   }
 
   return (
@@ -312,8 +322,10 @@ export function KanbanBoard({
               status={g.status}
               ordens={g.ordens}
               podeMover={podeMover}
+              isOperador={isOperador}
               currentUserId={currentUserId}
               isPending={isPending}
+              onMover={mover}
               onAbrirDetalhe={(id) => setDetalheId(id)}
             />
           ))}
@@ -351,15 +363,19 @@ function KanbanColumn({
   status,
   ordens,
   podeMover,
+  isOperador,
   currentUserId,
   isPending,
+  onMover,
   onAbrirDetalhe,
 }: {
   status: (typeof statusValues)[number]
   ordens: KanbanCardData[]
   podeMover: boolean
+  isOperador: boolean
   currentUserId: string
   isPending: boolean
+  onMover: (id: string, status: (typeof statusValues)[number]) => void
   onAbrirDetalhe: (id: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status })
@@ -369,7 +385,7 @@ function KanbanColumn({
   const cheio = limite != null && ordens.length === limite
 
   return (
-    <div className="flex w-[85vw] max-w-72 shrink-0 snap-start flex-col sm:w-72">
+    <div className="flex w-[78vw] max-w-64 shrink-0 snap-start flex-col sm:w-64">
       <header
         className={cn(
           'mb-2 flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium',
@@ -415,8 +431,10 @@ function KanbanColumn({
             key={o.id}
             ordem={o}
             podeMover={podeMover}
+            isOperador={isOperador}
             currentUserId={currentUserId}
             isPending={isPending}
+            onMover={onMover}
             onAbrirDetalhe={onAbrirDetalhe}
           />
         ))}
@@ -432,20 +450,28 @@ function KanbanColumn({
 function KanbanCard({
   ordem,
   podeMover,
+  isOperador,
   currentUserId,
   isPending,
+  onMover,
   onAbrirDetalhe,
 }: {
   ordem: KanbanCardData
   podeMover: boolean
+  isOperador: boolean
   currentUserId: string
   isPending: boolean
+  onMover: (id: string, status: (typeof statusValues)[number]) => void
   onAbrirDetalhe: (id: string) => void
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: ordem.id,
     disabled: !podeMover || isPending,
   })
+
+  // Operador só move a OP que é dele; manager move qualquer uma.
+  const podeMoverEsta =
+    podeMover && (!isOperador || ordem.responsavelId === currentUserId)
 
   // Quando arrastando, escondemos o card original (DragOverlay mostra a cópia).
   return (
@@ -472,6 +498,8 @@ function KanbanCard({
       <KanbanCardContent
         ordem={ordem}
         currentUserId={currentUserId}
+        podeMoverEsta={podeMoverEsta}
+        onMover={onMover}
       />
     </div>
   )
@@ -535,17 +563,27 @@ function PegarSoltar({
   )
 }
 
-// Conteúdo visual do card (reutilizado pelo DragOverlay).
+// Conteúdo visual do card (reutilizado pelo DragOverlay). Compacto.
 function KanbanCardContent({
   ordem,
   dragging,
   currentUserId,
+  podeMoverEsta,
+  onMover,
 }: {
   ordem: KanbanCardData
   dragging?: boolean
   currentUserId?: string
+  podeMoverEsta?: boolean
+  onMover?: (id: string, status: (typeof statusValues)[number]) => void
 }) {
   const tempo = tempoNaEtapa(ordem.desdeStatus)
+  const idx = STATUS_KANBAN.indexOf(ordem.status)
+  const anterior = idx > 0 ? STATUS_KANBAN[idx - 1] : null
+  const proximo =
+    idx >= 0 && idx < STATUS_KANBAN.length - 1 ? STATUS_KANBAN[idx + 1] : null
+  const mostrarSetas = !!onMover && !!podeMoverEsta && (anterior || proximo)
+
   return (
     <article
       style={
@@ -555,19 +593,17 @@ function KanbanCardContent({
       }
       title={ordem.estacaoNome ?? undefined}
       className={cn(
-        'bg-card rounded-lg border p-3 text-sm shadow-sm transition-shadow',
-        dragging
-          ? 'shadow-lg ring-1 ring-foreground/20'
-          : 'hover:shadow-md',
+        'bg-card rounded-lg border p-2.5 text-xs shadow-sm transition-shadow',
+        dragging ? 'shadow-lg ring-1 ring-foreground/20' : 'hover:shadow-md',
       )}
     >
-      <header className="flex items-start justify-between gap-2">
-        <span className="text-muted-foreground font-mono text-xs">
+      <header className="flex items-center justify-between gap-2">
+        <span className="text-muted-foreground truncate font-mono text-[11px]">
           {ordem.numero}
         </span>
         <Badge
           className={cn(
-            'shrink-0 text-[10px]',
+            'h-4 shrink-0 px-1.5 text-[10px]',
             PRIORIDADE_BADGE[ordem.prioridade],
             ordem.prioridade === 'urgente' && 'pulse-urgente',
           )}
@@ -576,94 +612,108 @@ function KanbanCardContent({
         </Badge>
       </header>
 
-      <div className="mt-1 line-clamp-2 font-medium leading-snug">
+      <div className="mt-0.5 line-clamp-1 text-[13px] font-medium leading-snug">
         {ordem.produtoNome}
       </div>
 
       {(ordem.variacaoCor || ordem.variacaoTamanho) && (
-        <div className="text-muted-foreground mt-0.5 truncate text-xs">
+        <div className="text-muted-foreground truncate text-[11px]">
           {[ordem.variacaoCor, ordem.variacaoTamanho]
             .filter(Boolean)
             .join(' / ')}
         </div>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        <span className="text-muted-foreground tabular-nums">
+      <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+        <span className="tabular-nums">
           {ordem.quantidade.toLocaleString('pt-BR')} un
         </span>
-        {ordem.maquinaCodigo && (
-          <span className="text-muted-foreground font-mono">
-            {ordem.maquinaCodigo}
-          </span>
-        )}
-        <span className="text-muted-foreground">
-          {CANAL_LABEL_CURTO[ordem.canalDestino]}
-        </span>
+        <span>{CANAL_LABEL_CURTO[ordem.canalDestino]}</span>
         <span
           className={cn(
-            'inline-flex items-center gap-1',
-            tempo.aging ? 'text-destructive font-medium' : 'text-muted-foreground',
+            'inline-flex items-center gap-0.5',
+            tempo.aging && 'text-destructive font-medium',
           )}
           title="Tempo nesta etapa"
         >
           <Clock className="size-3" />
           {tempo.label}
         </span>
+        {ordem.dataPrevistaFim && (
+          <span
+            className={cn(
+              'inline-flex items-center gap-0.5 tabular-nums',
+              ordem.atrasada && 'text-destructive font-medium',
+            )}
+          >
+            {ordem.atrasada && <CircleAlert className="size-3" />}
+            {format(new Date(ordem.dataPrevistaFim), 'dd/MM', { locale: ptBR })}
+          </span>
+        )}
       </div>
 
       {ordem.produzido > 0 && (
-        <div className="mt-2">
-          <div className="text-muted-foreground flex justify-between text-[10px] tabular-nums">
-            <span>Produzido</span>
-            <span>
-              {ordem.produzido}/{ordem.quantidade}
-            </span>
-          </div>
-          <div className="bg-muted mt-0.5 h-1.5 overflow-hidden rounded-full">
-            <div
-              className={cn(
-                'h-full rounded-full',
-                ordem.produzido >= ordem.quantidade
-                  ? 'bg-emerald-500'
-                  : 'bg-primary',
-              )}
-              style={{
-                width: `${Math.min(100, (ordem.produzido / ordem.quantidade) * 100)}%`,
-              }}
-            />
-          </div>
+        <div
+          className="bg-muted mt-1.5 h-1 overflow-hidden rounded-full"
+          title={`Produzido ${ordem.produzido}/${ordem.quantidade}`}
+        >
+          <div
+            className={cn(
+              'h-full rounded-full',
+              ordem.produzido >= ordem.quantidade
+                ? 'bg-emerald-500'
+                : 'bg-primary',
+            )}
+            style={{
+              width: `${Math.min(100, (ordem.produzido / ordem.quantidade) * 100)}%`,
+            }}
+          />
         </div>
       )}
 
-      <footer className="border-foreground/10 mt-2 flex items-center justify-between gap-2 border-t pt-2 text-xs">
-        {ordem.dataPrevistaFim ? (
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 tabular-nums',
-              ordem.atrasada
-                ? 'text-destructive font-medium'
-                : 'text-muted-foreground',
-            )}
-          >
-            {ordem.atrasada && <CircleAlert className="size-3.5" />}
-            {format(new Date(ordem.dataPrevistaFim), 'dd/MM', { locale: ptBR })}
-          </span>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-        {ordem.responsavelNome && (
-          <span className="text-muted-foreground inline-flex items-center gap-1 truncate text-[11px]">
-            {ordem.estacaoCor && (
-              <span
-                className="inline-block size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: ordem.estacaoCor }}
-              />
-            )}
-            {ordem.responsavelNome.split(' ')[0]}
-          </span>
-        )}
-      </footer>
+      {ordem.responsavelNome && (
+        <div className="text-muted-foreground mt-1.5 flex items-center gap-1 truncate text-[11px]">
+          {ordem.estacaoCor && (
+            <span
+              className="inline-block size-2 shrink-0 rounded-full"
+              style={{ backgroundColor: ordem.estacaoCor }}
+            />
+          )}
+          {ordem.responsavelNome.split(' ')[0]}
+        </div>
+      )}
+
+      {mostrarSetas && (
+        <div className="mt-1.5 flex items-center gap-1">
+          {anterior && (
+            <button
+              type="button"
+              title={`Voltar p/ ${STATUS_LABEL_CURTO[anterior]}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onMover?.(ordem.id, anterior)
+              }}
+              className="text-muted-foreground hover:bg-muted flex h-6 w-7 shrink-0 items-center justify-center rounded border transition-colors"
+            >
+              <ChevronLeft className="size-3.5" />
+            </button>
+          )}
+          {proximo && (
+            <button
+              type="button"
+              title={`Avançar p/ ${STATUS_LABEL_CURTO[proximo]}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onMover?.(ordem.id, proximo)
+              }}
+              className="border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground flex h-6 flex-1 items-center justify-center gap-1 rounded border text-[10px] font-medium transition-colors"
+            >
+              <span className="truncate">{STATUS_LABEL_CURTO[proximo]}</span>
+              <ChevronRight className="size-3.5 shrink-0" />
+            </button>
+          )}
+        </div>
+      )}
 
       {currentUserId && (
         <PegarSoltar ordem={ordem} currentUserId={currentUserId} />
