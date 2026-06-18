@@ -14,6 +14,7 @@ import {
   Palette,
   Ruler,
   Shapes,
+  ShoppingCart,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -65,6 +66,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Estoque',
         icon: Boxes,
         roles: ['admin', 'gerente_producao', 'estoquista'],
+      },
+      {
+        href: '/vendas',
+        label: 'Vendas',
+        icon: ShoppingCart,
+        roles: ['admin', 'gerente_producao', 'vendas'],
       },
     ],
   },
