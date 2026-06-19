@@ -71,6 +71,32 @@ function formatarReais(v: string | number | null): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+// Máscara de moeda BRL: digita os números e eles preenchem da direita
+// (centavos). Ex.: "123456" → "1.234,56".
+function mascararMoeda(valor: string): string {
+  const digits = valor.replace(/\D/g, '')
+  if (!digits) return ''
+  return (Number(digits) / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+// Converte a máscara ("1.234,56") no decimal que o servidor espera ("1234.56").
+function moedaParaDecimal(masked: string): string | undefined {
+  const digits = masked.replace(/\D/g, '')
+  if (!digits) return undefined
+  return (Number(digits) / 100).toFixed(2)
+}
+
+// Converte o decimal salvo ("1234.56") na máscara de exibição.
+function decimalParaMoeda(dec: string | null): string {
+  if (dec == null || dec === '') return ''
+  const cents = Math.round(Number(dec) * 100)
+  if (!Number.isFinite(cents)) return ''
+  return mascararMoeda(String(cents))
+}
+
 // Agrupa o detalhamento por marketplace, somando quantidade e faturamento.
 function resumoPorMarketplace(venda: VendaDia | null) {
   const acc = new Map<Marketplace, { quantidade: number; faturamento: number }>()
@@ -150,7 +176,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
         <div className="grid grid-cols-2 gap-6">
           <div>
             <div className="text-muted-foreground text-xs tracking-wide uppercase">
-              Unidades vendidas
+              Quantidade de vendas
             </div>
             <div className="mt-1 text-3xl font-semibold tabular-nums">
               {vendaDoDia?.quantidade ?? 0}
@@ -181,7 +207,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
                     {MARKETPLACE_LABEL[r.marketplace]}
                   </span>
                   <span className="text-muted-foreground flex items-center gap-4 tabular-nums">
-                    <span>{r.quantidade} un.</span>
+                    <span>{r.quantidade} vendas</span>
                     <span className="w-28 text-right">
                       {formatarReais(r.faturamento || null)}
                     </span>
@@ -236,7 +262,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
                   {formatarDataCurta(v.data)}
                 </span>
                 <span className="text-muted-foreground flex items-center gap-4 tabular-nums">
-                  <span>{v.quantidade} un.</span>
+                  <span>{v.quantidade} vendas</span>
                   <span className="w-24 text-right">
                     {formatarReais(v.faturamento)}
                   </span>
@@ -278,16 +304,18 @@ function EditarDialog({
   const [isPending, startTransition] = useTransition()
   const [valores, setValores] = useState<Record<string, CampoConta>>({})
   const [observacao, setObservacao] = useState('')
+  const [dataEdit, setDataEdit] = useState(data)
 
   // Sincroniza os campos com a venda atual sempre que o dialog abre.
   const [abertoPara, setAbertoPara] = useState<string | null>(null)
   if (open && abertoPara !== data) {
     setAbertoPara(data)
+    setDataEdit(data)
     const init: Record<string, CampoConta> = {}
     for (const c of venda?.contas ?? []) {
       init[c.conta] = {
         q: c.quantidade ? String(c.quantidade) : '',
-        f: c.faturamento ?? '',
+        f: decimalParaMoeda(c.faturamento),
       }
     }
     setValores(init)
@@ -296,9 +324,10 @@ function EditarDialog({
   if (!open && abertoPara !== null) setAbertoPara(null)
 
   function set(conta: string, campo: keyof CampoConta, valor: string) {
+    const v = campo === 'f' ? mascararMoeda(valor) : valor
     setValores((prev) => {
       const atual = prev[conta] ?? { q: '', f: '' }
-      return { ...prev, [conta]: { ...atual, [campo]: valor } }
+      return { ...prev, [conta]: { ...atual, [campo]: v } }
     })
   }
 
@@ -307,7 +336,7 @@ function EditarDialog({
     0,
   )
   const totalFat = Object.values(valores).reduce(
-    (s, v) => s + (Number(String(v.f).replace(',', '.')) || 0),
+    (s, v) => s + Number(moedaParaDecimal(v.f) ?? 0),
     0,
   )
 
@@ -316,13 +345,13 @@ function EditarDialog({
       .map(([conta, v]) => ({
         conta: conta as ContaKey,
         quantidade: v.q.trim() === '' ? 0 : v.q,
-        faturamento: v.f.trim() || undefined,
+        faturamento: moedaParaDecimal(v.f),
       }))
       .filter((c) => Number(c.quantidade) > 0 || c.faturamento !== undefined)
 
     startTransition(async () => {
       const result = await salvarVendaDiaAction({
-        data,
+        data: dataEdit,
         observacao: observacao.trim() || undefined,
         contas,
       })
@@ -337,16 +366,37 @@ function EditarDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+    <Dialog
+      open={open}
+      // Fecha só pelo "X" (close-press) ou "Cancelar" (onClose direto):
+      // clique fora e Esc são ignorados.
+      disablePointerDismissal
+      onOpenChange={(o, details) => {
+        if (!o && details.reason === 'close-press') onClose()
+      }}
+    >
       <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-lg">
         <DialogHeader className="border-b p-6">
           <DialogTitle>Venda do dia</DialogTitle>
           <DialogDescription className="capitalize">
-            {formatarData(data)}
+            {formatarData(dataEdit)}
           </DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[55vh] space-y-5 overflow-y-auto p-6">
+          <div className="space-y-1.5">
+            <Label htmlFor="v-data">Data</Label>
+            <Input
+              id="v-data"
+              type="date"
+              value={dataEdit}
+              max={hojeISO()}
+              onChange={(e) => setDataEdit(e.target.value || data)}
+              disabled={isPending}
+              className="h-9"
+            />
+          </div>
+
           {MARKETPLACES_AGRUPADOS.map((grupo) => (
             <div key={grupo.marketplace} className="space-y-2">
               <div className="text-sm font-semibold">{grupo.label}</div>
@@ -356,7 +406,7 @@ function EditarDialog({
                   return (
                     <div
                       key={conta.key}
-                      className="grid grid-cols-[1fr_5rem_7rem] items-center gap-2"
+                      className="grid grid-cols-[1fr_3.5rem_7.5rem] items-center gap-2"
                     >
                       <Label
                         htmlFor={`q-${conta.key}`}
@@ -370,21 +420,26 @@ function EditarDialog({
                         inputMode="numeric"
                         min="0"
                         step="1"
-                        placeholder="un."
+                        placeholder="qtd"
                         value={v.q}
                         onChange={(e) => set(conta.key, 'q', e.target.value)}
                         disabled={isPending}
                         className="h-9"
                       />
-                      <Input
-                        aria-label={`Faturamento ${grupo.label} ${conta.label}`}
-                        inputMode="decimal"
-                        placeholder="R$"
-                        value={v.f}
-                        onChange={(e) => set(conta.key, 'f', e.target.value)}
-                        disabled={isPending}
-                        className="h-9"
-                      />
+                      <div className="relative">
+                        <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
+                          R$
+                        </span>
+                        <Input
+                          aria-label={`Faturamento ${grupo.label} ${conta.label}`}
+                          inputMode="decimal"
+                          placeholder="0,00"
+                          value={v.f}
+                          onChange={(e) => set(conta.key, 'f', e.target.value)}
+                          disabled={isPending}
+                          className="h-9 pl-7 text-right"
+                        />
+                      </div>
                     </div>
                   )
                 })}
@@ -408,7 +463,7 @@ function EditarDialog({
         <DialogFooter className="flex-row items-center justify-between border-t p-6 sm:justify-between">
           <div className="text-sm">
             <span className="text-muted-foreground">Total: </span>
-            <span className="font-semibold tabular-nums">{totalQtd} un.</span>
+            <span className="font-semibold tabular-nums">{totalQtd} vendas</span>
             <span className="text-muted-foreground"> · </span>
             <span className="font-semibold tabular-nums">
               {formatarReais(totalFat || null)}
