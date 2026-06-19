@@ -67,7 +67,6 @@ export const NIVEL_INFO: Record<Nivel, { label: string; descricao: string }> = {
 }
 
 export type AreaKey =
-  | 'relatorios'
   | 'kanban'
   | 'ordens'
   | 'calendario'
@@ -114,15 +113,6 @@ function padrao(p: Partial<Record<Role, Nivel>>): Record<Role, Nivel> {
 const verCatalogo = { [G]: 'total', [O]: 'ver', [E]: 'ver', [V]: 'ver' } as const
 
 export const AREAS: Area[] = [
-  {
-    key: 'relatorios',
-    secao: 'Relatórios',
-    label: 'Relatório mensal',
-    descricao: 'Fechamento do mês: vendas, produção e faturamento.',
-    href: '/relatorios',
-    editavel: true,
-    nivelPadrao: padrao({ [G]: 'total', [V]: 'ver' }),
-  },
   {
     key: 'kanban',
     secao: 'Produção',
@@ -181,7 +171,7 @@ export const AREAS: Area[] = [
     key: 'vendas',
     secao: 'Estoque & Vendas',
     label: 'Vendas',
-    descricao: 'Registro diário de unidades e faturamento.',
+    descricao: 'Registro diário e fechamento mensal (relatório).',
     href: '/vendas',
     editavel: true,
     nivelPadrao: padrao({ [G]: 'total', [V]: 'total' }),

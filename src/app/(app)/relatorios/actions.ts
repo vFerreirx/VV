@@ -2,7 +2,7 @@
 
 import { and, desc, eq, gte, isNull, lt, sql } from 'drizzle-orm'
 
-import { requireRole } from '@/lib/auth/require-auth'
+import { requireArea } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   apontamentosProducao,
@@ -50,7 +50,7 @@ const num = (v: unknown): number => {
 export async function obterRelatorioMensal(
   mes: string,
 ): Promise<RelatorioMensal> {
-  await requireRole(['admin', 'gerente_producao', 'vendas'])
+  await requireArea('vendas')
   const { inicio, prox, inicioTs, proxTs } = limitesDoMes(mes)
 
   const noMesVendas = and(
