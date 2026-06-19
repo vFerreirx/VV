@@ -57,6 +57,11 @@
  */
 
 :root {
+  /* Fonte do sistema inteiro. */
+  --font-sans:
+    'Atlassian Sans', ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Ubuntu, 'Helvetica Neue', sans-serif;
+
   /* Logo accent token (usado pelo SVG inline da marca) */
   --logo-accent: oklch(0.81 0.105 95);
 
