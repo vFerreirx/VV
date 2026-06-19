@@ -6,6 +6,7 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { salvarVendaDiaAction, type VendaDia } from './actions'
+import { ImportarCSVDialog } from './importar-csv-dialog'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -132,6 +133,12 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
 
   return (
     <div className="space-y-6">
+      {podeEditar && (
+        <div className="flex justify-end">
+          <ImportarCSVDialog />
+        </div>
+      )}
+
       {/* Navegação de dia */}
       <div className="flex items-center justify-between gap-2">
         <Button
