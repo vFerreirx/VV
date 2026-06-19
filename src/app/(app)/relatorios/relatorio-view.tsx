@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTransition } from 'react'
 
 import type { RelatorioMensal } from './actions'
+import { MarketplaceTendencia } from '@/components/charts/marketplace-tendencia'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -214,6 +215,11 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
             </div>
           </div>
         ))}
+      </div>
+
+      {/* Dashboard: tendência por conta de marketplace */}
+      <div className="print:hidden">
+        <MarketplaceTendencia />
       </div>
 
       {/* Vendas por marketplace */}
