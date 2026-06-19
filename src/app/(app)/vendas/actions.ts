@@ -239,10 +239,9 @@ export async function importarVendasCSVAction(
               }
             : null
         })
-        .filter(
-          (c): c is NonNullable<typeof c> =>
-            c !== null && (c.quantidade > 0 || Number(c.faturamento) > 0),
-        )
+        // Mantém todas as contas reconhecidas, inclusive zeradas (ex.:
+        // TikTok/Temu recém-começados normalmente vêm sem valor).
+        .filter((c): c is NonNullable<typeof c> => c !== null)
 
       if (contas.length === 0) continue
       totalContas += contas.length
