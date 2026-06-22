@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Fragment, useState, useTransition } from 'react'
 
 import type { RelatorioMensal } from './actions'
+import { Logo } from '@/components/brand/logo'
 import { MarketplaceTendencia } from '@/components/charts/marketplace-tendencia'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -194,8 +195,20 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
+  const [geradoEm, setGeradoEm] = useState('')
 
   const { inicio, fim } = relatorio
+
+  // Carimba "gerado em" e dispara a impressão no próximo frame.
+  function imprimir() {
+    setGeradoEm(
+      new Date().toLocaleString('pt-BR', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }),
+    )
+    setTimeout(() => window.print(), 60)
+  }
 
   function irPeriodo(de: string, ate: string) {
     const [a, b] = de <= ate ? [de, ate] : [ate, de]
@@ -255,7 +268,7 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
             <Download />
             Planilha (CSV)
           </Button>
-          <Button variant="outline" size="sm" onClick={() => window.print()}>
+          <Button variant="outline" size="sm" onClick={imprimir}>
             <Printer />
             Imprimir / PDF
           </Button>
@@ -354,12 +367,32 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
         </div>
       </div>
 
-      {/* Título só na impressão */}
-      <div className="hidden print:block">
-        <h1 className="text-xl font-semibold">
-          Relatório — {periodoLabel(inicio, fim)}
-        </h1>
-        <p className="text-muted-foreground text-sm">Vanvest Home Decor</p>
+      {/* Cabeçalho do documento (só na impressão / PDF) */}
+      <div className="hidden print:mb-5 print:block">
+        <div className="flex items-end justify-between border-b border-foreground/20 pb-3">
+          <div className="flex items-center gap-2.5">
+            <Logo variant="mark" className="text-primary size-9" />
+            <div className="leading-tight">
+              <div className="font-heading text-base font-semibold tracking-[0.18em] uppercase">
+                Vanvest
+              </div>
+              <div className="text-muted-foreground text-[0.6rem] tracking-[0.25em] uppercase">
+                Home Decor
+              </div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-base font-semibold">Relatório de Vendas</div>
+            <div className="text-muted-foreground text-xs">
+              Período: {periodoLabel(inicio, fim)}
+            </div>
+            {geradoEm && (
+              <div className="text-muted-foreground text-[0.65rem]">
+                Gerado em {geradoEm}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* KPIs */}

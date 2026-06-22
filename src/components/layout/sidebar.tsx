@@ -41,7 +41,7 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
   }
 
   return (
-    <aside className="bg-sidebar border-sidebar-border hidden w-56 shrink-0 flex-col border-r md:flex">
+    <aside className="bg-sidebar border-sidebar-border hidden w-56 shrink-0 flex-col border-r md:flex print:hidden">
       <div className="border-sidebar-border flex h-14 items-center gap-2.5 border-b px-4">
         <Logo variant="mark" className="text-sidebar-primary size-7" />
         <div className="leading-tight">

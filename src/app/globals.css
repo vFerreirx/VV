@@ -329,3 +329,32 @@
     animation: none;
   }
 }
+
+/* ──────────────────────────────────────────────────────────
+ * Impressão / Salvar como PDF: documento limpo (sem chrome do app).
+ * ────────────────────────────────────────────────────────── */
+@media print {
+  /* Imprime cores de fundo e bordas (subtotais, KPIs, cabeçalho). */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff;
+  }
+  /* Não corta linhas de tabela / títulos entre páginas. */
+  tr,
+  thead,
+  h1,
+  h2 {
+    break-inside: avoid;
+  }
+  @page {
+    margin: 14mm;
+  }
+}
