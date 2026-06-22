@@ -354,6 +354,18 @@
   h2 {
     break-inside: avoid;
   }
+  /* Compacta o relatório pra caber em menos páginas. */
+  table {
+    font-size: 11px;
+  }
+  th,
+  td {
+    padding-top: 2.5px !important;
+    padding-bottom: 2.5px !important;
+  }
+  h2 {
+    font-size: 0.8rem;
+  }
   @page {
     margin: 6mm;
   }

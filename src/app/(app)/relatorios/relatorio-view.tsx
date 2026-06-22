@@ -243,7 +243,7 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print:space-y-3">
       {/* Cabeçalho + ações */}
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <div>
@@ -357,7 +357,7 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
       </div>
 
       {/* Cabeçalho do documento (só na impressão / PDF) */}
-      <div className="hidden print:mb-5 print:block">
+      <div className="hidden print:mb-3 print:block">
         <div className="flex items-end justify-between border-b border-foreground/20 pb-3">
           <div className="flex items-center gap-2.5">
             <Logo variant="mark" className="text-primary size-9" />
@@ -385,13 +385,16 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
       </div>
 
       {/* KPIs */}
-      <div className="vv-stagger grid grid-cols-1 gap-3 sm:grid-cols-3 print:[&>*]:animate-none">
+      <div className="vv-stagger grid grid-cols-1 gap-3 sm:grid-cols-3 print:gap-2 print:[&>*]:animate-none">
         {kpis.map((k) => (
-          <div key={k.label} className="vv-lift rounded-xl border p-4 print:border-foreground/20">
+          <div
+            key={k.label}
+            className="vv-lift rounded-xl border p-4 print:rounded-md print:border-foreground/20 print:p-2.5"
+          >
             <div className="text-muted-foreground text-xs tracking-wide uppercase">
               {k.label}
             </div>
-            <div className="mt-1 text-xl font-semibold tabular-nums">
+            <div className="mt-1 text-xl font-semibold tabular-nums print:text-base">
               {k.valor}
             </div>
           </div>
