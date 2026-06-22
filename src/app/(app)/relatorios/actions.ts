@@ -21,7 +21,12 @@ export type RelatorioMensal = {
     dias: number
     ticketMedio: number
   }
-  porMarketplace: { marketplace: string; unidades: number; faturamento: number }[]
+  porConta: {
+    conta: string
+    marketplace: string
+    unidades: number
+    faturamento: number
+  }[]
   porDia: { data: string; unidades: number; faturamento: number | null }[]
   producao: { unidades: number; refugo: number; opsConcluidas: number }
   porOperador: { operador: string; unidades: number; refugo: number }[]
@@ -64,7 +69,7 @@ export async function obterRelatorioPeriodo(
 
   const [
     aggVendas,
-    porMarketplaceRows,
+    porContaRows,
     porDiaRows,
     aggProducao,
     aggOps,
@@ -81,6 +86,7 @@ export async function obterRelatorioPeriodo(
 
     db
       .select({
+        conta: vendasMarketplace.conta,
         marketplace: vendasMarketplace.marketplace,
         unidades: sql<string>`coalesce(sum(${vendasMarketplace.quantidade}), 0)`,
         faturamento: sql<string>`coalesce(sum(${vendasMarketplace.faturamento}), 0)`,
@@ -88,8 +94,7 @@ export async function obterRelatorioPeriodo(
       .from(vendasMarketplace)
       .innerJoin(vendas, eq(vendas.id, vendasMarketplace.vendaId))
       .where(noMesVendas)
-      .groupBy(vendasMarketplace.marketplace)
-      .orderBy(desc(sql`sum(${vendasMarketplace.faturamento})`)),
+      .groupBy(vendasMarketplace.conta, vendasMarketplace.marketplace),
 
     db
       .select({
@@ -155,7 +160,8 @@ export async function obterRelatorioPeriodo(
       dias: num(aggVendas[0]?.dias),
       ticketMedio: unidades > 0 ? faturamento / unidades : 0,
     },
-    porMarketplace: porMarketplaceRows.map((r) => ({
+    porConta: porContaRows.map((r) => ({
+      conta: r.conta,
       marketplace: r.marketplace,
       unidades: num(r.unidades),
       faturamento: num(r.faturamento),

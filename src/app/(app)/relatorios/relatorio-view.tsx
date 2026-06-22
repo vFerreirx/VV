@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Download, Printer } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { Fragment, useState, useTransition } from 'react'
 
 import type { RelatorioMensal } from './actions'
 import { MarketplaceTendencia } from '@/components/charts/marketplace-tendencia'
@@ -18,7 +18,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import { MARKETPLACE_LABEL, type Marketplace } from '@/lib/validators/vendas'
+import {
+  CONTAS_MARKETPLACE,
+  MARKETPLACE_LABEL,
+  type Marketplace,
+} from '@/lib/validators/vendas'
 
 function hojeISO(): string {
   const d = new Date()
@@ -94,6 +98,36 @@ function mkLabel(m: string): string {
   return MARKETPLACE_LABEL[m as Marketplace] ?? m
 }
 
+const ORDEM_MK = Object.keys(MARKETPLACE_LABEL) as Marketplace[]
+const LABEL_CONTA: Record<string, string> = Object.fromEntries(
+  CONTAS_MARKETPLACE.map((c) => [c.key, c.label]),
+)
+const ORDEM_CONTA: Record<string, number> = Object.fromEntries(
+  CONTAS_MARKETPLACE.map((c, i) => [c.key, i]),
+)
+
+type ContaLinha = {
+  conta: string
+  marketplace: string
+  unidades: number
+  faturamento: number
+}
+
+// Agrupa as contas por marketplace (na ordem do catálogo), com subtotal.
+function agruparPorMarketplace(porConta: ContaLinha[]) {
+  return ORDEM_MK.map((mk) => {
+    const contas = porConta
+      .filter((c) => c.marketplace === mk)
+      .sort((a, b) => (ORDEM_CONTA[a.conta] ?? 99) - (ORDEM_CONTA[b.conta] ?? 99))
+    return {
+      marketplace: mk,
+      contas,
+      subUn: contas.reduce((s, c) => s + c.unidades, 0),
+      subFat: contas.reduce((s, c) => s + c.faturamento, 0),
+    }
+  }).filter((g) => g.contas.length > 0)
+}
+
 const PRESETS: { label: string; range: () => [string, string] }[] = [
   { label: '7 dias', range: () => [isoMenos(6), hojeISO()] },
   { label: '30 dias', range: () => [isoMenos(29), hojeISO()] },
@@ -118,9 +152,16 @@ function baixarCSV(r: RelatorioMensal) {
   linhas.push(['Refugo', String(r.producao.refugo)])
   linhas.push(['OPs concluídas', String(r.producao.opsConcluidas)])
   linhas.push([])
-  linhas.push(['Vendas por marketplace', 'Vendas', 'Faturamento'])
-  for (const m of r.porMarketplace) {
-    linhas.push([mkLabel(m.marketplace), String(m.unidades), dec(m.faturamento)])
+  linhas.push(['Vendas por marketplace / conta', 'Vendas', 'Faturamento'])
+  for (const g of agruparPorMarketplace(r.porConta)) {
+    linhas.push([mkLabel(g.marketplace), String(g.subUn), dec(g.subFat)])
+    for (const c of g.contas) {
+      linhas.push([
+        `  ${LABEL_CONTA[c.conta] ?? c.conta}`,
+        String(c.unidades),
+        dec(c.faturamento),
+      ])
+    }
   }
   linhas.push([])
   linhas.push(['Vendas por dia', 'Vendas', 'Faturamento'])
@@ -340,10 +381,10 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
         <MarketplaceTendencia inicio={inicio} fim={fim} />
       </div>
 
-      {/* Vendas por marketplace */}
+      {/* Vendas por marketplace e conta */}
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">Vendas por marketplace</h2>
-        {relatorio.porMarketplace.length === 0 ? (
+        {relatorio.porConta.length === 0 ? (
           <p className="text-muted-foreground text-sm">
             Sem vendas registradas no período.
           </p>
@@ -352,24 +393,39 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Marketplace</TableHead>
+                  <TableHead>Marketplace / conta</TableHead>
                   <TableHead className="text-right">Vendas</TableHead>
                   <TableHead className="text-right">Faturamento</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {relatorio.porMarketplace.map((m) => (
-                  <TableRow key={m.marketplace}>
-                    <TableCell className="font-medium">
-                      {mkLabel(m.marketplace)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {m.unidades}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {reais(m.faturamento)}
-                    </TableCell>
-                  </TableRow>
+                {agruparPorMarketplace(relatorio.porConta).map((g) => (
+                  <Fragment key={g.marketplace}>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableCell className="font-semibold">
+                        {mkLabel(g.marketplace)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {g.subUn}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {reais(g.subFat)}
+                      </TableCell>
+                    </TableRow>
+                    {g.contas.map((c) => (
+                      <TableRow key={c.conta}>
+                        <TableCell className="text-muted-foreground pl-6">
+                          {LABEL_CONTA[c.conta] ?? c.conta}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {c.unidades}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {reais(c.faturamento)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
                 ))}
               </TableBody>
               <TableFooter>
