@@ -29,12 +29,15 @@ export const CONTAS_MARKETPLACE = [
   { key: 'shein_5', marketplace: 'shein', label: 'Conta 5' },
   { key: 'tiktok', marketplace: 'tiktok', label: 'TikTok' },
   { key: 'temu', marketplace: 'temu', label: 'Temu' },
-  { key: 'amazon', marketplace: 'amazon', label: 'Amazon' },
+  // Amazon: não vendemos mais. `ativo: false` -> some do registro manual,
+  // mas continua reconhecida no import de CSV e na exibição de dados antigos.
+  { key: 'amazon', marketplace: 'amazon', label: 'Amazon', ativo: false },
   { key: 'atacado_5', marketplace: 'vendas_atacado', label: 'Conta 5' },
 ] as const satisfies ReadonlyArray<{
   key: string
   marketplace: Marketplace
   label: string
+  ativo?: boolean
 }>
 
 export type ContaKey = (typeof CONTAS_MARKETPLACE)[number]['key']
@@ -48,14 +51,19 @@ export function marketplaceDaConta(key: string): Marketplace | null {
   return CONTAS_MARKETPLACE.find((c) => c.key === key)?.marketplace ?? null
 }
 
-// Marketplaces na ordem de exibição, cada um com suas contas.
+// Marketplaces/contas ATIVOS pro registro manual (esconde contas inativas,
+// como a Amazon, e marketplaces que ficaram sem nenhuma conta ativa).
 export const MARKETPLACES_AGRUPADOS = (
   Object.keys(MARKETPLACE_LABEL) as Marketplace[]
-).map((m) => ({
-  marketplace: m,
-  label: MARKETPLACE_LABEL[m],
-  contas: CONTAS_MARKETPLACE.filter((c) => c.marketplace === m),
-}))
+)
+  .map((m) => ({
+    marketplace: m,
+    label: MARKETPLACE_LABEL[m],
+    contas: CONTAS_MARKETPLACE.filter(
+      (c) => c.marketplace === m && (c as { ativo?: boolean }).ativo !== false,
+    ),
+  }))
+  .filter((g) => g.contas.length > 0)
 
 // -----------------------------------------------------------------
 // Helpers de validação
