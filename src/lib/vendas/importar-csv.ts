@@ -39,6 +39,7 @@ const MARKETPLACE_ALIAS: Record<string, Marketplace> = {
   tiktok: 'tiktok',
   'tik tok': 'tiktok',
   'tiktok shop': 'tiktok',
+  'tik tok shop': 'tiktok',
   temu: 'temu',
   amazon: 'amazon',
   'vendas atacado': 'vendas_atacado',
