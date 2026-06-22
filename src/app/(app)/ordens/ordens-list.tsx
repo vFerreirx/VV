@@ -318,7 +318,7 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
                       {o.quantidade.toLocaleString('pt-BR')}
                     </TableCell>
                     <TableCell className="font-mono text-xs">
-                      {o.maquinaCodigo ?? '—'}
+                      {o.maquinaNome ?? '—'}
                     </TableCell>
                     <TableCell>{CANAL_LABEL_CURTO[o.canalDestino]}</TableCell>
                     <TableCell>
@@ -415,7 +415,7 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
                   </div>
                   <div>Máquina</div>
                   <div className="text-foreground text-right font-mono">
-                    {o.maquinaCodigo ?? '—'}
+                    {o.maquinaNome ?? '—'}
                   </div>
                   <div>Canal</div>
                   <div className="text-foreground text-right">

@@ -429,8 +429,7 @@ function DetalheBody({
             />
             <Detail
               label="Máquina"
-              value={ordem.maquina ? `${ordem.maquina.codigo}` : '—'}
-              mono
+              value={ordem.maquina ? ordem.maquina.nome : '—'}
             />
             <Detail label="Canal" value={CANAL_LABEL[ordem.canalDestino]} />
             <Detail

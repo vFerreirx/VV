@@ -17,7 +17,7 @@ export type EstacaoComDetalhes = Estacao & {
   operadorDiaNome: string | null
   operadorNoiteNome: string | null
   maquinaIds: string[]
-  maquinaCodigos: string[]
+  maquinaNomes: string[]
 }
 
 export type OperadorOpcao = { id: string; nome: string }
@@ -54,9 +54,14 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
   const opNome = new Map(ops.map((o) => [o.id, o.nome]))
 
   const maqs = await db
-    .select({ id: maquinas.id, codigo: maquinas.codigo, estacaoId: maquinas.estacaoId })
+    .select({
+      id: maquinas.id,
+      nome: maquinas.nome,
+      estacaoId: maquinas.estacaoId,
+    })
     .from(maquinas)
     .where(and(isNull(maquinas.deletedAt), inArray(maquinas.estacaoId, ids)))
+    // Ordena pelo código (TC-01..18) pra manter a ordem numérica das máquinas.
     .orderBy(asc(maquinas.codigo))
 
   return rows.map((e) => {
@@ -68,7 +73,7 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
         ? (opNome.get(e.operadorNoiteId) ?? null)
         : null,
       maquinaIds: minhas.map((m) => m.id),
-      maquinaCodigos: minhas.map((m) => m.codigo),
+      maquinaNomes: minhas.map((m) => m.nome),
     }
   })
 }

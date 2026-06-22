@@ -181,10 +181,10 @@ export default async function DashboardPage() {
                       {[op.variacaoCor, op.variacaoTamanho]
                         .filter(Boolean)
                         .join(' / ') || op.produtoSku}
-                      {op.maquinaCodigo && (
+                      {op.maquinaNome && (
                         <>
                           {' · '}
-                          <span className="font-mono">{op.maquinaCodigo}</span>
+                          <span>{op.maquinaNome}</span>
                         </>
                       )}
                     </div>

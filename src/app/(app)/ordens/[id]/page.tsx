@@ -105,11 +105,7 @@ export default async function EditarOrdemPage({
           <Info label="Criada por" value={ordem.criador?.nome ?? '—'} />
           <Info
             label="Máquina"
-            value={
-              ordem.maquina
-                ? `${ordem.maquina.codigo} — ${ordem.maquina.nome}`
-                : '—'
-            }
+            value={ordem.maquina ? ordem.maquina.nome : '—'}
           />
         </CardContent>
       </Card>

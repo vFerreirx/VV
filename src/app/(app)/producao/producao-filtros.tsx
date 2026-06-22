@@ -104,7 +104,7 @@ export function ProducaoFiltros({
           <SelectItem value="todas">Todas máquinas</SelectItem>
           {maquinas.map((m) => (
             <SelectItem key={m.id} value={m.id}>
-              <span className="font-mono text-xs">{m.codigo}</span>
+              {m.nome}
             </SelectItem>
           ))}
         </SelectContent>

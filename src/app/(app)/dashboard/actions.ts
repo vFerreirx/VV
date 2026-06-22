@@ -134,7 +134,7 @@ export type OpUrgenteItem = {
   status: (typeof statusValues)[number]
   prioridade: 'baixa' | 'normal' | 'alta' | 'urgente'
   dataPrevistaFim: Date | null
-  maquinaCodigo: string | null
+  maquinaNome: string | null
   responsavelNome: string | null
   atrasada: boolean
 }
@@ -155,7 +155,7 @@ export async function listarOpsUrgentes(
       status: ordensProducao.status,
       prioridade: ordensProducao.prioridade,
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
-      maquinaCodigo: maquinas.codigo,
+      maquinaNome: maquinas.nome,
       responsavelNome: users.nome,
     })
     .from(ordensProducao)
@@ -196,7 +196,7 @@ export async function listarOpsUrgentes(
     status: r.status,
     prioridade: r.prioridade,
     dataPrevistaFim: r.dataPrevistaFim,
-    maquinaCodigo: r.maquinaCodigo ?? null,
+    maquinaNome: r.maquinaNome ?? null,
     responsavelNome: r.responsavelNome ?? null,
     atrasada:
       r.dataPrevistaFim !== null &&

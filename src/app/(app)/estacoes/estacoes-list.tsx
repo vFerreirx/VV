@@ -116,14 +116,14 @@ export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
               </div>
 
               <div className="flex flex-wrap gap-1">
-                {e.maquinaCodigos.length === 0 ? (
+                {e.maquinaNomes.length === 0 ? (
                   <span className="text-muted-foreground text-xs">
                     Sem máquinas vinculadas
                   </span>
                 ) : (
-                  e.maquinaCodigos.map((c) => (
-                    <Badge key={c} variant="secondary" className="font-mono">
-                      {c}
+                  e.maquinaNomes.map((n) => (
+                    <Badge key={n} variant="secondary">
+                      {n}
                     </Badge>
                   ))
                 )}
@@ -377,15 +377,15 @@ function EstacaoBody({
                     type="button"
                     onClick={() => toggleMaquina(m.id)}
                     disabled={isPending}
-                    title={m.nome}
+                    title={m.codigo}
                     className={cn(
-                      'rounded-full border px-2.5 py-1 font-mono text-xs transition-colors',
+                      'rounded-full border px-2.5 py-1 text-xs transition-colors',
                       ativo
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'hover:bg-accent',
                     )}
                   >
-                    {m.codigo}
+                    {m.nome}
                   </button>
                 )
               })}

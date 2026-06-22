@@ -62,7 +62,7 @@ export type OrdemListItem = OrdemProducao & {
   produtoSku: string
   variacaoCor: string | null
   variacaoTamanho: string | null
-  maquinaCodigo: string | null
+  maquinaNome: string | null
   responsavelNome: string | null
   atrasada: boolean
 }
@@ -104,7 +104,7 @@ export async function listarOrdens(
       produtoSku: produtos.sku,
       variacaoCor: variacoesProduto.cor,
       variacaoTamanho: variacoesProduto.tamanho,
-      maquinaCodigo: maquinas.codigo,
+      maquinaNome: maquinas.nome,
       responsavelNome: users.nome,
     })
     .from(ordensProducao)
@@ -126,7 +126,7 @@ export async function listarOrdens(
       produtoSku,
       variacaoCor,
       variacaoTamanho,
-      maquinaCodigo,
+      maquinaNome,
       responsavelNome,
     }) => ({
       ...op,
@@ -134,7 +134,7 @@ export async function listarOrdens(
       produtoSku,
       variacaoCor: variacaoCor ?? null,
       variacaoTamanho: variacaoTamanho ?? null,
-      maquinaCodigo: maquinaCodigo ?? null,
+      maquinaNome: maquinaNome ?? null,
       responsavelNome: responsavelNome ?? null,
       atrasada:
         op.dataPrevistaFim !== null &&

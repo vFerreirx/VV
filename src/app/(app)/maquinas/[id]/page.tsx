@@ -48,9 +48,7 @@ export default async function EditarMaquinaPage({
           <ArrowLeft />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-semibold">
-            {maquina.codigo} — {maquina.nome}
-          </h1>
+          <h1 className="truncate text-2xl font-semibold">{maquina.nome}</h1>
         </div>
       </div>
 
