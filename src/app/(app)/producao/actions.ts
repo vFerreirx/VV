@@ -35,7 +35,6 @@ export type KanbanCardData = {
   variacaoTamanho: string | null
   quantidade: number
   maquinaId: string | null
-  maquinaCodigo: string | null
   responsavelId: string | null
   responsavelNome: string | null
   estacaoCor: string | null
@@ -104,7 +103,6 @@ export async function listarOrdensProducao(
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
-      maquinaCodigo: maquinas.codigo,
       responsavelNome: users.nome,
       estacaoCorMaq: estMaq.cor,
       estacaoNomeMaq: estMaq.nome,
@@ -160,7 +158,6 @@ export async function listarOrdensProducao(
       variacaoCor,
       variacaoModelo,
       variacaoTamanho,
-      maquinaCodigo,
       responsavelNome,
       estacaoCorMaq,
       estacaoNomeMaq,
@@ -181,7 +178,6 @@ export async function listarOrdensProducao(
       variacaoTamanho: variacaoTamanho ?? null,
       quantidade: op.quantidade,
       maquinaId: op.maquinaId,
-      maquinaCodigo: maquinaCodigo ?? null,
       responsavelId: op.responsavelId,
       responsavelNome: responsavelNome ?? null,
       estacaoCor: estacaoCorMaq ?? estacaoCorResp ?? null,

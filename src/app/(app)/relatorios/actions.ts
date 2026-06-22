@@ -1,16 +1,10 @@
 'use server'
 
-import { and, desc, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm'
+import { and, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm'
 
 import { requireArea } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import {
-  apontamentosProducao,
-  ordensProducao,
-  users,
-  vendas,
-  vendasMarketplace,
-} from '@/lib/db/schema'
+import { vendas, vendasMarketplace } from '@/lib/db/schema'
 
 export type RelatorioMensal = {
   inicio: string
@@ -28,8 +22,6 @@ export type RelatorioMensal = {
     faturamento: number
   }[]
   porDia: { data: string; unidades: number; faturamento: number | null }[]
-  producao: { unidades: number; refugo: number; opsConcluidas: number }
-  porOperador: { operador: string; unidades: number; refugo: number }[]
 }
 
 // Dia seguinte a um YYYY-MM-DD (limite exclusivo do período).
@@ -37,16 +29,6 @@ function diaSeguinte(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number)
   const dt = new Date(Date.UTC(y, m - 1, d + 1))
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
-}
-
-// Limites do período [inicio..fim] (ambos inclusivos): prox = fim + 1 dia.
-function limitesDoPeriodo(inicio: string, fim: string) {
-  const prox = diaSeguinte(fim)
-  return {
-    prox,
-    inicioTs: new Date(`${inicio}T00:00:00.000Z`),
-    proxTs: new Date(`${prox}T00:00:00.000Z`),
-  }
 }
 
 const num = (v: unknown): number => {
@@ -59,7 +41,7 @@ export async function obterRelatorioPeriodo(
   fim: string,
 ): Promise<RelatorioMensal> {
   await requireArea('vendas')
-  const { prox, inicioTs, proxTs } = limitesDoPeriodo(inicio, fim)
+  const prox = diaSeguinte(fim)
 
   const noMesVendas = and(
     gte(vendas.data, inicio),
@@ -67,14 +49,7 @@ export async function obterRelatorioPeriodo(
     isNull(vendas.deletedAt),
   )
 
-  const [
-    aggVendas,
-    porContaRows,
-    porDiaRows,
-    aggProducao,
-    aggOps,
-    porOperadorRows,
-  ] = await Promise.all([
+  const [aggVendas, porContaRows, porDiaRows] = await Promise.all([
     db
       .select({
         faturamento: sql<string>`coalesce(sum(${vendas.faturamento}), 0)`,
@@ -105,47 +80,6 @@ export async function obterRelatorioPeriodo(
       .from(vendas)
       .where(noMesVendas)
       .orderBy(vendas.data),
-
-    db
-      .select({
-        unidades: sql<string>`coalesce(sum(${apontamentosProducao.quantidadeProduzida}), 0)`,
-        refugo: sql<string>`coalesce(sum(${apontamentosProducao.quantidadeRefugo}), 0)`,
-      })
-      .from(apontamentosProducao)
-      .where(
-        and(
-          gte(apontamentosProducao.inicio, inicioTs),
-          lt(apontamentosProducao.inicio, proxTs),
-        ),
-      ),
-
-    db
-      .select({ total: sql<string>`count(*)` })
-      .from(ordensProducao)
-      .where(
-        and(
-          gte(ordensProducao.dataRealFim, inicioTs),
-          lt(ordensProducao.dataRealFim, proxTs),
-          isNull(ordensProducao.deletedAt),
-        ),
-      ),
-
-    db
-      .select({
-        operador: users.nome,
-        unidades: sql<string>`coalesce(sum(${apontamentosProducao.quantidadeProduzida}), 0)`,
-        refugo: sql<string>`coalesce(sum(${apontamentosProducao.quantidadeRefugo}), 0)`,
-      })
-      .from(apontamentosProducao)
-      .innerJoin(users, eq(users.id, apontamentosProducao.operadorId))
-      .where(
-        and(
-          gte(apontamentosProducao.inicio, inicioTs),
-          lt(apontamentosProducao.inicio, proxTs),
-        ),
-      )
-      .groupBy(users.nome)
-      .orderBy(desc(sql`sum(${apontamentosProducao.quantidadeProduzida})`)),
   ])
 
   const faturamento = num(aggVendas[0]?.faturamento)
@@ -170,16 +104,6 @@ export async function obterRelatorioPeriodo(
       data: r.data,
       unidades: r.unidades,
       faturamento: r.faturamento === null ? null : num(r.faturamento),
-    })),
-    producao: {
-      unidades: num(aggProducao[0]?.unidades),
-      refugo: num(aggProducao[0]?.refugo),
-      opsConcluidas: num(aggOps[0]?.total),
-    },
-    porOperador: porOperadorRows.map((r) => ({
-      operador: r.operador,
-      unidades: num(r.unidades),
-      refugo: num(r.refugo),
     })),
   }
 }
