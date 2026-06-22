@@ -468,6 +468,7 @@ function KanbanColumn({
 type GrupoProduto = {
   key: string
   produtoNome: string
+  produtoSku: string
   ops: KanbanCardData[]
 }
 
@@ -483,6 +484,7 @@ function agruparPorProduto(ordens: KanbanCardData[]): GrupoProduto[] {
   return [...map.entries()].map(([key, ops]) => ({
     key,
     produtoNome: ops[0].produtoNome,
+    produtoSku: ops[0].produtoSku,
     ops,
   }))
 }
@@ -548,8 +550,13 @@ function PastaProduto({
               algumAtrasada ? 'text-destructive' : 'text-muted-foreground',
             )}
           />
-          <span className="truncate text-xs font-medium">
-            {grupo.produtoNome}
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate text-xs font-medium">
+              {grupo.produtoNome}
+            </span>
+            <span className="text-muted-foreground truncate font-mono text-[10px]">
+              {grupo.produtoSku}
+            </span>
           </span>
         </span>
         <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-[10px] tabular-nums">
@@ -792,10 +799,15 @@ function KanbanCardContent({
         dragging ? 'shadow-lg ring-1 ring-foreground/20' : 'hover:shadow-md',
       )}
     >
-      {/* Linha 1: nome do produto (inteiro) + (prioridade alta) + avançar */}
+      {/* Linha 1: nome do produto (inteiro) + SKU + (prioridade alta) + avançar */}
       <div className="flex items-start gap-1.5">
-        <span className="min-w-0 flex-1 text-xs font-medium leading-snug">
-          {ordem.produtoNome}
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-xs font-medium leading-snug">
+            {ordem.produtoNome}
+          </span>
+          <span className="text-muted-foreground truncate font-mono text-[10px]">
+            {ordem.produtoSku}
+          </span>
         </span>
         {destaque && (
           <Badge
