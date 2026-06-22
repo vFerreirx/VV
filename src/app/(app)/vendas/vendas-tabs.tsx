@@ -23,7 +23,7 @@ export function VendasTabs({
 }) {
   return (
     <div className="space-y-6">
-      <div>
+      <div className="print:hidden">
         <h1 className="text-2xl font-semibold">Vendas</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           Registro diário e fechamento mensal.
@@ -31,7 +31,7 @@ export function VendasTabs({
       </div>
 
       <Tabs defaultValue={tabInicial}>
-        <TabsList>
+        <TabsList className="print:hidden">
           <TabsTrigger value="diario">Diário</TabsTrigger>
           <TabsTrigger value="mensal">Mensal</TabsTrigger>
         </TabsList>

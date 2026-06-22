@@ -21,7 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Suspense fallback={<TopbarFallback user={user} bloqueadas={bloqueadas} />}>
           <Topbar user={user} bloqueadas={bloqueadas} />
         </Suspense>
-        <main className="flex-1 overflow-y-auto pt-4 pb-[max(1rem,var(--sa-bottom,env(safe-area-inset-bottom)))] pl-[max(1rem,var(--sa-left,env(safe-area-inset-left)))] pr-[max(1rem,var(--sa-right,env(safe-area-inset-right)))] md:pt-6 md:pb-[max(1.5rem,var(--sa-bottom,env(safe-area-inset-bottom)))] md:pl-[max(1.5rem,var(--sa-left,env(safe-area-inset-left)))] md:pr-[max(1.5rem,var(--sa-right,env(safe-area-inset-right)))] print:overflow-visible print:p-0">
+        <main className="flex-1 overflow-y-auto pt-4 pb-[max(1rem,var(--sa-bottom,env(safe-area-inset-bottom)))] pl-[max(1rem,var(--sa-left,env(safe-area-inset-left)))] pr-[max(1rem,var(--sa-right,env(safe-area-inset-right)))] md:pt-6 md:pb-[max(1.5rem,var(--sa-bottom,env(safe-area-inset-bottom)))] md:pl-[max(1.5rem,var(--sa-left,env(safe-area-inset-left)))] md:pr-[max(1.5rem,var(--sa-right,env(safe-area-inset-right)))] print:overflow-visible print:p-[10mm]">
           <PageTransition>{children}</PageTransition>
         </main>
       </div>

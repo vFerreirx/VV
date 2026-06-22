@@ -149,9 +149,6 @@ function baixarCSV(r: RelatorioMensal) {
   linhas.push(['Quantidade de vendas', String(r.vendas.unidades)])
   linhas.push(['Ticket médio', dec(r.vendas.ticketMedio)])
   linhas.push(['Dias com venda', String(r.vendas.dias)])
-  linhas.push(['Unidades produzidas', String(r.producao.unidades)])
-  linhas.push(['Refugo', String(r.producao.refugo)])
-  linhas.push(['OPs concluídas', String(r.producao.opsConcluidas)])
   linhas.push([])
   linhas.push(['Vendas por marketplace / conta', 'Vendas', 'Faturamento'])
   for (const g of agruparPorMarketplace(r.porConta)) {
@@ -168,11 +165,6 @@ function baixarCSV(r: RelatorioMensal) {
   linhas.push(['Vendas por dia', 'Vendas', 'Faturamento'])
   for (const d of r.porDia) {
     linhas.push([d.data, String(d.unidades), d.faturamento == null ? '' : dec(d.faturamento)])
-  }
-  linhas.push([])
-  linhas.push(['Produção por operador', 'Produzido', 'Refugo'])
-  for (const o of r.porOperador) {
-    linhas.push([o.operador, String(o.unidades), String(o.refugo)])
   }
 
   const csv = linhas
@@ -243,14 +235,11 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
   })
 
   const v = relatorio.vendas
-  const p = relatorio.producao
 
   const kpis = [
     { label: 'Faturamento', valor: reais(v.faturamento) },
     { label: 'Quantidade de vendas', valor: String(v.unidades) },
     { label: 'Ticket médio', valor: reais(v.ticketMedio) },
-    { label: 'Unidades produzidas', valor: String(p.unidades) },
-    { label: 'OPs concluídas', valor: String(p.opsConcluidas) },
   ]
 
   return (
@@ -396,7 +385,7 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
       </div>
 
       {/* KPIs */}
-      <div className="vv-stagger grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 print:[&>*]:animate-none">
+      <div className="vv-stagger grid grid-cols-1 gap-3 sm:grid-cols-3 print:[&>*]:animate-none">
         {kpis.map((k) => (
           <div key={k.label} className="vv-lift rounded-xl border p-4 print:border-foreground/20">
             <div className="text-muted-foreground text-xs tracking-wide uppercase">
@@ -472,41 +461,6 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
                   </TableCell>
                 </TableRow>
               </TableFooter>
-            </Table>
-          </div>
-        )}
-      </section>
-
-      {/* Produção por operador */}
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold">Produção por operador</h2>
-        {relatorio.porOperador.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Sem apontamentos de produção no período.
-          </p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Operador</TableHead>
-                  <TableHead className="text-right">Produzido</TableHead>
-                  <TableHead className="text-right">Refugo</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {relatorio.porOperador.map((o) => (
-                  <TableRow key={o.operador}>
-                    <TableCell className="font-medium">{o.operador}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {o.unidades}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {o.refugo}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
             </Table>
           </div>
         )}
