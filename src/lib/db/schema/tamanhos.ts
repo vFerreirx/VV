@@ -8,6 +8,8 @@ export const tamanhos = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     nome: text().notNull().unique(),
+    // Código usado no SKU da variação (ex.: KING -> "K", Manta -> "MANTA").
+    codigo: text(),
     ordem: integer().notNull().default(0),
     ativo: boolean().notNull().default(true),
 

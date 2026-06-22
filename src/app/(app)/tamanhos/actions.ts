@@ -57,6 +57,7 @@ export async function criarTamanhoAction(
     .insert(tamanhos)
     .values({
       nome: data.nome,
+      codigo: data.codigo || null,
       ordem: data.ordem,
       ativo: data.ativo,
     })
@@ -107,6 +108,7 @@ export async function atualizarTamanhoAction(
     .update(tamanhos)
     .set({
       nome: data.nome,
+      codigo: data.codigo || null,
       ordem: data.ordem,
       ativo: data.ativo,
     })

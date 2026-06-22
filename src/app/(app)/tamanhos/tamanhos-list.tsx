@@ -126,6 +126,7 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                     </TableHead>
                   )}
                   <TableHead>Nome</TableHead>
+                  <TableHead>Código SKU</TableHead>
                   <TableHead className="w-24 text-right">Ordem</TableHead>
                   <TableHead>Status</TableHead>
                   {podeEditar && <TableHead className="w-24" />}
@@ -147,6 +148,9 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                       </TableCell>
                     )}
                     <TableCell className="font-medium">{t.nome}</TableCell>
+                    <TableCell className="text-muted-foreground font-mono text-xs">
+                      {t.codigo || '—'}
+                    </TableCell>
                     <TableCell className="text-muted-foreground text-right tabular-nums">
                       {t.ordem}
                     </TableCell>
@@ -324,11 +328,13 @@ function TamanhoDialog({
     resolver: zodResolver(tamanhoSchema) as unknown as Resolver<TamanhoInput>,
     defaultValues: {
       nome: isEdit ? tamanho.nome : '',
+      codigo: isEdit ? (tamanho.codigo ?? '') : '',
       ordem: isEdit ? String(tamanho.ordem) : String(proximaOrdem),
       ativo: isEdit ? tamanho.ativo : true,
     },
     values: {
       nome: isEdit ? tamanho.nome : '',
+      codigo: isEdit ? (tamanho.codigo ?? '') : '',
       ordem: isEdit ? String(tamanho.ordem) : String(proximaOrdem),
       ativo: isEdit ? tamanho.ativo : true,
     },
@@ -381,6 +387,24 @@ function TamanhoDialog({
             />
             {errs.nome && (
               <p className="text-destructive text-xs">{errs.nome.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="tam-codigo">Código no SKU</Label>
+            <Input
+              id="tam-codigo"
+              placeholder="Ex.: K (King), MANTA, A45…"
+              disabled={isPending}
+              className="uppercase"
+              {...form.register('codigo')}
+            />
+            <p className="text-muted-foreground text-xs">
+              Vai no SKU da variação: base + código + cor (ex.: 059-P + K +
+              -ROSE = 059-PK-ROSE). Deixe vazio pra não entrar.
+            </p>
+            {errs.codigo && (
+              <p className="text-destructive text-xs">{errs.codigo.message}</p>
             )}
           </div>
 

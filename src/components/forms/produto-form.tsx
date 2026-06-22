@@ -171,6 +171,27 @@ export function ProdutoForm({
     [variacoesAtuais],
   )
 
+  // Código de SKU do tamanho selecionado (ex.: King -> "K", Manta -> "MANTA").
+  function codigoDoTamanho(nomeTamanho: string): string {
+    const t = tamanhos.find((x) => x.nome === nomeTamanho)
+    return (t?.codigo ?? '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+  }
+
+  // Monta o SKU da variação: base + códigoTamanho + "-" + cor.
+  // Ex.: 059-P + K + -ROSE = 059-PK-ROSE. Sem tamanho: base + "-" + cor.
+  function regenerarSku(index: number, cor: string, tamanhoNome: string) {
+    const base = (form.getValues('sku') ?? '').trim()
+    if (!base) return
+    const cod = codigoDoTamanho(tamanhoNome)
+    const corSeg = cor ? `-${skuSegmento(cor)}` : ''
+    form.setValue(`variacoes.${index}.skuVariacao`, `${base}${cod}${corSeg}`, {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
+  }
+
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
       const result = isEdit
@@ -372,16 +393,13 @@ export function ProdutoForm({
                             onValueChange={(v) => {
                               const cor = v ?? ''
                               ctl.onChange(cor)
-                              // Gera o SKU da variação a partir do SKU base do
-                              // produto + a cor em MAIÚSCULO. Ex: 095-PC-ROSE.
-                              const base = (form.getValues('sku') ?? '').trim()
-                              if (base && cor) {
-                                form.setValue(
-                                  `variacoes.${index}.skuVariacao`,
-                                  `${base}-${skuSegmento(cor)}`,
-                                  { shouldDirty: true, shouldValidate: true },
-                                )
-                              }
+                              // Regenera o SKU: base + códigoTamanho + cor.
+                              regenerarSku(
+                                index,
+                                cor,
+                                form.getValues(`variacoes.${index}.tamanho`) ??
+                                  '',
+                              )
                             }}
                             disabled={isPending}
                           >
@@ -510,9 +528,16 @@ export function ProdutoForm({
                         render={({ field: ctl }) => (
                           <Select
                             value={ctl.value || 'nenhum'}
-                            onValueChange={(v) =>
-                              ctl.onChange(v === 'nenhum' ? '' : v)
-                            }
+                            onValueChange={(v) => {
+                              const tam = v === 'nenhum' ? '' : (v ?? '')
+                              ctl.onChange(tam)
+                              // Regenera o SKU incluindo o código do tamanho.
+                              regenerarSku(
+                                index,
+                                form.getValues(`variacoes.${index}.cor`) ?? '',
+                                tam,
+                              )
+                            }}
                             disabled={isPending}
                           >
                             <SelectTrigger
@@ -652,23 +677,30 @@ function GerarVariacoesDialog({
     set(lista.includes(nome) ? lista.filter((x) => x !== nome) : [...lista, nome])
   }
 
-  // Combinações (produto cartesiano). Dimensão vazia = um único valor undefined,
-  // pra não multiplicar. SKU = base-COR (+ modelo/tamanho só se houver mais de um).
+  // Combinações (produto cartesiano). SKU = base + códigoTamanho + "-" + cor
+  // (+ modelo só se houver mais de um). Tamanho sem código entra como segmento
+  // pra não colidir. Dimensão vazia = um único valor undefined.
   const novas = useMemo<NovaVariacao[]>(() => {
     const base = baseSku.trim()
     const corList = coresSel.length ? coresSel : [undefined]
     const modList = modelosSel.length ? modelosSel : [undefined]
     const tamList = tamanhosSel.length ? tamanhosSel : [undefined]
+    const codigoTam = (nome: string) =>
+      (tamanhos.find((x) => x.nome === nome)?.codigo ?? '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '')
     const usados = new Set(existentes)
     const out: NovaVariacao[] = []
     for (const cor of corList) {
       for (const mod of modList) {
         for (const tam of tamList) {
+          const cod = tam ? codigoTam(tam) : ''
           const segs: string[] = []
           if (cor) segs.push(skuSegmento(cor))
           if (modList.length > 1 && mod) segs.push(skuSegmento(mod))
-          if (tamList.length > 1 && tam) segs.push(skuSegmento(tam))
-          const sku = base ? [base, ...segs].join('-') : segs.join('-')
+          if (tamList.length > 1 && tam && !cod) segs.push(skuSegmento(tam))
+          const corpo = segs.length ? `-${segs.join('-')}` : ''
+          const sku = base ? `${base}${cod}${corpo}` : segs.join('-')
           if (!sku || usados.has(sku)) continue
           usados.add(sku)
           out.push({
@@ -681,7 +713,7 @@ function GerarVariacoesDialog({
       }
     }
     return out
-  }, [coresSel, modelosSel, tamanhosSel, baseSku, existentes])
+  }, [coresSel, modelosSel, tamanhosSel, baseSku, existentes, tamanhos])
 
   function fechar() {
     setCoresSel([])
