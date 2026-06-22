@@ -10,6 +10,8 @@ export const MARKETPLACE_LABEL = {
   shein: 'Shein',
   tiktok: 'TikTok',
   temu: 'Temu',
+  amazon: 'Amazon',
+  vendas_atacado: 'Vendas Atacado',
 } as const
 
 export type Marketplace = keyof typeof MARKETPLACE_LABEL
@@ -27,6 +29,8 @@ export const CONTAS_MARKETPLACE = [
   { key: 'shein_5', marketplace: 'shein', label: 'Conta 5' },
   { key: 'tiktok', marketplace: 'tiktok', label: 'TikTok' },
   { key: 'temu', marketplace: 'temu', label: 'Temu' },
+  { key: 'amazon', marketplace: 'amazon', label: 'Amazon' },
+  { key: 'atacado_5', marketplace: 'vendas_atacado', label: 'Conta 5' },
 ] as const satisfies ReadonlyArray<{
   key: string
   marketplace: Marketplace

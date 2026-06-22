@@ -38,7 +38,11 @@ const MARKETPLACE_ALIAS: Record<string, Marketplace> = {
   shein: 'shein',
   tiktok: 'tiktok',
   'tik tok': 'tiktok',
+  'tiktok shop': 'tiktok',
   temu: 'temu',
+  amazon: 'amazon',
+  'vendas atacado': 'vendas_atacado',
+  atacado: 'vendas_atacado',
 }
 
 function normalizar(s: string): string {
