@@ -600,18 +600,15 @@ function KanbanCardContent({
         dragging ? 'shadow-lg ring-1 ring-foreground/20' : 'hover:shadow-md',
       )}
     >
-      {/* Linha 1: número + produto + (prioridade alta) + avançar */}
-      <div className="flex items-center gap-1.5">
-        <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
-          {ordem.numero}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">
+      {/* Linha 1: nome do produto (inteiro) + (prioridade alta) + avançar */}
+      <div className="flex items-start gap-1.5">
+        <span className="min-w-0 flex-1 text-xs font-medium leading-snug">
           {ordem.produtoNome}
         </span>
         {destaque && (
           <Badge
             className={cn(
-              'h-4 shrink-0 px-1 text-[9px]',
+              'mt-0.5 h-4 shrink-0 px-1 text-[9px]',
               PRIORIDADE_BADGE[ordem.prioridade],
               ordem.prioridade === 'urgente' && 'pulse-urgente',
             )}
@@ -627,7 +624,7 @@ function KanbanCardContent({
               e.stopPropagation()
               onMover(ordem.id, proximo)
             }}
-            className="text-muted-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary flex size-5 shrink-0 items-center justify-center rounded border transition-colors"
+            className="text-muted-foreground hover:bg-primary hover:text-primary-foreground hover:border-primary mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border transition-colors"
           >
             <ChevronRight className="size-3.5" />
           </button>
