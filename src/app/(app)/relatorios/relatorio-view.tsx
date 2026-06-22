@@ -35,6 +35,18 @@ function primeiroDoMes(): string {
   return `${hojeISO().slice(0, 7)}-01`
 }
 
+function isoDe(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Mês civil anterior, do dia 1 ao último dia.
+function mesPassado(): [string, string] {
+  const now = new Date()
+  const ini = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const fim = new Date(now.getFullYear(), now.getMonth(), 0)
+  return [isoDe(ini), isoDe(fim)]
+}
+
 function dataBR(iso: string): string {
   const [y, m, d] = iso.split('-')
   return `${d}/${m}/${y}`
@@ -63,7 +75,8 @@ function mkLabel(m: string): string {
 }
 
 const PRESETS: { label: string; range: () => [string, string] }[] = [
-  { label: 'Este mês', range: () => [primeiroDoMes(), hojeISO()] },
+  { label: 'Mês atual', range: () => [primeiroDoMes(), hojeISO()] },
+  { label: 'Mês passado', range: () => mesPassado() },
   { label: '7 dias', range: () => [isoMenos(6), hojeISO()] },
   { label: '30 dias', range: () => [isoMenos(29), hojeISO()] },
   { label: '90 dias', range: () => [isoMenos(89), hojeISO()] },
