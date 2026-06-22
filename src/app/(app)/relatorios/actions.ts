@@ -13,7 +13,8 @@ import {
 } from '@/lib/db/schema'
 
 export type RelatorioMensal = {
-  mes: string
+  inicio: string
+  fim: string
   vendas: {
     faturamento: number
     unidades: number
@@ -26,16 +27,17 @@ export type RelatorioMensal = {
   porOperador: { operador: string; unidades: number; refugo: number }[]
 }
 
-// Limites do mês YYYY-MM: início (inclusivo) e próximo mês (exclusivo).
-function limitesDoMes(mes: string) {
-  const [y, m] = mes.split('-').map(Number)
-  const inicio = `${mes}-01`
-  const prox =
-    m === 12
-      ? `${y + 1}-01-01`
-      : `${y}-${String(m + 1).padStart(2, '0')}-01`
+// Dia seguinte a um YYYY-MM-DD (limite exclusivo do período).
+function diaSeguinte(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + 1))
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+}
+
+// Limites do período [inicio..fim] (ambos inclusivos): prox = fim + 1 dia.
+function limitesDoPeriodo(inicio: string, fim: string) {
+  const prox = diaSeguinte(fim)
   return {
-    inicio,
     prox,
     inicioTs: new Date(`${inicio}T00:00:00.000Z`),
     proxTs: new Date(`${prox}T00:00:00.000Z`),
@@ -47,11 +49,12 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0
 }
 
-export async function obterRelatorioMensal(
-  mes: string,
+export async function obterRelatorioPeriodo(
+  inicio: string,
+  fim: string,
 ): Promise<RelatorioMensal> {
   await requireArea('vendas')
-  const { inicio, prox, inicioTs, proxTs } = limitesDoMes(mes)
+  const { prox, inicioTs, proxTs } = limitesDoPeriodo(inicio, fim)
 
   const noMesVendas = and(
     gte(vendas.data, inicio),
@@ -144,7 +147,8 @@ export async function obterRelatorioMensal(
   const unidades = num(aggVendas[0]?.unidades)
 
   return {
-    mes,
+    inicio,
+    fim,
     vendas: {
       faturamento,
       unidades,
@@ -183,7 +187,6 @@ export type TendenciaMetrica = 'faturamento' | 'quantidade'
 export type PontoTendencia = { label: string; [conta: string]: number | string }
 
 export type TendenciaMarketplace = {
-  dias: number
   metrica: TendenciaMetrica
   pontos: PontoTendencia[]
   // contas que tiveram movimento no período, ordenadas por total desc.
@@ -194,18 +197,15 @@ function isoLocal(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export async function obterTendenciaMarketplace(
-  dias: number,
+export async function obterTendenciaPeriodo(
+  inicio: string,
+  fim: string,
   metrica: TendenciaMetrica,
 ): Promise<TendenciaMarketplace> {
   await requireArea('vendas')
 
-  const d = dias === 7 || dias === 90 ? dias : 30
-  const hoje = new Date()
-  const inicioDate = new Date(hoje)
-  inicioDate.setDate(inicioDate.getDate() - (d - 1))
-  const inicio = isoLocal(inicioDate)
-  const fim = isoLocal(hoje)
+  const [iy, im, id] = inicio.split('-').map(Number)
+  const inicioDate = new Date(iy, im - 1, id)
 
   const col =
     metrica === 'quantidade'
@@ -252,5 +252,5 @@ export async function obterTendenciaMarketplace(
     cur.setDate(cur.getDate() + 1)
   }
 
-  return { dias: d, metrica, pontos, contas }
+  return { metrica, pontos, contas }
 }

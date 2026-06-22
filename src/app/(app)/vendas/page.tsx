@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 
 import { listarVendasRecentes, obterVendaDoDia } from './actions'
 import { VendasTabs } from './vendas-tabs'
-import { obterRelatorioMensal } from '../relatorios/actions'
+import { obterRelatorioPeriodo } from '../relatorios/actions'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
@@ -14,10 +14,8 @@ function hojeISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function mesAtual(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
+const isData = (s: unknown): s is string =>
+  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
 
 export default async function VendasPage({
   searchParams,
@@ -28,22 +26,23 @@ export default async function VendasPage({
   const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'vendas'))
 
   const sp = await searchParams
-  const dataParam =
-    typeof sp.data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(sp.data)
-      ? sp.data
-      : undefined
-  const mesParam = typeof sp.mes === 'string' ? sp.mes : undefined
-  const mes = mesParam && /^\d{4}-\d{2}$/.test(mesParam) ? mesParam : mesAtual()
+  const dataParam = isData(sp.data) ? sp.data : undefined
   const tabInicial = sp.tab === 'mensal' ? 'mensal' : 'diario'
+
+  // Período do relatório (De/Até). Padrão: mês atual (dia 1 -> hoje).
+  const hoje = hojeISO()
+  let inicio = isData(sp.de) ? sp.de : `${hoje.slice(0, 7)}-01`
+  let fim = isData(sp.ate) ? sp.ate : hoje
+  if (inicio > fim) [inicio, fim] = [fim, inicio]
 
   // Sem ?data na URL, abre no ÚLTIMO dia com vendas lançadas (recentes vem
   // ordenado por data desc); se nunca houve venda, cai pra hoje.
   const recentes = await listarVendasRecentes()
-  const data = dataParam ?? recentes[0]?.data ?? hojeISO()
+  const data = dataParam ?? recentes[0]?.data ?? hoje
 
   const [vendaDoDia, relatorio] = await Promise.all([
     obterVendaDoDia(data),
-    obterRelatorioMensal(mes),
+    obterRelatorioPeriodo(inicio, fim),
   ])
 
   return (

@@ -12,7 +12,7 @@ import {
 } from 'recharts'
 
 import {
-  obterTendenciaMarketplace,
+  obterTendenciaPeriodo,
   type TendenciaMarketplace,
   type TendenciaMetrica,
 } from '@/app/(app)/relatorios/actions'
@@ -23,12 +23,6 @@ import {
   type Marketplace,
 } from '@/lib/validators/vendas'
 import { cn } from '@/lib/utils'
-
-const PERIODOS = [
-  { dias: 7, label: '7 dias' },
-  { dias: 30, label: '30 dias' },
-  { dias: 90, label: '90 dias' },
-]
 
 // Paleta com cores distintas o suficiente pra até 10 contas.
 const CORES = [
@@ -56,8 +50,13 @@ function formatBRL(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-export function MarketplaceTendencia() {
-  const [dias, setDias] = useState(30)
+export function MarketplaceTendencia({
+  inicio,
+  fim,
+}: {
+  inicio: string
+  fim: string
+}) {
   const [metrica, setMetrica] = useState<TendenciaMetrica>('faturamento')
   const [dados, setDados] = useState<TendenciaMarketplace | null>(null)
   const [carregando, setCarregando] = useState(true)
@@ -67,7 +66,7 @@ export function MarketplaceTendencia() {
     let ativo = true
     async function carregar() {
       setCarregando(true)
-      const r = await obterTendenciaMarketplace(dias, metrica)
+      const r = await obterTendenciaPeriodo(inicio, fim, metrica)
       if (!ativo) return
       setDados(r)
       setSel((prev) => {
@@ -84,7 +83,7 @@ export function MarketplaceTendencia() {
     return () => {
       ativo = false
     }
-  }, [dias, metrica])
+  }, [inicio, fim, metrica])
 
   const cores = useMemo(() => {
     const m: Record<string, string> = {}
@@ -137,25 +136,6 @@ export function MarketplaceTendencia() {
                 )}
               >
                 {lbl}
-              </button>
-            ))}
-          </div>
-
-          {/* Período */}
-          <div className="bg-muted/60 inline-flex rounded-md p-0.5">
-            {PERIODOS.map((p) => (
-              <button
-                key={p.dias}
-                type="button"
-                onClick={() => setDias(p.dias)}
-                className={cn(
-                  'rounded px-2.5 py-1 text-xs font-medium transition-colors',
-                  dias === p.dias
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {p.label}
               </button>
             ))}
           </div>
