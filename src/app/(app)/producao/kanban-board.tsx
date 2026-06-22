@@ -16,9 +16,11 @@ import {
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
+  ChevronDown,
   ChevronRight,
   CircleAlert,
   Clock,
+  Folder,
   Hand,
   Plus,
   Undo2,
@@ -382,6 +384,9 @@ function KanbanColumn({
   const acima = limite != null && ordens.length > limite
   const cheio = limite != null && ordens.length === limite
 
+  // Agrupa por produto: 2+ OPs do mesmo produto viram uma "pasta".
+  const grupos = useMemo(() => agruparPorProduto(ordens), [ordens])
+
   return (
     <div className="flex w-[78vw] max-w-64 shrink-0 snap-start flex-col sm:w-64">
       <header
@@ -426,19 +431,206 @@ function KanbanColumn({
             (vazio)
           </p>
         )}
-        {ordens.map((o) => (
-          <KanbanCard
-            key={o.id}
-            ordem={o}
-            podeMover={podeMover}
-            isOperador={isOperador}
-            currentUserId={currentUserId}
-            isPending={isPending}
-            onMover={onMover}
-            onAbrirDetalhe={onAbrirDetalhe}
-          />
-        ))}
+        {grupos.map((g) =>
+          g.ops.length >= 2 ? (
+            <PastaProduto
+              key={g.key}
+              grupo={g}
+              podeMover={podeMover}
+              isOperador={isOperador}
+              currentUserId={currentUserId}
+              isPending={isPending}
+              onMover={onMover}
+              onAbrirDetalhe={onAbrirDetalhe}
+            />
+          ) : (
+            <KanbanCard
+              key={g.ops[0].id}
+              ordem={g.ops[0]}
+              podeMover={podeMover}
+              isOperador={isOperador}
+              currentUserId={currentUserId}
+              isPending={isPending}
+              onMover={onMover}
+              onAbrirDetalhe={onAbrirDetalhe}
+            />
+          ),
+        )}
       </div>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------
+// Pasta de produto (agrupa OPs do mesmo produto) — drill tamanho → cor
+// -----------------------------------------------------------------
+
+type GrupoProduto = {
+  key: string
+  produtoNome: string
+  ops: KanbanCardData[]
+}
+
+// Agrupa as OPs por produto, preservando a ordem de aparição.
+function agruparPorProduto(ordens: KanbanCardData[]): GrupoProduto[] {
+  const map = new Map<string, KanbanCardData[]>()
+  for (const o of ordens) {
+    const key = o.produtoSku || o.produtoNome
+    const arr = map.get(key)
+    if (arr) arr.push(o)
+    else map.set(key, [o])
+  }
+  return [...map.entries()].map(([key, ops]) => ({
+    key,
+    produtoNome: ops[0].produtoNome,
+    ops,
+  }))
+}
+
+const SEM_TAMANHO = 'Sem tamanho'
+const SEM_COR = 'Sem cor'
+const tamDe = (o: KanbanCardData) => o.variacaoTamanho || SEM_TAMANHO
+const corDe = (o: KanbanCardData) => o.variacaoCor || SEM_COR
+
+function contar(ops: KanbanCardData[], chave: (o: KanbanCardData) => string) {
+  const m = new Map<string, number>()
+  for (const o of ops) m.set(chave(o), (m.get(chave(o)) ?? 0) + 1)
+  return [...m.entries()].map(([nome, n]) => ({ nome, n }))
+}
+
+function PastaProduto({
+  grupo,
+  podeMover,
+  isOperador,
+  currentUserId,
+  isPending,
+  onMover,
+  onAbrirDetalhe,
+}: {
+  grupo: GrupoProduto
+  podeMover: boolean
+  isOperador: boolean
+  currentUserId: string
+  isPending: boolean
+  onMover: (id: string, status: (typeof statusValues)[number]) => void
+  onAbrirDetalhe: (id: string) => void
+}) {
+  const [aberta, setAberta] = useState(false)
+  const [tam, setTam] = useState<string | null>(null)
+  const [cor, setCor] = useState<string | null>(null)
+
+  const tamanhos = useMemo(() => contar(grupo.ops, tamDe), [grupo.ops])
+  const cores = useMemo(
+    () => (tam ? contar(grupo.ops.filter((o) => tamDe(o) === tam), corDe) : []),
+    [grupo.ops, tam],
+  )
+  const opsFiltradas = useMemo(
+    () =>
+      tam && cor
+        ? grupo.ops.filter((o) => tamDe(o) === tam && corDe(o) === cor)
+        : [],
+    [grupo.ops, tam, cor],
+  )
+  const totalUn = grupo.ops.reduce((s, o) => s + o.quantidade, 0)
+  const algumAtrasada = grupo.ops.some((o) => o.atrasada)
+
+  return (
+    <div className="bg-card rounded-lg border shadow-sm">
+      <button
+        type="button"
+        onClick={() => setAberta((v) => !v)}
+        className="hover:bg-muted/40 flex w-full items-center justify-between gap-2 rounded-lg p-2.5 text-left transition-colors"
+      >
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Folder
+            className={cn(
+              'size-4 shrink-0',
+              algumAtrasada ? 'text-destructive' : 'text-muted-foreground',
+            )}
+          />
+          <span className="truncate text-xs font-medium">
+            {grupo.produtoNome}
+          </span>
+        </span>
+        <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-[10px] tabular-nums">
+          {grupo.ops.length} OPs · {totalUn} un
+          <ChevronDown
+            className={cn('size-3.5 transition-transform', aberta && 'rotate-180')}
+          />
+        </span>
+      </button>
+
+      {aberta && (
+        <div className="space-y-2 border-t p-2">
+          <div>
+            <div className="text-muted-foreground mb-1 text-[10px] tracking-wide uppercase">
+              Tamanho
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {tamanhos.map((t) => (
+                <button
+                  key={t.nome}
+                  type="button"
+                  onClick={() => {
+                    setTam(t.nome)
+                    setCor(null)
+                  }}
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                    tam === t.nome
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border hover:bg-muted',
+                  )}
+                >
+                  {t.nome} <span className="opacity-70">({t.n})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {tam && (
+            <div>
+              <div className="text-muted-foreground mb-1 text-[10px] tracking-wide uppercase">
+                Cor
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {cores.map((c) => (
+                  <button
+                    key={c.nome}
+                    type="button"
+                    onClick={() => setCor(c.nome)}
+                    className={cn(
+                      'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                      cor === c.nome
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border hover:bg-muted',
+                    )}
+                  >
+                    {c.nome} <span className="opacity-70">({c.n})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {tam && cor && (
+            <div className="space-y-1.5 pt-0.5">
+              {opsFiltradas.map((o) => (
+                <KanbanCard
+                  key={o.id}
+                  ordem={o}
+                  podeMover={podeMover}
+                  isOperador={isOperador}
+                  currentUserId={currentUserId}
+                  isPending={isPending}
+                  onMover={onMover}
+                  onAbrirDetalhe={onAbrirDetalhe}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
