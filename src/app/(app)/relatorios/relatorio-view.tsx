@@ -1,8 +1,8 @@
 'use client'
 
-import { Download, Printer } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Printer } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useTransition } from 'react'
+import { useState, useTransition } from 'react'
 
 import type { RelatorioMensal } from './actions'
 import { MarketplaceTendencia } from '@/components/charts/marketplace-tendencia'
@@ -31,20 +31,40 @@ function isoMenos(dias: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function primeiroDoMes(): string {
-  return `${hojeISO().slice(0, 7)}-01`
-}
-
 function isoDe(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-// Mês civil anterior, do dia 1 ao último dia.
-function mesPassado(): [string, string] {
-  const now = new Date()
-  const ini = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-  const fim = new Date(now.getFullYear(), now.getMonth(), 0)
-  return [isoDe(ini), isoDe(fim)]
+function mesAtualYYYYMM(): string {
+  return hojeISO().slice(0, 7)
+}
+
+// Nome do mês ("junho de 2026") a partir de YYYY-MM.
+function labelMes(mes: string): string {
+  const [y, m] = mes.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, 1, 12)).toLocaleDateString('pt-BR', {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  })
+}
+
+// Intervalo civil de um mês YYYY-MM (1 ao último dia; mês corrente vai até hoje).
+function rangeDoMes(mes: string): [string, string] {
+  const [y, m] = mes.split('-').map(Number)
+  const inicio = `${mes}-01`
+  const fim =
+    mes === mesAtualYYYYMM()
+      ? hojeISO()
+      : isoDe(new Date(y, m, 0))
+  return [inicio, fim]
+}
+
+// Soma n meses a um YYYY-MM.
+function addMes(mes: string, n: number): string {
+  const [y, m] = mes.split('-').map(Number)
+  const d = new Date(y, m - 1 + n, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 function dataBR(iso: string): string {
@@ -75,8 +95,6 @@ function mkLabel(m: string): string {
 }
 
 const PRESETS: { label: string; range: () => [string, string] }[] = [
-  { label: 'Mês atual', range: () => [primeiroDoMes(), hojeISO()] },
-  { label: 'Mês passado', range: () => mesPassado() },
   { label: '7 dias', range: () => [isoMenos(6), hojeISO()] },
   { label: '30 dias', range: () => [isoMenos(29), hojeISO()] },
   { label: '90 dias', range: () => [isoMenos(89), hojeISO()] },
@@ -146,6 +164,25 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
     startTransition(() => router.push(`${pathname}?${params.toString()}`))
   }
 
+  // Navegação de mês (◀ Junho 2026 ▶), operando no mês de `inicio`.
+  const mesAtualStr = mesAtualYYYYMM()
+  const mesSel = inicio.slice(0, 7)
+  const ehMesAtual = mesSel === mesAtualStr
+  function irParaMes(mes: string) {
+    irPeriodo(...rangeDoMes(mes))
+  }
+
+  // De/Até com confirmação: estado local sincronizado ao período aplicado.
+  const [deLocal, setDeLocal] = useState(inicio)
+  const [ateLocal, setAteLocal] = useState(fim)
+  const [syncKey, setSyncKey] = useState(`${inicio}|${fim}`)
+  if (syncKey !== `${inicio}|${fim}`) {
+    setSyncKey(`${inicio}|${fim}`)
+    setDeLocal(inicio)
+    setAteLocal(fim)
+  }
+  const pendente = deLocal !== inicio || ateLocal !== fim
+
   const presetAtivo = PRESETS.find((p) => {
     const [a, b] = p.range()
     return a === inicio && b === fim
@@ -185,52 +222,94 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
       </div>
 
       {/* Filtro de período */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border bg-muted/30 p-3 print:hidden">
-        <div className="flex flex-wrap gap-1.5">
-          {PRESETS.map((preset) => {
-            const ativo = presetAtivo?.label === preset.label
-            return (
+      <div className="space-y-2 rounded-lg border bg-muted/30 p-3 print:hidden">
+        {/* Navegação de mês + atalhos rápidos */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => irParaMes(addMes(mesSel, -1))}
+              disabled={isPending}
+              aria-label="Mês anterior"
+            >
+              <ChevronLeft />
+            </Button>
+            <span className="min-w-[8.5rem] text-center text-sm font-medium capitalize">
+              {labelMes(mesSel)}
+            </span>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={() => irParaMes(addMes(mesSel, 1))}
+              disabled={isPending || mesSel >= mesAtualStr}
+              aria-label="Próximo mês"
+            >
+              <ChevronRight />
+            </Button>
+            {!ehMesAtual && (
               <button
-                key={preset.label}
                 type="button"
+                className="text-muted-foreground hover:text-foreground ml-1 text-xs underline"
+                onClick={() => irParaMes(mesAtualStr)}
                 disabled={isPending}
-                onClick={() => {
-                  const [a, b] = preset.range()
-                  irPeriodo(a, b)
-                }}
-                className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                  ativo
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border text-muted-foreground hover:bg-muted',
-                )}
               >
-                {preset.label}
+                mês atual
               </button>
-            )
-          })}
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {PRESETS.map((preset) => {
+              const ativo = presetAtivo?.label === preset.label
+              return (
+                <button
+                  key={preset.label}
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => irPeriodo(...preset.range())}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    ativo
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  {preset.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-muted-foreground text-xs">De</span>
+        {/* Período personalizado: escolhe De e Até e clica em Aplicar */}
+        <div className="flex flex-wrap items-center gap-2 border-t pt-2">
+          <span className="text-muted-foreground text-xs">Período:</span>
           <Input
             type="date"
-            value={inicio}
-            max={fim}
+            value={deLocal}
+            max={ateLocal}
             disabled={isPending}
-            onChange={(e) => e.target.value && irPeriodo(e.target.value, fim)}
+            onChange={(e) => e.target.value && setDeLocal(e.target.value)}
             className="h-8 w-auto"
           />
           <span className="text-muted-foreground text-xs">até</span>
           <Input
             type="date"
-            value={fim}
-            min={inicio}
+            value={ateLocal}
+            min={deLocal}
             max={hojeISO()}
             disabled={isPending}
-            onChange={(e) => e.target.value && irPeriodo(inicio, e.target.value)}
+            onChange={(e) => e.target.value && setAteLocal(e.target.value)}
             className="h-8 w-auto"
           />
+          <Button
+            size="sm"
+            onClick={() => irPeriodo(deLocal, ateLocal)}
+            disabled={isPending || !pendente}
+          >
+            Aplicar
+          </Button>
         </div>
       </div>
 
