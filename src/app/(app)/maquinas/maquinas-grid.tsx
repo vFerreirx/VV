@@ -39,6 +39,31 @@ const STATUS_DOT: Record<MaquinaStatus, string> = {
   desativada: 'bg-muted-foreground',
 }
 
+const SEM_ESTACAO = '__sem__'
+
+// Agrupa as máquinas pela estação (Turma 1/2/3), na ordem das estações;
+// máquinas sem estação ficam num grupo no final. A ordem dentro de cada
+// grupo segue a listagem (por código: Máquina 1, 2, 3…).
+function agruparPorEstacao(maquinas: MaquinaListItem[]) {
+  const mapa = new Map<string, MaquinaListItem[]>()
+  for (const m of maquinas) {
+    const chave = m.estacaoNome ?? SEM_ESTACAO
+    const arr = mapa.get(chave)
+    if (arr) arr.push(m)
+    else mapa.set(chave, [m])
+  }
+  return Array.from(mapa.entries())
+    .sort(([a], [b]) => {
+      if (a === SEM_ESTACAO) return 1
+      if (b === SEM_ESTACAO) return -1
+      return a.localeCompare(b, 'pt-BR', { numeric: true })
+    })
+    .map(([chave, ops]) => ({
+      estacao: chave === SEM_ESTACAO ? null : chave,
+      maquinas: ops,
+    }))
+}
+
 export function MaquinasGrid({ maquinas, podeEditar }: Props) {
   const [excluindo, setExcluindo] = useState<MaquinaListItem | null>(null)
 
@@ -52,16 +77,33 @@ export function MaquinasGrid({ maquinas, podeEditar }: Props) {
     )
   }
 
+  const grupos = agruparPorEstacao(maquinas)
+
   return (
     <>
-      <div className="vv-stagger grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-        {maquinas.map((m) => (
-          <MaquinaCard
-            key={m.id}
-            maquina={m}
-            podeEditar={podeEditar}
-            onExcluir={() => setExcluindo(m)}
-          />
+      <div className="space-y-6">
+        {grupos.map((g) => (
+          <section key={g.estacao ?? SEM_ESTACAO} className="space-y-2.5">
+            <div className="flex items-baseline gap-2">
+              <h2 className="text-sm font-semibold">
+                {g.estacao ?? 'Sem estação'}
+              </h2>
+              <span className="text-muted-foreground text-xs">
+                {g.maquinas.length}{' '}
+                {g.maquinas.length === 1 ? 'máquina' : 'máquinas'}
+              </span>
+            </div>
+            <div className="vv-stagger grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {g.maquinas.map((m) => (
+                <MaquinaCard
+                  key={m.id}
+                  maquina={m}
+                  podeEditar={podeEditar}
+                  onExcluir={() => setExcluindo(m)}
+                />
+              ))}
+            </div>
+          </section>
         ))}
       </div>
 

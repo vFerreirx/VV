@@ -9,7 +9,13 @@ import {
   requireRole,
 } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { maquinas, users, type Maquina, type User } from '@/lib/db/schema'
+import {
+  estacoes,
+  maquinas,
+  users,
+  type Maquina,
+  type User,
+} from '@/lib/db/schema'
 import {
   maquinaSchema,
   maquinasFiltrosSchema,
@@ -30,6 +36,7 @@ export type ActionResult<T = undefined> =
 export type MaquinaListItem = Maquina & {
   operadorNome: string | null
   operadorEmail: string | null
+  estacaoNome: string | null
 }
 
 export async function listarMaquinas(
@@ -43,22 +50,25 @@ export async function listarMaquinas(
   const conditions = [isNull(maquinas.deletedAt)]
   if (status && status !== 'todos') conditions.push(eq(maquinas.status, status))
 
-  // LEFT JOIN com users pra trazer o nome do operador atual.
+  // LEFT JOIN com users (operador atual) e estacoes (estação da máquina).
   const rows = await db
     .select({
       m: maquinas,
       operadorNome: users.nome,
       operadorEmail: users.email,
+      estacaoNome: estacoes.nome,
     })
     .from(maquinas)
     .leftJoin(users, eq(users.id, maquinas.operadorAtualId))
+    .leftJoin(estacoes, eq(estacoes.id, maquinas.estacaoId))
     .where(and(...conditions))
     .orderBy(asc(maquinas.codigo))
 
-  return rows.map(({ m, operadorNome, operadorEmail }) => ({
+  return rows.map(({ m, operadorNome, operadorEmail, estacaoNome }) => ({
     ...m,
     operadorNome: operadorNome ?? null,
     operadorEmail: operadorEmail ?? null,
+    estacaoNome: estacaoNome ?? null,
   }))
 }
 
