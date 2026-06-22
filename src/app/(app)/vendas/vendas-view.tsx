@@ -124,11 +124,11 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
   const resumo = resumoPorMarketplace(vendaDoDia)
 
   function irPara(novaData: string) {
+    // Sempre fixa ?data: sem ele, a página abriria no último dia com
+    // vendas, então "Voltar pra hoje" precisa do parâmetro explícito.
     const params = new URLSearchParams(searchParams.toString())
-    if (novaData === hoje) params.delete('data')
-    else params.set('data', novaData)
-    const qs = params.toString()
-    startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname))
+    params.set('data', novaData)
+    startTransition(() => router.push(`${pathname}?${params.toString()}`))
   }
 
   return (

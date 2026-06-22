@@ -28,16 +28,21 @@ export default async function VendasPage({
   const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'vendas'))
 
   const sp = await searchParams
-  const dataParam = typeof sp.data === 'string' ? sp.data : undefined
-  const data =
-    dataParam && /^\d{4}-\d{2}-\d{2}$/.test(dataParam) ? dataParam : hojeISO()
+  const dataParam =
+    typeof sp.data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(sp.data)
+      ? sp.data
+      : undefined
   const mesParam = typeof sp.mes === 'string' ? sp.mes : undefined
   const mes = mesParam && /^\d{4}-\d{2}$/.test(mesParam) ? mesParam : mesAtual()
   const tabInicial = sp.tab === 'mensal' ? 'mensal' : 'diario'
 
-  const [vendaDoDia, recentes, relatorio] = await Promise.all([
+  // Sem ?data na URL, abre no ÚLTIMO dia com vendas lançadas (recentes vem
+  // ordenado por data desc); se nunca houve venda, cai pra hoje.
+  const recentes = await listarVendasRecentes()
+  const data = dataParam ?? recentes[0]?.data ?? hojeISO()
+
+  const [vendaDoDia, relatorio] = await Promise.all([
     obterVendaDoDia(data),
-    listarVendasRecentes(),
     obterRelatorioMensal(mes),
   ])
 
