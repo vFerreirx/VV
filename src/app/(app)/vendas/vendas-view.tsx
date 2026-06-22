@@ -413,7 +413,7 @@ function EditarDialog({
                   return (
                     <div
                       key={conta.key}
-                      className="grid grid-cols-[1fr_3.5rem_7.5rem] items-center gap-2"
+                      className="grid grid-cols-[1fr_5.5rem_7rem] items-center gap-2"
                     >
                       <Label
                         htmlFor={`q-${conta.key}`}
@@ -423,13 +423,12 @@ function EditarDialog({
                       </Label>
                       <Input
                         id={`q-${conta.key}`}
-                        type="number"
                         inputMode="numeric"
-                        min="0"
-                        step="1"
                         placeholder="qtd"
                         value={v.q}
-                        onChange={(e) => set(conta.key, 'q', e.target.value)}
+                        onChange={(e) =>
+                          set(conta.key, 'q', e.target.value.replace(/\D/g, ''))
+                        }
                         disabled={isPending}
                         className="h-9"
                       />
