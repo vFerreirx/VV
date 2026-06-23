@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Pencil, Plus } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { Fragment, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { salvarVendaDiaAction, type VendaDia } from './actions'
@@ -18,8 +18,18 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableFooter,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  CONTAS_MARKETPLACE,
   MARKETPLACE_LABEL,
   MARKETPLACES_AGRUPADOS,
   marketplaceDaConta,
@@ -98,18 +108,37 @@ function decimalParaMoeda(dec: string | null): string {
   return mascararMoeda(String(cents))
 }
 
-// Agrupa o detalhamento por marketplace, somando quantidade e faturamento.
-function resumoPorMarketplace(venda: VendaDia | null) {
-  const acc = new Map<Marketplace, { quantidade: number; faturamento: number }>()
-  for (const c of venda?.contas ?? []) {
-    const m = marketplaceDaConta(c.conta)
-    if (!m) continue
-    const cur = acc.get(m) ?? { quantidade: 0, faturamento: 0 }
-    cur.quantidade += c.quantidade
-    cur.faturamento += Number(c.faturamento ?? 0)
-    acc.set(m, cur)
-  }
-  return [...acc.entries()].map(([marketplace, v]) => ({ marketplace, ...v }))
+// Ordem dos marketplaces e das contas vem do catálogo (igual à aba Mensal).
+const ORDEM_MK = Object.keys(MARKETPLACE_LABEL) as Marketplace[]
+const LABEL_CONTA: Record<string, string> = Object.fromEntries(
+  CONTAS_MARKETPLACE.map((c) => [c.key, c.label]),
+)
+const ORDEM_CONTA: Record<string, number> = Object.fromEntries(
+  CONTAS_MARKETPLACE.map((c, i) => [c.key, i]),
+)
+
+// Agrupa as contas do dia por marketplace (na ordem do catálogo), com
+// subtotal por marketplace — mesmo formato da aba Mensal.
+function agruparContasDoDia(venda: VendaDia | null) {
+  const linhas = (venda?.contas ?? []).map((c) => ({
+    conta: c.conta,
+    marketplace: marketplaceDaConta(c.conta),
+    quantidade: c.quantidade,
+    faturamento: Number(c.faturamento ?? 0),
+  }))
+  return ORDEM_MK.map((mk) => {
+    const contas = linhas
+      .filter((c) => c.marketplace === mk)
+      .sort(
+        (a, b) => (ORDEM_CONTA[a.conta] ?? 99) - (ORDEM_CONTA[b.conta] ?? 99),
+      )
+    return {
+      marketplace: mk,
+      contas,
+      subQtd: contas.reduce((s, c) => s + c.quantidade, 0),
+      subFat: contas.reduce((s, c) => s + c.faturamento, 0),
+    }
+  }).filter((g) => g.contas.length > 0)
 }
 
 export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
@@ -121,7 +150,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
 
   const hoje = hojeISO()
   const ehHoje = data === hoje
-  const resumo = resumoPorMarketplace(vendaDoDia)
+  const grupos = agruparContasDoDia(vendaDoDia)
 
   function irPara(novaData: string) {
     // Sempre fixa ?data: sem ele, a página abriria no último dia com
@@ -199,28 +228,62 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
           </div>
         </div>
 
-        {resumo.length > 0 && (
+        {grupos.length > 0 && (
           <div className="mt-6 border-t pt-4">
             <div className="text-muted-foreground mb-2 text-xs tracking-wide uppercase">
-              Por marketplace
+              Por marketplace / conta
             </div>
-            <div className="space-y-1.5">
-              {resumo.map((r) => (
-                <div
-                  key={r.marketplace}
-                  className="flex items-center justify-between gap-4 text-sm"
-                >
-                  <span className="font-medium">
-                    {MARKETPLACE_LABEL[r.marketplace]}
-                  </span>
-                  <span className="text-muted-foreground flex items-center gap-4 tabular-nums">
-                    <span>{r.quantidade} vendas</span>
-                    <span className="w-28 text-right">
-                      {formatarReais(r.faturamento || null)}
-                    </span>
-                  </span>
-                </div>
-              ))}
+            <div className="overflow-x-auto rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Marketplace / conta</TableHead>
+                    <TableHead className="text-right">Vendas</TableHead>
+                    <TableHead className="text-right">Faturamento</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {grupos.map((g) => (
+                    <Fragment key={g.marketplace}>
+                      <TableRow className="bg-muted/40 hover:bg-muted/40">
+                        <TableCell className="font-semibold">
+                          {MARKETPLACE_LABEL[g.marketplace]}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {g.subQtd}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {formatarReais(g.subFat || null)}
+                        </TableCell>
+                      </TableRow>
+                      {g.contas.map((c) => (
+                        <TableRow key={c.conta}>
+                          <TableCell className="text-muted-foreground pl-6">
+                            {LABEL_CONTA[c.conta] ?? c.conta}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {c.quantidade}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatarReais(c.faturamento || null)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </Fragment>
+                  ))}
+                </TableBody>
+                <TableFooter>
+                  <TableRow>
+                    <TableCell className="font-medium">Total</TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {vendaDoDia?.quantidade ?? 0}
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatarReais(vendaDoDia?.faturamento ?? null)}
+                    </TableCell>
+                  </TableRow>
+                </TableFooter>
+              </Table>
             </div>
           </div>
         )}
