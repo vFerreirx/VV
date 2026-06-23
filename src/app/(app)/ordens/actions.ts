@@ -617,7 +617,12 @@ export async function pegarOrdemAction(id: string): Promise<ActionResult> {
   }
 
   const [atual] = await db
-    .select({ id: ordensProducao.id, responsavelId: ordensProducao.responsavelId })
+    .select({
+      id: ordensProducao.id,
+      status: ordensProducao.status,
+      responsavelId: ordensProducao.responsavelId,
+      dataRealInicio: ordensProducao.dataRealInicio,
+    })
     .from(ordensProducao)
     .where(and(eq(ordensProducao.id, id), isNull(ordensProducao.deletedAt)))
     .limit(1)
@@ -627,14 +632,45 @@ export async function pegarOrdemAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Essa OP já foi pega por outro operador' }
   }
 
-  await db
-    .update(ordensProducao)
-    .set({ responsavelId: user.id })
-    .where(eq(ordensProducao.id, id))
+  // Ao pegar a OP, ela já entra em produção se ainda estava na fila
+  // (registra o evento no kanban e marca o início real da produção).
+  const entraEmProducao =
+    atual.status === 'programado' ||
+    atual.status === 'aguardando_materia_prima'
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(ordensProducao)
+      .set(
+        entraEmProducao
+          ? {
+              responsavelId: user.id,
+              status: 'em_producao',
+              dataRealInicio: atual.dataRealInicio ?? new Date(),
+            }
+          : { responsavelId: user.id },
+      )
+      .where(eq(ordensProducao.id, id))
+
+    if (entraEmProducao) {
+      await tx.insert(eventosKanban).values({
+        ordemId: id,
+        statusAnterior: atual.status,
+        statusNovo: 'em_producao',
+        usuarioId: user.id,
+        observacao: 'Entrou em produção ao ser pega pelo operador',
+      })
+    }
+  })
 
   revalidatePath('/producao')
   revalidatePath('/ordens')
-  return { success: true, message: 'OP é sua agora' }
+  return {
+    success: true,
+    message: entraEmProducao
+      ? 'OP é sua e entrou em produção'
+      : 'OP é sua agora',
+  }
 }
 
 export async function soltarOrdemAction(id: string): Promise<ActionResult> {
