@@ -70,11 +70,22 @@ export type OrdemListItem = OrdemProducao & {
 export async function listarOrdens(
   filtros: OrdensFiltros = {},
 ): Promise<OrdemListItem[]> {
-  await requireAuth()
+  const user = await requireAuth()
   const parsed = ordensFiltrosSchema.safeParse(filtros)
   const f = parsed.success ? parsed.data : {}
 
   const conditions = [isNull(ordensProducao.deletedAt)]
+
+  // OP pega por um operador fica privada: operador só vê as livres ou as
+  // dele; gerentes/admin veem tudo (igual ao kanban).
+  if (!isManagerRole(user.role)) {
+    conditions.push(
+      or(
+        isNull(ordensProducao.responsavelId),
+        eq(ordensProducao.responsavelId, user.id),
+      )!,
+    )
+  }
   if (f.q && f.q.length > 0) {
     conditions.push(
       or(

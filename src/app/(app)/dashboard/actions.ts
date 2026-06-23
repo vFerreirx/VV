@@ -1,8 +1,20 @@
 'use server'
 
-import { and, asc, desc, eq, gt, gte, isNotNull, isNull, ne, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm'
 
-import { requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   apontamentosProducao,
@@ -142,7 +154,16 @@ export type OpUrgenteItem = {
 export async function listarOpsUrgentes(
   limit = 5,
 ): Promise<OpUrgenteItem[]> {
-  await requireAuth()
+  const user = await requireAuth()
+
+  // OP pega por um operador fica privada: operador só vê as livres ou as
+  // dele; gerentes/admin veem tudo (igual ao kanban).
+  const visibilidade = isManager(user.role)
+    ? undefined
+    : or(
+        isNull(ordensProducao.responsavelId),
+        eq(ordensProducao.responsavelId, user.id),
+      )
 
   const rows = await db
     .select({
@@ -171,6 +192,7 @@ export async function listarOpsUrgentes(
         isNull(ordensProducao.deletedAt),
         ne(ordensProducao.status, 'enviado'),
         ne(ordensProducao.status, 'cancelado'),
+        visibilidade,
       ),
     )
     // Urgentes/altas primeiro, depois prazos mais próximos.

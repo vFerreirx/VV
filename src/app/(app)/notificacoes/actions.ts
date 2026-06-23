@@ -1,8 +1,8 @@
 'use server'
 
-import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 
-import { requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { ordensProducao, produtos } from '@/lib/db/schema'
 
@@ -24,8 +24,17 @@ export type Notificacao = {
 const DIAS = 24 * 60 * 60 * 1000
 
 export async function listarNotificacoes(): Promise<Notificacao[]> {
-  await requireAuth()
+  const user = await requireAuth()
   const now = Date.now()
+
+  // Operador só é alertado de OPs livres ou que ele pegou; gerentes/admin
+  // veem tudo (mesma regra de visibilidade do kanban).
+  const visibilidade = isManager(user.role)
+    ? undefined
+    : or(
+        isNull(ordensProducao.responsavelId),
+        eq(ordensProducao.responsavelId, user.id),
+      )
 
   // 1) OPs atrasadas (dataPrevistaFim < now e status diferente de enviado/cancelado)
   const opsAtrasadas = await db
@@ -44,6 +53,7 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
         ne(ordensProducao.status, 'cancelado'),
         isNotNull(ordensProducao.dataPrevistaFim),
         sql`${ordensProducao.dataPrevistaFim} < now()`,
+        visibilidade,
       ),
     )
     .orderBy(asc(ordensProducao.dataPrevistaFim))

@@ -3,7 +3,7 @@
 import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
-import { requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   apontamentosProducao,
@@ -61,7 +61,7 @@ export type KanbanFiltros = {
 export async function listarOrdensProducao(
   filtros: KanbanFiltros = {},
 ): Promise<KanbanCardData[]> {
-  await requireAuth()
+  const user = await requireAuth()
 
   const conditions = [
     isNull(ordensProducao.deletedAt),
@@ -70,6 +70,17 @@ export async function listarOrdensProducao(
     ne(ordensProducao.status, 'cancelado'),
     ne(ordensProducao.status, 'enviado'),
   ]
+
+  // OP pega por um operador fica privada: só ele (e gerentes/admin) a vê.
+  // Operadores enxergam apenas OPs livres (na fila) ou as que pegaram.
+  if (!isManager(user.role)) {
+    conditions.push(
+      or(
+        isNull(ordensProducao.responsavelId),
+        eq(ordensProducao.responsavelId, user.id),
+      )!,
+    )
+  }
 
   if (filtros.q && filtros.q.trim().length > 0) {
     const term = `%${filtros.q.trim()}%`
