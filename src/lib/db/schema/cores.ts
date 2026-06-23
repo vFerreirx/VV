@@ -11,6 +11,9 @@ export const cores = pgTable(
     nome: text().notNull().unique(),
     // Hexadecimal opcional (#RRGGBB) pra renderizar swatch visual.
     codigoHex: text(),
+    // Segunda tonalidade opcional, pra cores bicolor (ex.: capa listrada).
+    // Quando presente, o swatch é renderizado dividido entre as duas cores.
+    codigoHex2: text(),
     ativo: boolean().notNull().default(true),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

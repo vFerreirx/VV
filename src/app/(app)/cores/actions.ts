@@ -67,6 +67,7 @@ export async function criarCorAction(
     .values({
       nome: data.nome,
       codigoHex: data.codigoHex,
+      codigoHex2: data.codigoHex2,
       ativo: data.ativo,
     })
     .returning({ id: cores.id })
@@ -122,6 +123,7 @@ export async function atualizarCorAction(
     .set({
       nome: data.nome,
       codigoHex: data.codigoHex,
+      codigoHex2: data.codigoHex2,
       ativo: data.ativo,
     })
     .where(eq(cores.id, id))

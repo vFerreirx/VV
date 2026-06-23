@@ -30,6 +30,11 @@ export const corSchema = z.object({
     .union([hexSchema, z.literal('')])
     .optional()
     .transform((v) => (v && v !== '' ? v : null)),
+  // Segunda tonalidade (cores bicolor). Opcional, mesmo formato do hex 1.
+  codigoHex2: z
+    .union([hexSchema, z.literal('')])
+    .optional()
+    .transform((v) => (v && v !== '' ? v : null)),
   ativo: z.boolean().default(true),
 })
 

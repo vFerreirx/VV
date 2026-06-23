@@ -147,11 +147,12 @@ export function CoresList({ cores, podeEditar }: Props) {
                       </TableCell>
                     )}
                     <TableCell>
-                      <ColorSwatch hex={c.codigoHex} />
+                      <ColorSwatch hex={c.codigoHex} hex2={c.codigoHex2} />
                     </TableCell>
                     <TableCell className="font-medium">{c.nome}</TableCell>
                     <TableCell className="text-muted-foreground font-mono text-xs">
                       {c.codigoHex ?? '—'}
+                      {c.codigoHex2 ? ` + ${c.codigoHex2}` : ''}
                     </TableCell>
                     <TableCell>
                       <Badge variant={c.ativo ? 'default' : 'secondary'}>
@@ -201,11 +202,12 @@ export function CoresList({ cores, podeEditar }: Props) {
                       onCheckedChange={() => toggleOne(c.id)}
                     />
                   )}
-                  <ColorSwatch hex={c.codigoHex} />
+                  <ColorSwatch hex={c.codigoHex} hex2={c.codigoHex2} />
                   <div className="min-w-0">
                     <div className="truncate font-medium">{c.nome}</div>
                     <div className="text-muted-foreground font-mono text-xs">
                       {c.codigoHex ?? '—'}
+                      {c.codigoHex2 ? ` + ${c.codigoHex2}` : ''}
                     </div>
                   </div>
                 </div>
@@ -264,8 +266,14 @@ export function CoresList({ cores, podeEditar }: Props) {
 // ColorSwatch
 // -----------------------------------------------------------------
 
-function ColorSwatch({ hex }: { hex: string | null }) {
-  if (!hex) {
+function ColorSwatch({
+  hex,
+  hex2,
+}: {
+  hex: string | null
+  hex2?: string | null
+}) {
+  if (!hex && !hex2) {
     return (
       <div
         className="size-7 rounded-md border border-dashed"
@@ -273,13 +281,38 @@ function ColorSwatch({ hex }: { hex: string | null }) {
       />
     )
   }
+  // Bicolor: swatch dividido na diagonal entre as duas tonalidades.
+  if (hex && hex2) {
+    return (
+      <div
+        className="size-7 rounded-md border ring-1 ring-foreground/10"
+        style={{
+          background: `linear-gradient(135deg, ${hex} 0 50%, ${hex2} 50% 100%)`,
+        }}
+        aria-label={`${hex} / ${hex2}`}
+      />
+    )
+  }
+  const cor = hex ?? hex2!
   return (
     <div
       className="size-7 rounded-md border ring-1 ring-foreground/10"
-      style={{ backgroundColor: hex }}
-      aria-label={hex}
+      style={{ backgroundColor: cor }}
+      aria-label={cor}
     />
   )
+}
+
+// Normaliza um hex digitado (com ou sem #) pra prévia; null se inválido.
+function normHexPreview(v?: string | null): string | null {
+  if (!v) return null
+  const s = v.trim()
+  if (!/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(s)) return null
+  return s.startsWith('#') ? s : `#${s}`
+}
+
+function SwatchPreview({ hex, hex2 }: { hex?: string; hex2?: string }) {
+  return <ColorSwatch hex={normHexPreview(hex)} hex2={normHexPreview(hex2)} />
 }
 
 // -----------------------------------------------------------------
@@ -303,17 +336,21 @@ function CorDialog({
     defaultValues: {
       nome: isEdit ? cor.nome : '',
       codigoHex: isEdit ? cor.codigoHex ?? '' : '',
+      codigoHex2: isEdit ? cor.codigoHex2 ?? '' : '',
       ativo: isEdit ? cor.ativo : true,
     },
     values: {
       nome: isEdit ? cor.nome : '',
       codigoHex: isEdit ? cor.codigoHex ?? '' : '',
+      codigoHex2: isEdit ? cor.codigoHex2 ?? '' : '',
       ativo: isEdit ? cor.ativo : true,
     },
   })
 
   const errs = form.formState.errors
   const ativo = useWatch({ control: form.control, name: 'ativo' })
+  const hex1Preview = useWatch({ control: form.control, name: 'codigoHex' })
+  const hex2Preview = useWatch({ control: form.control, name: 'codigoHex2' })
 
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
@@ -358,18 +395,42 @@ function CorDialog({
             )}
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="cor-hex">Código hex</Label>
-            <Input
-              id="cor-hex"
-              placeholder="#FF5500"
-              disabled={isPending}
-              {...form.register('codigoHex')}
-            />
-            {errs.codigoHex && (
-              <p className="text-destructive text-xs">{errs.codigoHex.message}</p>
-            )}
+          <div className="flex items-end gap-3">
+            <div className="flex-1 space-y-1.5">
+              <Label htmlFor="cor-hex">Código hex</Label>
+              <Input
+                id="cor-hex"
+                placeholder="#FF5500"
+                disabled={isPending}
+                {...form.register('codigoHex')}
+              />
+              {errs.codigoHex && (
+                <p className="text-destructive text-xs">
+                  {errs.codigoHex.message}
+                </p>
+              )}
+            </div>
+            <div className="flex-1 space-y-1.5">
+              <Label htmlFor="cor-hex2">Código hex 2</Label>
+              <Input
+                id="cor-hex2"
+                placeholder="#FFFFFF"
+                disabled={isPending}
+                {...form.register('codigoHex2')}
+              />
+              {errs.codigoHex2 && (
+                <p className="text-destructive text-xs">
+                  {errs.codigoHex2.message}
+                </p>
+              )}
+            </div>
+            {/* Prévia ao vivo do swatch (divide quando há 2 tonalidades). */}
+            <SwatchPreview hex={hex1Preview} hex2={hex2Preview} />
           </div>
+          <p className="text-muted-foreground -mt-1 text-xs">
+            Preencha o 2º hex só para cores bicolor (ex.: capa listrada) — o
+            swatch fica dividido entre as duas.
+          </p>
 
           <div className="flex items-center justify-between">
             <Label htmlFor="cor-ativo" className="text-sm">

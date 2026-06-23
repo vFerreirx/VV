@@ -428,12 +428,19 @@ export function ProdutoForm({
                                 .map((c) => (
                                   <SelectItem key={c.id} value={c.nome}>
                                     <div className="flex items-center gap-2">
-                                      {c.codigoHex && (
+                                      {(c.codigoHex || c.codigoHex2) && (
                                         <span
                                           className="inline-block size-3 rounded-sm border ring-1 ring-foreground/10"
-                                          style={{
-                                            backgroundColor: c.codigoHex,
-                                          }}
+                                          style={
+                                            c.codigoHex && c.codigoHex2
+                                              ? {
+                                                  background: `linear-gradient(135deg, ${c.codigoHex} 0 50%, ${c.codigoHex2} 50% 100%)`,
+                                                }
+                                              : {
+                                                  backgroundColor:
+                                                    c.codigoHex ?? c.codigoHex2!,
+                                                }
+                                          }
                                         />
                                       )}
                                       {c.nome}
