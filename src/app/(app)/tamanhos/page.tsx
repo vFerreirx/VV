@@ -1,28 +1,6 @@
-import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
 
-import { listarTamanhos } from './actions'
-import { TamanhosList } from './tamanhos-list'
-import { podeEscrever } from '@/lib/auth/permissoes'
-import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
-import { requireArea } from '@/lib/auth/require-auth'
-
-export const metadata: Metadata = { title: 'Tamanhos — Vanvest' }
-
-export default async function TamanhosPage() {
-  const user = await requireArea('tamanhos')
-  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'tamanhos'))
-  const tamanhos = await listarTamanhos()
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Tamanhos</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Catálogo de tamanhos usado nas variações (P, M, G, Casal, Queen, etc)
-        </p>
-      </div>
-
-      <TamanhosList tamanhos={tamanhos} podeEditar={podeEditar} />
-    </div>
-  )
+// Tamanhos agora vive na aba unificada /variacoes (Cores · Modelos · Tamanhos).
+export default function TamanhosPage() {
+  redirect('/variacoes?tab=tamanhos')
 }

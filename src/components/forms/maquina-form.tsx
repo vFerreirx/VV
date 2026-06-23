@@ -208,7 +208,7 @@ export function MaquinaForm({
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.push('/maquinas')}
+          onClick={() => router.push('/fabrica')}
           disabled={isPending}
         >
           Cancelar

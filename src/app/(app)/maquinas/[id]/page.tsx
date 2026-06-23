@@ -40,7 +40,7 @@ export default async function EditarMaquinaPage({
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex items-center gap-3">
         <Button
-          render={<Link href="/maquinas" />}
+          render={<Link href="/fabrica" />}
           variant="ghost"
           size="icon-sm"
           aria-label="Voltar"

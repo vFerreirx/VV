@@ -7,13 +7,10 @@ import {
   CalendarDays,
   Cog,
   Factory,
-  Grid2x2,
   KanbanSquare,
   LayoutDashboard,
   ListChecks,
   Package,
-  Palette,
-  Ruler,
   Shapes,
   ShieldCheck,
   ShoppingCart,
@@ -29,6 +26,9 @@ export type NavItem = {
   icon: LucideIcon
   // Área de permissão. Itens sem área aparecem pra todo mundo autenticado.
   area?: AreaKey
+  // Item que agrega várias áreas (página com sub-abas): visível se QUALQUER
+  // uma das áreas não estiver bloqueada pro cargo.
+  areas?: AreaKey[]
 }
 
 export type NavGroup = {
@@ -52,13 +52,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: CalendarDays,
         area: 'calendario',
       },
-    ],
-  },
-  {
-    titulo: 'Fábrica',
-    items: [
-      { href: '/maquinas', label: 'Máquinas', icon: Factory, area: 'maquinas' },
-      { href: '/estacoes', label: 'Estações', icon: Grid2x2, area: 'estacoes' },
+      {
+        href: '/fabrica',
+        label: 'Fábrica',
+        icon: Factory,
+        areas: ['maquinas', 'estacoes'],
+      },
     ],
   },
   {
@@ -72,9 +71,12 @@ export const NAV_GROUPS: NavGroup[] = [
     titulo: 'Catálogo',
     items: [
       { href: '/produtos', label: 'Produtos', icon: Package, area: 'produtos' },
-      { href: '/cores', label: 'Cores', icon: Palette, area: 'cores' },
-      { href: '/modelos', label: 'Modelos', icon: Shapes, area: 'modelos' },
-      { href: '/tamanhos', label: 'Tamanhos', icon: Ruler, area: 'tamanhos' },
+      {
+        href: '/variacoes',
+        label: 'Variações',
+        icon: Shapes,
+        areas: ['cores', 'modelos', 'tamanhos'],
+      },
     ],
   },
   {
@@ -95,8 +97,13 @@ export const NAV_GROUPS: NavGroup[] = [
 // Grupos filtrados pelas áreas bloqueadas do cargo (descarta grupos vazios).
 export function visibleGroups(bloqueadas: AreaKey[] = []): NavGroup[] {
   const bloq = new Set(bloqueadas)
+  const visivel = (it: NavItem): boolean => {
+    if (it.areas) return it.areas.some((a) => !bloq.has(a))
+    if (it.area) return !bloq.has(it.area)
+    return true
+  }
   return NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((it) => !it.area || !bloq.has(it.area)),
+    items: g.items.filter(visivel),
   })).filter((g) => g.items.length > 0)
 }

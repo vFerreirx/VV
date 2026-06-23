@@ -1,34 +1,8 @@
-import type { Metadata } from 'next'
-import Link from 'next/link'
+import { redirect } from 'next/navigation'
 
-import { listarMaquinas } from './actions'
-import { MaquinasGrid } from './maquinas-grid'
-import { Button } from '@/components/ui/button'
-import { isManager, requireArea } from '@/lib/auth/require-auth'
-
-export const metadata: Metadata = { title: 'Máquinas — Vanvest' }
-
-export default async function MaquinasPage() {
-  const user = await requireArea('maquinas')
-  const podeEditar = isManager(user.role)
-
-  const maquinas = await listarMaquinas()
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Máquinas</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {maquinas.length} máquina{maquinas.length === 1 ? '' : 's'}
-          </p>
-        </div>
-        {podeEditar && (
-          <Button render={<Link href="/maquinas/novo" />}>Nova máquina</Button>
-        )}
-      </div>
-
-      <MaquinasGrid maquinas={maquinas} podeEditar={podeEditar} />
-    </div>
-  )
+// Lista de máquinas agora vive na aba unificada /fabrica (Máquinas ·
+// Estações). As telas de criar/editar seguem em /maquinas/novo e
+// /maquinas/[id].
+export default function MaquinasPage() {
+  redirect('/fabrica?tab=maquinas')
 }
