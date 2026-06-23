@@ -534,36 +534,60 @@ function PastaProduto({
     [grupo.ops, tam, cor],
   )
   const totalUn = grupo.ops.reduce((s, o) => s + o.quantidade, 0)
-  const algumAtrasada = grupo.ops.some((o) => o.atrasada)
+  const nAtrasadas = grupo.ops.filter((o) => o.atrasada).length
+  const algumAtrasada = nAtrasadas > 0
 
   return (
     <div className="bg-card rounded-lg border shadow-sm">
       <button
         type="button"
         onClick={() => setAberta((v) => !v)}
-        className="hover:bg-muted/40 flex w-full items-center justify-between gap-2 rounded-lg p-2.5 text-left transition-colors"
+        className="hover:bg-muted/40 flex w-full flex-col gap-1.5 rounded-lg p-2.5 text-left transition-colors"
       >
-        <span className="flex min-w-0 items-center gap-1.5">
-          <Folder
-            className={cn(
-              'size-4 shrink-0',
-              algumAtrasada ? 'text-destructive' : 'text-muted-foreground',
-            )}
-          />
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-xs font-medium">
-              {grupo.produtoNome}
-            </span>
-            <span className="text-muted-foreground truncate font-mono text-[10px]">
-              {grupo.produtoSku}
+        <span className="flex w-full items-center justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Folder
+              className={cn(
+                'size-4 shrink-0',
+                algumAtrasada ? 'text-destructive' : 'text-muted-foreground',
+              )}
+            />
+            <span className="flex min-w-0 flex-col">
+              <span className="truncate text-xs font-medium">
+                {grupo.produtoNome}
+              </span>
+              <span className="text-muted-foreground truncate font-mono text-[10px]">
+                {grupo.produtoSku}
+              </span>
             </span>
           </span>
+          <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-[10px] tabular-nums">
+            {grupo.ops.length} OPs · {totalUn} un
+            <ChevronDown
+              className={cn(
+                'size-3.5 transition-transform',
+                aberta && 'rotate-180',
+              )}
+            />
+          </span>
         </span>
-        <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-[10px] tabular-nums">
-          {grupo.ops.length} OPs · {totalUn} un
-          <ChevronDown
-            className={cn('size-3.5 transition-transform', aberta && 'rotate-180')}
-          />
+
+        {/* Resumo das variações (sempre visível, mesmo fechada) */}
+        <span className="flex flex-wrap items-center gap-1 pl-[1.375rem]">
+          {algumAtrasada && (
+            <span className="bg-destructive/10 text-destructive inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium">
+              <CircleAlert className="size-2.5" />
+              {nAtrasadas} atrasada{nAtrasadas > 1 ? 's' : ''}
+            </span>
+          )}
+          {tamanhos.map((t) => (
+            <span
+              key={t.nome}
+              className="bg-muted text-muted-foreground rounded-full px-1.5 py-0.5 text-[10px]"
+            >
+              {t.nome} <span className="opacity-60">{t.n}</span>
+            </span>
+          ))}
         </span>
       </button>
 
