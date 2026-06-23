@@ -163,7 +163,11 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
   return (
     <div className="space-y-6">
       {podeEditar && (
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button onClick={() => setEditando(true)} disabled={isPending}>
+            <Plus />
+            Registrar venda
+          </Button>
           <ImportarCSVDialog />
         </div>
       )}
