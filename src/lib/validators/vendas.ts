@@ -29,9 +29,7 @@ export const CONTAS_MARKETPLACE = [
   { key: 'shein_5', marketplace: 'shein', label: 'Conta 5' },
   { key: 'tiktok', marketplace: 'tiktok', label: 'TikTok' },
   { key: 'temu', marketplace: 'temu', label: 'Temu' },
-  // Amazon: não vendemos mais. `ativo: false` -> some do registro manual,
-  // mas continua reconhecida no import de CSV e na exibição de dados antigos.
-  { key: 'amazon', marketplace: 'amazon', label: 'Amazon', ativo: false },
+  { key: 'amazon', marketplace: 'amazon', label: 'Amazon' },
   { key: 'atacado_5', marketplace: 'vendas_atacado', label: 'Conta 5' },
 ] as const satisfies ReadonlyArray<{
   key: string
