@@ -146,11 +146,22 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
-  const [editando, setEditando] = useState(false)
+  // Dialog de registro/edição: guarda o dia-alvo e a venda existente (ou
+  // null pra um registro novo). null = fechado.
+  const [registro, setRegistro] = useState<{
+    data: string
+    venda: VendaDia | null
+  } | null>(null)
 
   const hoje = hojeISO()
   const ehHoje = data === hoje
   const grupos = agruparContasDoDia(vendaDoDia)
+
+  // "Registrar venda" (topo) sempre lança um dia NOVO: o dia seguinte ao
+  // último dia com venda lançada (recentes vem ordenado por data desc).
+  // Sem nenhuma venda ainda, cai pra hoje.
+  const proximoDiaSemDados =
+    recentes.length > 0 ? addDias(recentes[0]!.data, 1) : hoje
 
   function irPara(novaData: string) {
     // Sempre fixa ?data: sem ele, a página abriria no último dia com
@@ -164,7 +175,12 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
     <div className="space-y-6">
       {podeEditar && (
         <div className="flex justify-end gap-2">
-          <Button onClick={() => setEditando(true)} disabled={isPending}>
+          <Button
+            onClick={() =>
+              setRegistro({ data: proximoDiaSemDados, venda: null })
+            }
+            disabled={isPending}
+          >
             <Plus />
             Registrar venda
           </Button>
@@ -300,7 +316,10 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
 
         {podeEditar && (
           <div className="mt-6">
-            <Button onClick={() => setEditando(true)} disabled={isPending}>
+            <Button
+              onClick={() => setRegistro({ data, venda: vendaDoDia })}
+              disabled={isPending}
+            >
               {vendaDoDia ? (
                 <>
                   <Pencil />
@@ -348,10 +367,10 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
       )}
 
       <EditarDialog
-        open={editando}
-        onClose={() => setEditando(false)}
-        data={data}
-        venda={vendaDoDia}
+        open={registro !== null}
+        onClose={() => setRegistro(null)}
+        data={registro?.data ?? data}
+        venda={registro?.venda ?? null}
       />
     </div>
   )
