@@ -1,8 +1,14 @@
 'use client'
 
-import { ChevronLeft, ChevronRight, Pencil, Plus } from 'lucide-react'
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Plus,
+} from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Fragment, useState, useTransition } from 'react'
+import { Fragment, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { salvarVendaDiaAction, type VendaDia } from './actions'
@@ -163,12 +169,25 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
   const proximoDiaSemDados =
     recentes.length > 0 ? addDias(recentes[0]!.data, 1) : hoje
 
+  const seletorDiaRef = useRef<HTMLInputElement>(null)
+
   function irPara(novaData: string) {
     // Sempre fixa ?data: sem ele, a página abriria no último dia com
     // vendas, então "Voltar pra hoje" precisa do parâmetro explícito.
     const params = new URLSearchParams(searchParams.toString())
     params.set('data', novaData)
     startTransition(() => router.push(`${pathname}?${params.toString()}`))
+  }
+
+  // Abre o calendário nativo do input escondido (fallback: foco).
+  function abrirSeletorDia() {
+    const el = seletorDiaRef.current
+    if (!el) return
+    try {
+      el.showPicker()
+    } catch {
+      el.focus()
+    }
   }
 
   return (
@@ -200,20 +219,43 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
           <ChevronLeft />
         </Button>
 
-        <div className="text-center">
+        <div className="flex flex-col items-center gap-1">
           <div className="text-sm font-medium capitalize">
             {formatarData(data)}
           </div>
-          {!ehHoje && (
+          <div className="flex items-center gap-3">
             <button
               type="button"
-              className="text-muted-foreground hover:text-foreground text-xs underline"
-              onClick={() => irPara(hoje)}
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs"
+              onClick={abrirSeletorDia}
               disabled={isPending}
             >
-              Voltar pra hoje
+              <CalendarDays className="size-3.5" />
+              Selecionar dia
             </button>
-          )}
+            {!ehHoje && (
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground text-xs underline"
+                onClick={() => irPara(hoje)}
+                disabled={isPending}
+              >
+                Voltar pra hoje
+              </button>
+            )}
+          </div>
+          {/* Input escondido que dispara o date picker nativo. */}
+          <input
+            ref={seletorDiaRef}
+            type="date"
+            value={data}
+            max={hoje}
+            onChange={(e) => e.target.value && irPara(e.target.value)}
+            disabled={isPending}
+            tabIndex={-1}
+            aria-hidden
+            className="sr-only"
+          />
         </div>
 
         <Button
