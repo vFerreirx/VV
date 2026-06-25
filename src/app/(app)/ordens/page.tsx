@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
-import { listarOrdens } from './actions'
+import { listarOrdens, listarProdutosParaOrdem } from './actions'
 import { GerarDeKit } from './gerar-de-kit'
 import { OrdensList } from './ordens-list'
 import { listarKitsComItens } from '../kits/actions'
@@ -34,9 +34,10 @@ export default async function OrdensPage({
   const parsed = ordensFiltrosSchema.safeParse(raw)
   const filtros: OrdensFiltros = parsed.success ? parsed.data : {}
 
-  const [ordens, kits] = await Promise.all([
+  const [ordens, kits, produtosParaKit] = await Promise.all([
     listarOrdens(filtros),
     podeGerarKit ? listarKitsComItens() : Promise.resolve([]),
+    podeGerarKit ? listarProdutosParaOrdem() : Promise.resolve([]),
   ])
 
   return (
@@ -49,7 +50,9 @@ export default async function OrdensPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {podeGerarKit && kits.length > 0 && <GerarDeKit kits={kits} />}
+          {podeGerarKit && kits.length > 0 && (
+            <GerarDeKit kits={kits} produtos={produtosParaKit} />
+          )}
           {podeEditar && (
             <Button render={<Link href="/ordens/novo" />}>Nova OP</Button>
           )}

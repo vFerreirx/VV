@@ -36,13 +36,9 @@ export type KitListItem = Kit & {
 
 export type KitItemDetalhe = {
   id: string
-  variacaoId: string
-  quantidade: number
-  skuVariacao: string
+  produtoId: string
   produtoNome: string
-  cor: string | null
-  tamanho: string | null
-  modelo: string | null
+  quantidade: number
 }
 
 export type KitComItens = Kit & { itens: KitItemDetalhe[] }
@@ -94,17 +90,12 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
     .select({
       kitId: kitItens.kitId,
       id: kitItens.id,
-      variacaoId: kitItens.variacaoId,
+      produtoId: kitItens.produtoId,
       quantidade: kitItens.quantidade,
-      skuVariacao: variacoesProduto.skuVariacao,
-      cor: variacoesProduto.cor,
-      tamanho: variacoesProduto.tamanho,
-      modelo: variacoesProduto.modelo,
       produtoNome: produtos.nome,
     })
     .from(kitItens)
-    .innerJoin(variacoesProduto, eq(variacoesProduto.id, kitItens.variacaoId))
-    .innerJoin(produtos, eq(produtos.id, variacoesProduto.produtoId))
+    .innerJoin(produtos, eq(produtos.id, kitItens.produtoId))
     .where(inArray(kitItens.kitId, ids))
     .orderBy(asc(produtos.nome))
 
@@ -131,20 +122,12 @@ export async function obterKit(id: string): Promise<KitComItens | null> {
   const itens = await db
     .select({
       id: kitItens.id,
-      variacaoId: kitItens.variacaoId,
+      produtoId: kitItens.produtoId,
       quantidade: kitItens.quantidade,
-      skuVariacao: variacoesProduto.skuVariacao,
-      cor: variacoesProduto.cor,
-      tamanho: variacoesProduto.tamanho,
-      modelo: variacoesProduto.modelo,
       produtoNome: produtos.nome,
     })
     .from(kitItens)
-    .innerJoin(
-      variacoesProduto,
-      eq(variacoesProduto.id, kitItens.variacaoId),
-    )
-    .innerJoin(produtos, eq(produtos.id, variacoesProduto.produtoId))
+    .innerJoin(produtos, eq(produtos.id, kitItens.produtoId))
     .where(eq(kitItens.kitId, id))
     .orderBy(asc(produtos.nome))
 
@@ -195,7 +178,7 @@ export async function criarKitAction(
     await tx.insert(kitItens).values(
       data.itens.map((it) => ({
         kitId: inserted!.id,
-        variacaoId: it.variacaoId,
+        produtoId: it.produtoId,
         quantidade: it.quantidade,
       })),
     )
@@ -247,7 +230,7 @@ export async function atualizarKitAction(
     await tx.insert(kitItens).values(
       data.itens.map((it) => ({
         kitId: id,
-        variacaoId: it.variacaoId,
+        produtoId: it.produtoId,
         quantidade: it.quantidade,
       })),
     )
@@ -290,7 +273,7 @@ export async function gerarOpsKitAction(
       error: parsed.error.issues[0]?.message ?? 'Dados inválidos',
     }
   }
-  const { kitId, quantidade, canalDestino, prioridade } = parsed.data
+  const { kitId, quantidade, canalDestino, prioridade, escolhas } = parsed.data
 
   const [kit] = await db
     .select({ id: kits.id, nome: kits.nome })
@@ -299,36 +282,59 @@ export async function gerarOpsKitAction(
     .limit(1)
   if (!kit) return { success: false, error: 'Kit não encontrado' }
 
-  // Itens do kit + produtoId de cada variação (necessário pra OP).
+  // Itens do kit (produto + quantidade por kit).
   const itens = await db
     .select({
-      variacaoId: kitItens.variacaoId,
+      id: kitItens.id,
+      produtoId: kitItens.produtoId,
       quantidade: kitItens.quantidade,
-      produtoId: variacoesProduto.produtoId,
     })
     .from(kitItens)
-    .innerJoin(
-      variacoesProduto,
-      eq(variacoesProduto.id, kitItens.variacaoId),
-    )
     .where(eq(kitItens.kitId, kitId))
-
   if (itens.length === 0) {
     return { success: false, error: 'O kit não tem itens pra produzir' }
   }
 
-  let pecas = 0
+  // Variação escolhida (tamanho/cor) por item do kit.
+  const escolhaPorItem = new Map(escolhas.map((e) => [e.kitItemId, e.variacaoId]))
+
+  // Valida que cada variação escolhida pertence ao produto do item.
+  const variacaoIds = [...new Set(escolhas.map((e) => e.variacaoId))]
+  const vars = await db
+    .select({ id: variacoesProduto.id, produtoId: variacoesProduto.produtoId })
+    .from(variacoesProduto)
+    .where(inArray(variacoesProduto.id, variacaoIds))
+  const produtoDaVariacao = new Map(vars.map((v) => [v.id, v.produtoId]))
+
+  const aProduzir: { produtoId: string; variacaoId: string; qtd: number }[] = []
+  for (const it of itens) {
+    const variacaoId = escolhaPorItem.get(it.id)
+    if (!variacaoId) {
+      return {
+        success: false,
+        error: 'Escolha o tamanho e a cor de todos os itens do kit',
+      }
+    }
+    if (produtoDaVariacao.get(variacaoId) !== it.produtoId) {
+      return { success: false, error: 'Variação não pertence ao produto do item' }
+    }
+    aProduzir.push({
+      produtoId: it.produtoId,
+      variacaoId,
+      qtd: it.quantidade * quantidade,
+    })
+  }
+
+  const pecas = aProduzir.reduce((s, p) => s + p.qtd, 0)
   await db.transaction(async (tx) => {
-    for (const it of itens) {
-      const qtd = it.quantidade * quantidade
-      pecas += qtd
+    for (const p of aProduzir) {
       const [op] = await tx
         .insert(ordensProducao)
         .values({
           numero: '',
-          produtoId: it.produtoId,
-          variacaoId: it.variacaoId,
-          quantidade: qtd,
+          produtoId: p.produtoId,
+          variacaoId: p.variacaoId,
+          quantidade: p.qtd,
           canalDestino,
           prioridade,
           status: 'programado',
@@ -351,7 +357,7 @@ export async function gerarOpsKitAction(
   revalidatePath('/ordens')
   return {
     success: true,
-    data: { ops: itens.length, pecas },
-    message: `${itens.length} OP${itens.length > 1 ? 's' : ''} gerada${itens.length > 1 ? 's' : ''} (${pecas} peças)`,
+    data: { ops: aProduzir.length, pecas },
+    message: `${aProduzir.length} OP${aProduzir.length > 1 ? 's' : ''} gerada${aProduzir.length > 1 ? 's' : ''} (${pecas} peças)`,
   }
 }

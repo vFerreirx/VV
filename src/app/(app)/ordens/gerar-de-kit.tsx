@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
+import { listarProdutosParaOrdem } from './actions'
 import { gerarOpsKitAction, type KitComItens } from '../kits/actions'
 import { Button } from '@/components/ui/button'
 import {
@@ -31,15 +32,23 @@ import {
   prioridadeValues,
 } from '@/lib/validators/ordens'
 
-function descVariacao(v: {
-  cor: string | null
-  tamanho: string | null
-  modelo: string | null
-}): string {
-  return [v.tamanho, v.cor, v.modelo].filter(Boolean).join(' ') || 'padrão'
-}
+type Produtos = Awaited<ReturnType<typeof listarProdutosParaOrdem>>
 
-export function GerarDeKit({ kits }: { kits: KitComItens[] }) {
+// Token interno pra tamanho/cor nulos no <Select>. '' = não escolhido.
+const SEM = '__sem__'
+const tok = (s: string | null) => s ?? SEM
+const rotuloTok = (v: string) => (v === SEM ? '—' : v)
+const distintos = <T,>(arr: T[]): T[] => [...new Set(arr)]
+
+type Escolha = { tamanho: string; cor: string }
+
+export function GerarDeKit({
+  kits,
+  produtos,
+}: {
+  kits: KitComItens[]
+  produtos: Produtos
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -48,22 +57,51 @@ export function GerarDeKit({ kits }: { kits: KitComItens[] }) {
   const [canal, setCanal] = useState<(typeof canalValues)[number]>('estoque')
   const [prioridade, setPrioridade] =
     useState<(typeof prioridadeValues)[number]>('normal')
+  // Escolha de tamanho/cor por item do kit (kitItemId -> tokens).
+  const [sel, setSel] = useState<Record<string, Escolha>>({})
 
   const kit = kits.find((k) => k.id === kitId) ?? null
   const n = Math.max(1, Number(qtd) || 1)
 
-  function fechar() {
-    setOpen(false)
+  function trocarKit(id: string) {
+    setKitId(id)
+    setSel({})
+  }
+  function patchSel(itemId: string, patch: Partial<Escolha>) {
+    setSel((prev) => {
+      const atual = prev[itemId] ?? { tamanho: '', cor: '' }
+      return { ...prev, [itemId]: { ...atual, ...patch } }
+    })
+  }
+
+  function variacaoDe(produtoId: string, e?: Escolha): string | null {
+    if (!e?.tamanho || !e.cor) return null
+    const prod = produtos.find((p) => p.id === produtoId)
+    const v = prod?.variacoes.find(
+      (x) => tok(x.tamanho) === e.tamanho && tok(x.cor) === e.cor,
+    )
+    return v?.id ?? null
   }
 
   function gerar() {
     if (!kit) return
+    const escolhas: { kitItemId: string; variacaoId: string }[] = []
+    for (const it of kit.itens) {
+      const variacaoId = variacaoDe(it.produtoId, sel[it.id])
+      if (!variacaoId) {
+        toast.error('Escolha o tamanho e a cor de todos os itens')
+        return
+      }
+      escolhas.push({ kitItemId: it.id, variacaoId })
+    }
+
     startTransition(async () => {
       const result = await gerarOpsKitAction({
         kitId: kit.id,
         quantidade: n,
         canalDestino: canal,
         prioridade,
+        escolhas,
       })
       if (!result.success) {
         toast.error(result.error)
@@ -72,6 +110,7 @@ export function GerarDeKit({ kits }: { kits: KitComItens[] }) {
       toast.success(result.message ?? 'OPs geradas')
       setOpen(false)
       setQtd('1')
+      setSel({})
       router.refresh()
     })
   }
@@ -83,21 +122,21 @@ export function GerarDeKit({ kits }: { kits: KitComItens[] }) {
         Gerar de kit
       </Button>
 
-      <Dialog open={open} onOpenChange={(o) => !o && fechar()}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
+      <Dialog open={open} onOpenChange={(o) => !o && setOpen(false)}>
+        <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-lg">
+          <DialogHeader className="border-b p-6">
             <DialogTitle>Gerar OPs de um kit</DialogTitle>
             <DialogDescription>
-              Cria uma ordem de produção separada pra cada componente do kit.
+              Escolha o kit, a quantidade e o tamanho/cor de cada componente.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="max-h-[60vh] space-y-4 overflow-y-auto p-6">
             <div className="space-y-1.5">
               <Label>Kit</Label>
               <Select
                 value={kitId || undefined}
-                onValueChange={(v) => setKitId(v ?? '')}
+                onValueChange={(v) => trocarKit(v ?? '')}
                 disabled={isPending}
               >
                 <SelectTrigger>
@@ -171,35 +210,83 @@ export function GerarDeKit({ kits }: { kits: KitComItens[] }) {
             </div>
 
             {kit && (
-              <div className="rounded-lg border">
-                <div className="text-muted-foreground border-b px-3 py-2 text-xs tracking-wide uppercase">
-                  Vai gerar {kit.itens.length} OP
-                  {kit.itens.length === 1 ? '' : 's'}
-                </div>
-                <ul className="divide-y text-sm">
-                  {kit.itens.map((it) => (
-                    <li
+              <div className="space-y-2">
+                <Label>Componentes</Label>
+                {kit.itens.map((it) => {
+                  const prod = produtos.find((p) => p.id === it.produtoId)
+                  const e = sel[it.id]
+                  const tamanhos = prod
+                    ? distintos(prod.variacoes.map((v) => tok(v.tamanho)))
+                    : []
+                  const cores = prod
+                    ? distintos(
+                        prod.variacoes
+                          .filter((v) => tok(v.tamanho) === e?.tamanho)
+                          .map((v) => tok(v.cor)),
+                      )
+                    : []
+                  return (
+                    <div
                       key={it.id}
-                      className="flex items-center justify-between px-3 py-2"
+                      className="space-y-2 rounded-lg border p-2.5"
                     >
-                      <span className="min-w-0 truncate">
-                        {it.produtoNome}{' '}
-                        <span className="text-muted-foreground">
-                          {descVariacao(it)}
+                      <div className="flex items-center justify-between gap-2 text-sm">
+                        <span className="min-w-0 truncate font-medium">
+                          {it.produtoNome}
                         </span>
-                      </span>
-                      <span className="shrink-0 font-medium tabular-nums">
-                        {it.quantidade * n} un
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                        <span className="text-muted-foreground shrink-0 tabular-nums">
+                          {it.quantidade * n} un
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Select
+                          value={e?.tamanho || undefined}
+                          onValueChange={(v) =>
+                            patchSel(it.id, { tamanho: v ?? '', cor: '' })
+                          }
+                          disabled={isPending || !prod}
+                        >
+                          <SelectTrigger size="sm">
+                            <SelectValue placeholder="Tamanho" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {tamanhos.map((t) => (
+                              <SelectItem key={t} value={t}>
+                                {rotuloTok(t)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select
+                          value={e?.cor || undefined}
+                          onValueChange={(v) => patchSel(it.id, { cor: v ?? '' })}
+                          disabled={isPending || !e?.tamanho}
+                        >
+                          <SelectTrigger size="sm">
+                            <SelectValue placeholder="Cor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {cores.map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {rotuloTok(c)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={fechar} disabled={isPending}>
+          <DialogFooter className="border-t p-6">
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={isPending}
+            >
               Cancelar
             </Button>
             <Button onClick={gerar} disabled={isPending || !kit}>

@@ -5,7 +5,7 @@ import { canalValues, prioridadeValues } from './ordens'
 const uuid = z.string().uuid('Item inválido')
 
 export const kitItemSchema = z.object({
-  variacaoId: uuid,
+  produtoId: uuid,
   quantidade: z.coerce
     .number()
     .int('Quantidade inválida')
@@ -24,7 +24,8 @@ export const kitSchema = z.object({
   itens: z.array(kitItemSchema).min(1, 'Adicione ao menos um item ao kit'),
 })
 
-// Gerar OPs dos componentes a partir de um kit.
+// Gerar OPs dos componentes a partir de um kit. A escolha de tamanho/cor
+// (a variação) de cada item do kit vem aqui, na geração.
 export const gerarOpsKitSchema = z.object({
   kitId: uuid,
   quantidade: z.coerce
@@ -34,6 +35,10 @@ export const gerarOpsKitSchema = z.object({
     .max(99999, 'Quantidade muito alta'),
   canalDestino: z.enum(canalValues),
   prioridade: z.enum(prioridadeValues),
+  // Uma variação escolhida por item do kit (kitItemId -> variacaoId).
+  escolhas: z
+    .array(z.object({ kitItemId: uuid, variacaoId: uuid }))
+    .min(1, 'Escolha tamanho e cor de cada item'),
 })
 
 export type KitInput = z.input<typeof kitSchema>

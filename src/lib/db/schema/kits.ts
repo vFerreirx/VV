@@ -10,7 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
-import { variacoesProduto } from './produtos'
+import { produtos } from './produtos'
 
 // Kit = combo de venda (ex.: 1 peseira + 2 capas). Vendido junto, mas
 // para a produção é explodido em itens unitários (uma OP por componente).
@@ -38,8 +38,8 @@ export const kits = pgTable(
   ],
 )
 
-// Itens (componentes) de um kit: cada um aponta pra uma variação de
-// produto + quantidade por kit.
+// Itens (componentes) de um kit: cada um aponta pro PRODUTO + quantidade
+// por kit. Tamanho/cor (a variação) são escolhidos só ao gerar as OPs.
 export const kitItens = pgTable(
   'kit_itens',
   {
@@ -47,9 +47,9 @@ export const kitItens = pgTable(
     kitId: uuid()
       .notNull()
       .references(() => kits.id, { onDelete: 'cascade' }),
-    variacaoId: uuid()
+    produtoId: uuid()
       .notNull()
-      .references(() => variacoesProduto.id),
+      .references(() => produtos.id),
     quantidade: integer().notNull().default(1),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
