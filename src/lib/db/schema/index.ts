@@ -4,6 +4,7 @@
 export * from './enums'
 export * from './users'
 export * from './produtos'
+export * from './kits'
 export * from './cores'
 export * from './modelos'
 export * from './tamanhos'
