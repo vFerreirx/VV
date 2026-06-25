@@ -1,7 +1,7 @@
 'use client'
 
 import { Boxes, Pencil, Plus, Trash2, X } from 'lucide-react'
-import { useMemo, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -40,7 +40,11 @@ type Props = {
   podeEditar: boolean
 }
 
-type VarOpcao = { id: string; label: string; sku: string }
+// Token interno pra representar tamanho/cor nulos num <Select> (que não
+// aceita value vazio/nulo). '' = ainda não escolhido.
+const SEM = '__sem__'
+const tok = (s: string | null) => s ?? SEM
+const rotuloTok = (v: string) => (v === SEM ? '—' : v)
 
 function descVariacao(v: {
   cor: string | null
@@ -50,22 +54,14 @@ function descVariacao(v: {
   return [v.tamanho, v.cor, v.modelo].filter(Boolean).join(' ') || 'padrão'
 }
 
+// Valores distintos preservando a ordem de aparição.
+function distintos<T>(arr: T[]): T[] {
+  return [...new Set(arr)]
+}
+
 export function KitsView({ kits, produtos, podeEditar }: Props) {
   const [editando, setEditando] = useState<KitComItens | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<KitComItens | null>(null)
-
-  // Variações disponíveis (achatadas, com nome do produto na frente).
-  const variacoes = useMemo<VarOpcao[]>(
-    () =>
-      produtos.flatMap((p) =>
-        p.variacoes.map((v) => ({
-          id: v.id,
-          label: `${p.nome} · ${descVariacao(v)}`,
-          sku: v.skuVariacao,
-        })),
-      ),
-    [produtos],
-  )
 
   return (
     <div className="space-y-6">
@@ -153,7 +149,7 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
       {editando && (
         <KitDialog
           kit={editando === 'novo' ? null : editando}
-          variacoes={variacoes}
+          produtos={produtos}
           onClose={() => setEditando(null)}
         />
       )}
@@ -166,15 +162,29 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
 // Dialog: criar / editar kit
 // -----------------------------------------------------------------
 
-type LinhaItem = { variacaoId: string; quantidade: string }
+// Cada linha guarda produto + tamanho + cor (tokens) e resolve a variação
+// específica ao salvar.
+type LinhaItem = {
+  produtoId: string
+  tamanho: string
+  cor: string
+  quantidade: string
+}
+
+const LINHA_VAZIA: LinhaItem = {
+  produtoId: '',
+  tamanho: '',
+  cor: '',
+  quantidade: '1',
+}
 
 function KitDialog({
   kit,
-  variacoes,
+  produtos,
   onClose,
 }: {
   kit: KitComItens | null
-  variacoes: VarOpcao[]
+  produtos: ProdutoComVariacoesParaForm[]
   onClose: () => void
 }) {
   const isEdit = kit !== null
@@ -184,33 +194,53 @@ function KitDialog({
   const [descricao, setDescricao] = useState(kit?.descricao ?? '')
   const [ativo, setAtivo] = useState(kit?.ativo ?? true)
   const [itens, setItens] = useState<LinhaItem[]>(
-    kit?.itens.map((i) => ({
-      variacaoId: i.variacaoId,
-      quantidade: String(i.quantidade),
-    })) ?? [{ variacaoId: '', quantidade: '1' }],
+    kit?.itens.map((i) => {
+      const prod = produtos.find((p) =>
+        p.variacoes.some((v) => v.id === i.variacaoId),
+      )
+      return {
+        produtoId: prod?.id ?? '',
+        tamanho: tok(i.tamanho),
+        cor: tok(i.cor),
+        quantidade: String(i.quantidade),
+      }
+    }) ?? [{ ...LINHA_VAZIA }],
   )
 
-  function setItem(idx: number, campo: keyof LinhaItem, valor: string) {
+  function patchItem(idx: number, patch: Partial<LinhaItem>) {
     setItens((prev) =>
-      prev.map((l, i) => (i === idx ? { ...l, [campo]: valor } : l)),
+      prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)),
     )
   }
   function addItem() {
-    setItens((prev) => [...prev, { variacaoId: '', quantidade: '1' }])
+    setItens((prev) => [...prev, { ...LINHA_VAZIA }])
   }
   function removeItem(idx: number) {
     setItens((prev) => prev.filter((_, i) => i !== idx))
   }
 
+  // Produto + tamanho + cor -> id da variação específica.
+  function resolverVariacao(l: LinhaItem): string | null {
+    const prod = produtos.find((p) => p.id === l.produtoId)
+    if (!prod) return null
+    const v = prod.variacoes.find(
+      (x) => tok(x.tamanho) === l.tamanho && tok(x.cor) === l.cor,
+    )
+    return v?.id ?? null
+  }
+
   function salvar() {
-    const itensLimpos = itens
-      .filter((l) => l.variacaoId)
-      .map((l) => ({
-        variacaoId: l.variacaoId,
+    const itensLimpos: { variacaoId: string; quantidade: number }[] = []
+    for (const l of itens) {
+      const variacaoId = resolverVariacao(l)
+      if (!variacaoId) continue
+      itensLimpos.push({
+        variacaoId,
         quantidade: Math.max(1, Number(l.quantidade) || 1),
-      }))
+      })
+    }
     if (itensLimpos.length === 0) {
-      toast.error('Adicione ao menos um item ao kit')
+      toast.error('Selecione produto, tamanho e cor de cada item')
       return
     }
 
@@ -240,7 +270,8 @@ function KitDialog({
         <DialogHeader className="border-b p-6">
           <DialogTitle>{isEdit ? 'Editar kit' : 'Novo kit'}</DialogTitle>
           <DialogDescription>
-            Defina os componentes e a quantidade de cada um por kit.
+            Escolha o produto, o tamanho e a cor de cada item, e a quantidade
+            por kit.
           </DialogDescription>
         </DialogHeader>
 
@@ -270,48 +301,104 @@ function KitDialog({
 
           <div className="space-y-2">
             <Label>Itens do kit</Label>
-            {itens.map((linha, idx) => (
-              <div
-                key={idx}
-                className="grid grid-cols-[1fr_4.5rem_auto] items-center gap-2"
-              >
-                <Select
-                  value={linha.variacaoId || undefined}
-                  onValueChange={(v) => setItem(idx, 'variacaoId', v ?? '')}
-                  disabled={isPending}
-                >
-                  <SelectTrigger size="sm">
-                    <SelectValue placeholder="Selecione a variação" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {variacoes.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {v.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  inputMode="numeric"
-                  aria-label="Quantidade por kit"
-                  value={linha.quantidade}
-                  onChange={(e) =>
-                    setItem(idx, 'quantidade', e.target.value.replace(/\D/g, ''))
-                  }
-                  disabled={isPending}
-                  className="h-9 text-center"
-                />
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  onClick={() => removeItem(idx)}
-                  disabled={isPending || itens.length === 1}
-                  aria-label="Remover item"
-                >
-                  <X />
-                </Button>
-              </div>
-            ))}
+            {itens.map((linha, idx) => {
+              const prod = produtos.find((p) => p.id === linha.produtoId)
+              const tamanhos = prod
+                ? distintos(prod.variacoes.map((v) => tok(v.tamanho)))
+                : []
+              const cores = prod
+                ? distintos(
+                    prod.variacoes
+                      .filter((v) => tok(v.tamanho) === linha.tamanho)
+                      .map((v) => tok(v.cor)),
+                  )
+                : []
+              return (
+                <div key={idx} className="space-y-2 rounded-lg border p-2.5">
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={linha.produtoId || undefined}
+                      onValueChange={(v) =>
+                        patchItem(idx, {
+                          produtoId: v ?? '',
+                          tamanho: '',
+                          cor: '',
+                        })
+                      }
+                      disabled={isPending}
+                    >
+                      <SelectTrigger size="sm" className="flex-1">
+                        <SelectValue placeholder="Produto" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {produtos.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      inputMode="numeric"
+                      aria-label="Quantidade por kit"
+                      value={linha.quantidade}
+                      onChange={(e) =>
+                        patchItem(idx, {
+                          quantidade: e.target.value.replace(/\D/g, ''),
+                        })
+                      }
+                      disabled={isPending}
+                      className="h-9 w-14 text-center"
+                    />
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      onClick={() => removeItem(idx)}
+                      disabled={isPending || itens.length === 1}
+                      aria-label="Remover item"
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select
+                      value={linha.tamanho || undefined}
+                      onValueChange={(v) =>
+                        patchItem(idx, { tamanho: v ?? '', cor: '' })
+                      }
+                      disabled={isPending || !prod}
+                    >
+                      <SelectTrigger size="sm">
+                        <SelectValue placeholder="Tamanho" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tamanhos.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {rotuloTok(t)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select
+                      value={linha.cor || undefined}
+                      onValueChange={(v) => patchItem(idx, { cor: v ?? '' })}
+                      disabled={isPending || !linha.tamanho}
+                    >
+                      <SelectTrigger size="sm">
+                        <SelectValue placeholder="Cor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cores.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {rotuloTok(c)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )
+            })}
             <Button
               size="sm"
               variant="outline"
