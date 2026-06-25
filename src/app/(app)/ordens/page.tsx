@@ -2,11 +2,13 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 import { listarOrdens } from './actions'
+import { GerarDeKit } from './gerar-de-kit'
 import { OrdensList } from './ordens-list'
+import { listarKitsComItens } from '../kits/actions'
 import { Button } from '@/components/ui/button'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
-import { requireArea } from '@/lib/auth/require-auth'
+import { isManager, requireArea } from '@/lib/auth/require-auth'
 import {
   ordensFiltrosSchema,
   type OrdensFiltros,
@@ -21,6 +23,8 @@ export default async function OrdensPage({
 }) {
   const user = await requireArea('ordens')
   const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'ordens'))
+  // Gerar OPs a partir de um kit é ação de produção (admin/gerente).
+  const podeGerarKit = isManager(user.role)
 
   const params = await searchParams
   const raw: Record<string, string | undefined> = {}
@@ -30,7 +34,10 @@ export default async function OrdensPage({
   const parsed = ordensFiltrosSchema.safeParse(raw)
   const filtros: OrdensFiltros = parsed.success ? parsed.data : {}
 
-  const ordens = await listarOrdens(filtros)
+  const [ordens, kits] = await Promise.all([
+    listarOrdens(filtros),
+    podeGerarKit ? listarKitsComItens() : Promise.resolve([]),
+  ])
 
   return (
     <div className="space-y-6">
@@ -41,9 +48,12 @@ export default async function OrdensPage({
             {ordens.length} OP{ordens.length === 1 ? '' : 's'}
           </p>
         </div>
-        {podeEditar && (
-          <Button render={<Link href="/ordens/novo" />}>Nova OP</Button>
-        )}
+        <div className="flex items-center gap-2">
+          {podeGerarKit && kits.length > 0 && <GerarDeKit kits={kits} />}
+          {podeEditar && (
+            <Button render={<Link href="/ordens/novo" />}>Nova OP</Button>
+          )}
+        </div>
       </div>
 
       <OrdensList

@@ -1,6 +1,6 @@
 'use client'
 
-import { Boxes, Factory, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { Boxes, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
@@ -8,7 +8,6 @@ import {
   atualizarKitAction,
   criarKitAction,
   excluirKitAction,
-  gerarOpsKitAction,
   type KitComItens,
 } from './actions'
 import type { ProdutoComVariacoesParaForm } from '../ordens/actions'
@@ -34,12 +33,6 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  CANAL_LABEL_CURTO,
-  PRIORIDADE_LABEL,
-  canalValues,
-  prioridadeValues,
-} from '@/lib/validators/ordens'
 
 type Props = {
   kits: KitComItens[]
@@ -59,7 +52,6 @@ function descVariacao(v: {
 
 export function KitsView({ kits, produtos, podeEditar }: Props) {
   const [editando, setEditando] = useState<KitComItens | 'novo' | null>(null)
-  const [gerando, setGerando] = useState<KitComItens | null>(null)
   const [excluindo, setExcluindo] = useState<KitComItens | null>(null)
 
   // Variações disponíveis (achatadas, com nome do produto na frente).
@@ -152,19 +144,6 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
                     </Badge>
                   ))}
                 </div>
-
-                {podeEditar && (
-                  <div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setGerando(kit)}
-                    >
-                      <Factory />
-                      Gerar OPs
-                    </Button>
-                  </div>
-                )}
               </article>
             )
           })}
@@ -177,9 +156,6 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
           variacoes={variacoes}
           onClose={() => setEditando(null)}
         />
-      )}
-      {gerando && (
-        <GerarOpsDialog kit={gerando} onClose={() => setGerando(null)} />
       )}
       <ExcluirDialog kit={excluindo} onClose={() => setExcluindo(null)} />
     </div>
@@ -377,148 +353,6 @@ function KitDialog({
           </Button>
           <Button onClick={salvar} disabled={isPending}>
             {isPending ? 'Salvando…' : 'Salvar'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// -----------------------------------------------------------------
-// Dialog: gerar OPs do kit (explode em itens unitários)
-// -----------------------------------------------------------------
-
-function GerarOpsDialog({
-  kit,
-  onClose,
-}: {
-  kit: KitComItens
-  onClose: () => void
-}) {
-  const [isPending, startTransition] = useTransition()
-  const [qtd, setQtd] = useState('1')
-  const [canal, setCanal] = useState<(typeof canalValues)[number]>('estoque')
-  const [prioridade, setPrioridade] =
-    useState<(typeof prioridadeValues)[number]>('normal')
-
-  const n = Math.max(1, Number(qtd) || 1)
-
-  function gerar() {
-    startTransition(async () => {
-      const result = await gerarOpsKitAction({
-        kitId: kit.id,
-        quantidade: n,
-        canalDestino: canal,
-        prioridade,
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success(result.message ?? 'OPs geradas')
-      onClose()
-    })
-  }
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Gerar OPs — {kit.nome}</DialogTitle>
-          <DialogDescription>
-            Cria uma ordem de produção separada pra cada componente do kit.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="op-qtd">Qtd de kits</Label>
-              <Input
-                id="op-qtd"
-                inputMode="numeric"
-                value={qtd}
-                onChange={(e) => setQtd(e.target.value.replace(/\D/g, ''))}
-                disabled={isPending}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Canal</Label>
-              <Select
-                value={canal}
-                onValueChange={(v) =>
-                  setCanal((v ?? 'estoque') as (typeof canalValues)[number])
-                }
-                disabled={isPending}
-              >
-                <SelectTrigger size="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {canalValues.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {CANAL_LABEL_CURTO[c]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Prioridade</Label>
-              <Select
-                value={prioridade}
-                onValueChange={(v) =>
-                  setPrioridade(
-                    (v ?? 'normal') as (typeof prioridadeValues)[number],
-                  )
-                }
-                disabled={isPending}
-              >
-                <SelectTrigger size="sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {prioridadeValues.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {PRIORIDADE_LABEL[p]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="rounded-lg border">
-            <div className="text-muted-foreground border-b px-3 py-2 text-xs tracking-wide uppercase">
-              Vai gerar
-            </div>
-            <ul className="divide-y text-sm">
-              {kit.itens.map((it) => (
-                <li
-                  key={it.id}
-                  className="flex items-center justify-between px-3 py-2"
-                >
-                  <span className="min-w-0 truncate">
-                    {it.produtoNome}{' '}
-                    <span className="text-muted-foreground">
-                      {descVariacao(it)}
-                    </span>
-                  </span>
-                  <span className="shrink-0 font-medium tabular-nums">
-                    {it.quantidade * n} un
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
-            Cancelar
-          </Button>
-          <Button onClick={gerar} disabled={isPending}>
-            {isPending ? 'Gerando…' : `Gerar ${kit.itens.length} OPs`}
           </Button>
         </DialogFooter>
       </DialogContent>
