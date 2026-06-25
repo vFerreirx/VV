@@ -95,6 +95,26 @@ function reais(v: number | null): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+function inteiro(v: number): string {
+  return Math.round(v).toLocaleString('pt-BR')
+}
+
+// Nº de dias (inclusive) entre duas datas YYYY-MM-DD.
+function diasEntre(aIso: string, bIso: string): number {
+  const [ay, am, ad] = aIso.split('-').map(Number)
+  const [by, bm, bd] = bIso.split('-').map(Number)
+  const a = Date.UTC(ay, am - 1, ad)
+  const b = Date.UTC(by, bm - 1, bd)
+  return Math.round((b - a) / 86_400_000) + 1
+}
+
+// Último dia do mês de uma data YYYY-MM-DD (retorna YYYY-MM-DD).
+function fimDoMes(iso: string): string {
+  const [y, m] = iso.split('-').map(Number)
+  const ultimo = new Date(Date.UTC(y, m, 0)).getUTCDate()
+  return `${iso.slice(0, 7)}-${String(ultimo).padStart(2, '0')}`
+}
+
 function mkLabel(m: string): string {
   return MARKETPLACE_LABEL[m as Marketplace] ?? m
 }
@@ -236,10 +256,37 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
 
   const v = relatorio.vendas
 
-  const kpis = [
+  // Média e previsão pelo ritmo diário do período.
+  // - dias decorridos = do início até hoje (ou até o fim, se já passou);
+  // - alvo da previsão = fim do mês do período (projeta o fechamento).
+  const hojeStr = hojeISO()
+  const fimEfetivo = fim < hojeStr ? fim : hojeStr
+  const diasDecorridos = Math.max(1, diasEntre(inicio, fimEfetivo))
+  const mediaFatDia = v.faturamento / diasDecorridos
+  const mediaQtdDia = v.unidades / diasDecorridos
+
+  const alvoPrev = fimDoMes(fim) > fim ? fimDoMes(fim) : fim
+  const diasAlvo = diasEntre(inicio, alvoPrev)
+  const previsaoFat = mediaFatDia * diasAlvo
+  const previsaoQtd = mediaQtdDia * diasAlvo
+  const temProjecao = diasAlvo > diasDecorridos
+
+  const kpis: { label: string; valor: string; sub?: string }[] = [
     { label: 'Faturamento', valor: reais(v.faturamento) },
     { label: 'Quantidade de vendas', valor: String(v.unidades) },
     { label: 'Ticket médio', valor: reais(v.ticketMedio) },
+    {
+      label: 'Média por dia',
+      valor: reais(mediaFatDia),
+      sub: `${inteiro(mediaQtdDia)} vendas/dia · ${diasDecorridos} dias`,
+    },
+    {
+      label: temProjecao ? 'Previsão do mês' : 'Total do período',
+      valor: reais(previsaoFat),
+      sub: temProjecao
+        ? `~${inteiro(previsaoQtd)} vendas · até ${dataBR(alvoPrev)}`
+        : 'período já fechado',
+    },
   ]
 
   return (
@@ -385,7 +432,7 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
       </div>
 
       {/* KPIs */}
-      <div className="vv-stagger grid grid-cols-1 gap-3 sm:grid-cols-3 print:gap-2 print:[&>*]:animate-none">
+      <div className="vv-stagger grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 print:grid-cols-5 print:gap-2 print:[&>*]:animate-none">
         {kpis.map((k) => (
           <div
             key={k.label}
@@ -397,6 +444,11 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
             <div className="mt-1 text-xl font-semibold tabular-nums print:text-base">
               {k.valor}
             </div>
+            {k.sub && (
+              <div className="text-muted-foreground mt-1 text-[11px] tabular-nums print:text-[9px]">
+                {k.sub}
+              </div>
+            )}
           </div>
         ))}
       </div>
