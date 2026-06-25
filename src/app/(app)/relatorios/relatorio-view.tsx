@@ -99,15 +99,6 @@ function inteiro(v: number): string {
   return Math.round(v).toLocaleString('pt-BR')
 }
 
-// Nº de dias (inclusive) entre duas datas YYYY-MM-DD.
-function diasEntre(aIso: string, bIso: string): number {
-  const [ay, am, ad] = aIso.split('-').map(Number)
-  const [by, bm, bd] = bIso.split('-').map(Number)
-  const a = Date.UTC(ay, am - 1, ad)
-  const b = Date.UTC(by, bm - 1, bd)
-  return Math.round((b - a) / 86_400_000) + 1
-}
-
 // Último dia do mês de uma data YYYY-MM-DD (retorna YYYY-MM-DD).
 function fimDoMes(iso: string): string {
   const [y, m] = iso.split('-').map(Number)
@@ -256,20 +247,17 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
 
   const v = relatorio.vendas
 
-  // Média e previsão pelo ritmo diário do período.
-  // - dias decorridos = do início até hoje (ou até o fim, se já passou);
-  // - alvo da previsão = fim do mês do período (projeta o fechamento).
-  const hojeStr = hojeISO()
-  const fimEfetivo = fim < hojeStr ? fim : hojeStr
-  const diasDecorridos = Math.max(1, diasEntre(inicio, fimEfetivo))
-  const mediaFatDia = v.faturamento / diasDecorridos
-  const mediaQtdDia = v.unidades / diasDecorridos
+  // Média e previsão pelos DIAS COM DADOS lançados (v.dias = nº de dias com
+  // venda registrada no período) — não usa o dia de hoje, que pode estar
+  // incompleto. A previsão projeta o mês cheio pelo ritmo desses dias.
+  const diasComDados = v.dias
+  const mediaFatDia = diasComDados > 0 ? v.faturamento / diasComDados : 0
+  const mediaQtdDia = diasComDados > 0 ? v.unidades / diasComDados : 0
 
-  const alvoPrev = fimDoMes(fim) > fim ? fimDoMes(fim) : fim
-  const diasAlvo = diasEntre(inicio, alvoPrev)
-  const previsaoFat = mediaFatDia * diasAlvo
-  const previsaoQtd = mediaQtdDia * diasAlvo
-  const temProjecao = diasAlvo > diasDecorridos
+  const mesEmAndamento = fim.slice(0, 7) === hojeISO().slice(0, 7)
+  const diasNoMes = Number(fimDoMes(fim).slice(8, 10))
+  const previsaoFat = mesEmAndamento ? mediaFatDia * diasNoMes : v.faturamento
+  const previsaoQtd = mesEmAndamento ? mediaQtdDia * diasNoMes : v.unidades
 
   const kpis: { label: string; valor: string; sub?: string }[] = [
     { label: 'Faturamento', valor: reais(v.faturamento) },
@@ -278,13 +266,15 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
     {
       label: 'Média por dia',
       valor: reais(mediaFatDia),
-      sub: `${inteiro(mediaQtdDia)} vendas/dia · ${diasDecorridos} dias`,
+      sub: `${inteiro(mediaQtdDia)} vendas/dia · ${diasComDados} ${
+        diasComDados === 1 ? 'dia' : 'dias'
+      } com dados`,
     },
     {
-      label: temProjecao ? 'Previsão do mês' : 'Total do período',
+      label: mesEmAndamento ? 'Previsão do mês' : 'Total do período',
       valor: reais(previsaoFat),
-      sub: temProjecao
-        ? `~${inteiro(previsaoQtd)} vendas · até ${dataBR(alvoPrev)}`
+      sub: mesEmAndamento
+        ? `~${inteiro(previsaoQtd)} vendas · mês cheio (${diasNoMes} dias)`
         : 'período já fechado',
     },
   ]
