@@ -41,6 +41,7 @@ export type ProdutoListItem = Produto & { totalVariacoes: number }
 export async function listarProdutos(
   filtros: ProdutosFiltros = {},
 ): Promise<ProdutoListItem[]> {
+  await requireAuth()
   const parsed = produtosFiltrosSchema.safeParse(filtros)
   const { q, ativo } = parsed.success ? parsed.data : {}
 
@@ -96,6 +97,7 @@ export type ProdutoComVariacoes = Produto & { variacoes: VariacaoProduto[] }
 export async function obterProduto(
   id: string,
 ): Promise<ProdutoComVariacoes | null> {
+  await requireAuth()
   const [produto] = await db
     .select()
     .from(produtos)
