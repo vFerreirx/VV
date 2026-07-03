@@ -3,7 +3,7 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireAuth, requireRole } from '@/lib/auth/require-auth'
+import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { tamanhos, type Tamanho } from '@/lib/db/schema'
 import { tamanhoSchema, type TamanhoInput } from '@/lib/validators/tamanhos'
@@ -33,7 +33,7 @@ export async function listarTamanhosAtivos(): Promise<Tamanho[]> {
 export async function criarTamanhoAction(
   input: TamanhoInput,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('tamanhos')
 
   const parsed = tamanhoSchema.safeParse(input)
   if (!parsed.success) {
@@ -75,7 +75,7 @@ export async function atualizarTamanhoAction(
   id: string,
   input: TamanhoInput,
 ): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('tamanhos')
 
   const parsed = tamanhoSchema.safeParse(input)
   if (!parsed.success) {
@@ -119,7 +119,7 @@ export async function atualizarTamanhoAction(
 }
 
 export async function excluirTamanhoAction(id: string): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('tamanhos')
 
   const [atual] = await db
     .select({ id: tamanhos.id })
@@ -149,7 +149,7 @@ const uuidRegex =
 export async function excluirMultiplosTamanhosAction(
   ids: string[],
 ): Promise<ActionResult<{ excluidos: number }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('tamanhos')
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return { success: false, error: 'Selecione ao menos um tamanho' }

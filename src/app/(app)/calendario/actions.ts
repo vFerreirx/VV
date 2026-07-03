@@ -3,7 +3,7 @@
 import { and, asc, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireAuth, requireRole } from '@/lib/auth/require-auth'
+import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { eventosFull, ordensProducao, produtos } from '@/lib/db/schema'
 import {
@@ -126,7 +126,7 @@ export async function listarOpsComPrazo(
 export async function criarEventoFullAction(
   input: EventoFullInput,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireRole(['admin', 'gerente_producao', 'vendas'])
+  await requireAreaEscrita('calendario')
 
   const parsed = eventoFullSchema.safeParse(input)
   if (!parsed.success) {
@@ -153,7 +153,7 @@ export async function criarEventoFullAction(
 export async function excluirEventoFullAction(
   id: string,
 ): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao', 'vendas'])
+  await requireAreaEscrita('calendario')
 
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

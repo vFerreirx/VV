@@ -3,7 +3,7 @@
 import { and, asc, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireAuth, requireRole } from '@/lib/auth/require-auth'
+import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   movimentacoesEstoque,
@@ -140,7 +140,7 @@ export async function listarMovimentacoes(
 export async function movimentarEstoqueAction(
   input: MovimentacaoEstoqueInput,
 ): Promise<ActionResult> {
-  const user = await requireRole(['admin', 'gerente_producao', 'estoquista'])
+  const user = await requireAreaEscrita('estoque')
 
   const parsed = movimentacaoEstoqueSchema.safeParse(input)
   if (!parsed.success) {

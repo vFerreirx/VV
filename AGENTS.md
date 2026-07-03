@@ -49,9 +49,8 @@ inserir só linhas extras, nunca substituir.
 - Enforcement: `requireArea('<area>')` bloqueia a página quando `nenhum`;
   as páginas calculam `podeEditar`/`podeMover` via
   `podeEscrever(await nivelDaAreaPara(role, area))` (= nível `total`/`proprio`)
-  pra esconder a edição quando `ver`. O **kanban** valida de verdade nas
-  actions (mudarStatus/pegar/soltar/criarRápida/apontar) pelo nível; o
-  **operador** continua limitado à OP que é dele mesmo com "controle total".
+  pra esconder a edição quando `ver`. O **operador** continua limitado à
+  OP que é dele mesmo com "controle total" no kanban.
 - O nível padrão de cada (cargo, área) vive em `AREAS[].nivelPadrao`
   (`src/lib/auth/permissoes.ts`); as overrides ficam em `permissoes_acesso`.
 - Fonte da verdade dos padrões + lógica pura:
@@ -60,6 +59,11 @@ inserir só linhas extras, nunca substituir.
 - **Guarda de página**: use `requireArea('<areaKey>')` no topo do
   `page.tsx` (em vez de `requireRole` pra leitura). O menu se esconde
   sozinho via `areasBloqueadas(role)` no layout.
-- **Escrita continua por `requireRole`** nas actions (não muda com o
-  acesso por área). Ao adicionar uma área/tela nova, registre-a em `AREAS`
-  e ponha um item no nav com `area`.
+- **Guarda de escrita nas actions**: use `requireAreaEscrita('<areaKey>')`
+  (redireciona se o nível efetivo do cargo não permite escrever). É o
+  padrão de TODA action de escrita em área editável — assim o que a tela
+  de permissões mostra é o que as actions entregam. Exceções fixas por
+  `requireRole(['admin'])`: `usuarios` e `permissoes`. O kanban valida o
+  nível dentro das próprias actions (regra do "próprio" do operador).
+- Ao adicionar uma área/tela nova, registre-a em `AREAS` e ponha um item
+  no nav com `area`.

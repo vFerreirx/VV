@@ -3,7 +3,7 @@
 import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireRole } from '@/lib/auth/require-auth'
+import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { estacoes, maquinas, users, type Estacao } from '@/lib/db/schema'
 import { estacaoSchema, type EstacaoInput } from '@/lib/validators/estacoes'
@@ -28,7 +28,7 @@ export type MaquinaOpcao = { id: string; codigo: string; nome: string }
 // -----------------------------------------------------------------
 
 export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireArea('estacoes')
 
   const rows = await db
     .select()
@@ -80,7 +80,7 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
 
 // Operadores ativos (pra selects de dia/noite).
 export async function listarOperadores(): Promise<OperadorOpcao[]> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireArea('estacoes')
   return db
     .select({ id: users.id, nome: users.nome })
     .from(users)
@@ -92,7 +92,7 @@ export async function listarOperadores(): Promise<OperadorOpcao[]> {
 
 // Máquinas ativas (pra multi-select).
 export async function listarMaquinasOpcoes(): Promise<MaquinaOpcao[]> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireArea('estacoes')
   return db
     .select({ id: maquinas.id, codigo: maquinas.codigo, nome: maquinas.nome })
     .from(maquinas)
@@ -126,7 +126,7 @@ async function aplicarMaquinas(
 export async function criarEstacaoAction(
   input: EstacaoInput,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('estacoes')
 
   const parsed = estacaoSchema.safeParse(input)
   if (!parsed.success) {
@@ -169,7 +169,7 @@ export async function atualizarEstacaoAction(
   id: string,
   input: EstacaoInput,
 ): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('estacoes')
 
   const parsed = estacaoSchema.safeParse(input)
   if (!parsed.success) {
@@ -226,7 +226,7 @@ export async function atualizarEstacaoAction(
 // -----------------------------------------------------------------
 
 export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('estacoes')
 
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation'
 
 import { getCurrentUser, type AuthUser } from './get-user'
 import { carregarOverrides } from './permissoes-db'
-import { nivelEfetivo, type AreaKey } from './permissoes'
+import { nivelEfetivo, podeEscrever, type AreaKey } from './permissoes'
 import type { User } from '@/lib/db/schema'
 import { createClient } from '@/lib/supabase/server'
 
@@ -47,6 +47,19 @@ export async function requireArea(area: AreaKey): Promise<AuthUser> {
   const user = await requireAuth()
   const overrides = await carregarOverrides()
   if (nivelEfetivo(user.role, area, overrides) === 'nenhum') {
+    redirect('/dashboard')
+  }
+  return user
+}
+
+// Garante ESCRITA numa área: o nível efetivo do cargo (editável em
+// /permissoes) precisa ser total/próprio. É o guard das actions de
+// escrita — assim o que a tela de permissões promete é o que as actions
+// entregam. Admin é sempre total (travado no nivelEfetivo).
+export async function requireAreaEscrita(area: AreaKey): Promise<AuthUser> {
+  const user = await requireAuth()
+  const overrides = await carregarOverrides()
+  if (!podeEscrever(nivelEfetivo(user.role, area, overrides))) {
     redirect('/dashboard')
   }
   return user

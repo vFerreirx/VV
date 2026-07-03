@@ -16,7 +16,7 @@ import { revalidatePath } from 'next/cache'
 import {
   isManager as isManagerRole,
   requireAuth,
-  requireRole,
+  requireAreaEscrita,
 } from '@/lib/auth/require-auth'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
@@ -322,7 +322,7 @@ export async function listarResponsaveis(): Promise<
 export async function criarOrdemAction(
   input: OrdemInput,
 ): Promise<ActionResult<{ id: string }>> {
-  const user = await requireRole(['admin', 'gerente_producao'])
+  const user = await requireAreaEscrita('ordens')
 
   const parsed = ordemSchema.safeParse(input)
   if (!parsed.success) {
@@ -435,7 +435,7 @@ export async function atualizarOrdemAction(
   id: string,
   input: OrdemInput,
 ): Promise<ActionResult> {
-  const user = await requireRole(['admin', 'gerente_producao'])
+  const user = await requireAreaEscrita('ordens')
 
   const parsed = ordemSchema.safeParse(input)
   if (!parsed.success) {
@@ -822,7 +822,7 @@ export async function apontarProducaoAction(
 // -----------------------------------------------------------------
 
 export async function excluirOrdemAction(id: string): Promise<ActionResult> {
-  const user = await requireRole(['admin', 'gerente_producao'])
+  const user = await requireAreaEscrita('ordens')
 
   const [atual] = await db
     .select()
@@ -868,7 +868,7 @@ const uuidRegex =
 export async function excluirMultiplasOrdensAction(
   ids: string[],
 ): Promise<ActionResult<{ excluidas: number }>> {
-  const user = await requireRole(['admin', 'gerente_producao'])
+  const user = await requireAreaEscrita('ordens')
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return { success: false, error: 'Selecione ao menos uma OP' }

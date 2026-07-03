@@ -3,7 +3,7 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireAuth, requireRole } from '@/lib/auth/require-auth'
+import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { modelos, type Modelo } from '@/lib/db/schema'
 import { modeloSchema, type ModeloInput } from '@/lib/validators/modelos'
@@ -33,7 +33,7 @@ export async function listarModelosAtivos(): Promise<Modelo[]> {
 export async function criarModeloAction(
   input: ModeloInput,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('modelos')
 
   const parsed = modeloSchema.safeParse(input)
   if (!parsed.success) {
@@ -74,7 +74,7 @@ export async function atualizarModeloAction(
   id: string,
   input: ModeloInput,
 ): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('modelos')
 
   const parsed = modeloSchema.safeParse(input)
   if (!parsed.success) {
@@ -117,7 +117,7 @@ export async function atualizarModeloAction(
 }
 
 export async function excluirModeloAction(id: string): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('modelos')
 
   const [atual] = await db
     .select({ id: modelos.id })
@@ -147,7 +147,7 @@ const uuidRegex =
 export async function excluirMultiplosModelosAction(
   ids: string[],
 ): Promise<ActionResult<{ excluidos: number }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('modelos')
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return { success: false, error: 'Selecione ao menos um modelo' }

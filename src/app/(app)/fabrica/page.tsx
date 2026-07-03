@@ -12,7 +12,8 @@ import {
 } from '../estacoes/actions'
 import { FabricaTabs } from './fabrica-tabs'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { requireAuth } from '@/lib/auth/require-auth'
+import { podeEscrever } from '@/lib/auth/permissoes'
 
 export const metadata: Metadata = { title: 'Fábrica — Vanvest' }
 
@@ -28,9 +29,7 @@ export default async function FabricaPage({
     nivelDaAreaPara(user.role, 'estacoes'),
   ])
   const verMaquinas = nMaq !== 'nenhum'
-  // Estações é gerencial (as actions exigem admin/gerente), então só
-  // aparece pra quem é gerente/admin e tem a área liberada.
-  const verEstacoes = nEst !== 'nenhum' && isManager(user.role)
+  const verEstacoes = nEst !== 'nenhum'
   if (!verMaquinas && !verEstacoes) redirect('/dashboard')
 
   const maquinas = verMaquinas ? await listarMaquinas() : []
@@ -55,7 +54,7 @@ export default async function FabricaPage({
       verMaquinas={verMaquinas}
       verEstacoes={verEstacoes}
       maquinas={maquinas}
-      podeEditarMaquinas={isManager(user.role)}
+      podeEditarMaquinas={podeEscrever(nMaq)}
       estacoes={estacoes}
       operadores={operadores}
       maquinasOpcoes={maquinasOpcoes}

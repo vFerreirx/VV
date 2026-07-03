@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 import {
   isManager as isManagerRole,
   requireAuth,
-  requireRole,
+  requireAreaEscrita,
 } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
@@ -106,7 +106,7 @@ export async function obterMaquina(id: string): Promise<Maquina | null> {
 export async function criarMaquinaAction(
   input: MaquinaInput,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('maquinas')
 
   const parsed = maquinaSchema.safeParse(input)
   if (!parsed.success) {
@@ -150,7 +150,7 @@ export async function atualizarMaquinaAction(
   id: string,
   input: MaquinaInput,
 ): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('maquinas')
 
   const parsed = maquinaSchema.safeParse(input)
   if (!parsed.success) {
@@ -253,7 +253,7 @@ export async function trocarStatusAction(
 // -----------------------------------------------------------------
 
 export async function excluirMaquinaAction(id: string): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('maquinas')
 
   const [atual] = await db
     .select({ id: maquinas.id })

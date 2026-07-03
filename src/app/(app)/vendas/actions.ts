@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
-import { requireArea, requireRole } from '@/lib/auth/require-auth'
+import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { vendas, vendasMarketplace } from '@/lib/db/schema'
 import {
@@ -42,7 +42,7 @@ export type VendaDia = {
 // -----------------------------------------------------------------
 
 export async function obterVendaDoDia(data: string): Promise<VendaDia | null> {
-  await requireRole(['admin', 'gerente_producao', 'vendas'])
+  await requireAreaEscrita('vendas')
   const [row] = await db
     .select({
       id: vendas.id,
@@ -70,7 +70,7 @@ export async function obterVendaDoDia(data: string): Promise<VendaDia | null> {
 
 // Últimos N dias com venda registrada (pra lista de referência).
 export async function listarVendasRecentes(limit = 14): Promise<VendaDia[]> {
-  await requireRole(['admin', 'gerente_producao', 'vendas'])
+  await requireAreaEscrita('vendas')
   const linhas = await db
     .select({
       id: vendas.id,
@@ -93,7 +93,7 @@ export async function listarVendasRecentes(limit = 14): Promise<VendaDia[]> {
 export async function salvarVendaDiaAction(
   input: VendaDiaInput,
 ): Promise<ActionResult> {
-  const user = await requireRole(['admin', 'gerente_producao', 'vendas'])
+  const user = await requireAreaEscrita('vendas')
 
   const parsed = vendaDiaSchema.safeParse(input)
   if (!parsed.success) {
@@ -184,7 +184,7 @@ export async function salvarVendaDiaAction(
 export async function excluirVendaDiaAction(
   id: string,
 ): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao', 'vendas'])
+  await requireAreaEscrita('vendas')
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
 
   await db

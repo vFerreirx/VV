@@ -9,7 +9,7 @@ import {
   type MaquinaFormDefaults,
 } from '@/components/forms/maquina-form'
 import { Button } from '@/components/ui/button'
-import { requireRole } from '@/lib/auth/require-auth'
+import { requireAreaEscrita } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Editar máquina — Vanvest' }
 
@@ -18,7 +18,7 @@ export default async function EditarMaquinaPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('maquinas')
   const { id } = await params
 
   const [maquina, operadores] = await Promise.all([

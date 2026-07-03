@@ -1,9 +1,9 @@
 'use server'
 
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireAuth, requireRole } from '@/lib/auth/require-auth'
+import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   eventosKanban,
@@ -29,11 +29,6 @@ export type ActionResult<T = undefined> =
 // Tipos de leitura
 // -----------------------------------------------------------------
 
-export type KitListItem = Kit & {
-  itensCount: number
-  pecasPorKit: number
-}
-
 export type KitItemDetalhe = {
   id: string
   produtoId: string
@@ -46,34 +41,6 @@ export type KitComItens = Kit & { itens: KitItemDetalhe[] }
 // -----------------------------------------------------------------
 // Listagem
 // -----------------------------------------------------------------
-
-export async function listarKits(): Promise<KitListItem[]> {
-  await requireAuth()
-  const rows = await db
-    .select()
-    .from(kits)
-    .where(isNull(kits.deletedAt))
-    .orderBy(asc(kits.nome))
-  if (rows.length === 0) return []
-
-  const ids = rows.map((k) => k.id)
-  const agg = await db
-    .select({
-      kitId: kitItens.kitId,
-      itens: sql<number>`count(*)::int`,
-      pecas: sql<number>`coalesce(sum(${kitItens.quantidade}), 0)::int`,
-    })
-    .from(kitItens)
-    .where(inArray(kitItens.kitId, ids))
-    .groupBy(kitItens.kitId)
-  const m = new Map(agg.map((a) => [a.kitId, a]))
-
-  return rows.map((k) => ({
-    ...k,
-    itensCount: m.get(k.id)?.itens ?? 0,
-    pecasPorKit: m.get(k.id)?.pecas ?? 0,
-  }))
-}
 
 // Todos os kits ativos já com os itens resolvidos (lista + edição).
 export async function listarKitsComItens(): Promise<KitComItens[]> {
@@ -110,30 +77,6 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
   return rows.map((k) => ({ ...k, itens: porKit.get(k.id) ?? [] }))
 }
 
-export async function obterKit(id: string): Promise<KitComItens | null> {
-  await requireAuth()
-  const [k] = await db
-    .select()
-    .from(kits)
-    .where(and(eq(kits.id, id), isNull(kits.deletedAt)))
-    .limit(1)
-  if (!k) return null
-
-  const itens = await db
-    .select({
-      id: kitItens.id,
-      produtoId: kitItens.produtoId,
-      quantidade: kitItens.quantidade,
-      produtoNome: produtos.nome,
-    })
-    .from(kitItens)
-    .innerJoin(produtos, eq(produtos.id, kitItens.produtoId))
-    .where(eq(kitItens.kitId, id))
-    .orderBy(asc(produtos.nome))
-
-  return { ...k, itens }
-}
-
 // -----------------------------------------------------------------
 // Criar / atualizar / excluir
 // -----------------------------------------------------------------
@@ -150,7 +93,7 @@ async function skuEmUso(sku: string, exceto?: string): Promise<boolean> {
 export async function criarKitAction(
   input: KitInput,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('produtos')
   const parsed = kitSchema.safeParse(input)
   if (!parsed.success) {
     return {
@@ -193,7 +136,7 @@ export async function atualizarKitAction(
   id: string,
   input: KitInput,
 ): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('produtos')
   const parsed = kitSchema.safeParse(input)
   if (!parsed.success) {
     return {
@@ -241,7 +184,7 @@ export async function atualizarKitAction(
 }
 
 export async function excluirKitAction(id: string): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('produtos')
   const [atual] = await db
     .select({ id: kits.id })
     .from(kits)
@@ -265,7 +208,8 @@ export async function excluirKitAction(id: string): Promise<ActionResult> {
 export async function gerarOpsKitAction(
   input: GerarOpsKitInput,
 ): Promise<ActionResult<{ ops: number; pecas: number }>> {
-  const user = await requireRole(['admin', 'gerente_producao'])
+  // Gerar OPs é escrita de produção (área ordens), não de catálogo.
+  const user = await requireAreaEscrita('ordens')
   const parsed = gerarOpsKitSchema.safeParse(input)
   if (!parsed.success) {
     return {

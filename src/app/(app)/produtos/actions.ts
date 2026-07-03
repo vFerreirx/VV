@@ -13,7 +13,7 @@ import {
 } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireAuth, requireRole } from '@/lib/auth/require-auth'
+import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   produtos,
@@ -161,7 +161,7 @@ export async function obterProduto(
 export async function criarProdutoAction(
   input: ProdutoInput,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('produtos')
 
   const parsed = produtoSchema.safeParse(input)
   if (!parsed.success) {
@@ -226,7 +226,7 @@ export async function atualizarProdutoAction(
   id: string,
   input: ProdutoInput,
 ): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('produtos')
 
   const parsed = produtoSchema.safeParse(input)
   if (!parsed.success) {
@@ -338,7 +338,7 @@ function gerarSkuUnico(base: string, usados: Set<string>): string {
 export async function duplicarProdutoAction(
   id: string,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('produtos')
 
   const [orig] = await db
     .select()
@@ -421,7 +421,7 @@ export async function duplicarProdutoAction(
 // -----------------------------------------------------------------
 
 export async function excluirProdutoAction(id: string): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('produtos')
 
   const [atual] = await db
     .select({ id: produtos.id })
@@ -465,7 +465,7 @@ const uuidRegex =
 export async function excluirMultiplosProdutosAction(
   ids: string[],
 ): Promise<ActionResult<{ excluidos: number }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('produtos')
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return { success: false, error: 'Selecione ao menos um produto' }

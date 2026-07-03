@@ -3,7 +3,7 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireAuth, requireRole } from '@/lib/auth/require-auth'
+import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { cores, type Cor } from '@/lib/db/schema'
 import { corSchema, type CorInput } from '@/lib/validators/cores'
@@ -42,7 +42,7 @@ export async function listarCoresAtivas(): Promise<Cor[]> {
 export async function criarCorAction(
   input: CorInput,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('cores')
 
   const parsed = corSchema.safeParse(input)
   if (!parsed.success) {
@@ -88,7 +88,7 @@ export async function atualizarCorAction(
   id: string,
   input: CorInput,
 ): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('cores')
 
   const parsed = corSchema.safeParse(input)
   if (!parsed.success) {
@@ -137,7 +137,7 @@ export async function atualizarCorAction(
 // -----------------------------------------------------------------
 
 export async function excluirCorAction(id: string): Promise<ActionResult> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('cores')
 
   const [atual] = await db
     .select({ id: cores.id })
@@ -167,7 +167,7 @@ const uuidRegex =
 export async function excluirMultiplasCoresAction(
   ids: string[],
 ): Promise<ActionResult<{ excluidas: number }>> {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('cores')
 
   if (!Array.isArray(ids) || ids.length === 0) {
     return { success: false, error: 'Selecione ao menos uma cor' }

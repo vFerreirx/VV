@@ -8,7 +8,7 @@ import { listarKitsComItens } from '../kits/actions'
 import { Button } from '@/components/ui/button'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
-import { isManager, requireArea } from '@/lib/auth/require-auth'
+import { requireArea } from '@/lib/auth/require-auth'
 import {
   ordensFiltrosSchema,
   type OrdensFiltros,
@@ -23,8 +23,8 @@ export default async function OrdensPage({
 }) {
   const user = await requireArea('ordens')
   const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'ordens'))
-  // Gerar OPs a partir de um kit é ação de produção (admin/gerente).
-  const podeGerarKit = isManager(user.role)
+  // Gerar OPs de kit segue a mesma escrita da área ordens.
+  const podeGerarKit = podeEditar
 
   const params = await searchParams
   const raw: Record<string, string | undefined> = {}

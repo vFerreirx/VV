@@ -5,12 +5,12 @@ import Link from 'next/link'
 import { listarOperadores } from '../actions'
 import { MaquinaForm } from '@/components/forms/maquina-form'
 import { Button } from '@/components/ui/button'
-import { requireRole } from '@/lib/auth/require-auth'
+import { requireAreaEscrita } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Nova máquina — Vanvest' }
 
 export default async function NovaMaquinaPage() {
-  await requireRole(['admin', 'gerente_producao'])
+  await requireAreaEscrita('maquinas')
   const operadores = await listarOperadores()
 
   return (
