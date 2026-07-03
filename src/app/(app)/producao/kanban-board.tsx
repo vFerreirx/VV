@@ -232,10 +232,15 @@ export function KanbanBoard({
     setActiveId(String(event.active.id))
   }
 
-  function mover(ordemId: string, novoStatus: (typeof statusValues)[number]) {
+  function mover(
+    ordemId: string,
+    novoStatus: (typeof statusValues)[number],
+    opts?: { semDesfazer?: boolean },
+  ) {
     const ordem = items.find((o) => o.id === ordemId)
     if (!ordem || ordem.status === novoStatus) return
     if (!STATUS_KANBAN.includes(novoStatus)) return
+    const statusAnterior = ordem.status
 
     startTransition(async () => {
       // Optimistic update — válido durante toda a transição.
@@ -249,7 +254,19 @@ export function KanbanBoard({
         toast.error(result.error)
         return
       }
-      toast.success('Movida pra ' + STATUS_LABEL_CURTO[novoStatus])
+      if (opts?.semDesfazer) {
+        toast.success('Movida pra ' + STATUS_LABEL_CURTO[novoStatus])
+      } else {
+        // Toast com "Desfazer": devolve a OP pro status anterior.
+        toast.success('Movida pra ' + STATUS_LABEL_CURTO[novoStatus], {
+          duration: 6000,
+          action: {
+            label: 'Desfazer',
+            onClick: () =>
+              mover(ordemId, statusAnterior, { semDesfazer: true }),
+          },
+        })
+      }
       router.refresh()
     })
   }
