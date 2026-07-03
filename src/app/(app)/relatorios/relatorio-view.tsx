@@ -1,8 +1,14 @@
 'use client'
 
-import { ChevronLeft, ChevronRight, Download, Printer } from 'lucide-react'
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Printer,
+} from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Fragment, useState, useTransition } from 'react'
+import { Fragment, useRef, useState, useTransition } from 'react'
 
 import type { RelatorioMensal } from './actions'
 import { Logo } from '@/components/brand/logo'
@@ -229,6 +235,18 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
     irPeriodo(...rangeDoMes(mes))
   }
 
+  // Seletor de mês nativo (input month escondido, aberto pelo botão).
+  const seletorMesRef = useRef<HTMLInputElement>(null)
+  function abrirSeletorMes() {
+    const el = seletorMesRef.current
+    if (!el) return
+    try {
+      el.showPicker()
+    } catch {
+      el.focus()
+    }
+  }
+
   // De/Até com confirmação: estado local sincronizado ao período aplicado.
   const [deLocal, setDeLocal] = useState(inicio)
   const [ateLocal, setAteLocal] = useState(fim)
@@ -258,6 +276,12 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
   const diasNoMes = Number(fimDoMes(fim).slice(8, 10))
   const previsaoFat = mesEmAndamento ? mediaFatDia * diasNoMes : v.faturamento
   const previsaoQtd = mesEmAndamento ? mediaQtdDia * diasNoMes : v.unidades
+
+  // Pódio: 3 marketplaces com maior faturamento no período.
+  const topMarketplaces = agruparPorMarketplace(relatorio.porConta)
+    .slice()
+    .sort((a, b) => b.subFat - a.subFat)
+    .slice(0, 3)
 
   const kpis: { label: string; valor: string; sub?: string }[] = [
     { label: 'Faturamento', valor: reais(v.faturamento) },
@@ -327,6 +351,28 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
             >
               <ChevronRight />
             </Button>
+            <Button
+              variant="outline"
+              size="icon-sm"
+              onClick={abrirSeletorMes}
+              disabled={isPending}
+              aria-label="Selecionar mês"
+              title="Selecionar mês"
+            >
+              <CalendarDays />
+            </Button>
+            {/* Input escondido que dispara o seletor nativo de mês. */}
+            <input
+              ref={seletorMesRef}
+              type="month"
+              value={mesSel}
+              max={mesAtualStr}
+              onChange={(e) => e.target.value && irParaMes(e.target.value)}
+              disabled={isPending}
+              tabIndex={-1}
+              aria-hidden
+              className="sr-only"
+            />
             {!ehMesAtual && (
               <button
                 type="button"
@@ -442,6 +488,42 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
           </div>
         ))}
       </div>
+
+      {/* Top marketplaces do período (pódio por faturamento) */}
+      {topMarketplaces.length > 0 && (
+        <div className="print:hidden">
+          <h2 className="mb-2 text-sm font-semibold">
+            Marketplaces com mais vendas
+          </h2>
+          <div className="vv-stagger grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {topMarketplaces.map((m, i) => (
+              <div
+                key={m.marketplace}
+                className="vv-lift flex items-center gap-3 rounded-xl border p-4"
+              >
+                <span className="text-2xl" aria-hidden>
+                  {['🥇', '🥈', '🥉'][i]}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">
+                    {mkLabel(m.marketplace)}
+                  </div>
+                  <div className="text-lg font-semibold tabular-nums">
+                    {reais(m.subFat)}
+                  </div>
+                  <div className="text-muted-foreground text-xs tabular-nums">
+                    {m.subUn.toLocaleString('pt-BR')} vendas ·{' '}
+                    {v.faturamento > 0
+                      ? Math.round((m.subFat / v.faturamento) * 100)
+                      : 0}
+                    % do faturamento
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Gráfico: tendência por conta (segue o período do filtro) */}
       <div className="print:hidden">
