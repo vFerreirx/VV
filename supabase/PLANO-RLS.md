@@ -1,7 +1,11 @@
 # Plano: fechar os buracos de RLS
 
-> Status: **planejado, não aplicado**. Migration pronta em
-> `sql/24_rls_fechar_buracos.sql`. Aplicar seguindo o roteiro abaixo.
+> Status: **APLICADA em 03/07/2026** (migration
+> `sql/24_rls_fechar_buracos.sql`). Verificação pós-aplicação:
+> 0 políticas abertas; simulação com usuários reais (role authenticated
+> via SET LOCAL) confirmou: operador não escreve em permissoes_acesso
+> (42501), não lê vendas (0 linhas), não altera estações; cargo vendas lê
+> vendas normalmente; operador segue lendo ordens (kanban/realtime ok).
 
 ## Diagnóstico (03/07/2026)
 
