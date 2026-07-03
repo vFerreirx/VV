@@ -6,7 +6,48 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+// Coleta { value, label } dos <SelectItem> descendentes. O Base UI só
+// renderiza o RÓTULO do item selecionado no trigger quando o Root recebe
+// `items` — sem isso ele mostra o valor cru (id/enum). Derivar aqui
+// conserta todos os selects do app de uma vez.
+function coletarItems(
+  children: React.ReactNode,
+  acc: { value: unknown; label: React.ReactNode }[] = []
+): { value: unknown; label: React.ReactNode }[] {
+  for (const child of React.Children.toArray(children)) {
+    if (!React.isValidElement(child)) continue
+    const props = child.props as { value?: unknown; children?: React.ReactNode }
+    if (child.type === SelectItem && props.value !== undefined) {
+      acc.push({ value: props.value, label: props.children })
+    } else if (props.children) {
+      coletarItems(props.children, acc)
+    }
+  }
+  return acc
+}
+
+function Select<Value, Multiple extends boolean | undefined = false>({
+  children,
+  items,
+  ...props
+}: SelectPrimitive.Root.Props<Value, Multiple>) {
+  const derivados = React.useMemo(
+    () => items ?? coletarItems(children),
+    [items, children]
+  )
+  return (
+    <SelectPrimitive.Root
+      items={
+        (Array.isArray(derivados) && derivados.length === 0
+          ? undefined
+          : derivados) as SelectPrimitive.Root.Props<Value, Multiple>['items']
+      }
+      {...props}
+    >
+      {children}
+    </SelectPrimitive.Root>
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
