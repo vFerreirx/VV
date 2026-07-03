@@ -2,7 +2,7 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { FileText, Pencil, Plus, Printer, Trash2, X } from 'lucide-react'
+import { Copy, FileText, Pencil, Plus, Printer, Trash2, X } from 'lucide-react'
 import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -14,6 +14,7 @@ import {
   obterOrcamento,
   type OrcamentoListItem,
 } from './actions'
+import type { KitComItens } from '../kits/actions'
 import type { ProdutoComVariacoesParaForm } from '../ordens/actions'
 import { Button } from '@/components/ui/button'
 import {
@@ -47,8 +48,13 @@ import { Textarea } from '@/components/ui/textarea'
 type Props = {
   orcamentos: OrcamentoListItem[]
   produtos: ProdutoComVariacoesParaForm[]
+  kits: KitComItens[]
+  // Último preço usado por descrição (pré-preenche ao puxar do catálogo).
+  precos: Record<string, string>
   podeEditar: boolean
 }
+
+type Edicao = { modo: 'novo' | 'editar' | 'duplicar'; id?: string }
 
 function reais(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -76,10 +82,14 @@ function decimalParaMoeda(dec: string): string {
   return mascararMoeda(String(cents))
 }
 
-export function OrcamentosView({ orcamentos, produtos, podeEditar }: Props) {
-  const [editando, setEditando] = useState<OrcamentoListItem | 'novo' | null>(
-    null,
-  )
+export function OrcamentosView({
+  orcamentos,
+  produtos,
+  kits,
+  precos,
+  podeEditar,
+}: Props) {
+  const [editando, setEditando] = useState<Edicao | null>(null)
   const [excluindo, setExcluindo] = useState<OrcamentoListItem | null>(null)
 
   return (
@@ -92,7 +102,7 @@ export function OrcamentosView({ orcamentos, produtos, podeEditar }: Props) {
           </p>
         </div>
         {podeEditar && (
-          <Button onClick={() => setEditando('novo')}>
+          <Button onClick={() => setEditando({ modo: 'novo' })}>
             <Plus />
             Fazer orçamento
           </Button>
@@ -159,7 +169,20 @@ export function OrcamentosView({ orcamentos, produtos, podeEditar }: Props) {
                           <Button
                             size="icon-sm"
                             variant="ghost"
-                            onClick={() => setEditando(o)}
+                            onClick={() =>
+                              setEditando({ modo: 'duplicar', id: o.id })
+                            }
+                            aria-label="Duplicar"
+                            title="Duplicar (novo orçamento com os mesmos itens)"
+                          >
+                            <Copy />
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            onClick={() =>
+                              setEditando({ modo: 'editar', id: o.id })
+                            }
                             aria-label="Editar"
                           >
                             <Pencil />
@@ -185,8 +208,10 @@ export function OrcamentosView({ orcamentos, produtos, podeEditar }: Props) {
 
       {editando && (
         <OrcamentoDialog
-          orcamentoId={editando === 'novo' ? null : editando.id}
+          edicao={editando}
           produtos={produtos}
+          kits={kits}
+          precos={precos}
           onClose={() => setEditando(null)}
         />
       )}
@@ -207,26 +232,32 @@ type LinhaItem = { descricao: string; quantidade: string; preco: string }
 const LINHA_VAZIA: LinhaItem = { descricao: '', quantidade: '1', preco: '' }
 
 function OrcamentoDialog({
-  orcamentoId,
+  edicao,
   produtos,
+  kits,
+  precos,
   onClose,
 }: {
-  orcamentoId: string | null
+  edicao: Edicao
   produtos: ProdutoComVariacoesParaForm[]
+  kits: KitComItens[]
+  precos: Record<string, string>
   onClose: () => void
 }) {
-  const isEdit = orcamentoId !== null
+  // 'duplicar' carrega os dados mas salva como orçamento NOVO.
+  const isEdit = edicao.modo === 'editar'
+  const precisaCarregar = edicao.modo !== 'novo' && edicao.id != null
   const [isPending, startTransition] = useTransition()
-  const [carregado, setCarregado] = useState(!isEdit)
+  const [carregado, setCarregado] = useState(!precisaCarregar)
   const [cliente, setCliente] = useState('')
   const [observacao, setObservacao] = useState('')
   const [itens, setItens] = useState<LinhaItem[]>([{ ...LINHA_VAZIA }])
 
-  // Edição: carrega o orçamento uma vez ao abrir (flag vira true
+  // Editar/duplicar: carrega o orçamento uma vez ao abrir (flag vira true
   // sincronamente, então o fetch dispara só na primeira renderização).
-  if (isEdit && !carregado) {
+  if (precisaCarregar && !carregado) {
     setCarregado(true)
-    void obterOrcamento(orcamentoId).then((o) => {
+    void obterOrcamento(edicao.id!).then((o) => {
       if (!o) {
         toast.error('Orçamento não encontrado')
         onClose()
@@ -247,8 +278,17 @@ function OrcamentoDialog({
   function patchItem(idx: number, patch: Partial<LinhaItem>) {
     setItens((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
   }
+  // Nova linha; com descrição do catálogo, já puxa o último preço usado.
   function addItem(descricao = '') {
-    setItens((prev) => [...prev, { ...LINHA_VAZIA, descricao }])
+    const precoSalvo = descricao ? precos[descricao] : undefined
+    setItens((prev) => [
+      ...prev,
+      {
+        ...LINHA_VAZIA,
+        descricao,
+        preco: precoSalvo ? decimalParaMoeda(precoSalvo) : '',
+      },
+    ])
   }
   function removeItem(idx: number) {
     setItens((prev) => prev.filter((_, i) => i !== idx))
@@ -280,7 +320,7 @@ function OrcamentoDialog({
         itens: itensLimpos,
       }
       const result = isEdit
-        ? await atualizarOrcamentoAction(orcamentoId, payload)
+        ? await atualizarOrcamentoAction(edicao.id!, payload)
         : await criarOrcamentoAction(payload)
       if (!result.success) {
         toast.error(result.error)
@@ -296,7 +336,11 @@ function OrcamentoDialog({
       <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="border-b p-6">
           <DialogTitle>
-            {isEdit ? 'Editar orçamento' : 'Fazer orçamento'}
+            {isEdit
+              ? 'Editar orçamento'
+              : edicao.modo === 'duplicar'
+                ? 'Duplicar orçamento'
+                : 'Fazer orçamento'}
           </DialogTitle>
           <DialogDescription>
             Itens com quantidade e preço unitário. Puxe um produto do
@@ -318,28 +362,51 @@ function OrcamentoDialog({
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <Label>Itens</Label>
-              {/* Atalho: adiciona linha já com o nome do produto. */}
-              <Select
-                value={undefined as string | undefined}
-                onValueChange={(v) => {
-                  const p = produtos.find((x) => x.id === v)
-                  if (p) addItem(p.nome)
-                }}
-                disabled={isPending}
-              >
-                <SelectTrigger size="sm" className="w-56">
-                  <SelectValue placeholder="+ produto do catálogo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {produtos.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.nome}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex gap-2">
+                {/* Atalhos: adicionam linha com o nome (e o último preço usado). */}
+                <Select
+                  value={undefined as string | undefined}
+                  onValueChange={(v) => {
+                    const p = produtos.find((x) => x.id === v)
+                    if (p) addItem(p.nome)
+                  }}
+                  disabled={isPending}
+                >
+                  <SelectTrigger size="sm" className="w-44">
+                    <SelectValue placeholder="+ produto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {produtos.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {kits.length > 0 && (
+                  <Select
+                    value={undefined as string | undefined}
+                    onValueChange={(v) => {
+                      const k = kits.find((x) => x.id === v)
+                      if (k) addItem(k.nome)
+                    }}
+                    disabled={isPending}
+                  >
+                    <SelectTrigger size="sm" className="w-36">
+                      <SelectValue placeholder="+ kit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {kits.map((k) => (
+                        <SelectItem key={k.id} value={k.id}>
+                          {k.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
             </div>
 
             {itens.map((linha, idx) => (

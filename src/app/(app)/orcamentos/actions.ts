@@ -87,6 +87,31 @@ export async function obterOrcamento(
   return { ...o, itens, total }
 }
 
+// Último preço usado por descrição (em qualquer orçamento não excluído).
+// Serve pra pré-preencher o preço ao puxar produto/kit do catálogo.
+export async function listarPrecosRecentes(): Promise<
+  Record<string, string>
+> {
+  await requireArea('vendas')
+  const rows = await db
+    .select({
+      descricao: orcamentoItens.descricao,
+      preco: orcamentoItens.precoUnitario,
+    })
+    .from(orcamentoItens)
+    .innerJoin(orcamentos, eq(orcamentos.id, orcamentoItens.orcamentoId))
+    .where(isNull(orcamentos.deletedAt))
+    .orderBy(desc(orcamentoItens.createdAt))
+    .limit(500)
+
+  // Mais recente vence (a lista vem desc, então o primeiro fica).
+  const mapa: Record<string, string> = {}
+  for (const r of rows) {
+    if (!(r.descricao in mapa)) mapa[r.descricao] = r.preco
+  }
+  return mapa
+}
+
 // -----------------------------------------------------------------
 // Criar / atualizar / excluir
 // -----------------------------------------------------------------
