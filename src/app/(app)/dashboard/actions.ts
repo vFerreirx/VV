@@ -14,7 +14,7 @@ import {
   sql,
 } from 'drizzle-orm'
 
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   apontamentosProducao,
@@ -156,9 +156,8 @@ export async function listarOpsUrgentes(
 ): Promise<OpUrgenteItem[]> {
   const user = await requireAuth()
 
-  // OP pega por um operador fica privada: operador só vê as livres ou as
-  // dele; gerentes/admin veem tudo (igual ao kanban).
-  const visibilidade = isManager(user.role)
+  // OP pega fica privada SÓ entre operadores; demais cargos veem tudo.
+  const visibilidade = user.role !== 'operador'
     ? undefined
     : or(
         isNull(ordensProducao.responsavelId),

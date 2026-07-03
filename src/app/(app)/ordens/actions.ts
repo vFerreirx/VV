@@ -76,9 +76,8 @@ export async function listarOrdens(
 
   const conditions = [isNull(ordensProducao.deletedAt)]
 
-  // OP pega por um operador fica privada: operador só vê as livres ou as
-  // dele; gerentes/admin veem tudo (igual ao kanban).
-  if (!isManagerRole(user.role)) {
+  // OP pega fica privada SÓ entre operadores; demais cargos veem tudo.
+  if (user.role === 'operador') {
     conditions.push(
       or(
         isNull(ordensProducao.responsavelId),

@@ -2,7 +2,7 @@
 
 import { and, asc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
 
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { ordensProducao, produtos } from '@/lib/db/schema'
 
@@ -27,9 +27,9 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   const user = await requireAuth()
   const now = Date.now()
 
-  // Operador só é alertado de OPs livres ou que ele pegou; gerentes/admin
-  // veem tudo (mesma regra de visibilidade do kanban).
-  const visibilidade = isManager(user.role)
+  // Operador só é alertado de OPs livres ou que ele pegou; os demais
+  // cargos veem tudo (mesma regra de visibilidade do kanban).
+  const visibilidade = user.role !== 'operador'
     ? undefined
     : or(
         isNull(ordensProducao.responsavelId),

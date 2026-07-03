@@ -3,7 +3,7 @@
 import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
-import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   apontamentosProducao,
@@ -71,9 +71,9 @@ export async function listarOrdensProducao(
     ne(ordensProducao.status, 'enviado'),
   ]
 
-  // OP pega por um operador fica privada: só ele (e gerentes/admin) a vê.
-  // Operadores enxergam apenas OPs livres (na fila) ou as que pegaram.
-  if (!isManager(user.role)) {
+  // OP pega fica privada SÓ entre operadores: cada operador vê as livres
+  // (na fila) e as que pegou. Os demais cargos veem tudo.
+  if (user.role === 'operador') {
     conditions.push(
       or(
         isNull(ordensProducao.responsavelId),
