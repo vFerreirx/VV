@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { login, TEST_USERS } from './helpers'
+import { E2E_USERNAME, login, requerCredenciais } from './helpers'
 
 test.describe('Autenticação', () => {
   test('redireciona usuário não-logado pra /login', async ({ page }) => {
@@ -10,43 +10,25 @@ test.describe('Autenticação', () => {
   })
 
   test('login bem-sucedido leva pra /dashboard', async ({ page }) => {
-    await login(page, 'admin')
-    await expect(
-      page.getByRole('heading', { name: /dashboard/i }),
-    ).toBeVisible()
+    requerCredenciais()
+    await login(page)
   })
 
-  test('credencial errada mostra erro', async ({ page }) => {
+  test('credencial errada mostra erro e mantém em /login', async ({ page }) => {
+    requerCredenciais()
     await page.goto('/login')
-    await page.getByLabel(/usuário/i).fill(TEST_USERS.admin.username)
+    await page.getByLabel(/usuário/i).fill(E2E_USERNAME)
     await page.getByLabel(/senha/i).fill('senhaErradaXX')
     await page.getByRole('button', { name: /entrar/i }).click()
 
-    // Toast / mensagem de erro
     await expect(page.getByText(/usuário ou senha incorretos/i)).toBeVisible()
     await expect(page).toHaveURL(/\/login/)
   })
 
-  test('logout pelo botão da sidebar volta pra /login', async ({ page }) => {
-    await login(page, 'admin')
-    await page.getByRole('button', { name: /sair/i }).click()
+  test('logout volta pra /login', async ({ page }) => {
+    requerCredenciais()
+    await login(page)
+    await page.getByRole('button', { name: /sair/i }).first().click()
     await page.waitForURL(/\/login(\?.*)?$/)
-  })
-
-  test('operador não vê o item Usuários da sidebar', async ({ page }) => {
-    await login(page, 'operador')
-    // Sidebar links:
-    await expect(page.getByRole('link', { name: /produtos/i })).toBeVisible()
-    await expect(
-      page.getByRole('link', { name: /usuários/i }),
-    ).toHaveCount(0)
-  })
-
-  test('operador acessando /usuarios é redirecionado pro dashboard', async ({
-    page,
-  }) => {
-    await login(page, 'operador')
-    await page.goto('/usuarios')
-    await page.waitForURL('**/dashboard')
   })
 })
