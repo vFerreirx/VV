@@ -8,6 +8,7 @@ import {
   Cog,
   Combine,
   Factory,
+  FileText,
   KanbanSquare,
   LayoutDashboard,
   ListChecks,
@@ -67,6 +68,12 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/estoque', label: 'Estoque', icon: Boxes, area: 'estoque' },
       { href: '/vendas', label: 'Vendas', icon: ShoppingCart, area: 'vendas' },
+      {
+        href: '/orcamentos',
+        label: 'Orçamentos',
+        icon: FileText,
+        area: 'vendas',
+      },
     ],
   },
   {
