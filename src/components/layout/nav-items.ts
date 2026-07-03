@@ -15,6 +15,7 @@ import {
   Shapes,
   ShieldCheck,
   ShoppingCart,
+  Trash2,
   Users,
   type LucideIcon,
 } from 'lucide-react'
@@ -91,6 +92,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ShieldCheck,
         area: 'permissoes',
       },
+      { href: '/lixeira', label: 'Lixeira', icon: Trash2, area: 'lixeira' },
       { href: '/configuracoes', label: 'Configurações', icon: Cog },
     ],
   },

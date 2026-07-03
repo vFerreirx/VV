@@ -80,6 +80,7 @@ export type AreaKey =
   | 'tamanhos'
   | 'usuarios'
   | 'permissoes'
+  | 'lixeira'
 
 export type Area = {
   key: AreaKey
@@ -227,6 +228,15 @@ export const AREAS: Area[] = [
     label: 'Permissões',
     descricao: 'Editar o acesso dos cargos (esta tela).',
     href: '/permissoes',
+    editavel: false,
+    nivelPadrao: padrao({}),
+  },
+  {
+    key: 'lixeira',
+    secao: 'Administração',
+    label: 'Lixeira',
+    descricao: 'Restaurar itens excluídos (soft delete).',
+    href: '/lixeira',
     editavel: false,
     nivelPadrao: padrao({}),
   },
