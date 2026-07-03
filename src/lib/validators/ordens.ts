@@ -180,6 +180,8 @@ export const ordensFiltrosSchema = z.object({
     .union([z.enum(prioridadeValues), z.literal('todas')])
     .optional(),
   maquinaId: z.string().trim().optional(),
+  // Página da listagem (1-based).
+  pagina: z.coerce.number().int().min(1).optional(),
 })
 
 export type OrdensFiltros = z.infer<typeof ordensFiltrosSchema>

@@ -2,7 +2,15 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { CircleAlert, ClipboardList, Pencil, Search, Trash2 } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  ClipboardList,
+  Pencil,
+  Search,
+  Trash2,
+} from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
@@ -73,11 +81,21 @@ const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
 
 type Props = {
   ordens: OrdemListItem[]
+  total: number
+  pagina: number
+  totalPaginas: number
   podeEditar: boolean
   filtrosIniciais: OrdensFiltros
 }
 
-export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
+export function OrdensList({
+  ordens,
+  total,
+  pagina,
+  totalPaginas,
+  podeEditar,
+  filtrosIniciais,
+}: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -117,9 +135,15 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
       if (!v || v === 'todos' || v === 'todas') params.delete(k)
       else params.set(k, v)
     }
+    // Mudou filtro -> volta pra primeira página.
+    if (!('pagina' in updates)) params.delete('pagina')
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`)
     })
+  }
+
+  function irPagina(n: number) {
+    aplicarFiltro({ pagina: n <= 1 ? undefined : String(n) })
   }
 
   function onBuscaSubmit(e: React.FormEvent) {
@@ -452,6 +476,35 @@ export function OrdensList({ ordens, podeEditar, filtrosIniciais }: Props) {
               </div>
             ))}
           </div>
+
+          {/* Paginação */}
+          {totalPaginas > 1 && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground text-sm tabular-nums">
+                Página {pagina} de {totalPaginas} · {total} OPs
+              </span>
+              <div className="flex gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => irPagina(pagina - 1)}
+                  disabled={isPending || pagina <= 1}
+                >
+                  <ChevronLeft />
+                  Anterior
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => irPagina(pagina + 1)}
+                  disabled={isPending || pagina >= totalPaginas}
+                >
+                  Próxima
+                  <ChevronRight />
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       )}
 

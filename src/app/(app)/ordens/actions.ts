@@ -67,9 +67,19 @@ export type OrdemListItem = OrdemProducao & {
   atrasada: boolean
 }
 
+// Tamanho da página da listagem de ordens.
+const ORDENS_POR_PAGINA = 50
+
+export type OrdensPagina = {
+  ordens: OrdemListItem[]
+  total: number
+  pagina: number
+  totalPaginas: number
+}
+
 export async function listarOrdens(
   filtros: OrdensFiltros = {},
-): Promise<OrdemListItem[]> {
+): Promise<OrdensPagina> {
   const user = await requireAuth()
   const parsed = ordensFiltrosSchema.safeParse(filtros)
   const f = parsed.success ? parsed.data : {}
@@ -107,6 +117,16 @@ export async function listarOrdens(
     conditions.push(eq(ordensProducao.maquinaId, f.maquinaId))
   }
 
+  // Total (com os mesmos filtros/joins) pra paginação.
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(ordensProducao)
+    .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
+    .where(and(...conditions))
+
+  const totalPaginas = Math.max(1, Math.ceil(total / ORDENS_POR_PAGINA))
+  const pagina = Math.min(f.pagina ?? 1, totalPaginas)
+
   const rows = await db
     .select({
       op: ordensProducao,
@@ -127,9 +147,11 @@ export async function listarOrdens(
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
     .where(and(...conditions))
     .orderBy(desc(ordensProducao.createdAt))
+    .limit(ORDENS_POR_PAGINA)
+    .offset((pagina - 1) * ORDENS_POR_PAGINA)
 
   const now = Date.now()
-  return rows.map(
+  const ordens = rows.map(
     ({
       op,
       produtoNome,
@@ -153,6 +175,8 @@ export async function listarOrdens(
         new Date(op.dataPrevistaFim).getTime() < now,
     }),
   )
+
+  return { ordens, total, pagina, totalPaginas }
 }
 
 export type OrdemDetalhe = OrdemProducao & {

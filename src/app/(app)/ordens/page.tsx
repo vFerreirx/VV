@@ -34,7 +34,7 @@ export default async function OrdensPage({
   const parsed = ordensFiltrosSchema.safeParse(raw)
   const filtros: OrdensFiltros = parsed.success ? parsed.data : {}
 
-  const [ordens, kits, produtosParaKit] = await Promise.all([
+  const [pagina, kits, produtosParaKit] = await Promise.all([
     listarOrdens(filtros),
     podeGerarKit ? listarKitsComItens() : Promise.resolve([]),
     podeGerarKit ? listarProdutosParaOrdem() : Promise.resolve([]),
@@ -46,7 +46,7 @@ export default async function OrdensPage({
         <div>
           <h1 className="text-2xl font-semibold">Ordens de produção</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            {ordens.length} OP{ordens.length === 1 ? '' : 's'}
+            {pagina.total} OP{pagina.total === 1 ? '' : 's'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -60,7 +60,10 @@ export default async function OrdensPage({
       </div>
 
       <OrdensList
-        ordens={ordens}
+        ordens={pagina.ordens}
+        total={pagina.total}
+        pagina={pagina.pagina}
+        totalPaginas={pagina.totalPaginas}
         podeEditar={podeEditar}
         filtrosIniciais={filtros}
       />
