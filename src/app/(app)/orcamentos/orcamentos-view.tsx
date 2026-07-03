@@ -252,6 +252,9 @@ function OrcamentoDialog({
   const [cliente, setCliente] = useState('')
   const [observacao, setObservacao] = useState('')
   const [itens, setItens] = useState<LinhaItem[]>([{ ...LINHA_VAZIA }])
+  // Remonta os selects de atalho após cada escolha, voltando pro
+  // placeholder (senão o select mostra o id selecionado).
+  const [pickKey, setPickKey] = useState(0)
 
   // Editar/duplicar: carrega o orçamento uma vez ao abrir (flag vira true
   // sincronamente, então o fetch dispara só na primeira renderização).
@@ -367,10 +370,11 @@ function OrcamentoDialog({
               <div className="flex gap-2">
                 {/* Atalhos: adicionam linha com o nome (e o último preço usado). */}
                 <Select
-                  value={undefined as string | undefined}
+                  key={`produto-${pickKey}`}
                   onValueChange={(v) => {
                     const p = produtos.find((x) => x.id === v)
                     if (p) addItem(p.nome)
+                    setPickKey((k) => k + 1)
                   }}
                   disabled={isPending}
                 >
@@ -387,10 +391,11 @@ function OrcamentoDialog({
                 </Select>
                 {kits.length > 0 && (
                   <Select
-                    value={undefined as string | undefined}
+                    key={`kit-${pickKey}`}
                     onValueChange={(v) => {
                       const k = kits.find((x) => x.id === v)
                       if (k) addItem(k.nome)
+                      setPickKey((k) => k + 1)
                     }}
                     disabled={isPending}
                   >
