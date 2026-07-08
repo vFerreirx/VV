@@ -302,6 +302,10 @@ function OrcamentoDialog({
       s + (Number(l.quantidade) || 0) * Number(moedaParaDecimal(l.preco) || 0),
     0,
   )
+  const totalUnidades = itens.reduce(
+    (s, l) => s + (l.descricao.trim() ? Number(l.quantidade) || 0 : 0),
+    0,
+  )
 
   function salvar() {
     const itensLimpos = itens
@@ -494,6 +498,10 @@ function OrcamentoDialog({
         <DialogFooter className="flex-row items-center justify-between border-t p-6 sm:justify-between">
           <div className="text-sm">
             <span className="text-muted-foreground">Total: </span>
+            <span className="font-semibold tabular-nums">
+              {totalUnidades.toLocaleString('pt-BR')} un
+            </span>
+            <span className="text-muted-foreground"> · </span>
             <span className="font-semibold tabular-nums">{reais(total)}</span>
           </div>
           <div className="flex gap-2">

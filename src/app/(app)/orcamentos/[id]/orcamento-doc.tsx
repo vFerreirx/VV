@@ -101,9 +101,13 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
           </TableBody>
           <TableFooter>
             <TableRow>
-              <TableCell colSpan={3} className="font-semibold">
-                Total
+              <TableCell className="font-semibold">Total</TableCell>
+              <TableCell className="text-right font-semibold tabular-nums">
+                {orcamento.itens
+                  .reduce((s, it) => s + it.quantidade, 0)
+                  .toLocaleString('pt-BR')}
               </TableCell>
+              <TableCell />
               <TableCell className="text-right text-base font-semibold tabular-nums">
                 {reais(orcamento.total)}
               </TableCell>
