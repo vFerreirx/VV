@@ -22,6 +22,7 @@ import {
   Clock,
   Folder,
   Hand,
+  PackageOpen,
   Plus,
   Undo2,
 } from 'lucide-react'
@@ -401,8 +402,27 @@ function KanbanColumn({
   const acima = limite != null && ordens.length > limite
   const cheio = limite != null && ordens.length === limite
 
-  // Agrupa por produto: 2+ OPs do mesmo produto viram uma "pasta".
-  const grupos = useMemo(() => agruparPorProduto(ordens), [ordens])
+  // 1º nível: OPs de uma remessa Full viram um card do Full na coluna.
+  // O restante segue o agrupamento por produto (2+ OPs -> pasta).
+  const { fulls, semFull } = useMemo(() => {
+    const porFull = new Map<string, KanbanCardData[]>()
+    const resto: KanbanCardData[] = []
+    for (const o of ordens) {
+      if (o.remessaFullId) {
+        const arr = porFull.get(o.remessaFullId)
+        if (arr) arr.push(o)
+        else porFull.set(o.remessaFullId, [o])
+      } else {
+        resto.push(o)
+      }
+    }
+    return {
+      fulls: [...porFull.entries()].map(([id, ops]) => ({ id, ops })),
+      semFull: resto,
+    }
+  }, [ordens])
+
+  const grupos = useMemo(() => agruparPorProduto(semFull), [semFull])
 
   return (
     <div className="flex w-[78vw] max-w-64 shrink-0 snap-start flex-col sm:w-64">
@@ -448,6 +468,18 @@ function KanbanColumn({
             (vazio)
           </p>
         )}
+        {fulls.map((f) => (
+          <PastaFull
+            key={f.id}
+            ops={f.ops}
+            podeMover={podeMover}
+            isOperador={isOperador}
+            currentUserId={currentUserId}
+            isPending={isPending}
+            onMover={onMover}
+            onAbrirDetalhe={onAbrirDetalhe}
+          />
+        ))}
         {grupos.map((g) =>
           g.ops.length >= 2 ? (
             <PastaProduto
@@ -474,6 +506,88 @@ function KanbanColumn({
           ),
         )}
       </div>
+    </div>
+  )
+}
+
+// -----------------------------------------------------------------
+// Pasta de Full (agrupa as OPs de uma remessa na coluna) — clica e vê
+// as OPs de dentro.
+// -----------------------------------------------------------------
+
+function PastaFull({
+  ops,
+  podeMover,
+  isOperador,
+  currentUserId,
+  isPending,
+  onMover,
+  onAbrirDetalhe,
+}: {
+  ops: KanbanCardData[]
+  podeMover: boolean
+  isOperador: boolean
+  currentUserId: string
+  isPending: boolean
+  onMover: (id: string, status: (typeof statusValues)[number]) => void
+  onAbrirDetalhe: (id: string) => void
+}) {
+  const [aberta, setAberta] = useState(false)
+  const totalUn = ops.reduce((s, o) => s + o.quantidade, 0)
+  const nAtrasadas = ops.filter((o) => o.atrasada).length
+  const label = ops[0]?.remessaLabel ?? 'Full'
+
+  return (
+    <div className="bg-card rounded-lg border shadow-sm">
+      <button
+        type="button"
+        onClick={() => setAberta((v) => !v)}
+        className="hover:bg-muted/40 flex w-full items-center justify-between gap-2 rounded-lg p-2.5 text-left transition-colors"
+      >
+        <span className="flex min-w-0 items-center gap-1.5">
+          <PackageOpen
+            className={cn(
+              'size-4 shrink-0',
+              nAtrasadas > 0 ? 'text-destructive' : 'text-muted-foreground',
+            )}
+          />
+          <span className="flex min-w-0 flex-col">
+            <span className="truncate text-xs font-medium">{label}</span>
+            <span className="text-muted-foreground text-[10px] tabular-nums">
+              {ops.length} OP{ops.length > 1 ? 's' : ''} · {totalUn} un
+              {nAtrasadas > 0 && (
+                <span className="text-destructive font-medium">
+                  {' '}
+                  · {nAtrasadas} atrasada{nAtrasadas > 1 ? 's' : ''}
+                </span>
+              )}
+            </span>
+          </span>
+        </span>
+        <ChevronDown
+          className={cn(
+            'text-muted-foreground size-3.5 shrink-0 transition-transform',
+            aberta && 'rotate-180',
+          )}
+        />
+      </button>
+
+      {aberta && (
+        <div className="space-y-1.5 border-t p-2">
+          {ops.map((o) => (
+            <KanbanCard
+              key={o.id}
+              ordem={o}
+              podeMover={podeMover}
+              isOperador={isOperador}
+              currentUserId={currentUserId}
+              isPending={isPending}
+              onMover={onMover}
+              onAbrirDetalhe={onAbrirDetalhe}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }

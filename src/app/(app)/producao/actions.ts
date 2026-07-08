@@ -12,6 +12,7 @@ import {
   maquinas,
   ordensProducao,
   produtos,
+  remessasFull,
   users,
   variacoesProduto,
   type EventoKanban,
@@ -35,6 +36,9 @@ export type KanbanCardData = {
   variacaoTamanho: string | null
   quantidade: number
   maquinaId: string | null
+  // Remessa Full a que a OP pertence (vira "pasta" na coluna do kanban).
+  remessaFullId: string | null
+  remessaLabel: string | null
   responsavelId: string | null
   responsavelNome: string | null
   estacaoCor: string | null
@@ -115,6 +119,8 @@ export async function listarOrdensProducao(
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
       responsavelNome: users.nome,
+      remessaCanal: remessasFull.canal,
+      remessaDataEnvio: remessasFull.dataEnvio,
       estacaoCorMaq: estMaq.cor,
       estacaoNomeMaq: estMaq.nome,
       estacaoCorResp: estResp.cor,
@@ -140,6 +146,7 @@ export async function listarOrdensProducao(
     )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
+    .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
     .leftJoin(
       estMaq,
       and(eq(estMaq.id, maquinas.estacaoId), isNull(estMaq.deletedAt)),
@@ -170,6 +177,8 @@ export async function listarOrdensProducao(
       variacaoModelo,
       variacaoTamanho,
       responsavelNome,
+      remessaCanal,
+      remessaDataEnvio,
       estacaoCorMaq,
       estacaoNomeMaq,
       estacaoCorResp,
@@ -189,6 +198,11 @@ export async function listarOrdensProducao(
       variacaoTamanho: variacaoTamanho ?? null,
       quantidade: op.quantidade,
       maquinaId: op.maquinaId,
+      remessaFullId: op.remessaFullId,
+      remessaLabel:
+        remessaCanal && remessaDataEnvio
+          ? `${remessaCanal === 'full_ml' ? 'Full ML' : 'Full Shopee'} · ${remessaDataEnvio.slice(8, 10)}/${remessaDataEnvio.slice(5, 7)}`
+          : null,
       responsavelId: op.responsavelId,
       responsavelNome: responsavelNome ?? null,
       estacaoCor: estacaoCorMaq ?? estacaoCorResp ?? null,
