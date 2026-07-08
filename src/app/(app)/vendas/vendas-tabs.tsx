@@ -13,6 +13,7 @@ export function VendasTabs({
   recentes,
   podeEditar,
   relatorio,
+  comparacao,
 }: {
   tabInicial: 'diario' | 'mensal'
   data: string
@@ -20,6 +21,7 @@ export function VendasTabs({
   recentes: VendaDia[]
   podeEditar: boolean
   relatorio: RelatorioMensal
+  comparacao: RelatorioMensal
 }) {
   return (
     <div className="space-y-6">
@@ -46,7 +48,7 @@ export function VendasTabs({
         </TabsContent>
 
         <TabsContent value="mensal" className="mt-2">
-          <RelatorioView relatorio={relatorio} />
+          <RelatorioView relatorio={relatorio} comparacao={comparacao} />
         </TabsContent>
       </Tabs>
     </div>

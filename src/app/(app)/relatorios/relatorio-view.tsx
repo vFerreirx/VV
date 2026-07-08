@@ -199,7 +199,13 @@ function baixarCSV(r: RelatorioMensal) {
   URL.revokeObjectURL(url)
 }
 
-export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
+export function RelatorioView({
+  relatorio,
+  comparacao,
+}: {
+  relatorio: RelatorioMensal
+  comparacao?: RelatorioMensal
+}) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -284,10 +290,36 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
     .sort((a, b) => b.faturamento - a.faturamento)
     .slice(0, 3)
 
-  const kpis: { label: string; valor: string; sub?: string }[] = [
-    { label: 'Faturamento', valor: reais(v.faturamento) },
-    { label: 'Quantidade de vendas', valor: String(v.unidades) },
-    { label: 'Ticket médio', valor: reais(v.ticketMedio) },
+  // Comparação com o período equivalente (mesmos dias do mês anterior, ou
+  // a janela anterior de mesmo tamanho): delta % por KPI.
+  const comp = comparacao && comparacao.vendas.dias > 0 ? comparacao : null
+  const deltaDe = (atual: number, anterior: number): number | null =>
+    anterior > 0 ? ((atual - anterior) / anterior) * 100 : null
+  const compLabel = comp
+    ? `vs ${dataCurta(comp.inicio)}–${dataCurta(comp.fim)}`
+    : ''
+
+  const kpis: {
+    label: string
+    valor: string
+    sub?: string
+    delta?: number | null
+  }[] = [
+    {
+      label: 'Faturamento',
+      valor: reais(v.faturamento),
+      delta: comp ? deltaDe(v.faturamento, comp.vendas.faturamento) : undefined,
+    },
+    {
+      label: 'Quantidade de vendas',
+      valor: String(v.unidades),
+      delta: comp ? deltaDe(v.unidades, comp.vendas.unidades) : undefined,
+    },
+    {
+      label: 'Ticket médio',
+      valor: reais(v.ticketMedio),
+      delta: comp ? deltaDe(v.ticketMedio, comp.vendas.ticketMedio) : undefined,
+    },
     {
       label: 'Média por dia',
       valor: reais(mediaFatDia),
@@ -484,6 +516,22 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
             {k.sub && (
               <div className="text-muted-foreground mt-1 text-[11px] tabular-nums print:text-[9px]">
                 {k.sub}
+              </div>
+            )}
+            {k.delta !== undefined && (
+              <div
+                className={cn(
+                  'mt-1 text-[11px] font-medium tabular-nums print:text-[9px]',
+                  k.delta === null
+                    ? 'text-muted-foreground'
+                    : k.delta >= 0
+                      ? 'text-emerald-600 dark:text-emerald-500'
+                      : 'text-destructive',
+                )}
+              >
+                {k.delta === null
+                  ? `sem base ${compLabel}`
+                  : `${k.delta >= 0 ? '▲' : '▼'} ${Math.abs(k.delta).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}% ${compLabel}`}
               </div>
             )}
           </div>

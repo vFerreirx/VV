@@ -17,6 +17,42 @@ function hojeISO(): string {
 const isData = (s: unknown): s is string =>
   typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
 
+// Soma n dias a um YYYY-MM-DD (UTC meio-dia, sem fuso).
+function addDias(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(Date.UTC(y, m - 1, d + n, 12))
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+}
+
+// Período de comparação:
+// - período dentro de UM mês -> mesmos dias do mês anterior (1–25/07 vs
+//   1–25/06), com o dia final ajustado se o mês anterior for mais curto;
+// - período cruzando meses (ex.: últimos 30 dias) -> janela imediatamente
+//   anterior com o mesmo tamanho.
+function periodoComparacao(inicio: string, fim: string): [string, string] {
+  const mesmoMes = inicio.slice(0, 7) === fim.slice(0, 7)
+  if (mesmoMes) {
+    const [y, m] = inicio.split('-').map(Number)
+    const yAnt = m === 1 ? y - 1 : y
+    const mAnt = m === 1 ? 12 : m - 1
+    const ultimoDiaAnt = new Date(Date.UTC(yAnt, mAnt, 0)).getUTCDate()
+    const diaIni = Math.min(Number(inicio.slice(8, 10)), ultimoDiaAnt)
+    const diaFim = Math.min(Number(fim.slice(8, 10)), ultimoDiaAnt)
+    const mm = String(mAnt).padStart(2, '0')
+    return [
+      `${yAnt}-${mm}-${String(diaIni).padStart(2, '0')}`,
+      `${yAnt}-${mm}-${String(diaFim).padStart(2, '0')}`,
+    ]
+  }
+  const dias =
+    Math.round(
+      (Date.parse(`${fim}T12:00:00Z`) - Date.parse(`${inicio}T12:00:00Z`)) /
+        86_400_000,
+    ) + 1
+  const fimComp = addDias(inicio, -1)
+  return [addDias(fimComp, -(dias - 1)), fimComp]
+}
+
 export default async function VendasPage({
   searchParams,
 }: {
@@ -40,9 +76,11 @@ export default async function VendasPage({
   const recentes = await listarVendasRecentes()
   const data = dataParam ?? recentes[0]?.data ?? hoje
 
-  const [vendaDoDia, relatorio] = await Promise.all([
+  const [inicioComp, fimComp] = periodoComparacao(inicio, fim)
+  const [vendaDoDia, relatorio, comparacao] = await Promise.all([
     obterVendaDoDia(data),
     obterRelatorioPeriodo(inicio, fim),
+    obterRelatorioPeriodo(inicioComp, fimComp),
   ])
 
   return (
@@ -53,6 +91,7 @@ export default async function VendasPage({
       recentes={recentes}
       podeEditar={podeEditar}
       relatorio={relatorio}
+      comparacao={comparacao}
     />
   )
 }
