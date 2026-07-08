@@ -277,10 +277,11 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
   const previsaoFat = mesEmAndamento ? mediaFatDia * diasNoMes : v.faturamento
   const previsaoQtd = mesEmAndamento ? mediaQtdDia * diasNoMes : v.unidades
 
-  // Pódio: 3 marketplaces com maior faturamento no período.
-  const topMarketplaces = agruparPorMarketplace(relatorio.porConta)
+  // Pódio: 3 CONTAS com maior faturamento no período (sem unificar o
+  // marketplace — Conta 1 e Conta 3 do ML disputam separadas).
+  const topContas = relatorio.porConta
     .slice()
-    .sort((a, b) => b.subFat - a.subFat)
+    .sort((a, b) => b.faturamento - a.faturamento)
     .slice(0, 3)
 
   const kpis: { label: string; valor: string; sub?: string }[] = [
@@ -489,38 +490,43 @@ export function RelatorioView({ relatorio }: { relatorio: RelatorioMensal }) {
         ))}
       </div>
 
-      {/* Top marketplaces do período (pódio por faturamento) */}
-      {topMarketplaces.length > 0 && (
+      {/* Top contas do período (pódio por faturamento, sem unificar mk) */}
+      {topContas.length > 0 && (
         <div className="print:hidden">
           <h2 className="mb-2 text-sm font-semibold">
-            Marketplaces com mais vendas
+            Contas com mais vendas
           </h2>
           <div className="vv-stagger grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {topMarketplaces.map((m, i) => (
-              <div
-                key={m.marketplace}
-                className="vv-lift flex items-center gap-3 rounded-xl border p-4"
-              >
-                <span className="text-2xl" aria-hidden>
-                  {['🥇', '🥈', '🥉'][i]}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium">
-                    {mkLabel(m.marketplace)}
-                  </div>
-                  <div className="text-lg font-semibold tabular-nums">
-                    {reais(m.subFat)}
-                  </div>
-                  <div className="text-muted-foreground text-xs tabular-nums">
-                    {m.subUn.toLocaleString('pt-BR')} vendas ·{' '}
-                    {v.faturamento > 0
-                      ? Math.round((m.subFat / v.faturamento) * 100)
-                      : 0}
-                    % do faturamento
+            {topContas.map((c, i) => {
+              const contaLabel = LABEL_CONTA[c.conta] ?? c.conta
+              const nome =
+                contaLabel === mkLabel(c.marketplace)
+                  ? mkLabel(c.marketplace)
+                  : `${mkLabel(c.marketplace)} · ${contaLabel}`
+              return (
+                <div
+                  key={c.conta}
+                  className="vv-lift flex items-center gap-3 rounded-xl border p-4"
+                >
+                  <span className="text-2xl" aria-hidden>
+                    {['🥇', '🥈', '🥉'][i]}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{nome}</div>
+                    <div className="text-lg font-semibold tabular-nums">
+                      {reais(c.faturamento)}
+                    </div>
+                    <div className="text-muted-foreground text-xs tabular-nums">
+                      {c.unidades.toLocaleString('pt-BR')} vendas ·{' '}
+                      {v.faturamento > 0
+                        ? Math.round((c.faturamento / v.faturamento) * 100)
+                        : 0}
+                      % do faturamento
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
