@@ -1,11 +1,12 @@
 'use server'
 
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
+  apontamentosProducao,
   eventosKanban,
   ordensProducao,
   remessasFull,
@@ -62,6 +63,68 @@ export async function listarRemessasFull(): Promise<RemessaFullOpcao[]> {
     dataEnvio: r.dataEnvio,
     ops: r.ops,
   }))
+}
+
+export type FullProgresso = {
+  id: string
+  canal: 'full_ml' | 'full_shopee'
+  dataEnvio: string
+  ops: number
+  opsProntas: number
+  unidades: number
+  produzidas: number
+}
+
+// Progresso dos Fulls EM ANDAMENTO (com alguma OP ainda não enviada):
+// peças produzidas (apontamentos, limitado à qtd da OP) e OPs prontas.
+export async function listarFullsProgresso(): Promise<FullProgresso[]> {
+  await requireArea('ordens')
+
+  const rows = await db
+    .select({
+      id: remessasFull.id,
+      canal: remessasFull.canal,
+      dataEnvio: remessasFull.dataEnvio,
+      ops: sql<number>`count(*)::int`,
+      opsProntas: sql<number>`count(*) filter (
+        where ${ordensProducao.status} in ('pronto_envio', 'enviado')
+      )::int`,
+      pendentes: sql<number>`count(*) filter (
+        where ${ordensProducao.status} <> 'enviado'
+      )::int`,
+      unidades: sql<number>`coalesce(sum(${ordensProducao.quantidade}), 0)::int`,
+      produzidas: sql<number>`coalesce(sum(
+        LEAST(${ordensProducao.quantidade}, (
+          SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)
+          FROM ${apontamentosProducao}
+          WHERE ${apontamentosProducao.ordemId} = ${ordensProducao.id}
+        ))
+      ), 0)::int`,
+    })
+    .from(remessasFull)
+    .innerJoin(
+      ordensProducao,
+      and(
+        eq(ordensProducao.remessaFullId, remessasFull.id),
+        isNull(ordensProducao.deletedAt),
+        ne(ordensProducao.status, 'cancelado'),
+      ),
+    )
+    .where(isNull(remessasFull.deletedAt))
+    .groupBy(remessasFull.id, remessasFull.canal, remessasFull.dataEnvio)
+    .orderBy(asc(remessasFull.dataEnvio))
+
+  return rows
+    .filter((r) => r.pendentes > 0)
+    .map((r) => ({
+      id: r.id,
+      canal: r.canal as 'full_ml' | 'full_shopee',
+      dataEnvio: r.dataEnvio,
+      ops: r.ops,
+      opsProntas: r.opsProntas,
+      unidades: r.unidades,
+      produzidas: r.produzidas,
+    }))
 }
 
 // Cria as OPs dentro de um Full (novo ou existente). Cada item vira uma
