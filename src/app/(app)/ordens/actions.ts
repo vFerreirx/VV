@@ -28,6 +28,7 @@ import {
   movimentacoesEstoque,
   ordensProducao,
   produtos,
+  remessasFull,
   users,
   variacoesProduto,
   type Maquina,
@@ -64,6 +65,8 @@ export type OrdemListItem = OrdemProducao & {
   variacaoTamanho: string | null
   maquinaNome: string | null
   responsavelNome: string | null
+  // "15/07" quando a OP pertence a uma remessa Full.
+  remessaData: string | null
   atrasada: boolean
 }
 
@@ -116,6 +119,9 @@ export async function listarOrdens(
   if (f.maquinaId && f.maquinaId.length > 0) {
     conditions.push(eq(ordensProducao.maquinaId, f.maquinaId))
   }
+  if (f.remessaId && f.remessaId.length > 0) {
+    conditions.push(eq(ordensProducao.remessaFullId, f.remessaId))
+  }
 
   // Total (com os mesmos filtros/joins) pra paginação.
   const [{ total }] = await db
@@ -136,6 +142,7 @@ export async function listarOrdens(
       variacaoTamanho: variacoesProduto.tamanho,
       maquinaNome: maquinas.nome,
       responsavelNome: users.nome,
+      remessaDataEnvio: remessasFull.dataEnvio,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -145,6 +152,7 @@ export async function listarOrdens(
     )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
+    .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
     .where(and(...conditions))
     .orderBy(desc(ordensProducao.createdAt))
     .limit(ORDENS_POR_PAGINA)
@@ -160,6 +168,7 @@ export async function listarOrdens(
       variacaoTamanho,
       maquinaNome,
       responsavelNome,
+      remessaDataEnvio,
     }) => ({
       ...op,
       produtoNome,
@@ -168,6 +177,9 @@ export async function listarOrdens(
       variacaoTamanho: variacaoTamanho ?? null,
       maquinaNome: maquinaNome ?? null,
       responsavelNome: responsavelNome ?? null,
+      remessaData: remessaDataEnvio
+        ? `${remessaDataEnvio.slice(8, 10)}/${remessaDataEnvio.slice(5, 7)}`
+        : null,
       atrasada:
         op.dataPrevistaFim !== null &&
         op.status !== 'enviado' &&

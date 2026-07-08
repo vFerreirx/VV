@@ -3,7 +3,9 @@ import Link from 'next/link'
 
 import { listarOrdens, listarProdutosParaOrdem } from './actions'
 import { GerarDeKit } from './gerar-de-kit'
+import { NovoFull } from './novo-full'
 import { OrdensList } from './ordens-list'
+import { listarRemessasFull } from './remessas-actions'
 import { listarKitsComItens } from '../kits/actions'
 import { Button } from '@/components/ui/button'
 import { podeEscrever } from '@/lib/auth/permissoes'
@@ -34,10 +36,11 @@ export default async function OrdensPage({
   const parsed = ordensFiltrosSchema.safeParse(raw)
   const filtros: OrdensFiltros = parsed.success ? parsed.data : {}
 
-  const [pagina, kits, produtosParaKit] = await Promise.all([
+  const [pagina, kits, produtosParaKit, remessas] = await Promise.all([
     listarOrdens(filtros),
     podeGerarKit ? listarKitsComItens() : Promise.resolve([]),
-    podeGerarKit ? listarProdutosParaOrdem() : Promise.resolve([]),
+    podeEditar ? listarProdutosParaOrdem() : Promise.resolve([]),
+    listarRemessasFull(),
   ])
 
   return (
@@ -50,6 +53,9 @@ export default async function OrdensPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {podeEditar && (
+            <NovoFull remessas={remessas} produtos={produtosParaKit} />
+          )}
           {podeGerarKit && kits.length > 0 && (
             <GerarDeKit kits={kits} produtos={produtosParaKit} />
           )}
@@ -64,6 +70,7 @@ export default async function OrdensPage({
         total={pagina.total}
         pagina={pagina.pagina}
         totalPaginas={pagina.totalPaginas}
+        remessas={remessas}
         podeEditar={podeEditar}
         filtrosIniciais={filtros}
       />

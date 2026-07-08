@@ -21,6 +21,7 @@ import {
   excluirOrdemAction,
   type OrdemListItem,
 } from './actions'
+import type { RemessaFullOpcao } from './remessas-actions'
 import { Badge } from '@/components/ui/badge'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
@@ -84,6 +85,7 @@ type Props = {
   total: number
   pagina: number
   totalPaginas: number
+  remessas: RemessaFullOpcao[]
   podeEditar: boolean
   filtrosIniciais: OrdensFiltros
 }
@@ -93,6 +95,7 @@ export function OrdensList({
   total,
   pagina,
   totalPaginas,
+  remessas,
   podeEditar,
   filtrosIniciais,
 }: Props) {
@@ -255,6 +258,26 @@ export function OrdensList({
               ))}
             </SelectContent>
           </Select>
+
+          {remessas.length > 0 && (
+            <Select
+              value={filtrosIniciais.remessaId ?? 'todas'}
+              onValueChange={(v) => aplicarFiltro({ remessaId: v ?? undefined })}
+            >
+              <SelectTrigger size="sm" className="min-w-[9rem]">
+                <SelectValue placeholder="Full" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todas">Todos os Fulls</SelectItem>
+                {remessas.map((r) => (
+                  <SelectItem key={r.id} value={r.id}>
+                    {CANAL_LABEL_CURTO[r.canal]} ·{' '}
+                    {`${r.dataEnvio.slice(8, 10)}/${r.dataEnvio.slice(5, 7)}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
 
@@ -348,7 +371,15 @@ export function OrdensList({
                         <span className="text-muted-foreground">Na fila</span>
                       )}
                     </TableCell>
-                    <TableCell>{CANAL_LABEL_CURTO[o.canalDestino]}</TableCell>
+                    <TableCell>
+                      {CANAL_LABEL_CURTO[o.canalDestino]}
+                      {o.remessaData && (
+                        <span className="text-muted-foreground">
+                          {' '}
+                          · {o.remessaData}
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge className={PRIORIDADE_BADGE[o.prioridade]}>
                         {PRIORIDADE_LABEL[o.prioridade]}
@@ -452,6 +483,7 @@ export function OrdensList({
                   <div>Canal</div>
                   <div className="text-foreground text-right">
                     {CANAL_LABEL_CURTO[o.canalDestino]}
+                    {o.remessaData ? ` · ${o.remessaData}` : ''}
                   </div>
                   <div>Prioridade</div>
                   <div className="text-right">

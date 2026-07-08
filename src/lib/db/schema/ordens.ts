@@ -4,6 +4,7 @@ import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-c
 import { ordemCanalEnum, ordemPrioridadeEnum, ordemStatusEnum } from './enums'
 import { maquinas } from './maquinas'
 import { produtos, variacoesProduto } from './produtos'
+import { remessasFull } from './remessas'
 import { users } from './users'
 
 // Ordem de produção (OP).
@@ -24,6 +25,9 @@ export const ordensProducao = pgTable(
     quantidade: integer().notNull(),
 
     maquinaId: uuid().references(() => maquinas.id),
+
+    // Remessa Full a que a OP pertence (opcional).
+    remessaFullId: uuid().references(() => remessasFull.id),
 
     canalDestino: ordemCanalEnum().notNull().default('estoque'),
     prioridade: ordemPrioridadeEnum().notNull().default('normal'),
