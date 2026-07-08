@@ -215,7 +215,7 @@ export function RelatorioView({
   comparacao,
 }: {
   relatorio: RelatorioMensal
-  comparacao?: RelatorioMensal
+  comparacao?: RelatorioMensal | null
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -275,6 +275,36 @@ export function RelatorioView({
   }
   const pendente = deLocal !== inicio || ateLocal !== fim
 
+  // Período de comparação (manual): estado local pros inputs + aplica via
+  // URL (?cde/?cate). Só compara quando o usuário escolher.
+  const compInicio = comparacao?.inicio ?? ''
+  const compFim = comparacao?.fim ?? ''
+  const [cdeLocal, setCdeLocal] = useState(compInicio)
+  const [cateLocal, setCateLocal] = useState(compFim)
+  const [syncKeyComp, setSyncKeyComp] = useState(`${compInicio}|${compFim}`)
+  if (syncKeyComp !== `${compInicio}|${compFim}`) {
+    setSyncKeyComp(`${compInicio}|${compFim}`)
+    setCdeLocal(compInicio)
+    setCateLocal(compFim)
+  }
+  const compPendente =
+    cdeLocal !== compInicio || cateLocal !== compFim
+
+  function aplicarComparacao(de: string, ate: string) {
+    if (!de || !ate) return
+    const [a, b] = de <= ate ? [de, ate] : [ate, de]
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('cde', a)
+    params.set('cate', b)
+    startTransition(() => router.push(`${pathname}?${params.toString()}`))
+  }
+  function limparComparacao() {
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('cde')
+    params.delete('cate')
+    startTransition(() => router.push(`${pathname}?${params.toString()}`))
+  }
+
   const presetAtivo = PRESETS.find((p) => {
     const [a, b] = p.range()
     return a === inicio && b === fim
@@ -307,9 +337,9 @@ export function RelatorioView({
     .sort((a, b) => (b.faturamento ?? 0) - (a.faturamento ?? 0))
     .slice(0, 3)
 
-  // Comparação com o período equivalente (mesmos dias do mês anterior, ou
-  // a janela anterior de mesmo tamanho): delta % por KPI.
-  const comp = comparacao && comparacao.vendas.dias > 0 ? comparacao : null
+  // Comparação com o período que o usuário escolheu (?cde/?cate): delta %
+  // por KPI. Sem comparação escolhida, os KPIs ficam sem delta.
+  const comp = comparacao ?? null
   const deltaDe = (atual: number, anterior: number): number | null =>
     anterior > 0 ? ((atual - anterior) / anterior) * 100 : null
   const compLabel = comp
@@ -486,6 +516,46 @@ export function RelatorioView({
           >
             Aplicar
           </Button>
+        </div>
+
+        {/* Comparar com: período B escolhido pelo usuário (delta nos KPIs) */}
+        <div className="flex flex-wrap items-center gap-2 border-t pt-2">
+          <span className="text-muted-foreground text-xs">Comparar com:</span>
+          <Input
+            type="date"
+            value={cdeLocal}
+            max={cateLocal || undefined}
+            disabled={isPending}
+            onChange={(e) => setCdeLocal(e.target.value)}
+            className="h-8 w-auto"
+          />
+          <span className="text-muted-foreground text-xs">até</span>
+          <Input
+            type="date"
+            value={cateLocal}
+            min={cdeLocal || undefined}
+            disabled={isPending}
+            onChange={(e) => setCateLocal(e.target.value)}
+            className="h-8 w-auto"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => aplicarComparacao(cdeLocal, cateLocal)}
+            disabled={isPending || !cdeLocal || !cateLocal || !compPendente}
+          >
+            Comparar
+          </Button>
+          {comparacao && (
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground text-xs underline"
+              onClick={limparComparacao}
+              disabled={isPending}
+            >
+              limpar comparação
+            </button>
+          )}
         </div>
       </div>
 

@@ -21,7 +21,7 @@ export function VendasTabs({
   recentes: VendaDia[]
   podeEditar: boolean
   relatorio: RelatorioMensal
-  comparacao: RelatorioMensal
+  comparacao: RelatorioMensal | null
 }) {
   return (
     <div className="space-y-6">
