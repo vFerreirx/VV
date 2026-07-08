@@ -96,6 +96,17 @@ function dataCurta(iso: string): string {
   })
 }
 
+// "sáb, 14/06" — dia da semana curto + data.
+function dataComSemana(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('pt-BR', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'UTC',
+  })
+}
+
 function reais(v: number | null): string {
   if (v == null) return '—'
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -288,6 +299,12 @@ export function RelatorioView({
   const topContas = relatorio.porConta
     .slice()
     .sort((a, b) => b.faturamento - a.faturamento)
+    .slice(0, 3)
+
+  // Melhores dias do período (por faturamento).
+  const topDias = relatorio.porDia
+    .slice()
+    .sort((a, b) => (b.faturamento ?? 0) - (a.faturamento ?? 0))
     .slice(0, 3)
 
   // Comparação com o período equivalente (mesmos dias do mês anterior, ou
@@ -575,6 +592,36 @@ export function RelatorioView({
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Melhores dias de venda do período */}
+      {topDias.length > 0 && (
+        <div className="print:hidden">
+          <h2 className="mb-2 text-sm font-semibold">Melhores dias</h2>
+          <div className="vv-stagger grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {topDias.map((d, i) => (
+              <div
+                key={d.data}
+                className="vv-lift flex items-center gap-3 rounded-xl border p-4"
+              >
+                <span className="text-2xl" aria-hidden>
+                  {['🥇', '🥈', '🥉'][i]}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium capitalize">
+                    {dataComSemana(d.data)}
+                  </div>
+                  <div className="text-lg font-semibold tabular-nums">
+                    {reais(d.faturamento ?? 0)}
+                  </div>
+                  <div className="text-muted-foreground text-xs tabular-nums">
+                    {d.unidades.toLocaleString('pt-BR')} vendas
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
