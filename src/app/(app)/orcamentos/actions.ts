@@ -87,6 +87,29 @@ export async function obterOrcamento(
   return { ...o, itens, total }
 }
 
+// Clientes já usados (distintos, mais recentes primeiro) — autocomplete.
+export async function listarClientesOrcamentos(): Promise<string[]> {
+  await requireArea('vendas')
+  const rows = await db
+    .select({ cliente: orcamentos.cliente })
+    .from(orcamentos)
+    .where(isNull(orcamentos.deletedAt))
+    .orderBy(desc(orcamentos.createdAt))
+    .limit(200)
+
+  const vistos = new Set<string>()
+  const clientes: string[] = []
+  for (const r of rows) {
+    const nome = r.cliente.trim()
+    const chave = nome.toLowerCase()
+    if (nome && !vistos.has(chave)) {
+      vistos.add(chave)
+      clientes.push(nome)
+    }
+  }
+  return clientes.slice(0, 50)
+}
+
 // Último preço usado por descrição (em qualquer orçamento não excluído).
 // Serve pra pré-preencher o preço ao puxar produto/kit do catálogo.
 export async function listarPrecosRecentes(): Promise<

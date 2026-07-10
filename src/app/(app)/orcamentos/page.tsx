@@ -1,6 +1,10 @@
 import type { Metadata } from 'next'
 
-import { listarOrcamentos, listarPrecosRecentes } from './actions'
+import {
+  listarClientesOrcamentos,
+  listarOrcamentos,
+  listarPrecosRecentes,
+} from './actions'
 import { OrcamentosView } from './orcamentos-view'
 import { listarKitsComItens } from '../kits/actions'
 import { listarProdutosParaOrdem } from '../ordens/actions'
@@ -14,11 +18,12 @@ export default async function OrcamentosPage() {
   const user = await requireArea('vendas')
   const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'vendas'))
 
-  const [orcamentos, produtos, kits, precos] = await Promise.all([
+  const [orcamentos, produtos, kits, precos, clientes] = await Promise.all([
     listarOrcamentos(),
     listarProdutosParaOrdem(),
     listarKitsComItens(),
     listarPrecosRecentes(),
+    listarClientesOrcamentos(),
   ])
 
   return (
@@ -27,6 +32,7 @@ export default async function OrcamentosPage() {
       produtos={produtos}
       kits={kits}
       precos={precos}
+      clientes={clientes}
       podeEditar={podeEditar}
     />
   )

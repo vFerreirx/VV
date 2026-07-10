@@ -44,6 +44,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 
 type Props = {
   orcamentos: OrcamentoListItem[]
@@ -51,8 +52,15 @@ type Props = {
   kits: KitComItens[]
   // Último preço usado por descrição (pré-preenche ao puxar do catálogo).
   precos: Record<string, string>
+  // Clientes de orçamentos anteriores (autocomplete).
+  clientes: string[]
   podeEditar: boolean
 }
+
+// Token interno pra tamanho/cor nulos.
+const SEM = '__sem__'
+const tok = (s: string | null) => s ?? SEM
+const distintos = <T,>(arr: T[]): T[] => [...new Set(arr)]
 
 type Edicao = { modo: 'novo' | 'editar' | 'duplicar'; id?: string }
 
@@ -87,6 +95,7 @@ export function OrcamentosView({
   produtos,
   kits,
   precos,
+  clientes,
   podeEditar,
 }: Props) {
   const [editando, setEditando] = useState<Edicao | null>(null)
@@ -212,6 +221,7 @@ export function OrcamentosView({
           produtos={produtos}
           kits={kits}
           precos={precos}
+          clientes={clientes}
           onClose={() => setEditando(null)}
         />
       )}
@@ -236,12 +246,14 @@ function OrcamentoDialog({
   produtos,
   kits,
   precos,
+  clientes,
   onClose,
 }: {
   edicao: Edicao
   produtos: ProdutoComVariacoesParaForm[]
   kits: KitComItens[]
   precos: Record<string, string>
+  clientes: string[]
   onClose: () => void
 }) {
   // 'duplicar' carrega os dados mas salva como orçamento NOVO.
@@ -252,9 +264,6 @@ function OrcamentoDialog({
   const [cliente, setCliente] = useState('')
   const [observacao, setObservacao] = useState('')
   const [itens, setItens] = useState<LinhaItem[]>([{ ...LINHA_VAZIA }])
-  // Remonta os selects de atalho após cada escolha, voltando pro
-  // placeholder (senão o select mostra o id selecionado).
-  const [pickKey, setPickKey] = useState(0)
 
   // Editar/duplicar: carrega o orçamento uma vez ao abrir (flag vira true
   // sincronamente, então o fetch dispara só na primeira renderização).
@@ -365,58 +374,38 @@ function OrcamentoDialog({
               disabled={isPending}
               autoFocus
               placeholder="Nome do cliente / empresa"
+              list="orc-clientes"
             />
+            {/* Autocomplete com clientes de orçamentos anteriores */}
+            <datalist id="orc-clientes">
+              {clientes.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
           </div>
 
+          {/* Builder: produto/kit + tamanho + VÁRIAS cores de uma vez */}
+          <CatalogoBuilder
+            produtos={produtos}
+            kits={kits}
+            precos={precos}
+            disabled={isPending}
+            onAdd={(novas) =>
+              setItens((prev) => {
+                // Substitui a linha inicial vazia, se for a única.
+                const base =
+                  prev.length === 1 &&
+                  !prev[0].descricao &&
+                  !prev[0].preco
+                    ? []
+                    : prev
+                return [...base, ...novas]
+              })
+            }
+          />
+
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <Label>Itens</Label>
-              <div className="flex gap-2">
-                {/* Atalhos: adicionam linha com o nome (e o último preço usado). */}
-                <Select
-                  key={`produto-${pickKey}`}
-                  onValueChange={(v) => {
-                    const p = produtos.find((x) => x.id === v)
-                    if (p) addItem(p.nome)
-                    setPickKey((k) => k + 1)
-                  }}
-                  disabled={isPending}
-                >
-                  <SelectTrigger size="sm" className="w-44">
-                    <SelectValue placeholder="+ produto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {produtos.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {kits.length > 0 && (
-                  <Select
-                    key={`kit-${pickKey}`}
-                    onValueChange={(v) => {
-                      const k = kits.find((x) => x.id === v)
-                      if (k) addItem(k.nome)
-                      setPickKey((k) => k + 1)
-                    }}
-                    disabled={isPending}
-                  >
-                    <SelectTrigger size="sm" className="w-36">
-                      <SelectValue placeholder="+ kit" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {kits.map((k) => (
-                        <SelectItem key={k.id} value={k.id}>
-                          {k.nome}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-            </div>
+            <Label>Itens</Label>
 
             {itens.map((linha, idx) => (
               <div
@@ -515,6 +504,218 @@ function OrcamentoDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// -----------------------------------------------------------------
+// Builder do catálogo: produto/kit + tamanho + várias cores de uma vez
+// (gera uma linha por cor, com o último preço usado quando existir).
+// -----------------------------------------------------------------
+
+function CatalogoBuilder({
+  produtos,
+  kits,
+  precos,
+  disabled,
+  onAdd,
+}: {
+  produtos: ProdutoComVariacoesParaForm[]
+  kits: KitComItens[]
+  precos: Record<string, string>
+  disabled: boolean
+  onAdd: (linhas: LinhaItem[]) => void
+}) {
+  // origem: 'p:<id>' (produto) ou 'k:<id>' (kit)
+  const [origem, setOrigem] = useState('')
+  const [tamanho, setTamanho] = useState('')
+  const [coresSel, setCoresSel] = useState<Set<string>>(new Set())
+  const [qtd, setQtd] = useState('1')
+  const [preco, setPreco] = useState('')
+
+  const produto = origem.startsWith('p:')
+    ? produtos.find((p) => p.id === origem.slice(2))
+    : undefined
+  const kit = origem.startsWith('k:')
+    ? kits.find((k) => k.id === origem.slice(2))
+    : undefined
+
+  // Tamanhos do produto (kits não têm tamanho no builder).
+  const tamanhos = produto
+    ? distintos(produto.variacoes.map((v) => tok(v.tamanho))).filter(
+        (t) => t !== SEM,
+      )
+    : []
+
+  // Cores disponíveis: produto -> das variações (do tamanho escolhido);
+  // kit -> união das cores dos produtos que compõem o kit.
+  const cores = produto
+    ? distintos(
+        produto.variacoes
+          .filter((v) => !tamanho || tok(v.tamanho) === tamanho)
+          .map((v) => v.cor)
+          .filter((c): c is string => Boolean(c)),
+      )
+    : kit
+      ? distintos(
+          kit.itens.flatMap((it) => {
+            const p = produtos.find((x) => x.id === it.produtoId)
+            return (p?.variacoes ?? [])
+              .map((v) => v.cor)
+              .filter((c): c is string => Boolean(c))
+          }),
+        )
+      : []
+
+  function trocarOrigem(v: string) {
+    setOrigem(v)
+    setTamanho('')
+    setCoresSel(new Set())
+  }
+
+  function toggleCor(cor: string) {
+    setCoresSel((prev) => {
+      const next = new Set(prev)
+      if (next.has(cor)) next.delete(cor)
+      else next.add(cor)
+      return next
+    })
+  }
+
+  function descricaoDe(cor?: string): string {
+    const base = produto
+      ? `${produto.nome}${tamanho ? ` ${tamanho}` : ''}`
+      : (kit?.nome ?? '')
+    return cor ? `${base} - ${cor}` : base
+  }
+
+  function adicionar() {
+    if (!produto && !kit) return
+    const quantidade = qtd || '1'
+    const listaCores = coresSel.size > 0 ? [...coresSel] : [undefined]
+    const linhas: LinhaItem[] = listaCores.map((cor) => {
+      const descricao = descricaoDe(cor)
+      // Preço digitado vale pra todas; em branco, usa a memória por item.
+      const daMemoria = precos[descricao]
+      return {
+        descricao,
+        quantidade,
+        preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),
+      }
+    })
+    onAdd(linhas)
+    setCoresSel(new Set())
+  }
+
+  const nLinhas = coresSel.size > 0 ? coresSel.size : 1
+
+  return (
+    <div className="space-y-2.5 rounded-lg border p-3">
+      <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+        Adicionar do catálogo
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <Select
+          value={origem || undefined}
+          onValueChange={(v) => trocarOrigem(v ?? '')}
+          disabled={disabled}
+        >
+          <SelectTrigger size="sm" className="w-full">
+            <SelectValue placeholder="Produto ou kit" />
+          </SelectTrigger>
+          <SelectContent>
+            {produtos.map((p) => (
+              <SelectItem key={p.id} value={`p:${p.id}`}>
+                {p.nome}
+              </SelectItem>
+            ))}
+            {kits.map((k) => (
+              <SelectItem key={k.id} value={`k:${k.id}`}>
+                Kit — {k.nome}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {produto && tamanhos.length > 0 && (
+          <Select
+            value={tamanho || undefined}
+            onValueChange={(v) => {
+              setTamanho(v ?? '')
+              setCoresSel(new Set())
+            }}
+            disabled={disabled}
+          >
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue placeholder="Tamanho" />
+            </SelectTrigger>
+            <SelectContent>
+              {tamanhos.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+
+      {cores.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {cores.map((cor) => {
+            const ativa = coresSel.has(cor)
+            return (
+              <button
+                key={cor}
+                type="button"
+                onClick={() => toggleCor(cor)}
+                disabled={disabled}
+                className={cn(
+                  'rounded-full border px-2 py-0.5 text-[11px] transition-colors',
+                  ativa
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border hover:bg-muted',
+                )}
+              >
+                {cor}
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {(produto || kit) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            inputMode="numeric"
+            aria-label="Quantidade por item"
+            placeholder="qtd"
+            value={qtd}
+            onChange={(e) => setQtd(e.target.value.replace(/\D/g, ''))}
+            disabled={disabled}
+            className="h-9 w-16 text-center"
+          />
+          <div className="relative">
+            <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
+              R$
+            </span>
+            <Input
+              aria-label="Preço unitário (opcional — usa o último preço)"
+              inputMode="decimal"
+              placeholder="último preço"
+              value={preco}
+              onChange={(e) => setPreco(mascararMoeda(e.target.value))}
+              disabled={disabled}
+              className="h-9 w-32 pl-7 text-right"
+            />
+          </div>
+          <Button size="sm" onClick={adicionar} disabled={disabled}>
+            <Plus />
+            Adicionar {nLinhas > 1 ? `${nLinhas} itens` : 'item'}
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }
 
