@@ -18,12 +18,16 @@ import {
   obterKPIs,
   type DashboardKPIs,
 } from './actions'
+import { FullsProgresso } from '../ordens/fulls-progresso'
+import { listarFullsProgresso } from '../ordens/remessas-actions'
+import { obterRelatorioPeriodo } from '../relatorios/actions'
 import { CanaisChart } from '@/components/charts/canais-chart'
 import { ProducaoChart } from '@/components/charts/producao-chart'
 import { TopProdutosChart } from '@/components/charts/top-produtos-chart'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CountUp } from '@/components/ui/count-up'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth } from '@/lib/auth/require-auth'
 import { cn } from '@/lib/utils'
 import {
@@ -53,15 +57,37 @@ const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
   urgente: 'bg-destructive/15 text-destructive',
 }
 
+function hojeISO(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function reais(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
 export default async function DashboardPage() {
   const user = await requireAuth()
-  const [kpis, opsUrgentes, producao14d, canais, topProdutos] =
+
+  // Seções extras só pra quem tem acesso à área (senão as actions
+  // guardadas redirecionariam).
+  const [nivelOrdens, nivelVendas] = await Promise.all([
+    nivelDaAreaPara(user.role, 'ordens'),
+    nivelDaAreaPara(user.role, 'vendas'),
+  ])
+  const hoje = hojeISO()
+
+  const [kpis, opsUrgentes, producao14d, canais, topProdutos, fulls, vendasMes] =
     await Promise.all([
       obterKPIs(),
       listarOpsUrgentes(5),
       listarProducaoUltimosDias(14),
       listarOpsPorCanal(),
       listarTopProdutosMes(5),
+      nivelOrdens !== 'nenhum' ? listarFullsProgresso() : Promise.resolve([]),
+      nivelVendas !== 'nenhum'
+        ? obterRelatorioPeriodo(`${hoje.slice(0, 7)}-01`, hoje)
+        : Promise.resolve(null),
     ])
 
   return (
@@ -106,6 +132,54 @@ export default async function DashboardPage() {
           }
         />
       </div>
+
+      {/* Vendas do mês (quem tem acesso à área de vendas) */}
+      {vendasMes && (
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>Vendas do mês</CardTitle>
+              <Link
+                href="/vendas?tab=mensal"
+                className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+              >
+                Ver relatório →
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <div className="text-muted-foreground text-xs tracking-wide uppercase">
+                  Faturamento
+                </div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">
+                  {reais(vendasMes.vendas.faturamento)}
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-xs tracking-wide uppercase">
+                  Quantidade de vendas
+                </div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">
+                  <CountUp value={vendasMes.vendas.unidades} />
+                </div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-xs tracking-wide uppercase">
+                  Ticket médio
+                </div>
+                <div className="mt-1 text-2xl font-semibold tabular-nums">
+                  {reais(vendasMes.vendas.ticketMedio)}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Fulls em andamento (quem tem acesso a ordens) */}
+      <FullsProgresso fulls={fulls} />
 
       {/* Produção dos últimos 14 dias */}
       <Card>
