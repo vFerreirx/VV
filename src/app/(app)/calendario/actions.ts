@@ -5,7 +5,12 @@ import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { eventosFull, ordensProducao, produtos } from '@/lib/db/schema'
+import {
+  eventosFull,
+  ordensProducao,
+  produtos,
+  remessasFull,
+} from '@/lib/db/schema'
 import {
   eventoFullSchema,
   type EventoFullInput,
@@ -25,6 +30,9 @@ export type EventoFullItem = {
   data: string // YYYY-MM-DD
   canal: 'full_ml' | 'full_shopee'
   observacao: string | null
+  // true quando vem de uma remessa Full real (cadastrada em Ordens):
+  // aparece automaticamente e não pode ser excluída pelo calendário.
+  remessa?: boolean
 }
 
 export type OpAgendaItem = {
@@ -63,14 +71,61 @@ export async function listarEventosFull(
     )
     .orderBy(asc(eventosFull.data))
 
-  return rows.map((r) => ({
-    id: r.id,
-    data: r.data,
-    canal: (r.canal === 'full_shopee' ? 'full_shopee' : 'full_ml') as
-      | 'full_ml'
-      | 'full_shopee',
-    observacao: r.observacao ?? null,
-  }))
+  // Remessas Full reais (cadastradas em Ordens) entram automaticamente,
+  // com a contagem de OPs/peças na observação (vira tooltip).
+  const remessas = await db
+    .select({
+      id: remessasFull.id,
+      data: remessasFull.dataEnvio,
+      canal: remessasFull.canal,
+      ops: sql<number>`(
+        SELECT COUNT(*)::int FROM ${ordensProducao}
+        WHERE ${ordensProducao.remessaFullId} = ${remessasFull.id}
+          AND ${ordensProducao.deletedAt} IS NULL
+          AND ${ordensProducao.status} <> 'cancelado'
+      )`,
+      unidades: sql<number>`(
+        SELECT COALESCE(SUM(${ordensProducao.quantidade}), 0)::int
+        FROM ${ordensProducao}
+        WHERE ${ordensProducao.remessaFullId} = ${remessasFull.id}
+          AND ${ordensProducao.deletedAt} IS NULL
+          AND ${ordensProducao.status} <> 'cancelado'
+      )`,
+    })
+    .from(remessasFull)
+    .where(
+      and(
+        isNull(remessasFull.deletedAt),
+        gte(remessasFull.dataEnvio, inicio),
+        lte(remessasFull.dataEnvio, fim),
+      ),
+    )
+    .orderBy(asc(remessasFull.dataEnvio))
+
+  const itens: EventoFullItem[] = [
+    ...rows.map(
+      (r): EventoFullItem => ({
+        id: r.id,
+        data: r.data,
+        canal: (r.canal === 'full_shopee' ? 'full_shopee' : 'full_ml') as
+          | 'full_ml'
+          | 'full_shopee',
+        observacao: r.observacao ?? null,
+      }),
+    ),
+    ...remessas.map(
+      (r): EventoFullItem => ({
+        id: r.id,
+        data: r.data,
+        canal: r.canal as 'full_ml' | 'full_shopee',
+        observacao: `${r.ops} OPs · ${r.unidades} un`,
+        remessa: true,
+      }),
+    ),
+  ]
+
+  itens.sort((a, b) => a.data.localeCompare(b.data))
+  return itens
 }
 
 export async function listarOpsComPrazo(

@@ -13,6 +13,7 @@ import {
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { ChevronLeft, ChevronRight, Plus, Truck, X } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -263,6 +264,27 @@ function EventoChip({
       toast.success(result.message ?? 'Removido')
       router.refresh()
     })
+  }
+
+  // Remessa Full real (cadastrada em Ordens): chip clicável que leva pras
+  // OPs do Full — sem excluir por aqui (a remessa vive em Ordens).
+  if (evento.remessa) {
+    return (
+      <Link
+        href={`/ordens?remessaId=${evento.id}`}
+        title={`${EVENTO_FULL_CANAL_LABEL[evento.canal]} — ${evento.observacao ?? ''}`}
+        className={cn(
+          'flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium hover:opacity-80',
+          CANAL_BADGE[evento.canal],
+        )}
+      >
+        <Truck className="size-3 shrink-0" />
+        <span className="truncate">
+          {EVENTO_FULL_CANAL_CURTO[evento.canal]}
+          {evento.observacao ? ` · ${evento.observacao.split(' · ')[0]}` : ''}
+        </span>
+      </Link>
+    )
   }
 
   return (
