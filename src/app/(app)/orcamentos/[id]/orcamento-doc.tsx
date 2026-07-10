@@ -72,21 +72,27 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
         <div className="mt-0.5 text-base font-medium">{orcamento.cliente}</div>
       </div>
 
-      {/* Itens */}
-      <div className="overflow-x-auto rounded-lg border print:border-foreground/20">
-        <Table>
+      {/* Itens — descrição QUEBRA LINHA (nada de cortar no PDF) */}
+      <div className="rounded-lg border print:border-foreground/20">
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow>
               <TableHead>Item</TableHead>
-              <TableHead className="w-20 text-right">Qtd</TableHead>
-              <TableHead className="w-28 text-right">Preço un.</TableHead>
-              <TableHead className="w-28 text-right">Subtotal</TableHead>
+              <TableHead className="w-14 text-right sm:w-16">Qtd</TableHead>
+              <TableHead className="w-24 text-right sm:w-28">
+                Preço un.
+              </TableHead>
+              <TableHead className="w-24 text-right sm:w-28">
+                Subtotal
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {orcamento.itens.map((it) => (
               <TableRow key={it.id}>
-                <TableCell className="font-medium">{it.descricao}</TableCell>
+                <TableCell className="font-medium break-words whitespace-normal">
+                  {it.descricao}
+                </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {it.quantidade.toLocaleString('pt-BR')}
                 </TableCell>
