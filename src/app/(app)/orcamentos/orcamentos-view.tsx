@@ -348,7 +348,15 @@ function OrcamentoDialog({
   }
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
+    <Dialog
+      open
+      // Fecha só pelo "X" (close-press) ou "Cancelar" (onClose direto):
+      // clique fora e Esc são ignorados pra não perder o orçamento digitado.
+      disablePointerDismissal
+      onOpenChange={(o, details) => {
+        if (!o && details.reason === 'close-press') onClose()
+      }}
+    >
       <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogHeader className="border-b p-6">
           <DialogTitle>
