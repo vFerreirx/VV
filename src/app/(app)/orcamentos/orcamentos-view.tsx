@@ -677,7 +677,8 @@ function CatalogoBuilder({
           <SelectTrigger size="sm" className="w-full">
             <SelectValue placeholder="Produto ou kit" />
           </SelectTrigger>
-          <SelectContent>
+          {/* Popup mais largo que o campo pra nomes longos de kit. */}
+          <SelectContent className="w-auto min-w-(--anchor-width) max-w-[92vw]">
             {produtos.map((p) => (
               <SelectItem key={p.id} value={`p:${p.id}`}>
                 {p.nome}
@@ -685,7 +686,7 @@ function CatalogoBuilder({
             ))}
             {kits.map((k) => (
               <SelectItem key={k.id} value={`k:${k.id}`}>
-                Kit — {k.nome}
+                {/^kit/i.test(k.nome.trim()) ? k.nome : `Kit — ${k.nome}`}
               </SelectItem>
             ))}
           </SelectContent>
