@@ -537,6 +537,9 @@ function CatalogoBuilder({
   const [origem, setOrigem] = useState('')
   const [tamanho, setTamanho] = useState('')
   const [coresSel, setCoresSel] = useState<Set<string>>(new Set())
+  // Kit: cor escolhida POR ITEM do kit (kitItemId -> cor) — cada item pode
+  // ter cor própria (ex.: capa numa cor, manta noutra).
+  const [coresKit, setCoresKit] = useState<Record<string, string>>({})
   const [qtd, setQtd] = useState('1')
   const [preco, setPreco] = useState('')
 
@@ -554,8 +557,8 @@ function CatalogoBuilder({
       )
     : []
 
-  // Cores disponíveis: produto -> das variações (do tamanho escolhido);
-  // kit -> união das cores dos produtos que compõem o kit.
+  // Cores do PRODUTO (chips multi-seleção), das variações do tamanho
+  // escolhido.
   const cores = produto
     ? distintos(
         produto.variacoes
@@ -563,21 +566,23 @@ function CatalogoBuilder({
           .map((v) => v.cor)
           .filter((c): c is string => Boolean(c)),
       )
-    : kit
-      ? distintos(
-          kit.itens.flatMap((it) => {
-            const p = produtos.find((x) => x.id === it.produtoId)
-            return (p?.variacoes ?? [])
-              .map((v) => v.cor)
-              .filter((c): c is string => Boolean(c))
-          }),
-        )
-      : []
+    : []
+
+  // Cores disponíveis de um produto do kit (por item).
+  function coresDoProduto(produtoId: string): string[] {
+    const p = produtos.find((x) => x.id === produtoId)
+    return distintos(
+      (p?.variacoes ?? [])
+        .map((v) => v.cor)
+        .filter((c): c is string => Boolean(c)),
+    )
+  }
 
   function trocarOrigem(v: string) {
     setOrigem(v)
     setTamanho('')
     setCoresSel(new Set())
+    setCoresKit({})
   }
 
   function toggleCor(cor: string) {
@@ -596,25 +601,66 @@ function CatalogoBuilder({
     return cor ? `${base} - ${cor}` : base
   }
 
+  // Kit: monta a descrição com a cor de CADA item. Se todos os itens têm
+  // a mesma cor, resume ("Kit X - Terracota"); senão, detalha por item.
+  function descricaoKit(): string {
+    if (!kit) return ''
+    const partes = kit.itens
+      .filter((it) => coresDoProduto(it.produtoId).length > 0)
+      .map((it) => ({
+        nome: it.produtoNome,
+        cor: coresKit[it.id] ?? '',
+      }))
+    const cores = distintos(partes.map((p) => p.cor).filter(Boolean))
+    if (cores.length === 0) return kit.nome
+    if (cores.length === 1) return `${kit.nome} - ${cores[0]}`
+    return `${kit.nome} - ${partes
+      .filter((p) => p.cor)
+      .map((p) => `${p.nome}: ${p.cor}`)
+      .join(' · ')}`
+  }
+
   function adicionar() {
     if (!produto && !kit) return
     const quantidade = qtd || '1'
-    const listaCores = coresSel.size > 0 ? [...coresSel] : [undefined]
-    const linhas: LinhaItem[] = listaCores.map((cor) => {
-      const descricao = descricaoDe(cor)
-      // Preço digitado vale pra todas; em branco, usa a memória por item.
-      const daMemoria = precos[descricao]
-      return {
-        descricao,
-        quantidade,
-        preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),
+
+    let linhas: LinhaItem[]
+    if (kit) {
+      // Exige a cor de cada item que tem cores disponíveis.
+      const faltando = kit.itens.some(
+        (it) => coresDoProduto(it.produtoId).length > 0 && !coresKit[it.id],
+      )
+      if (faltando) {
+        toast.error('Escolha a cor de cada item do kit')
+        return
       }
-    })
+      const descricao = descricaoKit()
+      const daMemoria = precos[descricao]
+      linhas = [
+        {
+          descricao,
+          quantidade,
+          preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),
+        },
+      ]
+    } else {
+      const listaCores = coresSel.size > 0 ? [...coresSel] : [undefined]
+      linhas = listaCores.map((cor) => {
+        const descricao = descricaoDe(cor)
+        // Preço digitado vale pra todas; em branco, usa a memória por item.
+        const daMemoria = precos[descricao]
+        return {
+          descricao,
+          quantidade,
+          preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),
+        }
+      })
+    }
     onAdd(linhas)
     setCoresSel(new Set())
   }
 
-  const nLinhas = coresSel.size > 0 ? coresSel.size : 1
+  const nLinhas = kit ? 1 : coresSel.size > 0 ? coresSel.size : 1
 
   return (
     <div className="space-y-2.5 rounded-lg border p-3">
@@ -668,7 +714,7 @@ function CatalogoBuilder({
         )}
       </div>
 
-      {cores.length > 0 && (
+      {produto && cores.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {cores.map((cor) => {
             const ativa = coresSel.has(cor)
@@ -687,6 +733,44 @@ function CatalogoBuilder({
               >
                 {cor}
               </button>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Kit: cor escolhida item a item (cada item pode ter cor própria) */}
+      {kit && (
+        <div className="space-y-1.5">
+          {kit.itens.map((it) => {
+            const opcoes = coresDoProduto(it.produtoId)
+            if (opcoes.length === 0) return null
+            return (
+              <div
+                key={it.id}
+                className="grid grid-cols-[1fr_10rem] items-center gap-2"
+              >
+                <span className="text-muted-foreground truncate text-xs">
+                  {it.quantidade}× {it.produtoNome}
+                </span>
+                <Select
+                  value={coresKit[it.id] || undefined}
+                  onValueChange={(v) =>
+                    setCoresKit((prev) => ({ ...prev, [it.id]: v ?? '' }))
+                  }
+                  disabled={disabled}
+                >
+                  <SelectTrigger size="sm" className="w-full">
+                    <SelectValue placeholder="Cor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {opcoes.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )
           })}
         </div>
