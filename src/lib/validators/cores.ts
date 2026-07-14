@@ -26,13 +26,15 @@ export const corSchema = z.object({
     .trim()
     .min(2, 'Nome muito curto')
     .max(60, 'Nome muito longo'),
+  // Aceita hex válido, '' , null ou ausente (o cliente transforma vazio em
+  // null antes de mandar pro servidor — sem z.null() o servidor rejeitava).
   codigoHex: z
-    .union([hexSchema, z.literal('')])
+    .union([hexSchema, z.literal(''), z.null()])
     .optional()
     .transform((v) => (v && v !== '' ? v : null)),
   // Segunda tonalidade (cores bicolor). Opcional, mesmo formato do hex 1.
   codigoHex2: z
-    .union([hexSchema, z.literal('')])
+    .union([hexSchema, z.literal(''), z.null()])
     .optional()
     .transform((v) => (v && v !== '' ? v : null)),
   ativo: z.boolean().default(true),

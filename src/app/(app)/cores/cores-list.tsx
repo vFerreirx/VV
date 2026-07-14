@@ -311,7 +311,13 @@ function normHexPreview(v?: string | null): string | null {
   return s.startsWith('#') ? s : `#${s}`
 }
 
-function SwatchPreview({ hex, hex2 }: { hex?: string; hex2?: string }) {
+function SwatchPreview({
+  hex,
+  hex2,
+}: {
+  hex?: string | null
+  hex2?: string | null
+}) {
   return <ColorSwatch hex={normHexPreview(hex)} hex2={normHexPreview(hex2)} />
 }
 
