@@ -533,6 +533,8 @@ function CatalogoBuilder({
   disabled: boolean
   onAdd: (linhas: LinhaItem[]) => void
 }) {
+  // Fluxo em 2 passos: 1º escolhe o MODELO, 2º o produto/kit daquele modelo.
+  const [modeloSel, setModeloSel] = useState('')
   // origem: 'p:<id>' (produto) ou 'k:<id>' (kit)
   const [origem, setOrigem] = useState('')
   const [tamanho, setTamanho] = useState('')
@@ -549,6 +551,34 @@ function CatalogoBuilder({
   const kit = origem.startsWith('k:')
     ? kits.find((k) => k.id === origem.slice(2))
     : undefined
+
+  const SEM_MODELO = 'Sem modelo'
+  const modeloDoProduto = (p: ProdutoComVariacoesParaForm): string =>
+    p.variacoes.find((v) => v.modelo)?.modelo ?? SEM_MODELO
+  const modeloDoKit = (k: KitComItens): string => {
+    for (const it of k.itens) {
+      const p = produtos.find((x) => x.id === it.produtoId)
+      const m = p?.variacoes.find((v) => v.modelo)?.modelo
+      if (m) return m
+    }
+    return SEM_MODELO
+  }
+  // Remove o sufixo " - MODELO" do nome (redundante dentro do grupo).
+  const semSufixoModelo = (nome: string, modelo: string): string => {
+    const re = new RegExp(`\\s*[-–]\\s*${modelo}\\s*$`, 'i')
+    return nome.replace(re, '').trim()
+  }
+
+  // Modelos que têm ao menos um produto/kit, em ordem.
+  const modelos = distintos([
+    ...produtos.map(modeloDoProduto),
+    ...kits.map(modeloDoKit),
+  ]).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
+  const produtosDoModelo = produtos.filter(
+    (p) => modeloDoProduto(p) === modeloSel,
+  )
+  const kitsDoModelo = kits.filter((k) => modeloDoKit(k) === modeloSel)
 
   // Tamanhos do produto (kits não têm tamanho no builder).
   const tamanhos = produto
@@ -576,6 +606,14 @@ function CatalogoBuilder({
         .map((v) => v.cor)
         .filter((c): c is string => Boolean(c)),
     )
+  }
+
+  function trocarModelo(m: string) {
+    setModeloSel(m)
+    setOrigem('')
+    setTamanho('')
+    setCoresSel(new Set())
+    setCoresKit({})
   }
 
   function trocarOrigem(v: string) {
@@ -669,28 +707,52 @@ function CatalogoBuilder({
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {/* 1º passo: modelo */}
         <Select
-          value={origem || undefined}
-          onValueChange={(v) => trocarOrigem(v ?? '')}
+          value={modeloSel || undefined}
+          onValueChange={(v) => trocarModelo(v ?? '')}
           disabled={disabled}
         >
           <SelectTrigger size="sm" className="w-full">
-            <SelectValue placeholder="Produto ou kit" />
+            <SelectValue placeholder="Modelo" />
           </SelectTrigger>
-          {/* Popup mais largo que o campo pra nomes longos de kit. */}
           <SelectContent className="w-auto min-w-(--anchor-width) max-w-[92vw]">
-            {produtos.map((p) => (
-              <SelectItem key={p.id} value={`p:${p.id}`}>
-                {p.nome}
-              </SelectItem>
-            ))}
-            {kits.map((k) => (
-              <SelectItem key={k.id} value={`k:${k.id}`}>
-                {/^kit/i.test(k.nome.trim()) ? k.nome : `Kit — ${k.nome}`}
+            {modelos.map((m) => (
+              <SelectItem key={m} value={m}>
+                {m}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+
+        {/* 2º passo: produto ou kit daquele modelo */}
+        {modeloSel && (
+          <Select
+            value={origem || undefined}
+            onValueChange={(v) => trocarOrigem(v ?? '')}
+            disabled={disabled}
+          >
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue placeholder="Produto ou kit" />
+            </SelectTrigger>
+            {/* Popup mais largo que o campo pra nomes longos de kit. */}
+            <SelectContent className="w-auto min-w-(--anchor-width) max-w-[92vw]">
+              {produtosDoModelo.map((p) => (
+                <SelectItem key={p.id} value={`p:${p.id}`}>
+                  {semSufixoModelo(p.nome, modeloSel)}
+                </SelectItem>
+              ))}
+              {kitsDoModelo.map((k) => (
+                <SelectItem key={k.id} value={`k:${k.id}`}>
+                  {semSufixoModelo(
+                    /^kit/i.test(k.nome.trim()) ? k.nome : `Kit — ${k.nome}`,
+                    modeloSel,
+                  )}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {produto && tamanhos.length > 0 && (
           <Select
