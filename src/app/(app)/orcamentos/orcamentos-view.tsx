@@ -357,7 +357,7 @@ function OrcamentoDialog({
         if (!o && details.reason === 'close-press') onClose()
       }}
     >
-      <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <DialogContent className="max-h-[92vh] gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <DialogHeader className="border-b p-6">
           <DialogTitle>
             {isEdit
@@ -372,7 +372,7 @@ function OrcamentoDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] space-y-4 overflow-y-auto p-6">
+        <div className="max-h-[68vh] space-y-4 overflow-y-auto p-6">
           <div className="space-y-1.5">
             <Label htmlFor="orc-cliente">Cliente</Label>
             <Input
