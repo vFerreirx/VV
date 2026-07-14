@@ -2,7 +2,6 @@ import { sql } from 'drizzle-orm'
 import {
   boolean,
   index,
-  numeric,
   pgTable,
   text,
   timestamp,
@@ -20,10 +19,9 @@ export const produtos = pgTable(
     nome: text().notNull(),
     descricao: text(),
 
-    // comprimento da peça em cm
-    comprimentoCm: numeric({ precision: 8, scale: 2 }),
-    // largura da peça em cm
-    larguraCm: numeric({ precision: 8, scale: 2 }),
+    // NOTA: as dimensões (largura/comprimento) migraram pro TAMANHO
+    // (schema/tamanhos.ts). As colunas comprimento_cm/largura_cm ainda
+    // existem no banco por histórico, mas o app não as usa mais.
 
     // Identificadores externos (preenchidos quando integrar com ML/Shopee)
     mlbId: text(),

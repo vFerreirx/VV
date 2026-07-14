@@ -71,8 +71,6 @@ export async function listarProdutos(
       sku: produtos.sku,
       nome: produtos.nome,
       descricao: produtos.descricao,
-      comprimentoCm: produtos.comprimentoCm,
-      larguraCm: produtos.larguraCm,
       mlbId: produtos.mlbId,
       shopeeItemId: produtos.shopeeItemId,
       ativo: produtos.ativo,
@@ -155,8 +153,6 @@ export async function criarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
-        comprimentoCm: data.comprimentoCm,
-        larguraCm: data.larguraCm,
         ativo: data.ativo,
       })
       .returning({ id: produtos.id })
@@ -231,8 +227,6 @@ export async function atualizarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
-        comprimentoCm: data.comprimentoCm,
-        larguraCm: data.larguraCm,
         ativo: data.ativo,
       })
       .where(eq(produtos.id, id))
@@ -353,8 +347,6 @@ export async function duplicarProdutoAction(
         sku: novoSku,
         nome: `${orig.nome} (cópia)`,
         descricao: orig.descricao,
-        comprimentoCm: orig.comprimentoCm,
-        larguraCm: orig.larguraCm,
         ativo: orig.ativo,
       })
       .returning({ id: produtos.id })

@@ -127,6 +127,7 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                   )}
                   <TableHead>Nome</TableHead>
                   <TableHead>Código SKU</TableHead>
+                  <TableHead>Dimensões</TableHead>
                   <TableHead className="w-24 text-right">Ordem</TableHead>
                   <TableHead>Status</TableHead>
                   {podeEditar && <TableHead className="w-24" />}
@@ -150,6 +151,11 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                     <TableCell className="font-medium">{t.nome}</TableCell>
                     <TableCell className="text-muted-foreground font-mono text-xs">
                       {t.codigo || '—'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm tabular-nums">
+                      {t.larguraCm || t.comprimentoCm
+                        ? `${t.larguraCm ?? '—'} × ${t.comprimentoCm ?? '—'} cm`
+                        : '—'}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-right tabular-nums">
                       {t.ordem}
@@ -204,6 +210,11 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                   )}
                   <div className="min-w-0">
                     <div className="truncate font-medium">{t.nome}</div>
+                    {(t.larguraCm || t.comprimentoCm) && (
+                      <div className="text-muted-foreground text-xs tabular-nums">
+                        {t.larguraCm ?? '—'} × {t.comprimentoCm ?? '—'} cm
+                      </div>
+                    )}
                     <Badge variant={t.ativo ? 'default' : 'secondary'}>
                       {t.ativo ? 'Ativo' : 'Inativo'}
                     </Badge>
@@ -329,12 +340,16 @@ function TamanhoDialog({
     defaultValues: {
       nome: isEdit ? tamanho.nome : '',
       codigo: isEdit ? (tamanho.codigo ?? '') : '',
+      larguraCm: isEdit ? (tamanho.larguraCm ?? '') : '',
+      comprimentoCm: isEdit ? (tamanho.comprimentoCm ?? '') : '',
       ordem: isEdit ? String(tamanho.ordem) : String(proximaOrdem),
       ativo: isEdit ? tamanho.ativo : true,
     },
     values: {
       nome: isEdit ? tamanho.nome : '',
       codigo: isEdit ? (tamanho.codigo ?? '') : '',
+      larguraCm: isEdit ? (tamanho.larguraCm ?? '') : '',
+      comprimentoCm: isEdit ? (tamanho.comprimentoCm ?? '') : '',
       ordem: isEdit ? String(tamanho.ordem) : String(proximaOrdem),
       ativo: isEdit ? tamanho.ativo : true,
     },
@@ -406,6 +421,45 @@ function TamanhoDialog({
             {errs.codigo && (
               <p className="text-destructive text-xs">{errs.codigo.message}</p>
             )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="tam-largura">Largura (cm)</Label>
+              <Input
+                id="tam-largura"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="45"
+                disabled={isPending}
+                {...form.register('larguraCm')}
+              />
+              {errs.larguraCm && (
+                <p className="text-destructive text-xs">
+                  {errs.larguraCm.message}
+                </p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tam-comprimento">Comprimento (cm)</Label>
+              <Input
+                id="tam-comprimento"
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="45"
+                disabled={isPending}
+                {...form.register('comprimentoCm')}
+              />
+              {errs.comprimentoCm && (
+                <p className="text-destructive text-xs">
+                  {errs.comprimentoCm.message}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="space-y-1.5">

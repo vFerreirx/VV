@@ -187,8 +187,6 @@ export function ProdutosList({
                   )}
                   <TableHead>SKU</TableHead>
                   <TableHead>Nome</TableHead>
-                  <TableHead className="text-right">Comprimento</TableHead>
-                  <TableHead className="text-right">Largura</TableHead>
                   <TableHead className="text-right">Variações</TableHead>
                   <TableHead>Status</TableHead>
                   {podeEditar && <TableHead className="w-24" />}
@@ -217,12 +215,6 @@ export function ProdutosList({
                       >
                         {p.nome}
                       </Link>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-right tabular-nums">
-                      {p.comprimentoCm ? `${p.comprimentoCm} cm` : '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-right tabular-nums">
-                      {p.larguraCm ? `${p.larguraCm} cm` : '—'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {p.totalVariacoes}
@@ -274,14 +266,6 @@ export function ProdutosList({
                   </Badge>
                 </div>
                 <div className="text-muted-foreground mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                  <div>Comprimento</div>
-                  <div className="text-right text-foreground tabular-nums">
-                    {p.comprimentoCm ? `${p.comprimentoCm} cm` : '—'}
-                  </div>
-                  <div>Largura</div>
-                  <div className="text-right text-foreground tabular-nums">
-                    {p.larguraCm ? `${p.larguraCm} cm` : '—'}
-                  </div>
                   <div>Variações</div>
                   <div className="text-right text-foreground tabular-nums">
                     {p.totalVariacoes}

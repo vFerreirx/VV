@@ -64,8 +64,6 @@ export type ProdutoFormDefaults = {
   sku: string
   nome: string
   descricao: string | null
-  comprimentoCm: string | null
-  larguraCm: string | null
   ativo: boolean
   variacoes: Array<{
     id?: string
@@ -80,8 +78,6 @@ const VAZIO: ProdutoFormDefaults = {
   sku: '',
   nome: '',
   descricao: null,
-  comprimentoCm: null,
-  larguraCm: null,
   ativo: true,
   variacoes: [],
 }
@@ -91,8 +87,6 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
     sku: d.sku ?? '',
     nome: d.nome ?? '',
     descricao: d.descricao ?? '',
-    comprimentoCm: d.comprimentoCm ?? '',
-    larguraCm: d.larguraCm ?? '',
     ativo: d.ativo ?? true,
     variacoes: d.variacoes.map((v) => ({
       id: v.id,
@@ -270,43 +264,6 @@ export function ProdutoForm({
               placeholder="Detalhes adicionais sobre o produto"
               disabled={isPending}
               {...form.register('descricao')}
-            />
-          </Field>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Dimensões</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field
-            label="Comprimento (cm)"
-            id="comprimentoCm"
-            error={errs.comprimentoCm?.message}
-          >
-            <Input
-              id="comprimentoCm"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              placeholder="200.00"
-              disabled={isPending}
-              {...form.register('comprimentoCm')}
-            />
-          </Field>
-
-          <Field label="Largura (cm)" id="larguraCm" error={errs.larguraCm?.message}>
-            <Input
-              id="larguraCm"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              min="0"
-              placeholder="50.00"
-              disabled={isPending}
-              {...form.register('larguraCm')}
             />
           </Field>
         </CardContent>

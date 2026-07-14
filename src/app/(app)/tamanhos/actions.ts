@@ -58,6 +58,8 @@ export async function criarTamanhoAction(
     .values({
       nome: data.nome,
       codigo: data.codigo || null,
+      larguraCm: data.larguraCm ?? null,
+      comprimentoCm: data.comprimentoCm ?? null,
       ordem: data.ordem,
       ativo: data.ativo,
     })
@@ -109,6 +111,8 @@ export async function atualizarTamanhoAction(
     .set({
       nome: data.nome,
       codigo: data.codigo || null,
+      larguraCm: data.larguraCm ?? null,
+      comprimentoCm: data.comprimentoCm ?? null,
       ordem: data.ordem,
       ativo: data.ativo,
     })

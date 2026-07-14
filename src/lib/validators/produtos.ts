@@ -4,21 +4,6 @@ import { z } from 'zod'
 // Helpers
 // -----------------------------------------------------------------
 
-// Campo numérico opcional vindo de input HTML.
-// Tolerante a null/undefined porque o zodResolver no cliente já aplica
-// o transform e a Server Action recebe o valor pós-transform.
-// `.optional()` no fim é essencial: a serialização da Server Action do
-// Next descarta valores undefined, então a CHAVE pode chegar AUSENTE ao
-// servidor — sem optional, o Zod 4 falha com "expected nonoptional".
-const numericOpt = z
-  .union([z.string(), z.null(), z.undefined()])
-  .transform((v) => (v == null || v === '' ? null : String(v)))
-  .refine(
-    (v) => v === null || (!Number.isNaN(Number(v)) && Number(v) >= 0),
-    'Informe um número válido (>= 0)',
-  )
-  .optional()
-
 // String opcional → undefined quando vazia. Tolera null e chave ausente.
 const stringOpt = (max: number, label = 'Texto') =>
   z
@@ -67,10 +52,6 @@ export const produtoSchema = z.object({
     ),
   nome: z.string().min(2, 'Nome obrigatório').max(120, 'Nome muito longo'),
   descricao: stringOpt(500, 'Descrição'),
-
-  // Dimensões da peça em cm (opcionais; preenchidas conforme cadastro)
-  comprimentoCm: numericOpt,
-  larguraCm: numericOpt,
 
   ativo: z.boolean().default(true),
 
