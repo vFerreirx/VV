@@ -67,12 +67,12 @@ export const MARKETPLACES_AGRUPADOS = (
 // Helpers de validação
 // -----------------------------------------------------------------
 
-const stringOpt = (max: number, label = 'Texto') =>
-  z
-    .union([z.string(), z.null(), z.undefined()])
-    .transform((v) => (v == null || v === '' ? undefined : v))
-    .refine((v) => v === undefined || v.length <= max, `${label} muito longo`)
-    .optional()
+// Texto livre opcional SEM limite de tamanho (coluna é `text()`). Normaliza
+// vazio/null → undefined, igual aos demais campos opcionais.
+const textoLivreOpt = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (v == null || v === '' ? undefined : v))
+  .optional()
 
 const intNaoNeg = z
   .union([z.string(), z.number()])
@@ -104,7 +104,7 @@ export const vendaContaSchema = z.object({
 
 export const vendaDiaSchema = z.object({
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida'),
-  observacao: stringOpt(300, 'Observação'),
+  observacao: textoLivreOpt,
   contas: z.array(vendaContaSchema).default([]),
 })
 

@@ -62,7 +62,7 @@ export async function criarModeloAction(
     })
     .returning({ id: modelos.id })
 
-  revalidatePath('/modelos')
+  revalidatePath('/variacoes')
   return {
     success: true,
     data: { id: inserted!.id },
@@ -112,7 +112,7 @@ export async function atualizarModeloAction(
     })
     .where(eq(modelos.id, id))
 
-  revalidatePath('/modelos')
+  revalidatePath('/variacoes')
   return { success: true, message: 'Modelo atualizado' }
 }
 
@@ -133,7 +133,7 @@ export async function excluirModeloAction(id: string): Promise<ActionResult> {
     .set({ deletedAt: new Date(), ativo: false })
     .where(eq(modelos.id, id))
 
-  revalidatePath('/modelos')
+  revalidatePath('/variacoes')
   return { success: true, message: 'Modelo excluído' }
 }
 
@@ -163,7 +163,7 @@ export async function excluirMultiplosModelosAction(
     .where(and(inArray(modelos.id, idsValidos), isNull(modelos.deletedAt)))
     .returning({ id: modelos.id })
 
-  revalidatePath('/modelos')
+  revalidatePath('/variacoes')
   return {
     success: true,
     data: { excluidos: result.length },

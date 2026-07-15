@@ -65,7 +65,7 @@ export async function criarTamanhoAction(
     })
     .returning({ id: tamanhos.id })
 
-  revalidatePath('/tamanhos')
+  revalidatePath('/variacoes')
   return {
     success: true,
     data: { id: inserted!.id },
@@ -118,7 +118,7 @@ export async function atualizarTamanhoAction(
     })
     .where(eq(tamanhos.id, id))
 
-  revalidatePath('/tamanhos')
+  revalidatePath('/variacoes')
   return { success: true, message: 'Tamanho atualizado' }
 }
 
@@ -139,7 +139,7 @@ export async function excluirTamanhoAction(id: string): Promise<ActionResult> {
     .set({ deletedAt: new Date(), ativo: false })
     .where(eq(tamanhos.id, id))
 
-  revalidatePath('/tamanhos')
+  revalidatePath('/variacoes')
   return { success: true, message: 'Tamanho excluído' }
 }
 
@@ -169,7 +169,7 @@ export async function excluirMultiplosTamanhosAction(
     .where(and(inArray(tamanhos.id, idsValidos), isNull(tamanhos.deletedAt)))
     .returning({ id: tamanhos.id })
 
-  revalidatePath('/tamanhos')
+  revalidatePath('/variacoes')
   return {
     success: true,
     data: { excluidos: result.length },

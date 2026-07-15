@@ -72,7 +72,7 @@ export async function criarCorAction(
     })
     .returning({ id: cores.id })
 
-  revalidatePath('/cores')
+  revalidatePath('/variacoes')
   return {
     success: true,
     data: { id: inserted!.id },
@@ -128,7 +128,7 @@ export async function atualizarCorAction(
     })
     .where(eq(cores.id, id))
 
-  revalidatePath('/cores')
+  revalidatePath('/variacoes')
   return { success: true, message: 'Cor atualizada' }
 }
 
@@ -153,7 +153,7 @@ export async function excluirCorAction(id: string): Promise<ActionResult> {
     .set({ deletedAt: new Date(), ativo: false })
     .where(eq(cores.id, id))
 
-  revalidatePath('/cores')
+  revalidatePath('/variacoes')
   return { success: true, message: 'Cor excluída' }
 }
 
@@ -185,7 +185,7 @@ export async function excluirMultiplasCoresAction(
     .where(and(inArray(cores.id, idsValidos), isNull(cores.deletedAt)))
     .returning({ id: cores.id })
 
-  revalidatePath('/cores')
+  revalidatePath('/variacoes')
   return {
     success: true,
     data: { excluidas: result.length },
