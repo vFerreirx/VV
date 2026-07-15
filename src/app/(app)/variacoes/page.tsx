@@ -4,19 +4,16 @@ import { redirect } from 'next/navigation'
 import { listarCores } from '../cores/actions'
 import { listarModelos } from '../modelos/actions'
 import { listarTamanhos } from '../tamanhos/actions'
-import { VariacoesTabs } from './variacoes-tabs'
-import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Variações — Vanvest' }
 
-export default async function VariacoesPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
-}) {
-  let props: Parameters<typeof VariacoesTabs>[0]
+// DEBUG TEMPORÁRIO: não renderiza o VariacoesTabs (client boundary). Busca
+// os dados e serializa aqui dentro do try/catch pra capturar o erro real
+// (produção esconde do cliente) e mostrar os dados crus pra inspeção.
+export default async function VariacoesPage() {
+  let dump: string
   try {
     const user = await requireAuth()
 
@@ -28,7 +25,6 @@ export default async function VariacoesPage({
     const verCores = nCores !== 'nenhum'
     const verModelos = nModelos !== 'nenhum'
     const verTamanhos = nTamanhos !== 'nenhum'
-    // Sem acesso a nenhuma das três sub-áreas → volta pro dashboard.
     if (!verCores && !verModelos && !verTamanhos) redirect('/dashboard')
 
     const [cores, modelos, tamanhos] = await Promise.all([
@@ -37,39 +33,43 @@ export default async function VariacoesPage({
       verTamanhos ? listarTamanhos() : Promise.resolve([]),
     ])
 
-    const sp = await searchParams
-    const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'cores'
-
-    props = {
-      tabInicial,
-      cores,
-      modelos,
-      tamanhos,
-      acessoCores: { ver: verCores, editar: podeEscrever(nCores) },
-      acessoModelos: { ver: verModelos, editar: podeEscrever(nModelos) },
-      acessoTamanhos: { ver: verTamanhos, editar: podeEscrever(nTamanhos) },
-    }
+    dump =
+      'DEBUG /variacoes — dados (sem client boundary):\n\n' +
+      JSON.stringify(
+        { cores, modelos, tamanhos },
+        (_k, v) => {
+          if (typeof v === 'bigint') return `<<BIGINT ${v}>>`
+          if (typeof v === 'function') return '<<FUNCTION>>'
+          if (typeof v === 'symbol') return '<<SYMBOL>>'
+          if (
+            typeof v === 'object' &&
+            v !== null &&
+            v.constructor?.name &&
+            !['Object', 'Array', 'Date'].includes(v.constructor.name)
+          )
+            return `<<${v.constructor.name}>>`
+          return v
+        },
+        2,
+      )
   } catch (err) {
-    // DEBUG TEMPORÁRIO: control-flow do Next (redirect/notFound) tem que
-    // continuar borbulhando; qualquer outro erro (auth/fetch) é mostrado na
-    // tela pra capturar o stack real que a produção esconde do cliente.
     const digest = (err as { digest?: unknown })?.digest
     if (typeof digest === 'string' && digest.startsWith('NEXT_')) throw err
-    const detalhe =
-      err instanceof Error ? (err.stack ?? err.message) : String(err)
-    return (
-      <pre
-        style={{
-          whiteSpace: 'pre-wrap',
-          padding: 20,
-          fontSize: 12,
-          fontFamily: 'monospace',
-        }}
-      >
-        {'DEBUG /variacoes — erro no fetch/auth server:\n\n' + detalhe}
-      </pre>
-    )
+    dump =
+      'DEBUG /variacoes — erro no fetch/serialização:\n\n' +
+      (err instanceof Error ? (err.stack ?? err.message) : String(err))
   }
 
-  return <VariacoesTabs {...props} />
+  return (
+    <pre
+      style={{
+        whiteSpace: 'pre-wrap',
+        padding: 20,
+        fontSize: 11,
+        fontFamily: 'monospace',
+      }}
+    >
+      {dump}
+    </pre>
+  )
 }
