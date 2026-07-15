@@ -4,12 +4,19 @@ import { redirect } from 'next/navigation'
 import { listarCores } from '../cores/actions'
 import { listarModelos } from '../modelos/actions'
 import { listarTamanhos } from '../tamanhos/actions'
-import { VariacoesClient } from './variacoes-client'
+import { VariacoesTabs } from './variacoes-tabs'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Variações — Vanvest' }
+
+// DEBUG TEMPORÁRIO: passa os dados como objetos PLANOS (JSON round-trip
+// converte Date → string). Se o Vercel carregar, o problema era serializar
+// os objetos Date/Drizzle crus no boundary RSC.
+function plano<T>(rows: T): T {
+  return JSON.parse(JSON.stringify(rows)) as T
+}
 
 export default async function VariacoesPage({
   searchParams,
@@ -38,11 +45,11 @@ export default async function VariacoesPage({
   const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'cores'
 
   return (
-    <VariacoesClient
+    <VariacoesTabs
       tabInicial={tabInicial}
-      cores={cores}
-      modelos={modelos}
-      tamanhos={tamanhos}
+      cores={plano(cores)}
+      modelos={plano(modelos)}
+      tamanhos={plano(tamanhos)}
       acessoCores={{ ver: verCores, editar: podeEscrever(nCores) }}
       acessoModelos={{ ver: verModelos, editar: podeEscrever(nModelos) }}
       acessoTamanhos={{ ver: verTamanhos, editar: podeEscrever(nTamanhos) }}
