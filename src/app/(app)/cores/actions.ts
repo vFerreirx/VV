@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { cores, type Cor } from '@/lib/db/schema'
 import { corSchema, type CorInput } from '@/lib/validators/cores'
 
@@ -62,15 +63,25 @@ export async function criarCorAction(
     return { success: false, error: `Já existe uma cor chamada "${data.nome}"` }
   }
 
-  const [inserted] = await db
-    .insert(cores)
-    .values({
-      nome: data.nome,
-      codigoHex: data.codigoHex,
-      codigoHex2: data.codigoHex2,
-      ativo: data.ativo,
-    })
-    .returning({ id: cores.id })
+  let inserted: { id: string } | undefined
+  try {
+    ;[inserted] = await db
+      .insert(cores)
+      .values({
+        nome: data.nome,
+        codigoHex: data.codigoHex,
+        codigoHex2: data.codigoHex2,
+        ativo: data.ativo,
+      })
+      .returning({ id: cores.id })
+  } catch (err) {
+    // Corrida entre a checagem acima e o INSERT (duplo-clique/reenvio) bate
+    // na constraint UNIQUE(nome). Vira erro amigável em vez de 500.
+    if (isUniqueViolation(err)) {
+      return { success: false, error: `Já existe uma cor chamada "${data.nome}"` }
+    }
+    throw err
+  }
 
   revalidatePath('/variacoes')
   return {
@@ -118,15 +129,22 @@ export async function atualizarCorAction(
     return { success: false, error: `Já existe outra cor chamada "${data.nome}"` }
   }
 
-  await db
-    .update(cores)
-    .set({
-      nome: data.nome,
-      codigoHex: data.codigoHex,
-      codigoHex2: data.codigoHex2,
-      ativo: data.ativo,
-    })
-    .where(eq(cores.id, id))
+  try {
+    await db
+      .update(cores)
+      .set({
+        nome: data.nome,
+        codigoHex: data.codigoHex,
+        codigoHex2: data.codigoHex2,
+        ativo: data.ativo,
+      })
+      .where(eq(cores.id, id))
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { success: false, error: `Já existe uma cor chamada "${data.nome}"` }
+    }
+    throw err
+  }
 
   revalidatePath('/variacoes')
   return { success: true, message: 'Cor atualizada' }

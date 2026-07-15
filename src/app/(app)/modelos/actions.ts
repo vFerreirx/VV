@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { modelos, type Modelo } from '@/lib/db/schema'
 import { modeloSchema, type ModeloInput } from '@/lib/validators/modelos'
 
@@ -53,14 +54,22 @@ export async function criarModeloAction(
     return { success: false, error: `Já existe um modelo "${data.nome}"` }
   }
 
-  const [inserted] = await db
-    .insert(modelos)
-    .values({
-      nome: data.nome,
-      descricao: data.descricao ?? null,
-      ativo: data.ativo,
-    })
-    .returning({ id: modelos.id })
+  let inserted: { id: string } | undefined
+  try {
+    ;[inserted] = await db
+      .insert(modelos)
+      .values({
+        nome: data.nome,
+        descricao: data.descricao ?? null,
+        ativo: data.ativo,
+      })
+      .returning({ id: modelos.id })
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { success: false, error: `Já existe um modelo "${data.nome}"` }
+    }
+    throw err
+  }
 
   revalidatePath('/variacoes')
   return {
@@ -103,14 +112,21 @@ export async function atualizarModeloAction(
     return { success: false, error: `Já existe outro modelo "${data.nome}"` }
   }
 
-  await db
-    .update(modelos)
-    .set({
-      nome: data.nome,
-      descricao: data.descricao ?? null,
-      ativo: data.ativo,
-    })
-    .where(eq(modelos.id, id))
+  try {
+    await db
+      .update(modelos)
+      .set({
+        nome: data.nome,
+        descricao: data.descricao ?? null,
+        ativo: data.ativo,
+      })
+      .where(eq(modelos.id, id))
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { success: false, error: `Já existe outro modelo "${data.nome}"` }
+    }
+    throw err
+  }
 
   revalidatePath('/variacoes')
   return { success: true, message: 'Modelo atualizado' }

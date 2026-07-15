@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { tamanhos, type Tamanho } from '@/lib/db/schema'
 import { tamanhoSchema, type TamanhoInput } from '@/lib/validators/tamanhos'
 
@@ -53,17 +54,25 @@ export async function criarTamanhoAction(
     return { success: false, error: `Já existe um tamanho "${data.nome}"` }
   }
 
-  const [inserted] = await db
-    .insert(tamanhos)
-    .values({
-      nome: data.nome,
-      codigo: data.codigo || null,
-      larguraCm: data.larguraCm ?? null,
-      comprimentoCm: data.comprimentoCm ?? null,
-      ordem: data.ordem,
-      ativo: data.ativo,
-    })
-    .returning({ id: tamanhos.id })
+  let inserted: { id: string } | undefined
+  try {
+    ;[inserted] = await db
+      .insert(tamanhos)
+      .values({
+        nome: data.nome,
+        codigo: data.codigo || null,
+        larguraCm: data.larguraCm ?? null,
+        comprimentoCm: data.comprimentoCm ?? null,
+        ordem: data.ordem,
+        ativo: data.ativo,
+      })
+      .returning({ id: tamanhos.id })
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { success: false, error: `Já existe um tamanho "${data.nome}"` }
+    }
+    throw err
+  }
 
   revalidatePath('/variacoes')
   return {
@@ -106,17 +115,24 @@ export async function atualizarTamanhoAction(
     return { success: false, error: `Já existe outro tamanho "${data.nome}"` }
   }
 
-  await db
-    .update(tamanhos)
-    .set({
-      nome: data.nome,
-      codigo: data.codigo || null,
-      larguraCm: data.larguraCm ?? null,
-      comprimentoCm: data.comprimentoCm ?? null,
-      ordem: data.ordem,
-      ativo: data.ativo,
-    })
-    .where(eq(tamanhos.id, id))
+  try {
+    await db
+      .update(tamanhos)
+      .set({
+        nome: data.nome,
+        codigo: data.codigo || null,
+        larguraCm: data.larguraCm ?? null,
+        comprimentoCm: data.comprimentoCm ?? null,
+        ordem: data.ordem,
+        ativo: data.ativo,
+      })
+      .where(eq(tamanhos.id, id))
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return { success: false, error: `Já existe outro tamanho "${data.nome}"` }
+    }
+    throw err
+  }
 
   revalidatePath('/variacoes')
   return { success: true, message: 'Tamanho atualizado' }
