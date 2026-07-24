@@ -1,0 +1,39 @@
+import type { Metadata } from 'next'
+
+import { listarCoresAtivas } from '../cores/actions'
+import { listarCoresFornecedor, listarLotesFio } from './actions'
+import { EstoqueFiosTabs } from './estoque-fios-tabs'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
+import { requireArea } from '@/lib/auth/require-auth'
+
+export const metadata: Metadata = { title: 'Estoque de fios — Vanvest' }
+
+export default async function EstoqueFiosPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const user = await requireArea('estoqueFios')
+  const nivel = await nivelDaAreaPara(user.role, 'estoqueFios')
+  const podeEditar = podeEscrever(nivel)
+
+  const [lotes, coresFornecedor, coresAtivas] = await Promise.all([
+    listarLotesFio(),
+    listarCoresFornecedor(),
+    listarCoresAtivas(),
+  ])
+
+  const sp = await searchParams
+  const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'entradas'
+
+  return (
+    <EstoqueFiosTabs
+      tabInicial={tabInicial}
+      lotes={lotes}
+      coresFornecedor={coresFornecedor}
+      coresAtivas={coresAtivas}
+      podeEditar={podeEditar}
+    />
+  )
+}

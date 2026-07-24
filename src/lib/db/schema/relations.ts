@@ -1,6 +1,8 @@
 import { relations } from 'drizzle-orm'
 
+import { cores } from './cores'
 import { movimentacoesEstoque } from './estoque'
+import { coresFornecedorFio, lotesFio } from './fios'
 import { maquinas } from './maquinas'
 import { apontamentosProducao, eventosKanban, ordensProducao } from './ordens'
 import { produtos, variacoesProduto } from './produtos'
@@ -84,6 +86,24 @@ export const eventosKanbanRelations = relations(eventosKanban, ({ one }) => ({
   usuario: one(users, {
     fields: [eventosKanban.usuarioId],
     references: [users.id],
+  }),
+}))
+
+export const coresFornecedorFioRelations = relations(
+  coresFornecedorFio,
+  ({ one, many }) => ({
+    cor: one(cores, {
+      fields: [coresFornecedorFio.corId],
+      references: [cores.id],
+    }),
+    lotes: many(lotesFio),
+  }),
+)
+
+export const lotesFioRelations = relations(lotesFio, ({ one }) => ({
+  corFornecedor: one(coresFornecedorFio, {
+    fields: [lotesFio.corFornecedorId],
+    references: [coresFornecedorFio.id],
   }),
 }))
 

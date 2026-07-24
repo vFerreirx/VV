@@ -16,6 +16,7 @@ import {
   Shapes,
   ShieldCheck,
   ShoppingCart,
+  Spool,
   Trash2,
   Users,
   type LucideIcon,
@@ -67,6 +68,12 @@ export const NAV_GROUPS: NavGroup[] = [
     titulo: 'Estoque & Vendas',
     items: [
       { href: '/estoque', label: 'Estoque', icon: Boxes, area: 'estoque' },
+      {
+        href: '/estoque-fios',
+        label: 'Estoque de fios',
+        icon: Spool,
+        area: 'estoqueFios',
+      },
       { href: '/vendas', label: 'Vendas', icon: ShoppingCart, area: 'vendas' },
       {
         href: '/orcamentos',

@@ -73,6 +73,7 @@ export type AreaKey =
   | 'maquinas'
   | 'estacoes'
   | 'estoque'
+  | 'estoqueFios'
   | 'vendas'
   | 'produtos'
   | 'cores'
@@ -167,6 +168,15 @@ export const AREAS: Area[] = [
     href: '/estoque',
     editavel: true,
     nivelPadrao: padrao({ [G]: 'total', [E]: 'total' }),
+  },
+  {
+    key: 'estoqueFios',
+    secao: 'Estoque & Vendas',
+    label: 'Estoque de fios',
+    descricao: 'Entradas de lote de fio e cores do fornecedor.',
+    href: '/estoque-fios',
+    editavel: true,
+    nivelPadrao: padrao({ [G]: 'ver', [E]: 'total' }),
   },
   {
     key: 'vendas',

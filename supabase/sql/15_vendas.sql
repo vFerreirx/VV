@@ -20,7 +20,20 @@ CREATE TABLE IF NOT EXISTS public.vendas (
 );
 
 CREATE INDEX IF NOT EXISTS vendas_data_idx ON public.vendas (data);
-CREATE INDEX IF NOT EXISTS vendas_canal_idx ON public.vendas (canal);
+
+-- `canal` foi removida por 16_vendas_simples.sql (rodada em cima desta
+-- versão de vendas já existente). Reaplicar este arquivo do zero contra um
+-- banco onde vendas já existe (sem `canal`) não deve tentar indexar uma
+-- coluna que não existe mais.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'vendas' AND column_name = 'canal'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS vendas_canal_idx ON public.vendas (canal);
+  END IF;
+END $$;
 
 ALTER TABLE public.vendas ENABLE ROW LEVEL SECURITY;
 
