@@ -56,7 +56,7 @@ import {
 // Estilos por status (header e borda da coluna)
 // -----------------------------------------------------------------
 
-const COLUMN_STYLES: Record<
+export const COLUMN_STYLES: Record<
   (typeof statusValues)[number],
   { header: string; bar: string }
 > = {

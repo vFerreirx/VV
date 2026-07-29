@@ -69,6 +69,7 @@ export const NIVEL_INFO: Record<Nivel, { label: string; descricao: string }> = {
 export type AreaKey =
   | 'kanban'
   | 'ordens'
+  | 'remessas'
   | 'calendario'
   | 'maquinas'
   | 'estacoes'
@@ -132,6 +133,15 @@ export const AREAS: Area[] = [
     href: '/ordens',
     editavel: true,
     nivelPadrao: padrao({ [G]: 'total', [O]: 'ver', [E]: 'ver', [V]: 'ver' }),
+  },
+  {
+    key: 'remessas',
+    secao: 'Produção',
+    label: 'Remessas Full',
+    descricao: 'Visão de prazo/gargalo das remessas Full abertas.',
+    href: '/remessas',
+    editavel: true,
+    nivelPadrao: padrao({ [G]: 'total', [O]: 'nenhum', [E]: 'ver', [V]: 'total' }),
   },
   {
     key: 'calendario',

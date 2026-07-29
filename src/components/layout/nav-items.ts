@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Package,
+  PackageSearch,
   Shapes,
   ShieldCheck,
   ShoppingCart,
@@ -50,6 +51,12 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/producao', label: 'Produção', icon: KanbanSquare, area: 'kanban' },
       { href: '/ordens', label: 'Ordens', icon: ListChecks, area: 'ordens' },
+      {
+        href: '/remessas',
+        label: 'Remessas Full',
+        icon: PackageSearch,
+        area: 'remessas',
+      },
       {
         href: '/calendario',
         label: 'Calendário',
