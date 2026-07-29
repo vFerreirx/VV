@@ -167,7 +167,10 @@ export async function listarOrdensProducao(
     )
     .where(and(...conditions))
     .orderBy(
-      asc(ordensProducao.prioridade),
+      // Enum ordem_prioridade é declarado ['baixa','normal','alta','urgente']
+      // — Postgres ordena enum pela ordem de declaração, não alfabética.
+      // DESC traz urgente/alta primeiro (mais importante no topo da coluna).
+      desc(ordensProducao.prioridade),
       asc(ordensProducao.dataPrevistaFim),
     )
 
