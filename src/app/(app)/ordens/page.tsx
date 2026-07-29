@@ -2,11 +2,10 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 import { listarOrdens, listarProdutosParaOrdem } from './actions'
-import { FullsProgresso } from './fulls-progresso'
 import { GerarDeKit } from './gerar-de-kit'
 import { NovoFull } from './novo-full'
 import { OrdensList } from './ordens-list'
-import { listarFullsProgresso, listarRemessasFull } from './remessas-actions'
+import { listarRemessasFull } from './remessas-actions'
 import { listarKitsComItens } from '../kits/actions'
 import { Button } from '@/components/ui/button'
 import { podeEscrever } from '@/lib/auth/permissoes'
@@ -37,14 +36,12 @@ export default async function OrdensPage({
   const parsed = ordensFiltrosSchema.safeParse(raw)
   const filtros: OrdensFiltros = parsed.success ? parsed.data : {}
 
-  const [pagina, kits, produtosParaKit, remessas, fullsProgresso] =
-    await Promise.all([
-      listarOrdens(filtros),
-      podeGerarKit ? listarKitsComItens() : Promise.resolve([]),
-      podeEditar ? listarProdutosParaOrdem() : Promise.resolve([]),
-      listarRemessasFull(),
-      listarFullsProgresso(),
-    ])
+  const [pagina, kits, produtosParaKit, remessas] = await Promise.all([
+    listarOrdens(filtros),
+    podeGerarKit ? listarKitsComItens() : Promise.resolve([]),
+    podeEditar ? listarProdutosParaOrdem() : Promise.resolve([]),
+    listarRemessasFull(),
+  ])
 
   return (
     <div className="space-y-6">
@@ -67,8 +64,6 @@ export default async function OrdensPage({
           )}
         </div>
       </div>
-
-      <FullsProgresso fulls={fullsProgresso} />
 
       <OrdensList
         ordens={pagina.ordens}

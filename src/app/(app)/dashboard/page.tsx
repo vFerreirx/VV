@@ -18,8 +18,7 @@ import {
   obterKPIs,
   type DashboardKPIs,
 } from './actions'
-import { FullsProgresso } from '../ordens/fulls-progresso'
-import { listarFullsProgresso } from '../ordens/remessas-actions'
+import { listarRemessasAbertas, type RemessaAberta } from '../remessas/actions'
 import { CanaisChart } from '@/components/charts/canais-chart'
 import { ProducaoChart } from '@/components/charts/producao-chart'
 import { TopProdutosChart } from '@/components/charts/top-produtos-chart'
@@ -30,6 +29,7 @@ import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth } from '@/lib/auth/require-auth'
 import { cn } from '@/lib/utils'
 import {
+  CANAL_LABEL_CURTO,
   PRIORIDADE_LABEL,
   STATUS_LABEL_CURTO,
   prioridadeValues,
@@ -59,17 +59,17 @@ const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
 export default async function DashboardPage() {
   const user = await requireAuth()
 
-  // Fulls só pra quem tem acesso a ordens (senão a action redirecionaria).
-  const nivelOrdens = await nivelDaAreaPara(user.role, 'ordens')
+  // Remessas só pra quem tem acesso à área (senão a action redirecionaria).
+  const nivelRemessas = await nivelDaAreaPara(user.role, 'remessas')
 
-  const [kpis, opsUrgentes, producao14d, canais, topProdutos, fulls] =
+  const [kpis, opsUrgentes, producao14d, canais, topProdutos, remessas] =
     await Promise.all([
       obterKPIs(),
       listarOpsUrgentes(5),
       listarProducaoUltimosDias(14),
       listarOpsPorCanal(),
       listarTopProdutosMes(5),
-      nivelOrdens !== 'nenhum' ? listarFullsProgresso() : Promise.resolve([]),
+      nivelRemessas !== 'nenhum' ? listarRemessasAbertas() : Promise.resolve([]),
     ])
 
   return (
@@ -115,8 +115,8 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Fulls em andamento (quem tem acesso a ordens) */}
-      <FullsProgresso fulls={fulls} />
+      {/* Remessas Full em risco/atrasadas (quem tem acesso à área) */}
+      {nivelRemessas !== 'nenhum' && <RemessasAlerta remessas={remessas} />}
 
       {/* Produção dos últimos 14 dias */}
       <Card>
@@ -277,6 +277,78 @@ function KPICard({
         </div>
         {subtitle && (
           <div className="text-muted-foreground mt-0.5 text-xs">{subtitle}</div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function RemessasAlerta({ remessas }: { remessas: RemessaAberta[] }) {
+  const emRisco = remessas.filter((r) => r.risco !== 'no_prazo')
+  const atrasadas = emRisco.filter((r) => r.risco === 'atrasada')
+  const risco = emRisco.filter((r) => r.risco === 'em_risco')
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle>Remessas Full</CardTitle>
+          <Link
+            href="/remessas"
+            className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+          >
+            Ver todas →
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {emRisco.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            {remessas.length === 0
+              ? 'Nenhuma remessa Full aberta no momento.'
+              : 'Todas as remessas abertas estão no prazo.'}
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">
+              {atrasadas.length > 0 && (
+                <span className="text-destructive">
+                  {atrasadas.length} atrasada{atrasadas.length > 1 ? 's' : ''}
+                </span>
+              )}
+              {atrasadas.length > 0 && risco.length > 0 && ' · '}
+              {risco.length > 0 && (
+                <span className="text-amber-600">
+                  {risco.length} em risco
+                </span>
+              )}
+            </p>
+            <ul className="divide-y">
+              {emRisco.slice(0, 5).map((r) => {
+                const [, m, d] = r.dataEnvio.split('-')
+                return (
+                  <li
+                    key={r.id}
+                    className="flex items-center justify-between gap-3 py-2 text-sm"
+                  >
+                    <span>
+                      {CANAL_LABEL_CURTO[r.canal]} · {d}/{m}
+                    </span>
+                    <Badge
+                      className={cn(
+                        'text-[11px]',
+                        r.risco === 'atrasada'
+                          ? 'bg-destructive/15 text-destructive'
+                          : 'bg-amber-500/15 text-amber-600',
+                      )}
+                    >
+                      {r.risco === 'atrasada' ? 'Atrasada' : 'Em risco'}
+                    </Badge>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
         )}
       </CardContent>
     </Card>
