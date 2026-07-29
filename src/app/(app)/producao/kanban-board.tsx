@@ -1040,11 +1040,11 @@ function KanbanCardContent({
         )}
       </div>
 
-      {ordem.produzido > 0 && (
-        <div
-          className="bg-muted mt-1 h-1 overflow-hidden rounded-full"
-          title={`Produzido ${ordem.produzido}/${ordem.quantidade}`}
-        >
+      <div
+        className="bg-muted mt-1 h-1 overflow-hidden rounded-full"
+        title={`Produzido ${ordem.produzido}/${ordem.quantidade}`}
+      >
+        {ordem.produzido > 0 && (
           <div
             className={cn(
               'h-full rounded-full',
@@ -1056,8 +1056,8 @@ function KanbanCardContent({
               width: `${Math.min(100, (ordem.produzido / ordem.quantidade) * 100)}%`,
             }}
           />
-        </div>
-      )}
+        )}
+      </div>
 
       {currentUserId && (
         <PegarSoltar ordem={ordem} currentUserId={currentUserId} />
