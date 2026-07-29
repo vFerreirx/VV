@@ -941,6 +941,14 @@ function KanbanCardContent({
     .join('/')
   const destaque =
     ordem.prioridade === 'alta' || ordem.prioridade === 'urgente'
+  // Barra de progresso só faz sentido a partir de em_producao — antes disso
+  // a produção nem começou.
+  const emEtapaProdutiva =
+    STATUS_KANBAN.indexOf(ordem.status) >= STATUS_KANBAN.indexOf('em_producao')
+  const pctProduzido =
+    ordem.quantidade > 0
+      ? Math.min(100, Math.round((ordem.produzido / ordem.quantidade) * 100))
+      : 0
 
   return (
     <article
@@ -949,7 +957,6 @@ function KanbanCardContent({
           ? { borderLeftColor: ordem.estacaoCor, borderLeftWidth: 3 }
           : undefined
       }
-      title={ordem.estacaoNome ?? undefined}
       className={cn(
         'bg-card rounded-md border p-2 text-xs shadow-sm transition-shadow',
         dragging ? 'shadow-lg ring-1 ring-foreground/20' : 'hover:shadow-md',
@@ -991,7 +998,7 @@ function KanbanCardContent({
         )}
       </div>
 
-      {/* Linha 2: meta compacta */}
+      {/* Linha 2: dados da OP */}
       <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px]">
         <span className="tabular-nums">
           {ordem.quantidade.toLocaleString('pt-BR')} un
@@ -1006,16 +1013,6 @@ function KanbanCardContent({
             {ordem.maquinaCodigo}
           </span>
         )}
-        <span
-          className={cn(
-            'inline-flex items-center gap-0.5',
-            tempo.aging && 'text-destructive font-medium',
-          )}
-          title="Tempo nesta etapa"
-        >
-          <Clock className="size-2.5" />
-          {tempo.label}
-        </span>
         {ordem.dataPrevistaFim && (
           <span
             className={cn(
@@ -1027,37 +1024,60 @@ function KanbanCardContent({
             {format(new Date(ordem.dataPrevistaFim), 'dd/MM', { locale: ptBR })}
           </span>
         )}
-        {ordem.responsavelNome && (
-          <span className="inline-flex items-center gap-0.5">
+      </div>
+
+      {/* Linha 3: execução — estação, tempo na etapa, responsável */}
+      <div className="text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px]">
+        {ordem.estacaoNome && (
+          <span className="inline-flex items-center gap-1 truncate">
             {ordem.estacaoCor && (
               <span
                 className="inline-block size-1.5 shrink-0 rounded-full"
                 style={{ backgroundColor: ordem.estacaoCor }}
               />
             )}
-            {ordem.responsavelNome.split(' ')[0]}
+            <span className="truncate">{ordem.estacaoNome}</span>
           </span>
+        )}
+        <span
+          className={cn(
+            'inline-flex items-center gap-0.5',
+            tempo.aging && 'text-destructive font-medium',
+          )}
+          title="Tempo nesta etapa"
+        >
+          <Clock className="size-2.5" />
+          {tempo.label}
+        </span>
+        {ordem.responsavelNome && (
+          <span className="truncate">{ordem.responsavelNome.split(' ')[0]}</span>
         )}
       </div>
 
-      <div
-        className="bg-muted mt-1 h-1 overflow-hidden rounded-full"
-        title={`Produzido ${ordem.produzido}/${ordem.quantidade}`}
-      >
-        {ordem.produzido > 0 && (
+      {/* Linha 4: progresso — só a partir de em_producao */}
+      {emEtapaProdutiva && (
+        <div className="mt-1 flex items-center gap-1.5">
           <div
-            className={cn(
-              'h-full rounded-full',
-              ordem.produzido >= ordem.quantidade
-                ? 'bg-emerald-500'
-                : 'bg-primary',
+            className="bg-muted h-1 flex-1 overflow-hidden rounded-full"
+            title={`Produzido ${ordem.produzido}/${ordem.quantidade}`}
+          >
+            {ordem.produzido > 0 && (
+              <div
+                className={cn(
+                  'h-full rounded-full',
+                  ordem.produzido >= ordem.quantidade
+                    ? 'bg-emerald-500'
+                    : 'bg-primary',
+                )}
+                style={{ width: `${pctProduzido}%` }}
+              />
             )}
-            style={{
-              width: `${Math.min(100, (ordem.produzido / ordem.quantidade) * 100)}%`,
-            }}
-          />
-        )}
-      </div>
+          </div>
+          <span className="text-muted-foreground shrink-0 text-[9px] tabular-nums">
+            {pctProduzido}%
+          </span>
+        </div>
+      )}
 
       {currentUserId && (
         <PegarSoltar ordem={ordem} currentUserId={currentUserId} />
