@@ -20,6 +20,7 @@ import {
   ChevronRight,
   CircleAlert,
   Clock,
+  Cog,
   Folder,
   Hand,
   PackageOpen,
@@ -996,6 +997,15 @@ function KanbanCardContent({
           {ordem.quantidade.toLocaleString('pt-BR')} un
         </span>
         {variacao && <span className="truncate">{variacao}</span>}
+        {ordem.maquinaCodigo && (
+          <span
+            className="inline-flex items-center gap-0.5"
+            title={ordem.maquinaNome ?? undefined}
+          >
+            <Cog className="size-2.5" />
+            {ordem.maquinaCodigo}
+          </span>
+        )}
         <span
           className={cn(
             'inline-flex items-center gap-0.5',

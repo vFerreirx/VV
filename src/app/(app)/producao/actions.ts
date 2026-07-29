@@ -36,6 +36,8 @@ export type KanbanCardData = {
   variacaoTamanho: string | null
   quantidade: number
   maquinaId: string | null
+  maquinaCodigo: string | null
+  maquinaNome: string | null
   // Remessa Full a que a OP pertence (vira "pasta" na coluna do kanban).
   remessaFullId: string | null
   remessaLabel: string | null
@@ -119,6 +121,8 @@ export async function listarOrdensProducao(
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
       responsavelNome: users.nome,
+      maquinaCodigo: maquinas.codigo,
+      maquinaNome: maquinas.nome,
       remessaCanal: remessasFull.canal,
       remessaDataEnvio: remessasFull.dataEnvio,
       estacaoCorMaq: estMaq.cor,
@@ -184,6 +188,8 @@ export async function listarOrdensProducao(
       variacaoModelo,
       variacaoTamanho,
       responsavelNome,
+      maquinaCodigo,
+      maquinaNome,
       remessaCanal,
       remessaDataEnvio,
       estacaoCorMaq,
@@ -205,6 +211,8 @@ export async function listarOrdensProducao(
       variacaoTamanho: variacaoTamanho ?? null,
       quantidade: op.quantidade,
       maquinaId: op.maquinaId,
+      maquinaCodigo: maquinaCodigo ?? null,
+      maquinaNome: maquinaNome ?? null,
       remessaFullId: op.remessaFullId,
       remessaLabel:
         remessaCanal && remessaDataEnvio
