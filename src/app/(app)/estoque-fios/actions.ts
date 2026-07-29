@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, desc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
@@ -10,13 +10,17 @@ import {
   cores,
   coresFornecedorFio,
   lotesFio,
+  movimentacoesFio,
+  users,
   type CorFornecedorFio,
 } from '@/lib/db/schema'
 import {
   corFornecedorSchema,
   loteFioSchema,
+  saidaFioSchema,
   type CorFornecedorInput,
   type LoteFioInput,
+  type SaidaFioInput,
 } from '@/lib/validators/fios'
 
 export type ActionResult<T = undefined> =
@@ -196,10 +200,31 @@ export type LoteFioItem = {
   vencimentoPagamento: string
   notaFiscal: string | null
   observacao: string | null
+  saidaCaixas: number
+  saidaPesoKg: string
+  saldoCaixas: number
+  saldoPesoKg: string
 }
 
 export async function listarLotesFio(): Promise<LoteFioItem[]> {
   await requireAuth()
+
+  // Nota: a referência a "lotes_fio"."id" precisa ficar qualificada com o
+  // nome da tabela — interpolar ${lotesFio.id} aqui (via tag `sql`) gera só
+  // o identificador da coluna sem qualificar, e como `movimentacoes_fio`
+  // também tem uma coluna `id`, o Postgres resolve pro escopo mais interno
+  // (a subquery) em vez de correlacionar com a tabela externa.
+  const saidaCaixasSql = sql<number>`(
+    SELECT COALESCE(SUM(${movimentacoesFio.caixas}), 0)::int
+    FROM ${movimentacoesFio}
+    WHERE ${movimentacoesFio.loteId} = "lotes_fio"."id"
+  )`
+  const saidaPesoSql = sql<string>`(
+    SELECT COALESCE(SUM(${movimentacoesFio.pesoKg}), 0)
+    FROM ${movimentacoesFio}
+    WHERE ${movimentacoesFio.loteId} = "lotes_fio"."id"
+  )`
+
   const rows = await db
     .select({
       id: lotesFio.id,
@@ -216,6 +241,8 @@ export async function listarLotesFio(): Promise<LoteFioItem[]> {
       vencimentoPagamento: lotesFio.vencimentoPagamento,
       notaFiscal: lotesFio.notaFiscal,
       observacao: lotesFio.observacao,
+      saidaCaixas: saidaCaixasSql,
+      saidaPesoKg: saidaPesoSql,
     })
     .from(lotesFio)
     .innerJoin(coresFornecedorFio, eq(coresFornecedorFio.id, lotesFio.corFornecedorId))
@@ -223,7 +250,11 @@ export async function listarLotesFio(): Promise<LoteFioItem[]> {
     .where(isNull(lotesFio.deletedAt))
     .orderBy(desc(lotesFio.dataEntrada), desc(lotesFio.createdAt))
 
-  return rows
+  return rows.map((r) => ({
+    ...r,
+    saldoCaixas: r.caixas - r.saidaCaixas,
+    saldoPesoKg: (Number(r.pesoTotalKg) - Number(r.saidaPesoKg)).toFixed(2),
+  }))
 }
 
 export async function criarLoteFioAction(
@@ -323,4 +354,115 @@ export async function excluirLoteFioAction(id: string): Promise<ActionResult> {
 
   revalidatePath('/estoque-fios')
   return { success: true, message: 'Lote excluído' }
+}
+
+// -----------------------------------------------------------------
+// Saídas de fio (retirada de um lote)
+// -----------------------------------------------------------------
+
+export type SaidaFioItem = {
+  id: string
+  loteId: string
+  caixas: number
+  pesoKg: string
+  data: string
+  motivo: string
+  observacao: string | null
+  usuarioNome: string | null
+  createdAt: Date
+}
+
+export async function listarSaidasDoLote(loteId: string): Promise<SaidaFioItem[]> {
+  await requireAuth()
+  const rows = await db
+    .select({
+      id: movimentacoesFio.id,
+      loteId: movimentacoesFio.loteId,
+      caixas: movimentacoesFio.caixas,
+      pesoKg: movimentacoesFio.pesoKg,
+      data: movimentacoesFio.data,
+      motivo: movimentacoesFio.motivo,
+      observacao: movimentacoesFio.observacao,
+      usuarioNome: users.nome,
+      createdAt: movimentacoesFio.createdAt,
+    })
+    .from(movimentacoesFio)
+    .leftJoin(users, eq(users.id, movimentacoesFio.usuarioId))
+    .where(eq(movimentacoesFio.loteId, loteId))
+    .orderBy(desc(movimentacoesFio.data), desc(movimentacoesFio.createdAt))
+
+  return rows
+}
+
+async function saldoAtualDoLote(
+  loteId: string,
+): Promise<{ caixas: number; pesoKg: number; loteCaixas: number } | null> {
+  const [lote] = await db
+    .select({ caixas: lotesFio.caixas, pesoTotalKg: lotesFio.pesoTotalKg })
+    .from(lotesFio)
+    .where(and(eq(lotesFio.id, loteId), isNull(lotesFio.deletedAt)))
+    .limit(1)
+  if (!lote) return null
+
+  const [saidas] = await db
+    .select({
+      caixas: sql<number>`COALESCE(SUM(${movimentacoesFio.caixas}), 0)::int`,
+      pesoKg: sql<string>`COALESCE(SUM(${movimentacoesFio.pesoKg}), 0)`,
+    })
+    .from(movimentacoesFio)
+    .where(eq(movimentacoesFio.loteId, loteId))
+
+  return {
+    caixas: lote.caixas - (saidas?.caixas ?? 0),
+    pesoKg: Number(lote.pesoTotalKg) - Number(saidas?.pesoKg ?? 0),
+    loteCaixas: lote.caixas,
+  }
+}
+
+export async function registrarSaidaFioAction(
+  input: SaidaFioInput,
+): Promise<ActionResult<{ id: string }>> {
+  const user = await requireAreaEscrita('estoqueFios')
+
+  const parsed = saidaFioSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? 'Dados inválidos',
+    }
+  }
+  const data = parsed.data
+
+  const saldo = await saldoAtualDoLote(data.loteId)
+  if (!saldo) {
+    return { success: false, error: 'Lote não encontrado' }
+  }
+  if (data.caixas > saldo.caixas) {
+    return {
+      success: false,
+      error: `Saldo insuficiente: restam ${saldo.caixas} caixa(s) nesse lote`,
+    }
+  }
+  if (Number(data.pesoKg) > saldo.pesoKg + 0.01) {
+    return {
+      success: false,
+      error: `Saldo insuficiente: restam ${saldo.pesoKg.toFixed(2)}kg nesse lote`,
+    }
+  }
+
+  const [inserted] = await db
+    .insert(movimentacoesFio)
+    .values({
+      loteId: data.loteId,
+      caixas: data.caixas,
+      pesoKg: data.pesoKg,
+      data: data.data,
+      motivo: data.motivo,
+      observacao: data.observacao ?? null,
+      usuarioId: user.id,
+    })
+    .returning({ id: movimentacoesFio.id })
+
+  revalidatePath('/estoque-fios')
+  return { success: true, data: { id: inserted!.id }, message: 'Saída registrada' }
 }

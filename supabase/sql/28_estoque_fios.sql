@@ -1,9 +1,8 @@
 -- ============================================================
 -- 28_estoque_fios.sql
--- Controle de estoque de fios — por enquanto só ENTRADA de lote (sem
--- saldo/consumo). `cores_fornecedor_fio` é o de-para entre a cor que o
--- FORNECEDOR usa e a cor equivalente do nosso catálogo (`cores`).
--- `lotes_fio` é a entrada de lote propriamente dita.
+-- Controle de estoque de fios. `cores_fornecedor_fio` é o de-para entre a
+-- cor que o FORNECEDOR usa e a cor equivalente do nosso catálogo (`cores`).
+-- `lotes_fio` é a entrada de lote. Saída/saldo em 29_movimentacoes_fio.sql.
 --
 -- Idempotente.
 -- ============================================================

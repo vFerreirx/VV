@@ -1,7 +1,7 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { PackageMinus, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { Controller, useForm, useWatch, type Resolver } from 'react-hook-form'
@@ -14,6 +14,8 @@ import {
   type CorFornecedorItem,
   type LoteFioItem,
 } from './actions'
+import { LoteDetailSheet } from './lote-detail-sheet'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -83,6 +85,7 @@ function hojeISO(): string {
 export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props) {
   const [editing, setEditing] = useState<LoteFioItem | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<LoteFioItem | null>(null)
+  const [verLote, setVerLote] = useState<LoteFioItem | null>(null)
 
   return (
     <div className="space-y-4">
@@ -126,11 +129,12 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
                 <TableHead>Cor</TableHead>
                 <TableHead>Caixas</TableHead>
                 <TableHead>Peso total</TableHead>
+                <TableHead>Saldo</TableHead>
                 <TableHead>Valor total</TableHead>
                 <TableHead>R$/kg</TableHead>
                 <TableHead>Vendedor</TableHead>
                 <TableHead>Vencimento</TableHead>
-                {podeEditar && <TableHead className="w-24" />}
+                <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -166,6 +170,16 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
                       {formatarKg(l.pesoTotalKg)}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span>
+                          {l.saldoCaixas} cx · {formatarKg(l.saldoPesoKg)}
+                        </span>
+                        {l.saldoCaixas <= 0 && (
+                          <Badge variant="secondary">Esgotado</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
                       {formatarReais(l.valorTotal)}
                     </TableCell>
                     <TableCell className="text-muted-foreground whitespace-nowrap">
@@ -175,28 +189,38 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
                     <TableCell className="whitespace-nowrap">
                       {formatarData(l.vencimentoPagamento)}
                     </TableCell>
-                    {podeEditar && (
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() => setEditing(l)}
-                            aria-label="Editar"
-                          >
-                            <Pencil />
-                          </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() => setExcluindo(l)}
-                            aria-label="Excluir"
-                          >
-                            <Trash2 className="text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          onClick={() => setVerLote(l)}
+                          aria-label="Ver saídas"
+                        >
+                          <PackageMinus />
+                        </Button>
+                        {podeEditar && (
+                          <>
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              onClick={() => setEditing(l)}
+                              aria-label="Editar"
+                            >
+                              <Pencil />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              onClick={() => setExcluindo(l)}
+                              aria-label="Excluir"
+                            >
+                              <Trash2 className="text-destructive" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 )
               })}
@@ -212,6 +236,12 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
       />
 
       <ExcluirDialog lote={excluindo} onClose={() => setExcluindo(null)} />
+
+      <LoteDetailSheet
+        lote={verLote}
+        podeEditar={podeEditar}
+        onClose={() => setVerLote(null)}
+      />
     </div>
   )
 }

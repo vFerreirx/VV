@@ -13,6 +13,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 import { cores } from './cores'
+import { users } from './users'
 
 // De-para: a cor que o FORNECEDOR usa (nome/código dele) vinculada à cor
 // equivalente do nosso catálogo (`cores`). A entrada de lote referencia
@@ -46,9 +47,8 @@ export const coresFornecedorFio = pgTable(
 export type CorFornecedorFio = typeof coresFornecedorFio.$inferSelect
 export type NewCorFornecedorFio = typeof coresFornecedorFio.$inferInsert
 
-// Entrada de lote de fio. Só registra ENTRADA por enquanto — sem
-// saldo/consumo (fica pra uma tabela `movimentacoes_fio` futura,
-// referenciando `lotesFio.id`, no mesmo espírito de `movimentacoes_estoque`).
+// Entrada de lote de fio. Saldo = caixas/pesoTotalKg menos a soma das
+// saídas em `movimentacoesFio`.
 export const lotesFio = pgTable(
   'lotes_fio',
   {
@@ -90,3 +90,36 @@ export const lotesFio = pgTable(
 
 export type LoteFio = typeof lotesFio.$inferSelect
 export type NewLoteFio = typeof lotesFio.$inferInsert
+
+// Saída (retirada) de fio de um lote. Lançamento imobilizado — sem
+// editar/apagar depois; erro se corrige com um lançamento novo. Mesmo
+// espírito de `movimentacoesEstoque`.
+export const movimentacoesFio = pgTable(
+  'movimentacoes_fio',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    loteId: uuid()
+      .notNull()
+      .references(() => lotesFio.id),
+
+    caixas: integer().notNull(),
+    // Peso retirado real (pode não ser proporcional às caixas — mesma
+    // lógica de ajuste manual da entrada).
+    pesoKg: numeric({ precision: 10, scale: 2 }).notNull(),
+
+    data: date().notNull(),
+    motivo: text().notNull(),
+    observacao: text(),
+
+    usuarioId: uuid().references(() => users.id),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('movimentacoes_fio_lote_idx').on(table.loteId),
+    index('movimentacoes_fio_data_idx').on(table.data),
+  ],
+)
+
+export type MovimentacaoFio = typeof movimentacoesFio.$inferSelect
+export type NewMovimentacaoFio = typeof movimentacoesFio.$inferInsert

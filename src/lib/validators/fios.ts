@@ -68,3 +68,22 @@ export const loteFioSchema = z.object({
 
 export type LoteFioInput = z.input<typeof loteFioSchema>
 export type LoteFioOutput = z.output<typeof loteFioSchema>
+
+// -----------------------------------------------------------------
+// Saída (retirada) de fio de um lote
+// -----------------------------------------------------------------
+
+export const saidaFioSchema = z.object({
+  loteId: uuidCampo,
+  caixas: z
+    .union([z.string(), z.number()])
+    .transform((v) => (v === '' ? NaN : Number(v)))
+    .refine((v) => Number.isInteger(v) && v > 0, 'Informe um número de caixas válido'),
+  pesoKg: decimalPositivoObrigatorio('Informe o peso retirado'),
+  data: dataSchema,
+  motivo: z.string().trim().min(1, 'Informe o motivo').max(120),
+  observacao: textoLivreOpt,
+})
+
+export type SaidaFioInput = z.input<typeof saidaFioSchema>
+export type SaidaFioOutput = z.output<typeof saidaFioSchema>
