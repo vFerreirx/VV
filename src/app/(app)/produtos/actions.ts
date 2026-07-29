@@ -58,10 +58,14 @@ export async function listarProdutos(
   else if (ativo === 'false') conditions.push(eq(produtos.ativo, false))
 
   // Conta variações via subquery agregada — evita N+1. Só as ativas.
+  // Qualifica "produtos"."id" explicitamente: interpolar ${produtos.id} teria
+  // gerado só o identificador sem qualificar, e como variacoes_produto
+  // também tem uma coluna `id`, o Postgres resolveria pro escopo mais
+  // interno (a subquery) em vez de correlacionar com a tabela externa.
   const totalVariacoesSql = sql<number>`(
     SELECT COUNT(*)::int
     FROM ${variacoesProduto}
-    WHERE ${variacoesProduto.produtoId} = ${produtos.id}
+    WHERE ${variacoesProduto.produtoId} = "produtos"."id"
       AND ${variacoesProduto.deletedAt} IS NULL
   )`.as('total_variacoes')
 

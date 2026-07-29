@@ -125,16 +125,20 @@ export async function listarOrdensProducao(
       estacaoNomeMaq: estMaq.nome,
       estacaoCorResp: estResp.cor,
       estacaoNomeResp: estResp.nome,
+      // Qualifica "ordens_producao"."id" nas duas subqueries abaixo — sem
+      // isso o Postgres correlaciona com o `id` da própria subquery
+      // (apontamentos_producao / eventos_kanban) e o valor nunca bate
+      // (produzido sempre 0, desdeStatus sempre null).
       produzido: sql<number>`(
         SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)::int
         FROM ${apontamentosProducao}
-        WHERE ${apontamentosProducao.ordemId} = ${ordensProducao.id}
+        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
       )`,
       // Última entrada no status atual (pra calcular tempo na etapa).
       desdeStatus: sql<string | null>`(
         SELECT MAX(${eventosKanban.createdAt})
         FROM ${eventosKanban}
-        WHERE ${eventosKanban.ordemId} = ${ordensProducao.id}
+        WHERE ${eventosKanban.ordemId} = "ordens_producao"."id"
           AND ${eventosKanban.statusNovo} = ${ordensProducao.status}
       )`,
     })

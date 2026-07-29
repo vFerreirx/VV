@@ -55,10 +55,15 @@ export async function listarEstoque(q?: string): Promise<EstoqueItem[]> {
     )
   }
 
+  // Nota: qualificar com "variacoes_produto"."id" explicitamente — interpolar
+  // ${variacoesProduto.id} aqui (via tag `sql`) gera só o identificador da
+  // coluna sem qualificar, e como movimentacoes_estoque também tem uma
+  // coluna `id`, o Postgres resolvia pro escopo mais interno (a subquery)
+  // em vez de correlacionar com a tabela externa — saldo sempre dava 0.
   const saldoSql = sql<number>`(
     SELECT COALESCE(SUM(${movimentacoesEstoque.quantidade}), 0)::int
     FROM ${movimentacoesEstoque}
-    WHERE ${movimentacoesEstoque.variacaoId} = ${variacoesProduto.id}
+    WHERE ${movimentacoesEstoque.variacaoId} = "variacoes_produto"."id"
   )`
 
   const rows = await db

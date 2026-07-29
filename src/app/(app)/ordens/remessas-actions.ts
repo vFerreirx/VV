@@ -46,9 +46,12 @@ export async function listarRemessasFull(): Promise<RemessaFullOpcao[]> {
       id: remessasFull.id,
       canal: remessasFull.canal,
       dataEnvio: remessasFull.dataEnvio,
+      // Qualifica "remessas_full"."id" — sem isso o Postgres correlaciona
+      // com o `id` da própria subquery (ordens_producao) e o count nunca
+      // bate (sempre 0).
       ops: sql<number>`(
         SELECT COUNT(*)::int FROM ${ordensProducao}
-        WHERE ${ordensProducao.remessaFullId} = ${remessasFull.id}
+        WHERE ${ordensProducao.remessaFullId} = "remessas_full"."id"
           AND ${ordensProducao.deletedAt} IS NULL
       )`,
     })
@@ -93,11 +96,13 @@ export async function listarFullsProgresso(): Promise<FullProgresso[]> {
         where ${ordensProducao.status} <> 'enviado'
       )::int`,
       unidades: sql<number>`coalesce(sum(${ordensProducao.quantidade}), 0)::int`,
+      // Qualifica "ordens_producao"."id" — a subquery é sobre
+      // apontamentos_producao, que também tem `id` próprio.
       produzidas: sql<number>`coalesce(sum(
         LEAST(${ordensProducao.quantidade}, (
           SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)
           FROM ${apontamentosProducao}
-          WHERE ${apontamentosProducao.ordemId} = ${ordensProducao.id}
+          WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
         ))
       ), 0)::int`,
     })

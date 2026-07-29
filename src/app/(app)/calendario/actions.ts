@@ -78,16 +78,19 @@ export async function listarEventosFull(
       id: remessasFull.id,
       data: remessasFull.dataEnvio,
       canal: remessasFull.canal,
+      // Qualifica "remessas_full"."id" — sem isso o Postgres correlaciona
+      // com o `id` da própria subquery (ordens_producao) e o valor nunca
+      // bate (sempre 0).
       ops: sql<number>`(
         SELECT COUNT(*)::int FROM ${ordensProducao}
-        WHERE ${ordensProducao.remessaFullId} = ${remessasFull.id}
+        WHERE ${ordensProducao.remessaFullId} = "remessas_full"."id"
           AND ${ordensProducao.deletedAt} IS NULL
           AND ${ordensProducao.status} <> 'cancelado'
       )`,
       unidades: sql<number>`(
         SELECT COALESCE(SUM(${ordensProducao.quantidade}), 0)::int
         FROM ${ordensProducao}
-        WHERE ${ordensProducao.remessaFullId} = ${remessasFull.id}
+        WHERE ${ordensProducao.remessaFullId} = "remessas_full"."id"
           AND ${ordensProducao.deletedAt} IS NULL
           AND ${ordensProducao.status} <> 'cancelado'
       )`,
