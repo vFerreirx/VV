@@ -164,6 +164,9 @@ export async function criarOrcamentoAction(
         descricao: it.descricao,
         quantidade: it.quantidade,
         precoUnitario: it.precoUnitario,
+        kitId: it.kitId ?? null,
+        tamanho: it.tamanho ?? null,
+        kitComponentes: it.componentes ?? null,
       })),
     )
     return inserted!.id
@@ -208,6 +211,9 @@ export async function atualizarOrcamentoAction(
         descricao: it.descricao,
         quantidade: it.quantidade,
         precoUnitario: it.precoUnitario,
+        kitId: it.kitId ?? null,
+        tamanho: it.tamanho ?? null,
+        kitComponentes: it.componentes ?? null,
       })),
     )
   })
@@ -235,4 +241,29 @@ export async function excluirOrcamentoAction(
 
   revalidatePath('/orcamentos')
   return { success: true, message: 'Orçamento excluído' }
+}
+
+// Alterna aguardando <-> aprovado (ação rápida na lista).
+export async function alternarStatusOrcamentoAction(
+  id: string,
+): Promise<ActionResult> {
+  await requireAreaEscrita('vendas')
+  const [atual] = await db
+    .select({ id: orcamentos.id, status: orcamentos.status })
+    .from(orcamentos)
+    .where(and(eq(orcamentos.id, id), isNull(orcamentos.deletedAt)))
+    .limit(1)
+  if (!atual) return { success: false, error: 'Orçamento não encontrado' }
+
+  const novoStatus = atual.status === 'aprovado' ? 'aguardando' : 'aprovado'
+  await db
+    .update(orcamentos)
+    .set({ status: novoStatus })
+    .where(eq(orcamentos.id, id))
+
+  revalidatePath('/orcamentos')
+  return {
+    success: true,
+    message: novoStatus === 'aprovado' ? 'Marcado como aprovado' : 'Marcado como aguardando',
+  }
 }

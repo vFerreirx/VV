@@ -2,12 +2,22 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { Copy, FileText, Pencil, Plus, Printer, Trash2, X } from 'lucide-react'
+import {
+  ClipboardList,
+  Copy,
+  FileText,
+  Pencil,
+  Plus,
+  Printer,
+  Trash2,
+  X,
+} from 'lucide-react'
 import Link from 'next/link'
-import { useState, useTransition } from 'react'
+import { Fragment, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
+  alternarStatusOrcamentoAction,
   atualizarOrcamentoAction,
   criarOrcamentoAction,
   excluirOrcamentoAction,
@@ -100,6 +110,38 @@ export function OrcamentosView({
 }: Props) {
   const [editando, setEditando] = useState<Edicao | null>(null)
   const [excluindo, setExcluindo] = useState<OrcamentoListItem | null>(null)
+  const [mesSel, setMesSel] = useState('todos')
+
+  // Agrupa por mês/ano de criação, mantendo a ordem de chegada (a lista já
+  // vem por número desc, ou seja, mês mais recente primeiro).
+  const gruposMes = useMemo(() => {
+    const mapa = new Map<string, { label: string; itens: OrcamentoListItem[] }>()
+    for (const o of orcamentos) {
+      const d = new Date(o.createdAt)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      if (!mapa.has(key)) {
+        const label = format(d, 'MMMM yyyy', { locale: ptBR })
+        mapa.set(key, {
+          label: label.charAt(0).toUpperCase() + label.slice(1),
+          itens: [],
+        })
+      }
+      mapa.get(key)!.itens.push(o)
+    }
+    return mapa
+  }, [orcamentos])
+
+  const meses = useMemo(
+    () => [...gruposMes.entries()].map(([key, g]) => ({ key, label: g.label })),
+    [gruposMes],
+  )
+
+  const gruposFiltrados = useMemo(() => {
+    const entradas = [...gruposMes.entries()]
+    return mesSel === 'todos'
+      ? entradas
+      : entradas.filter(([key]) => key === mesSel)
+  }, [gruposMes, mesSel])
 
   return (
     <div className="space-y-6">
@@ -125,94 +167,142 @@ export function OrcamentosView({
           description="Clique em “Fazer orçamento” pra montar o primeiro."
         />
       ) : (
-        <div className="rounded-lg border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-20">Nº</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Data</TableHead>
-                <TableHead className="text-right">Itens</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="w-32" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orcamentos.map((o) => (
-                <TableRow key={o.id}>
-                  <TableCell className="font-mono text-xs">
-                    #{o.numero}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    <Link
-                      href={`/orcamentos/${o.id}`}
-                      className="hover:underline"
-                    >
-                      {o.cliente}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="tabular-nums">
-                    {format(new Date(o.createdAt), 'dd/MM/yyyy', {
-                      locale: ptBR,
-                    })}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {o.itensCount}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    {reais(o.total)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        render={<Link href={`/orcamentos/${o.id}`} />}
-                        aria-label="Abrir / imprimir"
-                        title="Abrir / imprimir"
-                      >
-                        <Printer />
-                      </Button>
-                      {podeEditar && (
-                        <>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() =>
-                              setEditando({ modo: 'duplicar', id: o.id })
-                            }
-                            aria-label="Duplicar"
-                            title="Duplicar (novo orçamento com os mesmos itens)"
-                          >
-                            <Copy />
-                          </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() =>
-                              setEditando({ modo: 'editar', id: o.id })
-                            }
-                            aria-label="Editar"
-                          >
-                            <Pencil />
-                          </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() => setExcluindo(o)}
-                            aria-label="Excluir"
-                          >
-                            <Trash2 className="text-destructive" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
+        <>
+          <div className="flex justify-end">
+            <Select
+              value={mesSel}
+              onValueChange={(v) => setMesSel(v ?? 'todos')}
+            >
+              <SelectTrigger size="sm" className="w-48">
+                <SelectValue placeholder="Mês" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os meses</SelectItem>
+                {meses.map((m) => (
+                  <SelectItem key={m.key} value={m.key}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-20">Nº</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Itens</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="w-36" />
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {gruposFiltrados.map(([key, grupo]) => (
+                  <Fragment key={key}>
+                    <TableRow className="bg-muted/40 hover:bg-muted/40">
+                      <TableCell
+                        colSpan={7}
+                        className="text-muted-foreground py-2 text-xs font-semibold tracking-wide uppercase"
+                      >
+                        {grupo.label}
+                      </TableCell>
+                    </TableRow>
+                    {grupo.itens.map((o) => (
+                      <TableRow key={o.id}>
+                        <TableCell className="font-mono text-xs">
+                          #{o.numero}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <Link
+                            href={`/orcamentos/${o.id}`}
+                            className="hover:underline"
+                          >
+                            {o.cliente}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="tabular-nums">
+                          {format(new Date(o.createdAt), 'dd/MM/yyyy', {
+                            locale: ptBR,
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge orcamento={o} podeEditar={podeEditar} />
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {o.itensCount}
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {reais(o.total)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              render={<Link href={`/orcamentos/${o.id}`} />}
+                              aria-label="Abrir / imprimir"
+                              title="Abrir / imprimir"
+                            >
+                              <Printer />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              render={
+                                <Link href={`/orcamentos/${o.id}/separacao`} />
+                              }
+                              aria-label="Via de separação"
+                              title="Via de separação (sem preço)"
+                            >
+                              <ClipboardList />
+                            </Button>
+                            {podeEditar && (
+                              <>
+                                <Button
+                                  size="icon-sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setEditando({ modo: 'duplicar', id: o.id })
+                                  }
+                                  aria-label="Duplicar"
+                                  title="Duplicar (novo orçamento com os mesmos itens)"
+                                >
+                                  <Copy />
+                                </Button>
+                                <Button
+                                  size="icon-sm"
+                                  variant="ghost"
+                                  onClick={() =>
+                                    setEditando({ modo: 'editar', id: o.id })
+                                  }
+                                  aria-label="Editar"
+                                >
+                                  <Pencil />
+                                </Button>
+                                <Button
+                                  size="icon-sm"
+                                  variant="ghost"
+                                  onClick={() => setExcluindo(o)}
+                                  aria-label="Excluir"
+                                >
+                                  <Trash2 className="text-destructive" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
 
       {editando && (
@@ -237,7 +327,23 @@ export function OrcamentosView({
 // Dialog: fazer / editar orçamento
 // -----------------------------------------------------------------
 
-type LinhaItem = { descricao: string; quantidade: string; preco: string }
+// Snapshot de um componente do kit (quantidade é POR KIT). Espelha
+// KitComponenteSnapshot de src/lib/db/schema/orcamentos.ts.
+type KitComponente = {
+  produtoNome: string
+  cor: string | null
+  quantidade: number
+  tamanho?: string | null
+}
+
+type LinhaItem = {
+  descricao: string
+  quantidade: string
+  preco: string
+  kitId?: string | null
+  tamanho?: string | null
+  componentes?: KitComponente[] | null
+}
 
 const LINHA_VAZIA: LinhaItem = { descricao: '', quantidade: '1', preco: '' }
 
@@ -282,6 +388,9 @@ function OrcamentoDialog({
           descricao: it.descricao,
           quantidade: String(it.quantidade),
           preco: decimalParaMoeda(it.precoUnitario),
+          kitId: it.kitId,
+          tamanho: it.tamanho,
+          componentes: it.kitComponentes as KitComponente[] | null,
         })),
       )
     })
@@ -323,6 +432,9 @@ function OrcamentoDialog({
         descricao: l.descricao.trim(),
         quantidade: Math.max(1, Number(l.quantidade) || 1),
         precoUnitario: moedaParaDecimal(l.preco) || '0',
+        kitId: l.kitId ?? null,
+        tamanho: l.tamanho ?? null,
+        componentes: l.componentes ?? null,
       }))
     if (itensLimpos.length === 0) {
       toast.error('Adicione ao menos um item')
@@ -542,6 +654,8 @@ function CatalogoBuilder({
   // Kit: cor escolhida POR ITEM do kit (kitItemId -> cor) — cada item pode
   // ter cor própria (ex.: capa numa cor, manta noutra).
   const [coresKit, setCoresKit] = useState<Record<string, string>>({})
+  // Kit: tamanho ÚNICO pro kit inteiro (não é por item).
+  const [tamanhoKit, setTamanhoKit] = useState('')
   const [qtd, setQtd] = useState('1')
   const [preco, setPreco] = useState('')
 
@@ -608,12 +722,48 @@ function CatalogoBuilder({
     )
   }
 
+  // Tamanhos de um produto do kit (por item).
+  function tamanhosDoProduto(produtoId: string): string[] {
+    const p = produtos.find((x) => x.id === produtoId)
+    return distintos(
+      (p?.variacoes ?? [])
+        .map((v) => v.tamanho)
+        .filter((t): t is string => Boolean(t)),
+    )
+  }
+
+  // Tamanhos oferecidos pro kit inteiro (um seletor só). Só entram os
+  // tamanhos dos componentes que TÊM escolha de tamanho (2+ opções) — no
+  // catálogo real capa é sempre 45x45, manta sempre Manta e baguete sempre
+  // Baguete; o único componente com tamanho variável é a peseira
+  // (Casal/King/Queen). Oferecer a união crua faria escolher "45x45" como
+  // "tamanho do kit", que não quer dizer nada.
+  const tamanhosKit = kit
+    ? distintos(
+        kit.itens.flatMap((it) => {
+          const ts = tamanhosDoProduto(it.produtoId)
+          return ts.length > 1 ? ts : []
+        }),
+      )
+    : []
+
+  // Resolve o tamanho DESTE componente a partir da escolha única do kit:
+  // usa o tamanho do kit quando o componente tem esse tamanho; senão, se o
+  // componente só tem um tamanho possível, é ele (capa 45x45, manta Manta).
+  function tamanhoDoComponente(produtoId: string): string | null {
+    const ts = tamanhosDoProduto(produtoId)
+    if (tamanhoKit && ts.includes(tamanhoKit)) return tamanhoKit
+    if (ts.length === 1) return ts[0]
+    return null
+  }
+
   function trocarModelo(m: string) {
     setModeloSel(m)
     setOrigem('')
     setTamanho('')
     setCoresSel(new Set())
     setCoresKit({})
+    setTamanhoKit('')
   }
 
   function trocarOrigem(v: string) {
@@ -621,6 +771,7 @@ function CatalogoBuilder({
     setTamanho('')
     setCoresSel(new Set())
     setCoresKit({})
+    setTamanhoKit('')
   }
 
   function toggleCor(cor: string) {
@@ -639,10 +790,12 @@ function CatalogoBuilder({
     return cor ? `${base} - ${cor}` : base
   }
 
-  // Kit: monta a descrição com a cor de CADA item. Se todos os itens têm
-  // a mesma cor, resume ("Kit X - Terracota"); senão, detalha por item.
+  // Kit: monta a descrição com o tamanho do kit + a cor de CADA item. Se
+  // todos os itens têm a mesma cor, resume ("Kit X M - Terracota"); senão,
+  // detalha por item.
   function descricaoKit(): string {
     if (!kit) return ''
+    const base = tamanhoKit ? `${kit.nome} ${tamanhoKit}` : kit.nome
     const partes = kit.itens
       .filter((it) => coresDoProduto(it.produtoId).length > 0)
       .map((it) => ({
@@ -650,9 +803,9 @@ function CatalogoBuilder({
         cor: coresKit[it.id] ?? '',
       }))
     const cores = distintos(partes.map((p) => p.cor).filter(Boolean))
-    if (cores.length === 0) return kit.nome
-    if (cores.length === 1) return `${kit.nome} - ${cores[0]}`
-    return `${kit.nome} - ${partes
+    if (cores.length === 0) return base
+    if (cores.length === 1) return `${base} - ${cores[0]}`
+    return `${base} - ${partes
       .filter((p) => p.cor)
       .map((p) => `${p.nome}: ${p.cor}`)
       .join(' · ')}`
@@ -674,11 +827,22 @@ function CatalogoBuilder({
       }
       const descricao = descricaoKit()
       const daMemoria = precos[descricao]
+      // Snapshot dos componentes (quantidade é POR KIT) — a via de
+      // separação multiplica pela quantidade deste item na hora de montar.
+      const componentes: KitComponente[] = kit.itens.map((it) => ({
+        produtoNome: it.produtoNome,
+        cor: coresKit[it.id] || null,
+        quantidade: it.quantidade,
+        tamanho: tamanhoDoComponente(it.produtoId),
+      }))
       linhas = [
         {
           descricao,
           quantidade,
           preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),
+          kitId: kit.id,
+          tamanho: tamanhoKit || null,
+          componentes,
         },
       ]
     } else {
@@ -768,6 +932,26 @@ function CatalogoBuilder({
             </SelectTrigger>
             <SelectContent>
               {tamanhos.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Kit: tamanho único pro kit inteiro (vale pra todos os itens) */}
+        {kit && tamanhosKit.length > 0 && (
+          <Select
+            value={tamanhoKit || undefined}
+            onValueChange={(v) => setTamanhoKit(v ?? '')}
+            disabled={disabled}
+          >
+            <SelectTrigger size="sm" className="w-full">
+              <SelectValue placeholder="Tamanho do kit" />
+            </SelectTrigger>
+            <SelectContent>
+              {tamanhosKit.map((t) => (
                 <SelectItem key={t} value={t}>
                   {t}
                 </SelectItem>
@@ -920,5 +1104,50 @@ function ExcluirDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// -----------------------------------------------------------------
+// Badge de status — clicável, alterna aguardando <-> aprovado
+// -----------------------------------------------------------------
+
+function StatusBadge({
+  orcamento,
+  podeEditar,
+}: {
+  orcamento: OrcamentoListItem
+  podeEditar: boolean
+}) {
+  const [isPending, startTransition] = useTransition()
+  const aprovado = orcamento.status === 'aprovado'
+
+  function alternar() {
+    startTransition(async () => {
+      const result = await alternarStatusOrcamentoAction(orcamento.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'Atualizado')
+    })
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={podeEditar ? alternar : undefined}
+      disabled={isPending || !podeEditar}
+      title={podeEditar ? 'Clique pra alternar' : undefined}
+      className={cn(
+        'rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors',
+        aprovado
+          ? 'bg-emerald-500/15 text-emerald-600'
+          : 'bg-amber-500/15 text-amber-600',
+        podeEditar && !isPending && 'hover:opacity-70',
+        isPending && 'opacity-60',
+      )}
+    >
+      {aprovado ? 'Aprovado' : 'Aguardando'}
+    </button>
   )
 }

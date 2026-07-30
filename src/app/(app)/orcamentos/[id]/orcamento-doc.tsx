@@ -2,7 +2,7 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ArrowLeft, Printer } from 'lucide-react'
+import { ArrowLeft, ClipboardList, Printer } from 'lucide-react'
 import Link from 'next/link'
 
 import type { OrcamentoComItens } from '../actions'
@@ -37,10 +37,19 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
         >
           <ArrowLeft />
         </Button>
-        <Button onClick={() => window.print()}>
-          <Printer />
-          Imprimir / PDF
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            render={<Link href={`/orcamentos/${orcamento.id}/separacao`} />}
+          >
+            <ClipboardList />
+            Via de separação
+          </Button>
+          <Button onClick={() => window.print()}>
+            <Printer />
+            Imprimir / PDF
+          </Button>
+        </div>
       </div>
 
       {/* Cabeçalho do documento */}

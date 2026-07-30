@@ -56,3 +56,9 @@ export const movimentacaoTipoEnum = pgEnum('movimentacao_tipo', [
   'ajuste',
   'devolucao',
 ])
+
+// Status do orçamento — só 2 estados, o resto é rascunho de venda.
+export const orcamentoStatusEnum = pgEnum('orcamento_status', [
+  'aguardando',
+  'aprovado',
+])
