@@ -76,6 +76,7 @@ export type AreaKey =
   | 'estoque'
   | 'estoqueFios'
   | 'vendas'
+  | 'compradores'
   | 'produtos'
   | 'cores'
   | 'modelos'
@@ -196,6 +197,17 @@ export const AREAS: Area[] = [
     href: '/vendas',
     editavel: true,
     nivelPadrao: padrao({ [G]: 'total', [V]: 'total' }),
+  },
+  {
+    key: 'compradores',
+    secao: 'Estoque & Vendas',
+    label: 'Compradores',
+    descricao: 'Cadastro dos clientes (documento, telefone e endereço).',
+    href: '/compradores',
+    editavel: true,
+    // Mais fechado que as outras áreas de propósito: guarda dado pessoal
+    // (CPF/CNPJ, endereço, telefone), então não abre pro chão de fábrica.
+    nivelPadrao: padrao({ [G]: 'ver', [V]: 'total' }),
   },
   {
     key: 'produtos',

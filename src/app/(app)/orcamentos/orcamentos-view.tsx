@@ -24,6 +24,7 @@ import {
   obterOrcamento,
   type OrcamentoListItem,
 } from './actions'
+import type { CompradorOpcao } from '../compradores/actions'
 import type { KitComItens } from '../kits/actions'
 import type { ProdutoComVariacoesParaForm } from '../ordens/actions'
 import { Button } from '@/components/ui/button'
@@ -64,6 +65,9 @@ type Props = {
   precos: Record<string, string>
   // Clientes de orçamentos anteriores (autocomplete).
   clientes: string[]
+  // Compradores cadastrados (vínculo opcional). Vem vazio quando o cargo não
+  // tem acesso à área de compradores.
+  compradores: CompradorOpcao[]
   podeEditar: boolean
 }
 
@@ -106,6 +110,7 @@ export function OrcamentosView({
   kits,
   precos,
   clientes,
+  compradores,
   podeEditar,
 }: Props) {
   const [editando, setEditando] = useState<Edicao | null>(null)
@@ -312,6 +317,7 @@ export function OrcamentosView({
           kits={kits}
           precos={precos}
           clientes={clientes}
+          compradores={compradores}
           onClose={() => setEditando(null)}
         />
       )}
@@ -353,6 +359,7 @@ function OrcamentoDialog({
   kits,
   precos,
   clientes,
+  compradores,
   onClose,
 }: {
   edicao: Edicao
@@ -360,6 +367,7 @@ function OrcamentoDialog({
   kits: KitComItens[]
   precos: Record<string, string>
   clientes: string[]
+  compradores: CompradorOpcao[]
   onClose: () => void
 }) {
   // 'duplicar' carrega os dados mas salva como orçamento NOVO.
@@ -368,6 +376,9 @@ function OrcamentoDialog({
   const [isPending, startTransition] = useTransition()
   const [carregado, setCarregado] = useState(!precisaCarregar)
   const [cliente, setCliente] = useState('')
+  // Vínculo opcional com o cadastro. Digitar um nome livre no campo de texto
+  // limpa o vínculo — o `cliente` continua sendo o que vai pro documento.
+  const [compradorId, setCompradorId] = useState<string | null>(null)
   const [observacao, setObservacao] = useState('')
   const [itens, setItens] = useState<LinhaItem[]>([{ ...LINHA_VAZIA }])
 
@@ -382,6 +393,7 @@ function OrcamentoDialog({
         return
       }
       setCliente(o.cliente)
+      setCompradorId(o.compradorId)
       setObservacao(o.observacao ?? '')
       setItens(
         o.itens.map((it) => ({
@@ -444,6 +456,7 @@ function OrcamentoDialog({
     startTransition(async () => {
       const payload = {
         cliente,
+        compradorId,
         observacao: observacao || undefined,
         itens: itensLimpos,
       }
@@ -485,12 +498,68 @@ function OrcamentoDialog({
         </DialogHeader>
 
         <div className="max-h-[68vh] space-y-4 overflow-y-auto p-6">
+          {/* Comprador do cadastro: opcional. Escolher preenche o nome
+              abaixo e grava o vínculo; digitar livre continua valendo. */}
+          {compradores.length > 0 && (
+            <div className="space-y-1.5">
+              <Label htmlFor="orc-comprador">
+                Comprador cadastrado{' '}
+                <span className="text-muted-foreground font-normal">
+                  (opcional)
+                </span>
+              </Label>
+              <div className="flex gap-2">
+                <Select
+                  // `null` em vez de undefined: com undefined o Base UI trata
+                  // o Select como uncontrolled e não mostraria o comprador de
+                  // um orçamento carregado pra edição.
+                  value={compradorId}
+                  onValueChange={(v) => {
+                    if (!v) return
+                    const c = compradores.find((x) => x.id === v)
+                    if (!c) return
+                    setCompradorId(c.id)
+                    setCliente(c.nome)
+                  }}
+                  disabled={isPending}
+                >
+                  <SelectTrigger id="orc-comprador" className="w-full">
+                    <SelectValue placeholder="Escolher do cadastro…" />
+                  </SelectTrigger>
+                  <SelectContent className="w-auto min-w-(--anchor-width) max-w-[92vw]">
+                    {compradores.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {compradorId && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setCompradorId(null)}
+                    disabled={isPending}
+                    aria-label="Desvincular comprador"
+                    title="Desvincular (mantém o nome digitado)"
+                  >
+                    <X />
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="space-y-1.5">
             <Label htmlFor="orc-cliente">Cliente</Label>
             <Input
               id="orc-cliente"
               value={cliente}
-              onChange={(e) => setCliente(e.target.value)}
+              onChange={(e) => {
+                setCliente(e.target.value)
+                // Nome editado à mão desfaz o vínculo com o cadastro.
+                setCompradorId(null)
+              }}
               disabled={isPending}
               autoFocus
               placeholder="Nome do cliente / empresa"

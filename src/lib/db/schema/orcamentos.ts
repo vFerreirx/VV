@@ -10,6 +10,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
+import { compradores } from './compradores'
 import { orcamentoStatusEnum } from './enums'
 import { kits } from './kits'
 
@@ -35,7 +36,12 @@ export const orcamentos = pgTable(
   {
     id: uuid().primaryKey().defaultRandom(),
     numero: integer().generatedAlwaysAsIdentity(),
+    // `cliente` continua sendo a fonte do nome impresso no documento — o
+    // vínculo com o cadastro é OPCIONAL e orçamento antigo não tem nenhum.
     cliente: text().notNull(),
+    compradorId: uuid().references(() => compradores.id, {
+      onDelete: 'set null',
+    }),
     observacao: text(),
     status: orcamentoStatusEnum().notNull().default('aguardando'),
 
@@ -46,7 +52,10 @@ export const orcamentos = pgTable(
       .$onUpdate(() => sql`now()`),
     deletedAt: timestamp({ withTimezone: true }),
   },
-  (table) => [index('orcamentos_numero_idx').on(table.numero)],
+  (table) => [
+    index('orcamentos_numero_idx').on(table.numero),
+    index('orcamentos_comprador_idx').on(table.compradorId),
+  ],
 )
 
 export const orcamentoItens = pgTable(

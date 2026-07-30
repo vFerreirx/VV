@@ -155,7 +155,11 @@ export async function criarOrcamentoAction(
   const novoId = await db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(orcamentos)
-      .values({ cliente: data.cliente, observacao: data.observacao ?? null })
+      .values({
+        cliente: data.cliente,
+        compradorId: data.compradorId ?? null,
+        observacao: data.observacao ?? null,
+      })
       .returning({ id: orcamentos.id })
 
     await tx.insert(orcamentoItens).values(
@@ -200,7 +204,11 @@ export async function atualizarOrcamentoAction(
   await db.transaction(async (tx) => {
     await tx
       .update(orcamentos)
-      .set({ cliente: data.cliente, observacao: data.observacao ?? null })
+      .set({
+        cliente: data.cliente,
+        compradorId: data.compradorId ?? null,
+        observacao: data.observacao ?? null,
+      })
       .where(eq(orcamentos.id, id))
 
     // Substitui os itens (simples e seguro, igual aos kits).

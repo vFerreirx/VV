@@ -48,6 +48,13 @@ export const orcamentoSchema = z.object({
     .trim()
     .min(2, 'Informe o cliente')
     .max(120, 'Nome muito longo'),
+  // Vínculo OPCIONAL com o cadastro de compradores. `cliente` (texto acima)
+  // continua sendo a fonte do nome impresso — orçamento sem comprador
+  // cadastrado funciona igual a antes.
+  compradorId: z
+    .union([z.string().uuid(), z.null(), z.undefined()])
+    .transform((v) => v ?? null)
+    .optional(),
   observacao: z
     .union([z.string(), z.null(), z.undefined()])
     .transform((v) => (v == null || v.trim() === '' ? undefined : v.trim()))

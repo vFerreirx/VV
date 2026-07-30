@@ -3,6 +3,7 @@
 // item segue o mapa de permissões (áreas bloqueadas vêm do servidor).
 
 import {
+  BookUser,
   Boxes,
   CalendarDays,
   Cog,
@@ -87,6 +88,12 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Orçamentos',
         icon: FileText,
         area: 'vendas',
+      },
+      {
+        href: '/compradores',
+        label: 'Compradores',
+        icon: BookUser,
+        area: 'compradores',
       },
     ],
   },
