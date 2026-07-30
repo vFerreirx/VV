@@ -75,9 +75,66 @@ Notas:
 5. Se algo falhar: rollback = recriar a política aberta da tabela
    afetada (comando no fim da migration, comentado).
 
+## Divergências conhecidas entre a RLS e /permissoes (30/07/2026)
+
+> Decisão: **a RLS é um piso grosseiro; o app é a autoridade de permissão.**
+> Confirmada em 30/07/2026 ao revisar `compradores`. Não vamos alinhar as
+> duas camadas linha a linha.
+
+A lista de cargos de cada policy reflete os cargos "naturais" da área, não o
+`nivelPadrao` de `AREAS` (`src/lib/auth/permissoes.ts`). As duas camadas
+divergem hoje, nas duas direções, e isso é esperado:
+
+| Tabela | Escrita na RLS | `nivelPadrao` | Divergência |
+|---|---|---|---|
+| `cores_fornecedor_fio`, `lotes_fio`, `movimentacoes_fio` | admin/gerente/estoquista | estoqueFios: gerente = `ver` | RLS mais larga |
+| `compradores` | admin/gerente/vendas | compradores: gerente = `ver` | RLS mais larga |
+| `remessas_full` | `is_manager()` | remessas: vendas = `total` | RLS mais estrita |
+
+Por que não alinhar:
+
+- **Os níveis são editáveis pelo admin**, e as overrides em
+  `permissoes_acesso` já divergem por conta própria — ex.: `vendas/produtos
+  → total`, enquanto a RLS de `produtos`/`kits` é `is_manager()`. Nenhuma
+  policy estática acompanha isso.
+- **Apertar a RLS cria falha silenciosa**: no dia em que o admin conceder
+  `total` a um cargo, o app libera e o banco recusa — e o erro aparece longe
+  da causa. Hoje isso não acontece porque o app escreve pela role `postgres`.
+- Espelhar de verdade exigiria uma função SQL replicando `nivelEfetivo` — e
+  os padrões nem estão no banco, estão no TypeScript. Seriam duas fontes de
+  verdade pra mesma regra (é a Fase 2 abaixo, que segue adiada).
+
+O que **de fato** protege dado pessoal em `compradores` é a policy de
+**SELECT** restrita por cargo — a primeira tabela do projeto a fechar a
+leitura. Ela é independente da policy de escrita: políticas permissivas se
+somam com OR, então mexer numa não afeta a outra.
+
+Verificado empiricamente em 30/07/2026 (transações com ROLLBACK, `SET LOCAL
+role authenticated` + JWT de usuários reais de cada cargo):
+
+| Cargo | Policy atual | Simulando escrita = admin+vendas |
+|---|---|---|
+| gerente_producao | lê · **escreve** | **lê** · escrita bloqueada (42501) |
+| vendas | lê · escreve | lê · escreve |
+| operador | **0 linhas** · bloqueado | 0 linhas · bloqueado |
+| estoquista | **0 linhas** · bloqueado | 0 linhas · bloqueado |
+
+⚠️ Cuidado ao mexer em `orcamentos` e `orcamento_itens`: elas têm **só** a
+policy `FOR ALL`, sem SELECT separada. Apertar a escrita delas tira a
+leitura junto.
+
+Se um dia o caminho REST incomodar de verdade, o passo certo **não** é
+afinar policy por policy, e sim tirar a superfície: `anon` e `authenticated`
+têm GRANT de SELECT/INSERT/UPDATE/DELETE nas tabelas (default do Supabase).
+Um `REVOKE` nas tabelas de domínio é mais forte que qualquer policy (sem
+privilégio de tabela a policy nem é avaliada) e o app não sente nada, porque
+usa a role `postgres`. Realtime também não: só `ordens_producao` está na
+publication.
+
 ## Fase 2 (opcional, depois)
 
 - Restringir SELECT de `users` (hoje qualquer logado lê emails/roles).
 - Avaliar espelhar os níveis editáveis no RLS (função que lê
   `permissoes_acesso`) — só vale se algum dia o client consultar o banco
-  direto; hoje é complexidade sem ganho.
+  direto; hoje é complexidade sem ganho. **Reavaliado e mantido adiado em
+  30/07/2026** (ver "Divergências conhecidas" acima).

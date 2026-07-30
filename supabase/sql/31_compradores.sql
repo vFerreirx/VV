@@ -59,8 +59,19 @@ CREATE INDEX IF NOT EXISTS orcamentos_comprador_idx
 -- são dado operacional; esta guarda dado pessoal (documento, endereço,
 -- telefone) e não deve ficar legível pro chão de fábrica nem via API REST
 -- do Supabase.
+--
+-- ⚠️ A lista de cargos abaixo é o PISO GROSSEIRO de defesa em profundidade,
+-- NÃO um espelho do nivelPadrao de `AREAS` (src/lib/auth/permissoes.ts).
+-- Na escrita ela é de propósito mais larga que o app: aqui gerente_producao
+-- escreve, enquanto na área `compradores` ele é `ver`. Quem manda na
+-- permissão é o app (`requireAreaEscrita`), porque os níveis são editáveis
+-- pelo admin em /permissoes e nenhuma policy estática acompanha isso.
+-- Ver "Divergências conhecidas" em supabase/PLANO-RLS.md.
 ALTER TABLE public.compradores ENABLE ROW LEVEL SECURITY;
 
+-- A leitura é o que de fato protege o dado pessoal, e ela é INDEPENDENTE da
+-- policy de escrita (políticas permissivas se somam com OR). Verificado com
+-- JWT real de cada cargo: operador e estoquista leem 0 linhas.
 DROP POLICY IF EXISTS compradores_select ON public.compradores;
 CREATE POLICY compradores_select ON public.compradores
   FOR SELECT TO authenticated
