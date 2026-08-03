@@ -350,9 +350,32 @@
   /* Não corta linhas de tabela / títulos entre páginas. */
   tr,
   thead,
+  tfoot,
   h1,
   h2 {
     break-inside: avoid;
+  }
+  /* Documento de 2+ páginas.
+   *
+   * O <tfoot> é `table-footer-group`, e o Chrome repete esse grupo no pé de
+   * TODA página: o "Total" aparecia no meio da lista, no fim da página 1,
+   * como se o documento terminasse ali — num romaneio, que é assinado, isso
+   * é um total errado na cara de quem lê. Como grupo de linha normal ele sai
+   * uma vez só, no fim de verdade.
+   *
+   * O <thead>, ao contrário, DEVE repetir: é o que dá nome às colunas na
+   * página 2 em diante. Já é o padrão, fica explícito pra ninguém trocar sem
+   * perceber. */
+  tfoot {
+    display: table-row-group;
+  }
+  thead {
+    display: table-header-group;
+  }
+  /* Na tela o container da tabela rola na horizontal; no papel o overflow
+   * impede o navegador de fatiar a tabela entre páginas. */
+  [data-slot='table-container'] {
+    overflow: visible !important;
   }
   /* Compacta o relatório pra caber em menos páginas. */
   table {

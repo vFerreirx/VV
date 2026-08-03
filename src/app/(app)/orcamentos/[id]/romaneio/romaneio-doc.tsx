@@ -144,7 +144,7 @@ export function RomaneioDoc({
       </div>
 
       {/* Dados de quem retira */}
-      <div className="rounded-lg border p-4 print:border-foreground/20">
+      <div className="break-inside-avoid rounded-lg border p-4 print:border-foreground/20">
         <div className="text-muted-foreground text-xs tracking-wide uppercase">
           Comprador
         </div>
@@ -177,16 +177,34 @@ export function RomaneioDoc({
       {/* Itens — aqui os valores APARECEM */}
       <div className="rounded-lg border print:border-foreground/20">
         <Table className="table-fixed">
+          {/* As larguras vivem aqui, e não na primeira linha: `table-fixed`
+              tira as colunas da primeira linha do <thead>, que na impressão
+              é a faixa de identificação (um só <th> com colSpan) — sem o
+              colgroup as 4 colunas ficavam iguais e a descrição quebrava. */}
+          <colgroup>
+            <col />
+            <col className="w-14 sm:w-16" />
+            <col className="w-24 sm:w-28" />
+            <col className="w-24 sm:w-28" />
+          </colgroup>
           <TableHeader>
+            {/* Só na impressão: o <thead> se repete em toda página, então
+                esta linha é o que identifica a página 2 em diante — sem ela
+                a folha solta é uma lista de itens sem dono. */}
+            <TableRow className="hidden print:table-row">
+              <TableHead
+                colSpan={4}
+                className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
+              >
+                Romaneio de retirada — Orçamento nº {orcamento.numero} ·
+                Vanvest Home Decor
+              </TableHead>
+            </TableRow>
             <TableRow>
               <TableHead>Item</TableHead>
-              <TableHead className="w-14 text-right sm:w-16">Qtd</TableHead>
-              <TableHead className="w-24 text-right sm:w-28">
-                Preço un.
-              </TableHead>
-              <TableHead className="w-24 text-right sm:w-28">
-                Subtotal
-              </TableHead>
+              <TableHead className="text-right">Qtd</TableHead>
+              <TableHead className="text-right">Preço un.</TableHead>
+              <TableHead className="text-right">Subtotal</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

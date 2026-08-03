@@ -116,10 +116,29 @@ export function SeparacaoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
       {/* Itens — sem preço nenhum, só o que separar */}
       <div className="rounded-lg border print:border-foreground/20">
         <Table className="table-fixed">
+          {/* As larguras vivem aqui, e não na primeira linha: `table-fixed`
+              tira as colunas da primeira linha do <thead>, que na impressão
+              é a faixa de identificação (um só <th> com colSpan). */}
+          <colgroup>
+            <col />
+            <col className="w-20" />
+          </colgroup>
           <TableHeader>
+            {/* Só na impressão: o <thead> se repete em toda página, então
+                esta linha é o que identifica a página 2 em diante — sem ela
+                a folha solta é uma lista de itens sem dono. */}
+            <TableRow className="hidden print:table-row">
+              <TableHead
+                colSpan={2}
+                className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
+              >
+                Via de separação — Orçamento nº {orcamento.numero} ·{' '}
+                {orcamento.cliente}
+              </TableHead>
+            </TableRow>
             <TableRow>
               <TableHead>Produto</TableHead>
-              <TableHead className="w-20 text-right">Qtd</TableHead>
+              <TableHead className="text-right">Qtd</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
