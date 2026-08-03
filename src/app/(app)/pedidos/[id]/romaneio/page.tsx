@@ -5,7 +5,7 @@ import { obterOrcamentoParaRomaneio } from '../../actions'
 import { RomaneioDoc } from './romaneio-doc'
 import { requireArea } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Romaneio de retirada — Vanvest' }
+export const metadata: Metadata = { title: 'Romaneio — Vanvest' }
 
 export default async function RomaneioPage({
   params,

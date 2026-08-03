@@ -297,8 +297,8 @@ export function OrcamentosView({
                               render={
                                 <Link href={`/pedidos/${o.id}/romaneio`} />
                               }
-                              aria-label="Romaneio de retirada"
-                              title="Romaneio de retirada (com valores e assinatura)"
+                              aria-label="Romaneio"
+                              title="Romaneio (com valores e assinatura)"
                             >
                               <FileSignature />
                             </Button>

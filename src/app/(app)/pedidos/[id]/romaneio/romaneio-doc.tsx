@@ -63,7 +63,7 @@ function Campo({ rotulo, children }: { rotulo: string; children: ReactNode }) {
   )
 }
 
-// Linha pra preencher à mão na hora da retirada.
+// Linha pra preencher à mão na hora da entrega.
 function Assinatura({ rotulo }: { rotulo: string }) {
   return (
     <div>
@@ -73,9 +73,10 @@ function Assinatura({ rotulo }: { rotulo: string }) {
   )
 }
 
-// Romaneio de retirada: COM valores (ao contrário da via de separação) e com
-// os dados completos de quem retira, porque é o documento que a pessoa
-// assina ao levar a mercadoria.
+// Romaneio: COM valores (ao contrário da via de separação) e com os dados
+// completos de quem recebe, porque é o documento que a pessoa assina junto
+// com a mercadoria. Serve tanto pra retirada no balcão quanto pra entrega —
+// por isso o texto não fala de nenhuma das duas.
 export function RomaneioDoc({
   orcamento,
 }: {
@@ -129,21 +130,13 @@ export function RomaneioDoc({
               CNPJ {formatarDocumento(CNPJ_EMPRESA)}
             </div>
             <div className="text-muted-foreground mt-1 text-sm">
-              Romaneio de retirada — Pedido nº {orcamento.numero}
+              Romaneio — Pedido nº {orcamento.numero}
             </div>
-          </div>
-        </div>
-        <div className="text-right text-sm">
-          <div className="text-muted-foreground">Data do pedido</div>
-          <div className="font-medium tabular-nums">
-            {format(new Date(orcamento.createdAt), 'dd/MM/yyyy', {
-              locale: ptBR,
-            })}
           </div>
         </div>
       </div>
 
-      {/* Dados de quem retira */}
+      {/* Dados de quem recebe */}
       <div className="break-inside-avoid rounded-lg border p-4 print:border-foreground/20">
         <div className="text-muted-foreground text-xs tracking-wide uppercase">
           Comprador
@@ -196,8 +189,7 @@ export function RomaneioDoc({
                 colSpan={4}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Romaneio de retirada — Pedido nº {orcamento.numero} ·
-                Vanvest Home Decor
+                Romaneio — Pedido nº {orcamento.numero} · Vanvest Home Decor
               </TableHead>
             </TableRow>
             <TableRow>
@@ -244,13 +236,13 @@ export function RomaneioDoc({
           páginas quando a lista de itens for longa. */}
       <div className="space-y-6 break-inside-avoid border-t pt-5 print:border-foreground/20">
         <p className="text-sm">
-          Declaro que retirei os produtos relacionados acima, conferidos em
+          Declaro que recebi os produtos relacionados acima, conferidos em
           quantidade e estado.
         </p>
 
         <div className="grid gap-6 sm:grid-cols-[1fr_10rem]">
-          <Assinatura rotulo="Assinatura de quem retirou" />
-          <Assinatura rotulo="Data da retirada" />
+          <Assinatura rotulo="Assinatura do recebedor" />
+          <Assinatura rotulo="Data do recebimento" />
         </div>
 
         <div className="grid gap-6 sm:grid-cols-2">
@@ -261,8 +253,7 @@ export function RomaneioDoc({
 
       <p className="text-muted-foreground border-t pt-3 text-xs print:border-foreground/20">
         Documento gerado em{' '}
-        {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} —
-        romaneio de retirada.
+        {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}.
       </p>
     </div>
   )
