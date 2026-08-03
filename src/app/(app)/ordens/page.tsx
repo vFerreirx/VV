@@ -1,3 +1,4 @@
+import { FileUp } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
@@ -11,10 +12,7 @@ import { Button } from '@/components/ui/button'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
-import {
-  ordensFiltrosSchema,
-  type OrdensFiltros,
-} from '@/lib/validators/ordens'
+import { ordensFiltrosSchema, type OrdensFiltros } from '@/lib/validators/ordens'
 
 export const metadata: Metadata = { title: 'Ordens — Vanvest' }
 
@@ -54,14 +52,14 @@ export default async function OrdensPage({
         </div>
         <div className="flex items-center gap-2">
           {podeEditar && (
-            <NovoFull remessas={remessas} produtos={produtosParaKit} />
+            <Button variant="outline" render={<Link href="/ordens/importar-full" />}>
+              <FileUp />
+              Importar Full (PDF)
+            </Button>
           )}
-          {podeGerarKit && kits.length > 0 && (
-            <GerarDeKit kits={kits} produtos={produtosParaKit} />
-          )}
-          {podeEditar && (
-            <Button render={<Link href="/ordens/novo" />}>Nova OP</Button>
-          )}
+          {podeEditar && <NovoFull remessas={remessas} produtos={produtosParaKit} />}
+          {podeGerarKit && kits.length > 0 && <GerarDeKit kits={kits} produtos={produtosParaKit} />}
+          {podeEditar && <Button render={<Link href="/ordens/novo" />}>Nova OP</Button>}
         </div>
       </div>
 

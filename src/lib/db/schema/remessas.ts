@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { date, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { date, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 import { ordemCanalEnum } from './enums'
 
@@ -14,6 +14,12 @@ export const remessasFull = pgTable(
     dataEnvio: date().notNull(),
     observacao: text(),
 
+    // Identificador do envio no marketplace, lido do PDF na importação:
+    // "72785017" (Frete # do ML) ou "INBRFSP12607220343" (ASN ID da
+    // Shopee). Único por canal entre as não-excluídas — é o que impede
+    // importar o mesmo envio duas vezes. Nulo nas remessas criadas à mão.
+    envioId: text(),
+
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()
@@ -21,7 +27,12 @@ export const remessasFull = pgTable(
       .$onUpdate(() => sql`now()`),
     deletedAt: timestamp({ withTimezone: true }),
   },
-  (table) => [index('remessas_full_data_idx').on(table.dataEnvio)],
+  (table) => [
+    index('remessas_full_data_idx').on(table.dataEnvio),
+    uniqueIndex('remessas_full_envio_uidx')
+      .on(table.canal, table.envioId)
+      .where(sql`${table.envioId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
+  ],
 )
 
 export type RemessaFull = typeof remessasFull.$inferSelect
