@@ -5,6 +5,7 @@ import { ptBR } from 'date-fns/locale'
 import {
   ClipboardList,
   Copy,
+  FileSignature,
   FileText,
   Pencil,
   Plus,
@@ -264,6 +265,17 @@ export function OrcamentosView({
                               title="Via de separação (sem preço)"
                             >
                               <ClipboardList />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              render={
+                                <Link href={`/orcamentos/${o.id}/romaneio`} />
+                              }
+                              aria-label="Romaneio de retirada"
+                              title="Romaneio de retirada (com valores e assinatura)"
+                            >
+                              <FileSignature />
                             </Button>
                             {podeEditar && (
                               <>

@@ -6,8 +6,10 @@ import { revalidatePath } from 'next/cache'
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
+  compradores,
   orcamentoItens,
   orcamentos,
+  type Comprador,
   type Orcamento,
   type OrcamentoItem,
 } from '@/lib/db/schema'
@@ -85,6 +87,40 @@ export async function obterOrcamento(
     0,
   )
   return { ...o, itens, total }
+}
+
+export type OrcamentoParaRomaneio = OrcamentoComItens & {
+  comprador: Comprador | null
+}
+
+// O romaneio é o único documento que precisa do endereço e do documento do
+// comprador. Em vez de engordar `obterOrcamento` — que serve o orçamento e a
+// via de separação, já em produção e sem uso nenhum pra esses campos —, esta
+// reaproveita aquela e só busca o comprador por cima: uma consulta a mais
+// numa tela só, e nada muda no caminho das outras duas.
+//
+// `comprador` volta null tanto no orçamento antigo (compradorId nulo) quanto
+// quando o cadastro foi excluído depois. Nos dois casos o romaneio cai pro
+// nome em `orcamentos.cliente`, que é o que já acontece nas outras telas.
+export async function obterOrcamentoParaRomaneio(
+  id: string,
+): Promise<OrcamentoParaRomaneio | null> {
+  const orcamento = await obterOrcamento(id)
+  if (!orcamento) return null
+  if (!orcamento.compradorId) return { ...orcamento, comprador: null }
+
+  const [comprador] = await db
+    .select()
+    .from(compradores)
+    .where(
+      and(
+        eq(compradores.id, orcamento.compradorId),
+        isNull(compradores.deletedAt),
+      ),
+    )
+    .limit(1)
+
+  return { ...orcamento, comprador: comprador ?? null }
 }
 
 // Clientes já usados (distintos, mais recentes primeiro) — autocomplete.

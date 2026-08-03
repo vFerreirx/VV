@@ -2,7 +2,7 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ArrowLeft, ClipboardList, Printer } from 'lucide-react'
+import { ArrowLeft, ClipboardList, FileSignature, Printer } from 'lucide-react'
 import Link from 'next/link'
 
 import type { OrcamentoComItens } from '../actions'
@@ -44,6 +44,13 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
           >
             <ClipboardList />
             Via de separação
+          </Button>
+          <Button
+            variant="outline"
+            render={<Link href={`/orcamentos/${orcamento.id}/romaneio`} />}
+          >
+            <FileSignature />
+            Romaneio
           </Button>
           <Button onClick={() => window.print()}>
             <Printer />
