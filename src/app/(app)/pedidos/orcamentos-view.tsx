@@ -23,6 +23,7 @@ import {
   criarOrcamentoAction,
   excluirOrcamentoAction,
   obterOrcamento,
+  type OrcamentoComItens,
   type OrcamentoListItem,
 } from './actions'
 import type { CompradorOpcao } from '../compradores/actions'
@@ -77,7 +78,15 @@ const SEM = '__sem__'
 const tok = (s: string | null) => s ?? SEM
 const distintos = <T,>(arr: T[]): T[] => [...new Set(arr)]
 
-type Edicao = { modo: 'novo' | 'editar' | 'duplicar'; id?: string }
+// Editar/duplicar só existe COM os dados já carregados: a busca acontece no
+// clique, antes de abrir o diálogo. Antes ela era disparada no meio do render
+// do diálogo, e chamar uma server action ali faz o Router atualizar enquanto
+// outro componente renderiza — o React avisava
+// "Cannot update a component (Router) while rendering a different component".
+// De quebra, sumiu o formulário vazio que piscava até os dados chegarem.
+type Edicao =
+  | { modo: 'novo' }
+  | { modo: 'editar' | 'duplicar'; id: string; dados: OrcamentoComItens }
 
 function reais(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -117,6 +126,22 @@ export function OrcamentosView({
   const [editando, setEditando] = useState<Edicao | null>(null)
   const [excluindo, setExcluindo] = useState<OrcamentoListItem | null>(null)
   const [mesSel, setMesSel] = useState('todos')
+  // Id em carregamento, pra desabilitar só a linha clicada.
+  const [abrindo, setAbrindo] = useState<string | null>(null)
+
+  // Busca o pedido e SÓ ENTÃO abre o diálogo.
+  function abrirEdicao(modo: 'editar' | 'duplicar', id: string) {
+    setAbrindo(id)
+    void obterOrcamento(id)
+      .then((dados) => {
+        if (!dados) {
+          toast.error('Pedido não encontrado')
+          return
+        }
+        setEditando({ modo, id, dados })
+      })
+      .finally(() => setAbrindo(null))
+  }
 
   // Agrupa por mês/ano de criação, mantendo a ordem de chegada (a lista já
   // vem por número desc, ou seja, mês mais recente primeiro).
@@ -282,9 +307,8 @@ export function OrcamentosView({
                                 <Button
                                   size="icon-sm"
                                   variant="ghost"
-                                  onClick={() =>
-                                    setEditando({ modo: 'duplicar', id: o.id })
-                                  }
+                                  onClick={() => abrirEdicao('duplicar', o.id)}
+                                  disabled={abrindo === o.id}
                                   aria-label="Duplicar"
                                   title="Duplicar (novo pedido com os mesmos itens)"
                                 >
@@ -293,9 +317,8 @@ export function OrcamentosView({
                                 <Button
                                   size="icon-sm"
                                   variant="ghost"
-                                  onClick={() =>
-                                    setEditando({ modo: 'editar', id: o.id })
-                                  }
+                                  onClick={() => abrirEdicao('editar', o.id)}
+                                  disabled={abrindo === o.id}
                                   aria-label="Editar"
                                 >
                                   <Pencil />
@@ -384,41 +407,29 @@ function OrcamentoDialog({
 }) {
   // 'duplicar' carrega os dados mas salva como orçamento NOVO.
   const isEdit = edicao.modo === 'editar'
-  const precisaCarregar = edicao.modo !== 'novo' && edicao.id != null
+  // Já vem carregado de fora: quem clicou em editar/duplicar buscou o pedido
+  // antes de abrir. Aqui é só o estado inicial dos campos.
+  const dados = edicao.modo === 'novo' ? null : edicao.dados
   const [isPending, startTransition] = useTransition()
-  const [carregado, setCarregado] = useState(!precisaCarregar)
-  const [cliente, setCliente] = useState('')
+  const [cliente, setCliente] = useState(dados?.cliente ?? '')
   // Vínculo opcional com o cadastro. Digitar um nome livre no campo de texto
   // limpa o vínculo — o `cliente` continua sendo o que vai pro documento.
-  const [compradorId, setCompradorId] = useState<string | null>(null)
-  const [observacao, setObservacao] = useState('')
-  const [itens, setItens] = useState<LinhaItem[]>([{ ...LINHA_VAZIA }])
-
-  // Editar/duplicar: carrega o orçamento uma vez ao abrir (flag vira true
-  // sincronamente, então o fetch dispara só na primeira renderização).
-  if (precisaCarregar && !carregado) {
-    setCarregado(true)
-    void obterOrcamento(edicao.id!).then((o) => {
-      if (!o) {
-        toast.error('Pedido não encontrado')
-        onClose()
-        return
-      }
-      setCliente(o.cliente)
-      setCompradorId(o.compradorId)
-      setObservacao(o.observacao ?? '')
-      setItens(
-        o.itens.map((it) => ({
+  const [compradorId, setCompradorId] = useState<string | null>(
+    dados?.compradorId ?? null,
+  )
+  const [observacao, setObservacao] = useState(dados?.observacao ?? '')
+  const [itens, setItens] = useState<LinhaItem[]>(() =>
+    dados
+      ? dados.itens.map((it) => ({
           descricao: it.descricao,
           quantidade: String(it.quantidade),
           preco: decimalParaMoeda(it.precoUnitario),
           kitId: it.kitId,
           tamanho: it.tamanho,
           componentes: it.kitComponentes as KitComponente[] | null,
-        })),
-      )
-    })
-  }
+        }))
+      : [{ ...LINHA_VAZIA }],
+  )
 
   function patchItem(idx: number, patch: Partial<LinhaItem>) {
     setItens((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
@@ -473,7 +484,7 @@ function OrcamentoDialog({
         itens: itensLimpos,
       }
       const result = isEdit
-        ? await atualizarOrcamentoAction(edicao.id!, payload)
+        ? await atualizarOrcamentoAction(edicao.id, payload)
         : await criarOrcamentoAction(payload)
       if (!result.success) {
         toast.error(result.error)
