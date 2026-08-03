@@ -35,12 +35,30 @@ const ANCORAS: { rotulo: string; coluna: Coluna }[] = [
   { rotulo: 'qnt.', coluna: 'quantidade' },
 ]
 
-// Como cada coluna remonta as linhas quebradas da célula.
-const SEPARADOR: Record<Coluna, string> = {
+// Como cada coluna remonta as linhas quebradas da célula. A variação é a
+// única sem regra fixa — ver `emendarVariacao`.
+const SEPARADOR: Record<Exclude<Coluna, 'variacao'>, string> = {
   skuVendedor: '',
   codigo: '',
-  variacao: ' ',
   quantidade: '',
+}
+
+// A célula da variação quebra em dois lugares diferentes, e só o pedaço
+// seguinte diz qual foi:
+//
+//   "Âmbar"       + "Dourado" → quebrou NO ESPAÇO  → "Âmbar Dourado"
+//   "Vermelho,Qu" + "een"     → quebrou NO MEIO DA PALAVRA → "Vermelho,Queen"
+//
+// Emendar tudo com espaço mostrava "Vermelho,Qu een" e "Caramelo,Ca sal" na
+// conferência. Quem continua uma palavra começa em minúscula; quem começa
+// palavra nova, em maiúscula — as cores e os tamanhos da Shopee vêm todos
+// capitalizados. Depois de vírgula nunca entra espaço, que é como a Shopee
+// escreve ("Caqui,Queen").
+function emendarVariacao(partes: string[]): string {
+  return partes.reduce((acc, parte) => {
+    if (!acc) return parte
+    return /^\p{Ll}/u.test(parte) || /[,-]$/.test(acc) ? acc + parte : `${acc} ${parte}`
+  }, '')
 }
 
 function semAcento(s: string): string {
@@ -96,14 +114,14 @@ export function parseShopee(paginas: PaginaPdf[]): LeituraPdf {
       const celula = (col: Coluna): string => {
         const x = ancoras.get(col)
         if (x === undefined) return ''
-        return daLinha
+        const partes = daLinha
           .filter((t) => Math.abs(t.x - x) <= TOLERANCIA_X)
           .sort((a, b) => b.y - a.y)
           .map((t) => t.str.trim())
           .filter(Boolean)
-          .join(SEPARADOR[col])
-          .replace(/\s+/g, ' ')
-          .trim()
+        const junto =
+          col === 'variacao' ? emendarVariacao(partes) : partes.join(SEPARADOR[col])
+        return junto.replace(/\s+/g, ' ').trim()
       }
 
       const codigo = celula('codigo')
