@@ -22,6 +22,12 @@ import { formatarCep, formatarDocumento } from '@/lib/validators/documento'
 
 type Comprador = NonNullable<OrcamentoParaRomaneio['comprador']>
 
+// CNPJ da Vanvest, normalizado como o resto do sistema guarda documento (sem
+// pontuação) e formatado na exibição pelo mesmo helper do CPF/CNPJ do
+// comprador — o romaneio é assinado, então precisa identificar quem entrega,
+// não só quem retira.
+const CNPJ_EMPRESA = '11258895000185'
+
 function reais(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
@@ -119,7 +125,10 @@ export function RomaneioDoc({
           <Logo variant="mark" className="size-10" />
           <div>
             <div className="text-lg font-semibold">Vanvest Home Decor</div>
-            <div className="text-muted-foreground text-sm">
+            <div className="text-muted-foreground text-xs tabular-nums">
+              CNPJ {formatarDocumento(CNPJ_EMPRESA)}
+            </div>
+            <div className="text-muted-foreground mt-1 text-sm">
               Romaneio de retirada — Orçamento nº {orcamento.numero}
             </div>
           </div>
