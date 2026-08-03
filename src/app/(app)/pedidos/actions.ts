@@ -212,8 +212,8 @@ export async function criarOrcamentoAction(
     return inserted!.id
   })
 
-  revalidatePath('/orcamentos')
-  return { success: true, data: { id: novoId }, message: 'Orçamento criado' }
+  revalidatePath('/pedidos')
+  return { success: true, data: { id: novoId }, message: 'Pedido criado' }
 }
 
 export async function atualizarOrcamentoAction(
@@ -235,7 +235,7 @@ export async function atualizarOrcamentoAction(
     .from(orcamentos)
     .where(and(eq(orcamentos.id, id), isNull(orcamentos.deletedAt)))
     .limit(1)
-  if (!atual) return { success: false, error: 'Orçamento não encontrado' }
+  if (!atual) return { success: false, error: 'Pedido não encontrado' }
 
   await db.transaction(async (tx) => {
     await tx
@@ -262,9 +262,9 @@ export async function atualizarOrcamentoAction(
     )
   })
 
-  revalidatePath('/orcamentos')
-  revalidatePath(`/orcamentos/${id}`)
-  return { success: true, message: 'Orçamento atualizado' }
+  revalidatePath('/pedidos')
+  revalidatePath(`/pedidos/${id}`)
+  return { success: true, message: 'Pedido atualizado' }
 }
 
 export async function excluirOrcamentoAction(
@@ -276,15 +276,15 @@ export async function excluirOrcamentoAction(
     .from(orcamentos)
     .where(and(eq(orcamentos.id, id), isNull(orcamentos.deletedAt)))
     .limit(1)
-  if (!atual) return { success: false, error: 'Orçamento não encontrado' }
+  if (!atual) return { success: false, error: 'Pedido não encontrado' }
 
   await db
     .update(orcamentos)
     .set({ deletedAt: new Date() })
     .where(eq(orcamentos.id, id))
 
-  revalidatePath('/orcamentos')
-  return { success: true, message: 'Orçamento excluído' }
+  revalidatePath('/pedidos')
+  return { success: true, message: 'Pedido excluído' }
 }
 
 // Alterna aguardando <-> aprovado (ação rápida na lista).
@@ -297,7 +297,7 @@ export async function alternarStatusOrcamentoAction(
     .from(orcamentos)
     .where(and(eq(orcamentos.id, id), isNull(orcamentos.deletedAt)))
     .limit(1)
-  if (!atual) return { success: false, error: 'Orçamento não encontrado' }
+  if (!atual) return { success: false, error: 'Pedido não encontrado' }
 
   const novoStatus = atual.status === 'aprovado' ? 'aguardando' : 'aprovado'
   await db
@@ -305,7 +305,7 @@ export async function alternarStatusOrcamentoAction(
     .set({ status: novoStatus })
     .where(eq(orcamentos.id, id))
 
-  revalidatePath('/orcamentos')
+  revalidatePath('/pedidos')
   return {
     success: true,
     message: novoStatus === 'aprovado' ? 'Marcado como aprovado' : 'Marcado como aguardando',

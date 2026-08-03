@@ -153,15 +153,15 @@ export function OrcamentosView({
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Orçamentos</h1>
+          <h1 className="text-2xl font-semibold">Pedidos</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Monte o orçamento pro cliente e imprima/envie em PDF.
+            Monte o pedido pro cliente e imprima/envie em PDF.
           </p>
         </div>
         {podeEditar && (
           <Button onClick={() => setEditando({ modo: 'novo' })}>
             <Plus />
-            Fazer orçamento
+            Fazer pedido
           </Button>
         )}
       </div>
@@ -169,8 +169,8 @@ export function OrcamentosView({
       {orcamentos.length === 0 ? (
         <EmptyState
           icon={FileText}
-          title="Nenhum orçamento"
-          description="Clique em “Fazer orçamento” pra montar o primeiro."
+          title="Nenhum pedido"
+          description="Clique em “Fazer pedido” pra montar o primeiro."
         />
       ) : (
         <>
@@ -224,7 +224,7 @@ export function OrcamentosView({
                         </TableCell>
                         <TableCell className="font-medium">
                           <Link
-                            href={`/orcamentos/${o.id}`}
+                            href={`/pedidos/${o.id}`}
                             className="hover:underline"
                           >
                             {o.cliente}
@@ -249,7 +249,7 @@ export function OrcamentosView({
                             <Button
                               size="icon-sm"
                               variant="ghost"
-                              render={<Link href={`/orcamentos/${o.id}`} />}
+                              render={<Link href={`/pedidos/${o.id}`} />}
                               aria-label="Abrir / imprimir"
                               title="Abrir / imprimir"
                             >
@@ -259,7 +259,7 @@ export function OrcamentosView({
                               size="icon-sm"
                               variant="ghost"
                               render={
-                                <Link href={`/orcamentos/${o.id}/separacao`} />
+                                <Link href={`/pedidos/${o.id}/separacao`} />
                               }
                               aria-label="Via de separação"
                               title="Via de separação (sem preço)"
@@ -270,7 +270,7 @@ export function OrcamentosView({
                               size="icon-sm"
                               variant="ghost"
                               render={
-                                <Link href={`/orcamentos/${o.id}/romaneio`} />
+                                <Link href={`/pedidos/${o.id}/romaneio`} />
                               }
                               aria-label="Romaneio de retirada"
                               title="Romaneio de retirada (com valores e assinatura)"
@@ -286,7 +286,7 @@ export function OrcamentosView({
                                     setEditando({ modo: 'duplicar', id: o.id })
                                   }
                                   aria-label="Duplicar"
-                                  title="Duplicar (novo orçamento com os mesmos itens)"
+                                  title="Duplicar (novo pedido com os mesmos itens)"
                                 >
                                   <Copy />
                                 </Button>
@@ -400,7 +400,7 @@ function OrcamentoDialog({
     setCarregado(true)
     void obterOrcamento(edicao.id!).then((o) => {
       if (!o) {
-        toast.error('Orçamento não encontrado')
+        toast.error('Pedido não encontrado')
         onClose()
         return
       }
@@ -498,10 +498,10 @@ function OrcamentoDialog({
         <DialogHeader className="border-b p-6">
           <DialogTitle>
             {isEdit
-              ? 'Editar orçamento'
+              ? 'Editar pedido'
               : edicao.modo === 'duplicar'
-                ? 'Duplicar orçamento'
-                : 'Fazer orçamento'}
+                ? 'Duplicar pedido'
+                : 'Fazer pedido'}
           </DialogTitle>
           <DialogDescription>
             Itens com quantidade e preço unitário. Puxe um produto do
@@ -677,7 +677,7 @@ function OrcamentoDialog({
             <Textarea
               id="orc-obs"
               rows={2}
-              placeholder="Condições, prazo de entrega, validade do orçamento…"
+              placeholder="Condições, prazo de entrega, validade do pedido…"
               value={observacao}
               onChange={(e) => setObservacao(e.target.value)}
               disabled={isPending}
@@ -1169,9 +1169,9 @@ function ExcluirDialog({
     <Dialog open={orcamento !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Excluir orçamento?</DialogTitle>
+          <DialogTitle>Excluir pedido?</DialogTitle>
           <DialogDescription>
-            O orçamento #{orcamento?.numero} de {orcamento?.cliente} será
+            O pedido #{orcamento?.numero} de {orcamento?.cliente} será
             removido.
           </DialogDescription>
         </DialogHeader>

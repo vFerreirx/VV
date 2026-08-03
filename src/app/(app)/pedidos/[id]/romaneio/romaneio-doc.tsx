@@ -93,7 +93,7 @@ export function RomaneioDoc({
       {/* Barra de ações (fora da impressão) */}
       <div className="flex items-center justify-between gap-3 print:hidden">
         <Button
-          render={<Link href={`/orcamentos/${orcamento.id}`} />}
+          render={<Link href={`/pedidos/${orcamento.id}`} />}
           variant="ghost"
           size="icon-sm"
           aria-label="Voltar"
@@ -112,9 +112,9 @@ export function RomaneioDoc({
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 print:hidden dark:text-amber-400">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
           <div>
-            Esse orçamento não tem comprador cadastrado — o romaneio sai só com
+            Esse pedido não tem comprador cadastrado — o romaneio sai só com
             o nome, sem documento nem endereço. Vincule um comprador no
-            orçamento para ele sair completo.
+            pedido para ele sair completo.
           </div>
         </div>
       )}
@@ -129,12 +129,12 @@ export function RomaneioDoc({
               CNPJ {formatarDocumento(CNPJ_EMPRESA)}
             </div>
             <div className="text-muted-foreground mt-1 text-sm">
-              Romaneio de retirada — Orçamento nº {orcamento.numero}
+              Romaneio de retirada — Pedido nº {orcamento.numero}
             </div>
           </div>
         </div>
         <div className="text-right text-sm">
-          <div className="text-muted-foreground">Data do orçamento</div>
+          <div className="text-muted-foreground">Data do pedido</div>
           <div className="font-medium tabular-nums">
             {format(new Date(orcamento.createdAt), 'dd/MM/yyyy', {
               locale: ptBR,
@@ -196,7 +196,7 @@ export function RomaneioDoc({
                 colSpan={4}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Romaneio de retirada — Orçamento nº {orcamento.numero} ·
+                Romaneio de retirada — Pedido nº {orcamento.numero} ·
                 Vanvest Home Decor
               </TableHead>
             </TableRow>

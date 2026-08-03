@@ -5,7 +5,7 @@ import { obterOrcamento } from '../actions'
 import { OrcamentoDoc } from './orcamento-doc'
 import { requireArea } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Orçamento — Vanvest' }
+export const metadata: Metadata = { title: 'Pedido — Vanvest' }
 
 export default async function OrcamentoPage({
   params,

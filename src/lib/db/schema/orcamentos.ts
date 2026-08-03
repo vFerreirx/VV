@@ -29,6 +29,11 @@ export type KitComponenteSnapshot = {
   tamanho?: string | null
 }
 
+// VOCABULÁRIO: na tela isso se chama PEDIDO (a rota é /pedidos). No banco e
+// no código continua `orcamentos` — renomear tabela, enum, coluna e índices
+// num sistema em produção só pra acompanhar o nome da tela é risco sem
+// retorno. Se estranhar a diferença ao ler o código, é isso: é deliberado.
+//
 // Orçamento pra cliente (ex.: atacado): cabeçalho + itens com preço
 // manual (produtos não têm preço no catálogo). Número sequencial simples.
 export const orcamentos = pgTable(

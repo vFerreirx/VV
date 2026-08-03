@@ -30,7 +30,7 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
       {/* Barra de ações (fora da impressão) */}
       <div className="flex items-center justify-between gap-3 print:hidden">
         <Button
-          render={<Link href="/orcamentos" />}
+          render={<Link href="/pedidos" />}
           variant="ghost"
           size="icon-sm"
           aria-label="Voltar"
@@ -40,14 +40,14 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
         <div className="flex gap-2">
           <Button
             variant="outline"
-            render={<Link href={`/orcamentos/${orcamento.id}/separacao`} />}
+            render={<Link href={`/pedidos/${orcamento.id}/separacao`} />}
           >
             <ClipboardList />
             Via de separação
           </Button>
           <Button
             variant="outline"
-            render={<Link href={`/orcamentos/${orcamento.id}/romaneio`} />}
+            render={<Link href={`/pedidos/${orcamento.id}/romaneio`} />}
           >
             <FileSignature />
             Romaneio
@@ -66,7 +66,7 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
           <div>
             <div className="text-lg font-semibold">Vanvest Home Decor</div>
             <div className="text-muted-foreground text-sm">
-              Orçamento nº {orcamento.numero}
+              Pedido nº {orcamento.numero}
             </div>
           </div>
         </div>
@@ -109,7 +109,7 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
                 colSpan={4}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Orçamento nº {orcamento.numero} · Vanvest Home Decor
+                Pedido nº {orcamento.numero} · Vanvest Home Decor
               </TableHead>
             </TableRow>
             <TableRow>

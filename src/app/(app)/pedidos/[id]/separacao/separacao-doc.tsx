@@ -71,7 +71,7 @@ export function SeparacaoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
       {/* Barra de ações (fora da impressão) */}
       <div className="flex items-center justify-between gap-3 print:hidden">
         <Button
-          render={<Link href={`/orcamentos/${orcamento.id}`} />}
+          render={<Link href={`/pedidos/${orcamento.id}`} />}
           variant="ghost"
           size="icon-sm"
           aria-label="Voltar"
@@ -91,7 +91,7 @@ export function SeparacaoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
           <div>
             <div className="text-lg font-semibold">Vanvest Home Decor</div>
             <div className="text-muted-foreground text-sm">
-              Via de separação — Orçamento nº {orcamento.numero}
+              Via de separação — Pedido nº {orcamento.numero}
             </div>
           </div>
         </div>
@@ -132,7 +132,7 @@ export function SeparacaoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
                 colSpan={2}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Via de separação — Orçamento nº {orcamento.numero} ·{' '}
+                Via de separação — Pedido nº {orcamento.numero} ·{' '}
                 {orcamento.cliente}
               </TableHead>
             </TableRow>

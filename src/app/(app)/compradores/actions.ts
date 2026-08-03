@@ -101,7 +101,7 @@ export async function criarCompradorAction(
   }
 
   revalidatePath('/compradores')
-  revalidatePath('/orcamentos')
+  revalidatePath('/pedidos')
   return {
     success: true,
     data: { id: inserted!.id },
@@ -169,7 +169,7 @@ export async function atualizarCompradorAction(
   }
 
   revalidatePath('/compradores')
-  revalidatePath('/orcamentos')
+  revalidatePath('/pedidos')
   return { success: true, message: 'Comprador atualizado' }
 }
 
@@ -198,7 +198,7 @@ export async function excluirCompradorAction(
     .where(eq(compradores.id, id))
 
   revalidatePath('/compradores')
-  revalidatePath('/orcamentos')
+  revalidatePath('/pedidos')
   return { success: true, message: 'Comprador excluído' }
 }
 

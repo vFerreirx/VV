@@ -84,8 +84,8 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       { href: '/vendas', label: 'Vendas', icon: ShoppingCart, area: 'vendas' },
       {
-        href: '/orcamentos',
-        label: 'Orçamentos',
+        href: '/pedidos',
+        label: 'Pedidos',
         icon: FileText,
         area: 'vendas',
       },

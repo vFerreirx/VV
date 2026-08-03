@@ -13,7 +13,7 @@ import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
 
-export const metadata: Metadata = { title: 'Orçamentos — Vanvest' }
+export const metadata: Metadata = { title: 'Pedidos — Vanvest' }
 
 export default async function OrcamentosPage() {
   const user = await requireArea('vendas')

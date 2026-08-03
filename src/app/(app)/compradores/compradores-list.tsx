@@ -576,9 +576,9 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir comprador?</DialogTitle>
           <DialogDescription>
-            {comprador?.nome} será marcado como excluído. Os orçamentos dele
+            {comprador?.nome} será marcado como excluído. Os pedidos dele
             continuam abrindo normalmente — o nome do cliente fica gravado no
-            próprio orçamento.
+            próprio pedido.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

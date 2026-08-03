@@ -8,6 +8,24 @@ const nextConfig: NextConfig = {
   // Deixando como pacote externo, quem resolve é o Node.
   serverExternalPackages: ['pdfjs-dist'],
 
+  // A tela de "orçamento" virou "pedido" e a rota foi junto. O redirect
+  // segura os links antigos: favorito do navegador, link mandado no
+  // WhatsApp, aba aberta há dias. `:path*` casa zero ou mais segmentos,
+  // então cobre /orcamentos e /orcamentos/<id>/romaneio no mesmo par.
+  //
+  // Temporário (307) de propósito: o 308 fica gravado no navegador pra
+  // sempre e, se um dia o nome voltar atrás, não tem como desfazer na
+  // máquina de quem já acessou.
+  async redirects() {
+    return [
+      {
+        source: '/orcamentos/:path*',
+        destination: '/pedidos/:path*',
+        permanent: false,
+      },
+    ]
+  },
+
   experimental: {
     serverActions: {
       // O PDF do envio sobe por server action. Os arquivos reais têm ~30-45KB,
