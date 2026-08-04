@@ -82,8 +82,28 @@ function garantirGlobaisDoPdfjs(): void {
   }
 }
 
+// Em Node o pdfjs não sobe Worker de verdade: ele carrega o motor de parsing
+// (`pdf.worker.mjs`, 2,3 MB) na própria thread. Só que faz isso com
+// `import(GlobalWorkerOptions.workerSrc)` — caminho montado em RUNTIME, que o
+// rastreador de arquivos do Next não tem como enxergar. Resultado: o worker
+// não é copiado pra função serverless e a leitura morre em produção com
+//   Setting up fake worker failed: "Cannot find module
+//   '/var/task/node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs'"
+// Aqui nunca deu, porque o node_modules inteiro está no disco.
+//
+// A saída é carregar o worker nós mesmos, com o caminho LITERAL: assim o
+// rastreador vê o arquivo e o inclui no pacote. O pdfjs olha primeiro pra
+// `globalThis.pdfjsWorker` (`PDFWorker.#mainThreadWorkerMessageHandler`) e,
+// achando o módulo pronto lá, nem chega no import dinâmico.
+async function carregarWorkerDoPdfjs(): Promise<void> {
+  const g = globalThis as Record<string, unknown>
+  if (g.pdfjsWorker) return
+  g.pdfjsWorker = await import('pdfjs-dist/legacy/build/pdf.worker.mjs')
+}
+
 export async function lerPdf(bytes: Uint8Array): Promise<PaginaPdf[]> {
   garantirGlobaisDoPdfjs()
+  await carregarWorkerDoPdfjs()
 
   // Import dinâmico: o pdfjs é pesado e só é necessário quando alguém sobe
   // um arquivo. O build `legacy` é o que roda em Node sem DOM.
