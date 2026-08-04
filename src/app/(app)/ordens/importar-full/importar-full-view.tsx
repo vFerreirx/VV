@@ -287,8 +287,25 @@ export function ImportarFullView({
 
       {conf.jaImportado && (
         <Aviso tom="erro">
-          O envio <span className="font-mono">{conf.envioId}</span> já foi importado (remessa de{' '}
-          {conf.jaImportado.dataEnvio}). Se precisar refazer, exclua a remessa antiga primeiro.
+          O envio <span className="font-mono">{conf.envioId}</span> já foi
+          importado (remessa de {conf.jaImportado.dataEnvio}).{' '}
+          {conf.jaImportado.opsAtivas === 0 ? (
+            <>
+              Essa remessa está <strong>sem nenhuma OP ativa</strong> — ela só
+              está segurando o identificador do envio. Exclua a remessa em{' '}
+              <Link href="/remessas" className="underline underline-offset-2">
+                Remessas Full
+              </Link>{' '}
+              e importe de novo.
+            </>
+          ) : (
+            <>
+              A remessa tem {conf.jaImportado.opsAtivas} OP
+              {conf.jaImportado.opsAtivas > 1 ? 's' : ''} ativa
+              {conf.jaImportado.opsAtivas > 1 ? 's' : ''}. Se precisar refazer,
+              exclua a remessa antiga primeiro.
+            </>
+          )}
         </Aviso>
       )}
 

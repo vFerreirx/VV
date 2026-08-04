@@ -1,8 +1,9 @@
 'use server'
 
-import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
+import { revalidatePath } from 'next/cache'
 
-import { requireArea } from '@/lib/auth/require-auth'
+import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   apontamentosProducao,
@@ -31,6 +32,17 @@ export type EtapaContagem = {
   status: EtapaKanban
   count: number
 }
+
+export type ActionResult =
+  | { success: true; message?: string }
+  | { success: false; error: string }
+
+// OP ATIVA = não excluída e não cancelada. Mesma definição usada pra montar
+// a lista de remessas abertas e pra decidir se uma remessa pode ser excluída.
+const opAtiva = and(
+  isNull(ordensProducao.deletedAt),
+  ne(ordensProducao.status, 'cancelado'),
+)
 
 export type RemessaAberta = {
   id: string
@@ -118,8 +130,7 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
       ordensProducao,
       and(
         eq(ordensProducao.remessaFullId, remessasFull.id),
-        isNull(ordensProducao.deletedAt),
-        ne(ordensProducao.status, 'cancelado'),
+        opAtiva,
       ),
     )
     .where(isNull(remessasFull.deletedAt))
@@ -226,8 +237,7 @@ export async function listarOpsDasRemessas(
     .where(
       and(
         inArray(ordensProducao.remessaFullId, remessaIds),
-        isNull(ordensProducao.deletedAt),
-        ne(ordensProducao.status, 'cancelado'),
+        opAtiva,
       ),
     )
     .orderBy(asc(ordensProducao.status), asc(ordensProducao.numero))
@@ -250,4 +260,107 @@ export async function listarOpsDasRemessas(
       r.status !== 'enviado' &&
       new Date(r.dataPrevistaFim).getTime() < now,
   }))
+}
+
+// -----------------------------------------------------------------
+// Remessas encalhadas + exclusão
+// -----------------------------------------------------------------
+
+export type RemessaSemOp = {
+  id: string
+  canal: 'full_ml' | 'full_shopee'
+  dataEnvio: string
+  envioId: string | null
+  // OPs que existiram e foram excluídas ou canceladas. Zero = remessa criada
+  // e nunca usada.
+  opsInativas: number
+}
+
+// Remessa sem NENHUMA OP ativa. Ela não aparece na lista de abertas (que
+// exige OP pendente), então antes disso ficava invisível pra sempre — e como
+// a trava de duplicidade da importação Full olha a remessa, o envio nunca
+// mais podia ser reimportado. É exatamente o que esta lista destrava.
+//
+// ATENÇÃO ao "remessas_full"."id" escrito à mão: numa consulta de tabela
+// única o Drizzle NÃO qualifica as colunas do select, então `${remessasFull.id}`
+// sairia como `"id"` — e dentro da subconsulta o Postgres resolveria isso
+// como `ordens_producao.id`, comparando a OP com ela mesma e devolvendo zero
+// sempre. Mesmo cuidado já tomado no kanban e em listarOpsDasRemessas.
+export async function listarRemessasSemOp(): Promise<RemessaSemOp[]> {
+  await requireArea('remessas')
+
+  const rows = await db
+    .select({
+      id: remessasFull.id,
+      canal: remessasFull.canal,
+      dataEnvio: remessasFull.dataEnvio,
+      envioId: remessasFull.envioId,
+      ativas: sql<number>`(
+        SELECT count(*) FROM ${ordensProducao} o
+        WHERE o.remessa_full_id = "remessas_full"."id"
+          AND o.deleted_at IS NULL AND o.status <> 'cancelado'
+      )::int`,
+      inativas: sql<number>`(
+        SELECT count(*) FROM ${ordensProducao} o
+        WHERE o.remessa_full_id = "remessas_full"."id"
+          AND (o.deleted_at IS NOT NULL OR o.status = 'cancelado')
+      )::int`,
+    })
+    .from(remessasFull)
+    .where(isNull(remessasFull.deletedAt))
+    .orderBy(desc(remessasFull.dataEnvio))
+
+  return rows
+    .filter((r) => r.ativas === 0)
+    .map((r) => ({
+      id: r.id,
+      canal: r.canal as 'full_ml' | 'full_shopee',
+      dataEnvio: r.dataEnvio,
+      envioId: r.envioId,
+      opsInativas: r.inativas,
+    }))
+}
+
+// Exclusão SUAVE: a remessa vai pra lixeira, de onde dá pra restaurar ou
+// apagar de vez. Só sai quando não tem OP ativa — senão o kanban perderia o
+// agrupador das OPs que ainda estão sendo produzidas.
+export async function excluirRemessaAction(id: string): Promise<ActionResult> {
+  await requireAreaEscrita('remessas')
+
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
+
+  const [alvo] = await db
+    .select({ id: remessasFull.id })
+    .from(remessasFull)
+    .where(and(eq(remessasFull.id, id), isNull(remessasFull.deletedAt)))
+    .limit(1)
+  if (!alvo) return { success: false, error: 'Remessa não encontrada' }
+
+  const [agg] = await db
+    .select({ ativas: sql<number>`count(*)::int` })
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.remessaFullId, id), opAtiva))
+
+  const ativas = agg?.ativas ?? 0
+  if (ativas > 0) {
+    return {
+      success: false,
+      error:
+        `Essa remessa tem ${ativas} OP${ativas > 1 ? 's' : ''} ativa${ativas > 1 ? 's' : ''}. ` +
+        'Exclua ou cancele essas OPs antes de excluir a remessa.',
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(remessasFull)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(remessasFull.id, id), isNull(remessasFull.deletedAt)))
+  })
+
+  revalidatePath('/remessas')
+  revalidatePath('/lixeira')
+  return { success: true, message: 'Remessa enviada pra lixeira' }
 }

@@ -1,11 +1,28 @@
 'use client'
 
-import { AlertTriangle, ChevronDown, PackageSearch } from 'lucide-react'
+import { AlertTriangle, ChevronDown, PackageSearch, Trash2 } from 'lucide-react'
 import Link from 'next/link'
-import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useState, useTransition } from 'react'
+import { toast } from 'sonner'
 
-import type { EtapaKanban, OpDaRemessa, RemessaAberta } from './actions'
+import type {
+  EtapaKanban,
+  OpDaRemessa,
+  RemessaAberta,
+  RemessaSemOp,
+} from './actions'
+import { excluirRemessaAction } from './actions'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { CANAL_LABEL_CURTO, STATUS_LABEL_CURTO } from '@/lib/validators/ordens'
 
@@ -38,9 +55,18 @@ function prazoLabel(diasRestantes: number): string {
 type Props = {
   remessas: RemessaAberta[]
   ops: OpDaRemessa[]
+  semOp: RemessaSemOp[]
+  podeEditar: boolean
 }
 
-export function RemessasView({ remessas, ops }: Props) {
+function dataCurta(dataEnvio: string): string {
+  const [, m, d] = dataEnvio.split('-')
+  return `${d}/${m}`
+}
+
+export function RemessasView({ remessas, ops, semOp, podeEditar }: Props) {
+  const [excluindo, setExcluindo] = useState<RemessaSemOp | null>(null)
+
   return (
     <div className="space-y-6">
       <div>
@@ -67,7 +93,113 @@ export function RemessasView({ remessas, ops }: Props) {
           ))}
         </div>
       )}
+
+      {/* Remessas que ficaram pra trás: sem nenhuma OP ativa, elas somem da
+          lista acima e continuam segurando o identificador do envio, o que
+          impede reimportar o mesmo PDF. Daqui elas podem ir pra lixeira. */}
+      {semOp.length > 0 && (
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold">Remessas sem OP ativa</h2>
+            <p className="text-muted-foreground mt-0.5 text-sm">
+              Não aparecem na lista acima e continuam bloqueando a reimportação
+              do envio. Excluir manda pra lixeira — dá pra restaurar depois.
+            </p>
+          </div>
+          <div className="divide-y rounded-xl border">
+            {semOp.map((r) => (
+              <div
+                key={r.id}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5"
+              >
+                <PackageSearch className="text-muted-foreground size-4 shrink-0" />
+                <span className="text-sm font-medium">
+                  {CANAL_LABEL_CURTO[r.canal]} · {dataCurta(r.dataEnvio)}
+                </span>
+                <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
+                  {r.envioId ? (
+                    <span className="font-mono">envio {r.envioId}</span>
+                  ) : (
+                    'sem identificador de envio'
+                  )}
+                  {r.opsInativas > 0 &&
+                    ` · ${r.opsInativas} OP${r.opsInativas > 1 ? 's' : ''} excluída${r.opsInativas > 1 ? 's' : ''}/cancelada${r.opsInativas > 1 ? 's' : ''}`}
+                </span>
+                {podeEditar && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => setExcluindo(r)}
+                  >
+                    <Trash2 />
+                    Excluir
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <ExcluirRemessaDialog
+        remessa={excluindo}
+        onClose={() => setExcluindo(null)}
+      />
     </div>
+  )
+}
+
+function ExcluirRemessaDialog({
+  remessa,
+  onClose,
+}: {
+  remessa: RemessaSemOp | null
+  onClose: () => void
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  function excluir() {
+    if (!remessa) return
+    startTransition(async () => {
+      const r = await excluirRemessaAction(remessa.id)
+      if (!r.success) {
+        toast.error(r.error, { duration: 10000 })
+        return
+      }
+      toast.success(r.message ?? 'Remessa excluída')
+      onClose()
+      router.refresh()
+    })
+  }
+
+  return (
+    <Dialog open={remessa !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Excluir remessa?</DialogTitle>
+          <DialogDescription>
+            A remessa{' '}
+            <span className="text-foreground font-medium">
+              {remessa && CANAL_LABEL_CURTO[remessa.canal]}
+              {remessa && ` · ${dataCurta(remessa.dataEnvio)}`}
+            </span>{' '}
+            vai pra lixeira, de onde dá pra restaurar. As OPs excluídas dela não
+            são afetadas.
+            {remessa?.envioId &&
+              ' Depois disso o envio pode ser importado de novo.'}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={excluir} disabled={isPending}>
+            {isPending ? 'Excluindo…' : 'Excluir'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -81,7 +213,6 @@ function RemessaCard({
   const [aberta, setAberta] = useState(false)
   const pctPecas =
     r.unidades > 0 ? Math.round((r.produzidas / r.unidades) * 100) : 0
-  const [, m, d] = r.dataEnvio.split('-')
   const risco = RISCO_INFO[r.risco]
 
   return (
@@ -101,7 +232,7 @@ function RemessaCard({
                   : 'text-muted-foreground',
               )}
             />
-            {CANAL_LABEL_CURTO[r.canal]} · {d}/{m}
+            {CANAL_LABEL_CURTO[r.canal]} · {dataCurta(r.dataEnvio)}
             <span className="text-muted-foreground font-normal">
               · {prazoLabel(r.diasRestantes)}
             </span>

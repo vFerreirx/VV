@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
@@ -70,7 +70,14 @@ export type Conferencia = {
   itens: ItemConferencia[]
   avisos: string[]
   // Envio já importado antes (mesmo canal + mesmo identificador).
-  jaImportado: { remessaId: string; dataEnvio: string } | null
+  // `opsAtivas` = 0 significa que a remessa antiga é uma casca vazia: ela só
+  // está segurando o identificador do envio. Nesse caso a mensagem manda
+  // excluir a remessa, em vez de deixar a pessoa travada sem saber por quê.
+  jaImportado: {
+    remessaId: string
+    dataEnvio: string
+    opsAtivas: number
+  } | null
 }
 
 // -----------------------------------------------------------------
@@ -112,7 +119,23 @@ export async function analisarPdfFullAction(form: FormData): Promise<ActionResul
         ),
       )
       .limit(1)
-    if (r) jaImportado = { remessaId: r.id, dataEnvio: r.dataEnvio }
+    if (r) {
+      const [agg] = await db
+        .select({ ativas: sql<number>`count(*)::int` })
+        .from(ordensProducao)
+        .where(
+          and(
+            eq(ordensProducao.remessaFullId, r.id),
+            isNull(ordensProducao.deletedAt),
+            ne(ordensProducao.status, 'cancelado'),
+          ),
+        )
+      jaImportado = {
+        remessaId: r.id,
+        dataEnvio: r.dataEnvio,
+        opsAtivas: agg?.ativas ?? 0,
+      }
+    }
   }
 
   return {
