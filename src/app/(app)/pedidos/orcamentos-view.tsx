@@ -58,6 +58,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 type Props = {
   orcamentos: OrcamentoListItem[]
@@ -245,7 +246,7 @@ export function OrcamentosView({
                     {grupo.itens.map((o) => (
                       <TableRow key={o.id}>
                         <TableCell className="font-mono text-xs">
-                          #{o.numero}
+                          #{formatarNumeroPedido(o.numero)}
                         </TableCell>
                         <TableCell className="font-medium">
                           <Link
@@ -1182,7 +1183,8 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir pedido?</DialogTitle>
           <DialogDescription>
-            O pedido #{orcamento?.numero} de {orcamento?.cliente} será
+            O pedido #{orcamento && formatarNumeroPedido(orcamento.numero)} de{' '}
+            {orcamento?.cliente} será
             removido.
           </DialogDescription>
         </DialogHeader>

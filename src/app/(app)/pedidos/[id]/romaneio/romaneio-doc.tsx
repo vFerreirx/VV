@@ -19,6 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatarCep, formatarDocumento } from '@/lib/validators/documento'
+import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 type Comprador = NonNullable<OrcamentoParaRomaneio['comprador']>
 
@@ -130,7 +131,7 @@ export function RomaneioDoc({
               CNPJ {formatarDocumento(CNPJ_EMPRESA)}
             </div>
             <div className="text-muted-foreground mt-1 text-sm">
-              Romaneio — Pedido nº {orcamento.numero}
+              Romaneio — Pedido nº {formatarNumeroPedido(orcamento.numero)}
             </div>
           </div>
         </div>
@@ -189,7 +190,8 @@ export function RomaneioDoc({
                 colSpan={4}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Romaneio — Pedido nº {orcamento.numero} · Vanvest Home Decor
+                Romaneio — Pedido nº {formatarNumeroPedido(orcamento.numero)} ·
+                Vanvest Home Decor
               </TableHead>
             </TableRow>
             <TableRow>

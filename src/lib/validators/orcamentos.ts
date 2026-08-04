@@ -62,5 +62,12 @@ export const orcamentoSchema = z.object({
   itens: z.array(orcamentoItemSchema).min(1, 'Adicione ao menos um item'),
 })
 
+// O número do pedido é um identity sequencial (1, 2, 3…), mas na tela e no
+// papel ele sai sempre com 4 dígitos: "Pedido nº 0030". Passar de 9999 só faz
+// o número crescer — nunca corta.
+export function formatarNumeroPedido(numero: number): string {
+  return String(numero).padStart(4, '0')
+}
+
 export type OrcamentoInput = z.input<typeof orcamentoSchema>
 export type OrcamentoItemInput = z.input<typeof orcamentoItemSchema>

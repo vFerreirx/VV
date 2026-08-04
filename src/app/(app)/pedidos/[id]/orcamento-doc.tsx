@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 function reais(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -66,7 +67,7 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
           <div>
             <div className="text-lg font-semibold">Vanvest Home Decor</div>
             <div className="text-muted-foreground text-sm">
-              Pedido nº {orcamento.numero}
+              Pedido nº {formatarNumeroPedido(orcamento.numero)}
             </div>
           </div>
         </div>
@@ -109,7 +110,8 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
                 colSpan={4}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Pedido nº {orcamento.numero} · Vanvest Home Decor
+                Pedido nº {formatarNumeroPedido(orcamento.numero)} · Vanvest
+                Home Decor
               </TableHead>
             </TableRow>
             <TableRow>

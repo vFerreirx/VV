@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 type LinhaSeparacao = { descricao: string; quantidade: number }
 
@@ -91,7 +92,8 @@ export function SeparacaoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
           <div>
             <div className="text-lg font-semibold">Vanvest Home Decor</div>
             <div className="text-muted-foreground text-sm">
-              Via de separação — Pedido nº {orcamento.numero}
+              Via de separação — Pedido nº{' '}
+              {formatarNumeroPedido(orcamento.numero)}
             </div>
           </div>
         </div>
@@ -132,8 +134,8 @@ export function SeparacaoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
                 colSpan={2}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Via de separação — Pedido nº {orcamento.numero} ·{' '}
-                {orcamento.cliente}
+                Via de separação — Pedido nº{' '}
+                {formatarNumeroPedido(orcamento.numero)} · {orcamento.cliente}
               </TableHead>
             </TableRow>
             <TableRow>
