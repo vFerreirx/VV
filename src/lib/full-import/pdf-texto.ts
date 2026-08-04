@@ -26,7 +26,65 @@ export type PaginaPdf = {
 // Shopee ~26pt, então 2pt é folgado o suficiente sem juntar linhas vizinhas.
 const TOLERANCIA_LINHA = 2
 
+// DOMMatrix e Path2D não existem no Node. O pdfjs tenta pegar os dois do
+// `@napi-rs/canvas`, que ele declara como optionalDependency — e "opcional"
+// quer dizer que pode não estar instalado. Na máquina de desenvolvimento ele
+// veio junto e tudo funciona; no serverless da Vercel ele não vai, o pdfjs
+// avisa que não conseguiu fazer o polyfill e o módulo estoura ao ser
+// avaliado, num `new DOMMatrix()` de escopo de módulo (pdf.mjs:16713) —
+// antes mesmo de ver um PDF.
+//
+// A saída não é instalar o binário nativo (dezenas de MB numa função
+// serverless): aqui a leitura é SÓ DE TEXTO, nenhuma página é renderizada,
+// então esses objetos de desenho nunca chegam a ser usados de verdade. Eles
+// só precisam existir.
+//
+// Só definimos o que ainda não existir, pra nunca sobrescrever quem chegou
+// antes. Na prática isto roda ANTES do pdfjs, então são estes objetos que
+// ele enxerga em todo ambiente — inclusive onde o @napi-rs/canvas está
+// instalado. É de propósito: assim o desenvolvimento roda exatamente como a
+// produção, e um problema desse tipo não consegue mais se esconder aqui.
+//
+// NÃO REMOVER — sem isto a importação de PDF volta a quebrar na Vercel.
+function garantirGlobaisDoPdfjs(): void {
+  const g = globalThis as Record<string, unknown>
+
+  if (typeof g.DOMMatrix === 'undefined') {
+    // Os 6 campos da matriz 2D são tudo que o pdfjs lê de um DOMMatrix
+    // (`Util.multiplyByDOMMatrix`). O construtor aceita a mesma forma que
+    // ele usa: nada, ou o array [a, b, c, d, e, f].
+    g.DOMMatrix = class {
+      a = 1
+      b = 0
+      c = 0
+      d = 1
+      e = 0
+      f = 0
+
+      constructor(init?: number[]) {
+        if (init && init.length >= 6) {
+          this.a = init[0]!
+          this.b = init[1]!
+          this.c = init[2]!
+          this.d = init[3]!
+          this.e = init[4]!
+          this.f = init[5]!
+        }
+      }
+    }
+  }
+
+  if (typeof g.Path2D === 'undefined') {
+    // Só existe pra `new Path2D()` e `x instanceof Path2D` não estourarem.
+    // Sem métodos de propósito: se algum dia alguém renderizar página por
+    // aqui, é melhor falhar alto do que desenhar no vazio em silêncio.
+    g.Path2D = class {}
+  }
+}
+
 export async function lerPdf(bytes: Uint8Array): Promise<PaginaPdf[]> {
+  garantirGlobaisDoPdfjs()
+
   // Import dinâmico: o pdfjs é pesado e só é necessário quando alguém sobe
   // um arquivo. O build `legacy` é o que roda em Node sem DOM.
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
