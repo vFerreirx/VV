@@ -115,6 +115,10 @@ export function RemessasView({ remessas, ops, semOp, podeEditar }: Props) {
                 <PackageSearch className="text-muted-foreground size-4 shrink-0" />
                 <span className="text-sm font-medium">
                   {CANAL_LABEL_CURTO[r.canal]} · {dataCurta(r.dataEnvio)}
+                  <span className="text-muted-foreground font-normal">
+                    {' '}
+                    · {r.contaNome ?? 'sem conta'}
+                  </span>
                 </span>
                 <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
                   {r.envioId ? (
@@ -233,8 +237,8 @@ function RemessaCard({
               )}
             />
             {CANAL_LABEL_CURTO[r.canal]} · {dataCurta(r.dataEnvio)}
-            <span className="text-muted-foreground font-normal">
-              · {prazoLabel(r.diasRestantes)}
+            <span className="text-muted-foreground truncate font-normal">
+              · {r.contaNome ?? 'sem conta'} · {prazoLabel(r.diasRestantes)}
             </span>
           </span>
           <span className="flex shrink-0 items-center gap-2">

@@ -7,6 +7,7 @@ import { GerarDeKit } from './gerar-de-kit'
 import { NovoFull } from './novo-full'
 import { OrdensList } from './ordens-list'
 import { listarRemessasFull } from './remessas-actions'
+import { listarContasAtivas } from '../contas-marketplace/actions'
 import { listarKitsComItens } from '../kits/actions'
 import { Button } from '@/components/ui/button'
 import { podeEscrever } from '@/lib/auth/permissoes'
@@ -34,11 +35,12 @@ export default async function OrdensPage({
   const parsed = ordensFiltrosSchema.safeParse(raw)
   const filtros: OrdensFiltros = parsed.success ? parsed.data : {}
 
-  const [pagina, kits, produtosParaKit, remessas] = await Promise.all([
+  const [pagina, kits, produtosParaKit, remessas, contas] = await Promise.all([
     listarOrdens(filtros),
     podeGerarKit ? listarKitsComItens() : Promise.resolve([]),
     podeEditar ? listarProdutosParaOrdem() : Promise.resolve([]),
     listarRemessasFull(),
+    podeEditar ? listarContasAtivas() : Promise.resolve([]),
   ])
 
   return (
@@ -57,7 +59,13 @@ export default async function OrdensPage({
               Importar Full (PDF)
             </Button>
           )}
-          {podeEditar && <NovoFull remessas={remessas} produtos={produtosParaKit} />}
+          {podeEditar && (
+            <NovoFull
+              remessas={remessas}
+              produtos={produtosParaKit}
+              contas={contas}
+            />
+          )}
           {podeGerarKit && kits.length > 0 && <GerarDeKit kits={kits} produtos={produtosParaKit} />}
           {podeEditar && <Button render={<Link href="/ordens/novo" />}>Nova OP</Button>}
         </div>

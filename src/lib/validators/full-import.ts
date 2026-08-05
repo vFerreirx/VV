@@ -30,29 +30,37 @@ export type DeParaInput = z.infer<typeof deParaSchema>
 // Confirmação da importação. As quantidades já vêm resolvidas do servidor;
 // o cliente manda só o que a pessoa escolheu (remessa e prioridade) e o
 // envio que ele acabou de conferir.
-export const importarFullSchema = z.object({
-  // Full existente; se ausente, cria um novo com canal + dataEnvio.
-  remessaId: z.uuid().nullable().optional(),
-  dataEnvio: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
-    .nullable()
-    .optional(),
-  canal: z.enum(fullCanalImportValues),
-  envioId: z.string().trim().max(80).nullable().optional(),
-  prioridade: z.enum(['baixa', 'normal', 'alta', 'urgente']),
-  // O que produzir, já explodido e somado por variação.
-  itens: z
-    .array(
-      z.object({
-        variacaoId: z.uuid(),
-        quantidade: z.number().int().min(1),
-      }),
-    )
-    .min(1, 'Nada pra produzir'),
-  // Conferência de integridade: o total que a tela mostrou. O servidor
-  // recalcula e recusa se não bater — protege contra a tela ficar velha.
-  totalPecas: z.number().int().min(1),
-})
+export const importarFullSchema = z
+  .object({
+    // Full existente; se ausente, cria um novo com canal + dataEnvio.
+    remessaId: z.uuid().nullable().optional(),
+    // Conta de marketplace do envio. O PDF não diz qual é — nem o do ML nem
+    // a Picking List da Shopee —, então vem escolhida da tela. Obrigatória
+    // só quando cria um Full novo; usando um existente, a conta é a dele.
+    contaId: z.uuid().nullable().optional(),
+    dataEnvio: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
+      .nullable()
+      .optional(),
+    canal: z.enum(fullCanalImportValues),
+    envioId: z.string().trim().max(80).nullable().optional(),
+    prioridade: z.enum(['baixa', 'normal', 'alta', 'urgente']),
+    // O que produzir, já explodido e somado por variação.
+    itens: z
+      .array(
+        z.object({
+          variacaoId: z.uuid(),
+          quantidade: z.number().int().min(1),
+        }),
+      )
+      .min(1, 'Nada pra produzir'),
+    // Conferência de integridade: o total que a tela mostrou. O servidor
+    // recalcula e recusa se não bater — protege contra a tela ficar velha.
+    totalPecas: z.number().int().min(1),
+  })
+  .refine((d) => d.remessaId || d.contaId, {
+    message: 'Escolha a conta de marketplace do envio',
+  })
 
 export type ImportarFullInput = z.infer<typeof importarFullSchema>

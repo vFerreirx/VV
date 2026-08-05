@@ -26,11 +26,19 @@ export const criarOpsFullSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
       .optional(),
+    // Conta de marketplace do envio. Obrigatória só quando a remessa é
+    // NOVA — usando uma existente, a conta é a dela. Optional aqui e
+    // exigida no refine abaixo, porque a coluna no banco é nullable
+    // (histórico) e a obrigatoriedade é do formulário.
+    contaId: uuid.optional(),
     prioridade: z.enum(prioridadeValues),
     itens: z.array(fullItemSchema).min(1, 'Adicione ao menos um produto'),
   })
   .refine((d) => d.remessaId || (d.canal && d.dataEnvio), {
     message: 'Escolha um Full existente ou informe canal e data de envio',
+  })
+  .refine((d) => d.remessaId || d.contaId, {
+    message: 'Escolha a conta de marketplace do envio',
   })
 
 export type CriarOpsFullInput = z.input<typeof criarOpsFullSchema>

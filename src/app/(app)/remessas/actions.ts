@@ -7,6 +7,7 @@ import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   apontamentosProducao,
+  contasMarketplace,
   ordensProducao,
   produtos,
   remessasFull,
@@ -48,6 +49,9 @@ export type RemessaAberta = {
   id: string
   canal: 'full_ml' | 'full_shopee'
   dataEnvio: string
+  // Nulo nas remessas criadas antes do cadastro de contas — a tela mostra
+  // "sem conta" e segue funcionando.
+  contaNome: string | null
   ops: number
   opsProntas: number
   unidades: number
@@ -84,6 +88,7 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
       id: remessasFull.id,
       canal: remessasFull.canal,
       dataEnvio: remessasFull.dataEnvio,
+      contaNome: contasMarketplace.nome,
       ops: sql<number>`count(*)::int`,
       opsProntas: sql<number>`count(*) filter (
         where ${ordensProducao.status} in ('pronto_envio', 'enviado')
@@ -133,8 +138,19 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
         opAtiva,
       ),
     )
+    // leftJoin, não innerJoin: remessa sem conta (as antigas) tem que
+    // continuar aparecendo.
+    .leftJoin(
+      contasMarketplace,
+      eq(contasMarketplace.id, remessasFull.contaId),
+    )
     .where(isNull(remessasFull.deletedAt))
-    .groupBy(remessasFull.id, remessasFull.canal, remessasFull.dataEnvio)
+    .groupBy(
+      remessasFull.id,
+      remessasFull.canal,
+      remessasFull.dataEnvio,
+      contasMarketplace.nome,
+    )
     .orderBy(asc(remessasFull.dataEnvio))
 
   const contagemPorEtapa = {
@@ -170,6 +186,7 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
         id: r.id,
         canal: r.canal as 'full_ml' | 'full_shopee',
         dataEnvio: r.dataEnvio,
+        contaNome: r.contaNome ?? null,
         ops: r.ops,
         opsProntas: r.opsProntas,
         unidades: r.unidades,
@@ -271,6 +288,7 @@ export type RemessaSemOp = {
   canal: 'full_ml' | 'full_shopee'
   dataEnvio: string
   envioId: string | null
+  contaNome: string | null
   // OPs que existiram e foram excluídas ou canceladas. Zero = remessa criada
   // e nunca usada.
   opsInativas: number
@@ -295,6 +313,7 @@ export async function listarRemessasSemOp(): Promise<RemessaSemOp[]> {
       canal: remessasFull.canal,
       dataEnvio: remessasFull.dataEnvio,
       envioId: remessasFull.envioId,
+      contaNome: contasMarketplace.nome,
       ativas: sql<number>`(
         SELECT count(*) FROM ${ordensProducao} o
         WHERE o.remessa_full_id = "remessas_full"."id"
@@ -307,6 +326,10 @@ export async function listarRemessasSemOp(): Promise<RemessaSemOp[]> {
       )::int`,
     })
     .from(remessasFull)
+    .leftJoin(
+      contasMarketplace,
+      eq(contasMarketplace.id, remessasFull.contaId),
+    )
     .where(isNull(remessasFull.deletedAt))
     .orderBy(desc(remessasFull.dataEnvio))
 
@@ -317,6 +340,7 @@ export async function listarRemessasSemOp(): Promise<RemessaSemOp[]> {
       canal: r.canal as 'full_ml' | 'full_shopee',
       dataEnvio: r.dataEnvio,
       envioId: r.envioId,
+      contaNome: r.contaNome ?? null,
       opsInativas: r.inativas,
     }))
 }

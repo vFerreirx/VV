@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
+  contasMarketplace,
   eventosKanban,
   ordensProducao,
   remessasFull,
@@ -113,9 +114,29 @@ export async function criarOpsFullAction(
       if (!r) throw new Error('FULL_NAO_ENCONTRADO')
       remessa = r
     } else {
+      // A conta tem que ser do MESMO canal do Full e estar ativa — a trava
+      // da tela (o seletor já vem filtrado) não é garantia de nada.
+      const [conta] = await tx
+        .select({ id: contasMarketplace.id })
+        .from(contasMarketplace)
+        .where(
+          and(
+            eq(contasMarketplace.id, data.contaId!),
+            eq(contasMarketplace.canal, data.canal!),
+            eq(contasMarketplace.ativo, true),
+            isNull(contasMarketplace.deletedAt),
+          ),
+        )
+        .limit(1)
+      if (!conta) throw new Error('CONTA_INVALIDA')
+
       const [r] = await tx
         .insert(remessasFull)
-        .values({ canal: data.canal!, dataEnvio: data.dataEnvio! })
+        .values({
+          canal: data.canal!,
+          dataEnvio: data.dataEnvio!,
+          contaId: conta.id,
+        })
         .returning({
           id: remessasFull.id,
           canal: remessasFull.canal,
@@ -157,10 +178,17 @@ export async function criarOpsFullAction(
     return data.itens.length
   }).catch((e) => {
     if (e instanceof Error && e.message === 'FULL_NAO_ENCONTRADO') return -1
+    if (e instanceof Error && e.message === 'CONTA_INVALIDA') return -2
     throw e
   })
 
   if (criadas === -1) return { success: false, error: 'Full não encontrado' }
+  if (criadas === -2) {
+    return {
+      success: false,
+      error: 'Conta de marketplace inválida — escolha uma conta ativa do canal',
+    }
+  }
 
   revalidatePath('/ordens')
   revalidatePath('/producao')

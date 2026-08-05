@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
+  contasMarketplace,
   deParaFull,
   deParaFullComponentes,
   eventosKanban,
@@ -512,12 +513,30 @@ export async function importarFullAction(
         }
       } else {
         if (!d.dataEnvio) throw new Error('SEM_DATA')
+        // A conta tem que ser do MESMO canal do envio e estar ativa. O
+        // seletor da tela já vem filtrado, mas isso é conferência, não
+        // garantia.
+        const [conta] = await tx
+          .select({ id: contasMarketplace.id })
+          .from(contasMarketplace)
+          .where(
+            and(
+              eq(contasMarketplace.id, d.contaId!),
+              eq(contasMarketplace.canal, d.canal),
+              eq(contasMarketplace.ativo, true),
+              isNull(contasMarketplace.deletedAt),
+            ),
+          )
+          .limit(1)
+        if (!conta) throw new Error('CONTA_INVALIDA')
+
         const [r] = await tx
           .insert(remessasFull)
           .values({
             canal: d.canal,
             dataEnvio: d.dataEnvio,
             envioId: d.envioId ?? null,
+            contaId: conta.id,
           })
           .returning({
             id: remessasFull.id,
@@ -568,6 +587,7 @@ export async function importarFullAction(
         if (e.message === 'FULL_NAO_ENCONTRADO') return 'FULL_NAO_ENCONTRADO'
         if (e.message === 'CANAL_DIFERENTE') return 'CANAL_DIFERENTE'
         if (e.message === 'SEM_DATA') return 'SEM_DATA'
+        if (e.message === 'CONTA_INVALIDA') return 'CONTA_INVALIDA'
       }
       // O índice único (canal, envio_id) é a trava DE VERDADE contra
       // reimportar o mesmo envio: a checagem lá em cima não cobre duas
@@ -587,6 +607,12 @@ export async function importarFullAction(
   }
   if (resultado === 'SEM_DATA') {
     return { success: false, error: 'Informe a data de envio do Full' }
+  }
+  if (resultado === 'CONTA_INVALIDA') {
+    return {
+      success: false,
+      error: 'Conta de marketplace inválida — escolha uma conta ativa do canal',
+    }
   }
   if (resultado === 'ENVIO_DUPLICADO') {
     return {

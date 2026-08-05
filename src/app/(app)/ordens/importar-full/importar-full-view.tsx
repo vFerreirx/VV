@@ -12,6 +12,7 @@ import type { RemessaFullOpcao } from '../remessas-actions'
 import type { KitComItens } from '../../kits/actions'
 import { DeParaDialog } from './de-para-dialog'
 import { Badge } from '@/components/ui/badge'
+import type { ContaMarketplace } from '@/lib/db/schema'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -71,10 +72,12 @@ export function ImportarFullView({
   remessas,
   kits,
   produtos,
+  contas,
 }: {
   remessas: RemessaFullOpcao[]
   kits: KitComItens[]
   produtos: ProdutoParaSelecao[]
+  contas: ContaMarketplace[]
 }) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
@@ -85,6 +88,9 @@ export function ImportarFullView({
 
   const [remessaSel, setRemessaSel] = useState(NOVA)
   const [dataEnvio, setDataEnvio] = useState('')
+  const [contaId, setContaId] = useState<string | null>(null)
+  // O canal vem do PDF, então dá pra filtrar as contas sem perguntar nada.
+  const contasDoCanal = conf ? contas.filter((c) => c.canal === conf.canal) : []
   const [prioridade, setPrioridade] = useState<(typeof prioridadeValues)[number]>('normal')
 
   function escolherArquivo(file: File) {
@@ -98,6 +104,7 @@ export function ImportarFullView({
       }
       setConf(r.data!)
       setRemessaSel(NOVA)
+      setContaId(null)
     })
   }
 
@@ -156,7 +163,8 @@ export function ImportarFullView({
     alterados.length === 0 &&
     producao.length > 0 &&
     conf.jaImportado === null &&
-    (remessaSel !== NOVA || dataEnvio !== '')
+    // Full novo exige data E conta; Full existente já traz as duas.
+    (remessaSel !== NOVA || (dataEnvio !== '' && contaId !== null))
 
   function confirmar() {
     if (!conf) return
@@ -164,6 +172,7 @@ export function ImportarFullView({
       const r = await importarFullAction({
         remessaId: remessaSel === NOVA ? null : remessaSel,
         dataEnvio: remessaSel === NOVA ? dataEnvio : null,
+        contaId: remessaSel === NOVA ? contaId : null,
         canal: conf.canal,
         envioId: conf.envioId,
         prioridade,
@@ -287,12 +296,12 @@ export function ImportarFullView({
 
       {conf.jaImportado && (
         <Aviso tom="erro">
-          O envio <span className="font-mono">{conf.envioId}</span> já foi
-          importado (remessa de {conf.jaImportado.dataEnvio}).{' '}
+          O envio <span className="font-mono">{conf.envioId}</span> já foi importado (remessa de{' '}
+          {conf.jaImportado.dataEnvio}).{' '}
           {conf.jaImportado.opsAtivas === 0 ? (
             <>
-              Essa remessa está <strong>sem nenhuma OP ativa</strong> — ela só
-              está segurando o identificador do envio. Exclua a remessa em{' '}
+              Essa remessa está <strong>sem nenhuma OP ativa</strong> — ela só está segurando o
+              identificador do envio. Exclua a remessa em{' '}
               <Link href="/remessas" className="underline underline-offset-2">
                 Remessas Full
               </Link>{' '}
@@ -302,8 +311,8 @@ export function ImportarFullView({
             <>
               A remessa tem {conf.jaImportado.opsAtivas} OP
               {conf.jaImportado.opsAtivas > 1 ? 's' : ''} ativa
-              {conf.jaImportado.opsAtivas > 1 ? 's' : ''}. Se precisar refazer,
-              exclua a remessa antiga primeiro.
+              {conf.jaImportado.opsAtivas > 1 ? 's' : ''}. Se precisar refazer, exclua a remessa
+              antiga primeiro.
             </>
           )}
         </Aviso>
@@ -464,16 +473,40 @@ export function ImportarFullView({
             </Select>
           </div>
           {remessaSel === NOVA && (
-            <div className="space-y-1.5">
-              <Label htmlFor="data-envio">Data de envio</Label>
-              <Input
-                id="data-envio"
-                type="date"
-                value={dataEnvio}
-                onChange={(e) => setDataEnvio(e.target.value)}
-                disabled={criando}
-              />
-            </div>
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="data-envio">Data de envio</Label>
+                <Input
+                  id="data-envio"
+                  type="date"
+                  value={dataEnvio}
+                  onChange={(e) => setDataEnvio(e.target.value)}
+                  disabled={criando}
+                />
+              </div>
+              {/* O canal vem do PDF, então o seletor já nasce filtrado.
+                  Usando um Full existente, a conta é a dele e nem
+                  perguntamos. */}
+              <div className="space-y-1.5">
+                <Label>Conta</Label>
+                <Select
+                  value={contaId}
+                  onValueChange={(v) => setContaId(v ?? null)}
+                  disabled={criando || contasDoCanal.length === 0}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Escolha a conta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {contasDoCanal.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
           )}
           <div className="space-y-1.5">
             <Label>Prioridade</Label>

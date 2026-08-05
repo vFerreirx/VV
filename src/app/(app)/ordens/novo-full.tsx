@@ -6,6 +6,7 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { listarProdutosParaOrdem } from './actions'
+import type { ContaMarketplace } from '@/lib/db/schema'
 import {
   criarOpsFullAction,
   type RemessaFullOpcao,
@@ -60,9 +61,11 @@ const LINHA_VAZIA: Linha = { produtoId: '', tamanho: '', cor: '', quantidade: ''
 export function NovoFull({
   remessas,
   produtos,
+  contas,
 }: {
   remessas: RemessaFullOpcao[]
   produtos: Produtos
+  contas: ContaMarketplace[]
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -71,7 +74,12 @@ export function NovoFull({
   const [remessaSel, setRemessaSel] = useState<string>('nova')
   const [canal, setCanal] =
     useState<(typeof fullCanalValues)[number]>('full_ml')
+  const [contaId, setContaId] = useState<string | null>(null)
   const [dataEnvio, setDataEnvio] = useState('')
+
+  // Só as contas do canal escolhido. Trocar de canal zera a conta — senão
+  // sobraria uma conta do ML selecionada num Full da Shopee.
+  const contasDoCanal = contas.filter((c) => c.canal === canal)
   const [prioridade, setPrioridade] =
     useState<(typeof prioridadeValues)[number]>('normal')
   const [linhas, setLinhas] = useState<Linha[]>([{ ...LINHA_VAZIA }])
@@ -120,12 +128,19 @@ export function NovoFull({
       toast.error('Informe a data de envio do Full')
       return
     }
+    if (remessaSel === 'nova' && !contaId) {
+      toast.error('Escolha a conta de marketplace do envio')
+      return
+    }
 
     startTransition(async () => {
       const result = await criarOpsFullAction({
         remessaId: remessaSel === 'nova' ? undefined : remessaSel,
         canal: remessaSel === 'nova' ? canal : undefined,
         dataEnvio: remessaSel === 'nova' ? dataEnvio : undefined,
+        // Full existente já tem conta — não se pergunta de novo nem se
+        // sobrescreve.
+        contaId: remessaSel === 'nova' ? (contaId ?? undefined) : undefined,
         prioridade,
         itens,
       })
@@ -138,6 +153,7 @@ export function NovoFull({
       setLinhas([{ ...LINHA_VAZIA }])
       setRemessaSel('nova')
       setDataEnvio('')
+      setContaId(null)
       router.refresh()
     })
   }
@@ -213,11 +229,10 @@ export function NovoFull({
                   <Label>Canal</Label>
                   <Select
                     value={canal}
-                    onValueChange={(v) =>
-                      setCanal(
-                        (v ?? 'full_ml') as (typeof fullCanalValues)[number],
-                      )
-                    }
+                    onValueChange={(v) => {
+                      setCanal((v ?? 'full_ml') as (typeof fullCanalValues)[number])
+                      setContaId(null)
+                    }}
                     disabled={isPending}
                   >
                     <SelectTrigger className="w-full">
@@ -241,6 +256,31 @@ export function NovoFull({
                     onChange={(e) => setDataEnvio(e.target.value)}
                     disabled={isPending}
                   />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label>Conta</Label>
+                  <Select
+                    value={contaId}
+                    onValueChange={(v) => setContaId(v ?? null)}
+                    disabled={isPending || contasDoCanal.length === 0}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Escolha a conta do envio" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {contasDoCanal.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {contasDoCanal.length === 0 && (
+                    <p className="text-muted-foreground text-xs">
+                      Nenhuma conta ativa de {CANAL_LABEL_CURTO[canal]}.
+                      Cadastre em Contas de marketplace.
+                    </p>
+                  )}
                 </div>
               </div>
             )}

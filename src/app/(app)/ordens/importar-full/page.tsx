@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 
 import { listarProdutosParaOrdem } from '../actions'
 import { listarRemessasFull } from '../remessas-actions'
+import { listarContasAtivas } from '../../contas-marketplace/actions'
 import { listarKitsComItens } from '../../kits/actions'
 import { ImportarFullView } from './importar-full-view'
 import { podeEscrever } from '@/lib/auth/permissoes'
@@ -19,11 +20,12 @@ export default async function ImportarFullPage() {
     redirect('/ordens')
   }
 
-  const [remessas, kits, produtos] = await Promise.all([
+  const [remessas, kits, produtos, contas] = await Promise.all([
     listarRemessasFull(),
     listarKitsComItens(),
     listarProdutosParaOrdem(),
+    listarContasAtivas(),
   ])
 
-  return <ImportarFullView remessas={remessas} kits={kits} produtos={produtos} />
+  return <ImportarFullView remessas={remessas} kits={kits} produtos={produtos} contas={contas} />
 }

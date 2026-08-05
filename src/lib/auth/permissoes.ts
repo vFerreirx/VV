@@ -77,6 +77,7 @@ export type AreaKey =
   | 'estoqueFios'
   | 'vendas'
   | 'compradores'
+  | 'contasMarketplace'
   | 'produtos'
   | 'cores'
   | 'modelos'
@@ -207,6 +208,15 @@ export const AREAS: Area[] = [
     editavel: true,
     // Mais fechado que as outras áreas de propósito: guarda dado pessoal
     // (CPF/CNPJ, endereço, telefone), então não abre pro chão de fábrica.
+    nivelPadrao: padrao({ [G]: 'ver', [V]: 'total' }),
+  },
+  {
+    key: 'contasMarketplace',
+    secao: 'Estoque & Vendas',
+    label: 'Contas de marketplace',
+    descricao: 'As contas do ML e da Shopee por onde saem os envios Full.',
+    href: '/contas-marketplace',
+    editavel: true,
     nivelPadrao: padrao({ [G]: 'ver', [V]: 'total' }),
   },
   {
