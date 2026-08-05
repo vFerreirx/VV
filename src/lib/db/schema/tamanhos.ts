@@ -22,6 +22,11 @@ export const tamanhos = pgTable(
     // Dimensões da peça deste tamanho (ex.: 45x45 -> largura 45, compr. 45).
     larguraCm: numeric({ precision: 8, scale: 2 }),
     comprimentoCm: numeric({ precision: 8, scale: 2 }),
+    // Peso PADRÃO da peça deste tamanho, em gramas inteiras. É a fonte
+    // principal do peso usado no frete; o produto só entra quando o modelo
+    // foge do padrão (produtos.pesoGramas). Nulo = ainda não cadastrado, o
+    // que NÃO é o mesmo que zero.
+    pesoGramas: integer(),
     ordem: integer().notNull().default(0),
     ativo: boolean().notNull().default(true),
 

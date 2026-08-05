@@ -9,10 +9,13 @@ import {
   compradores,
   orcamentoItens,
   orcamentos,
+  produtos,
+  tamanhos,
   type Comprador,
   type Orcamento,
   type OrcamentoItem,
 } from '@/lib/db/schema'
+import type { CatalogoPesos } from '@/lib/peso'
 import {
   orcamentoSchema,
   type OrcamentoInput,
@@ -123,6 +126,37 @@ export async function obterOrcamentoParaRomaneio(
   return { ...orcamento, comprador: comprador ?? null }
 }
 
+// Catálogo de pesos pro cálculo do peso do pedido.
+//
+// Fica FORA de `obterOrcamento` de propósito, no mesmo espírito de
+// `obterOrcamentoParaRomaneio`: aquela função serve três telas e nenhuma
+// outra precisa disto. Quem quer peso carrega o catálogo e chama
+// `calcularPesos` (src/lib/peso.ts), que é puro.
+//
+// São duas consultas pequenas no catálogo INTEIRO (17 produtos, 6 tamanhos)
+// em vez de um join por item: o resolvedor precisa de todos os nomes pra
+// conseguir casar por texto nas linhas antigas, que não têm vínculo nenhum.
+// Inclui produto/tamanho excluído — um pedido antigo pode apontar pra um
+// item que saiu do catálogo, e o peso dele continua valendo.
+export async function obterCatalogoDePesos(): Promise<CatalogoPesos> {
+  await requireArea('vendas')
+
+  const [prods, tams] = await Promise.all([
+    db
+      .select({
+        id: produtos.id,
+        nome: produtos.nome,
+        pesoGramas: produtos.pesoGramas,
+      })
+      .from(produtos),
+    db
+      .select({ nome: tamanhos.nome, pesoGramas: tamanhos.pesoGramas })
+      .from(tamanhos),
+  ])
+
+  return { produtos: prods, tamanhos: tams }
+}
+
 // Clientes já usados (distintos, mais recentes primeiro) — autocomplete.
 export async function listarClientesOrcamentos(): Promise<string[]> {
   await requireArea('vendas')
@@ -205,6 +239,7 @@ export async function criarOrcamentoAction(
         quantidade: it.quantidade,
         precoUnitario: it.precoUnitario,
         kitId: it.kitId ?? null,
+        produtoId: it.produtoId ?? null,
         tamanho: it.tamanho ?? null,
         kitComponentes: it.componentes ?? null,
       })),
@@ -256,6 +291,7 @@ export async function atualizarOrcamentoAction(
         quantidade: it.quantidade,
         precoUnitario: it.precoUnitario,
         kitId: it.kitId ?? null,
+        produtoId: it.produtoId ?? null,
         tamanho: it.tamanho ?? null,
         kitComponentes: it.componentes ?? null,
       })),

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import {
   boolean,
   index,
+  integer,
   pgTable,
   text,
   timestamp,
@@ -22,6 +23,12 @@ export const produtos = pgTable(
     // NOTA: as dimensões (largura/comprimento) migraram pro TAMANHO
     // (schema/tamanhos.ts). As colunas comprimento_cm/largura_cm ainda
     // existem no banco por histórico, mas o app não as usa mais.
+
+    // OVERRIDE do peso do tamanho, em gramas inteiras. Só preencher quando
+    // o modelo foge do padrão — hoje 7 modelos de capa dividem o tamanho
+    // "45x45" e nem todos pesam igual. Nulo (o normal) = usa o peso do
+    // tamanho.
+    pesoGramas: integer(),
 
     // Identificadores externos (preenchidos quando integrar com ML/Shopee)
     mlbId: text(),

@@ -63,6 +63,7 @@ export async function criarTamanhoAction(
         codigo: data.codigo || null,
         larguraCm: data.larguraCm ?? null,
         comprimentoCm: data.comprimentoCm ?? null,
+        pesoGramas: data.pesoGramas ?? null,
         ordem: data.ordem,
         ativo: data.ativo,
       })
@@ -123,6 +124,7 @@ export async function atualizarTamanhoAction(
         codigo: data.codigo || null,
         larguraCm: data.larguraCm ?? null,
         comprimentoCm: data.comprimentoCm ?? null,
+        pesoGramas: data.pesoGramas ?? null,
         ordem: data.ordem,
         ativo: data.ativo,
       })

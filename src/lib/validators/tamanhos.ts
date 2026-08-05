@@ -17,6 +17,20 @@ const numericOpt = z
   )
   .optional()
 
+// Peso opcional em GRAMAS INTEIRAS. Mesma forma do `numericOpt` acima (o
+// `.optional()` no fim é igualmente essencial), mas recusa fração: peso de
+// peça de cama/mesa não precisa de decimal e inteiro não acumula erro ao
+// somar dezenas de itens. Guardado como number, não string, porque a coluna
+// é integer.
+const intOpt = z
+  .union([z.string(), z.number(), z.null(), z.undefined()])
+  .transform((v) => (v == null || v === '' ? null : Number(v)))
+  .refine(
+    (v) => v === null || (Number.isInteger(v) && v >= 0),
+    'Informe um número inteiro de gramas (>= 0)',
+  )
+  .optional()
+
 // Código pro SKU: maiúsculo, só letras/números. Ex.: KING -> "K".
 const codigoSku = z
   .union([z.string(), z.null(), z.undefined()])
@@ -37,6 +51,7 @@ export const tamanhoSchema = z.object({
   codigo: codigoSku,
   larguraCm: numericOpt,
   comprimentoCm: numericOpt,
+  pesoGramas: intOpt,
   ordem: intReq,
   ativo: z.boolean().default(true),
 })

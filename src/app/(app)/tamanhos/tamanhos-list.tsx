@@ -128,6 +128,7 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                   <TableHead>Nome</TableHead>
                   <TableHead>Código SKU</TableHead>
                   <TableHead>Dimensões</TableHead>
+                  <TableHead className="w-24 text-right">Peso</TableHead>
                   <TableHead className="w-24 text-right">Ordem</TableHead>
                   <TableHead>Status</TableHead>
                   {podeEditar && <TableHead className="w-24" />}
@@ -156,6 +157,9 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                       {t.larguraCm || t.comprimentoCm
                         ? `${t.larguraCm ?? '—'} × ${t.comprimentoCm ?? '—'} cm`
                         : '—'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-right tabular-nums">
+                      {t.pesoGramas == null ? '—' : `${t.pesoGramas} g`}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-right tabular-nums">
                       {t.ordem}
@@ -213,6 +217,11 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                     {(t.larguraCm || t.comprimentoCm) && (
                       <div className="text-muted-foreground text-xs tabular-nums">
                         {t.larguraCm ?? '—'} × {t.comprimentoCm ?? '—'} cm
+                      </div>
+                    )}
+                    {t.pesoGramas != null && (
+                      <div className="text-muted-foreground text-xs tabular-nums">
+                        {t.pesoGramas} g
                       </div>
                     )}
                     <Badge variant={t.ativo ? 'default' : 'secondary'}>
@@ -342,6 +351,7 @@ function TamanhoDialog({
       codigo: isEdit ? (tamanho.codigo ?? '') : '',
       larguraCm: isEdit ? (tamanho.larguraCm ?? '') : '',
       comprimentoCm: isEdit ? (tamanho.comprimentoCm ?? '') : '',
+      pesoGramas: isEdit ? (tamanho.pesoGramas ?? '') : '',
       ordem: isEdit ? String(tamanho.ordem) : String(proximaOrdem),
       ativo: isEdit ? tamanho.ativo : true,
     },
@@ -350,6 +360,7 @@ function TamanhoDialog({
       codigo: isEdit ? (tamanho.codigo ?? '') : '',
       larguraCm: isEdit ? (tamanho.larguraCm ?? '') : '',
       comprimentoCm: isEdit ? (tamanho.comprimentoCm ?? '') : '',
+      pesoGramas: isEdit ? (tamanho.pesoGramas ?? '') : '',
       ordem: isEdit ? String(tamanho.ordem) : String(proximaOrdem),
       ativo: isEdit ? tamanho.ativo : true,
     },
@@ -460,6 +471,29 @@ function TamanhoDialog({
                 </p>
               )}
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="tam-peso">Peso (g)</Label>
+            <Input
+              id="tam-peso"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              step="1"
+              placeholder="350"
+              disabled={isPending}
+              {...form.register('pesoGramas')}
+            />
+            <p className="text-muted-foreground text-xs">
+              Peso de uma peça deste tamanho, em gramas. É o que soma o peso
+              total do pedido pro frete. Deixe vazio se ainda não pesou.
+            </p>
+            {errs.pesoGramas && (
+              <p className="text-destructive text-xs">
+                {errs.pesoGramas.message}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1.5">

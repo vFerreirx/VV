@@ -2,7 +2,13 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ArrowLeft, ClipboardList, FileSignature, Printer } from 'lucide-react'
+import {
+  ArrowLeft,
+  ClipboardList,
+  FileSignature,
+  Printer,
+  TriangleAlert,
+} from 'lucide-react'
 import Link from 'next/link'
 
 import type { EmpresaDoDocumento } from '../../empresas/actions'
@@ -19,6 +25,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  avisoSemPeso,
+  formatarGramas,
+  formatarKg,
+  type ResumoPeso,
+} from '@/lib/peso'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 function reais(v: number): string {
@@ -30,10 +42,14 @@ function reais(v: number): string {
 export function OrcamentoDoc({
   orcamento,
   empresa,
+  pesos,
 }: {
   orcamento: OrcamentoComItens
   empresa: EmpresaDoDocumento | null
+  pesos: ResumoPeso
 }) {
+  const aviso = avisoSemPeso(pesos.itensSemPeso)
+
   return (
     <div className="mx-auto max-w-3xl space-y-6 print:space-y-4">
       {/* Barra de ações (fora da impressão) */}
@@ -106,6 +122,11 @@ export function OrcamentoDoc({
           <colgroup>
             <col />
             <col className="w-14 sm:w-16" />
+            {/* Peso: só na TELA. É dado interno pra cotar frete — o papel
+                que vai pro cliente continua igual ao de antes. O
+                `print:hidden` vai no <col> E nas células; sozinho, o col
+                não esconde a coluna em todos os navegadores. */}
+            <col className="w-20 print:hidden sm:w-24" />
             <col className="w-24 sm:w-28" />
             <col className="w-24 sm:w-28" />
           </colgroup>
@@ -125,6 +146,7 @@ export function OrcamentoDoc({
             <TableRow>
               <TableHead>Item</TableHead>
               <TableHead className="text-right">Qtd</TableHead>
+              <TableHead className="text-right print:hidden">Peso</TableHead>
               <TableHead className="text-right">Preço un.</TableHead>
               <TableHead className="text-right">Subtotal</TableHead>
             </TableRow>
@@ -137,6 +159,9 @@ export function OrcamentoDoc({
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {it.quantidade.toLocaleString('pt-BR')}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-right tabular-nums print:hidden">
+                  {formatarGramas(pesos.porItem[it.id] ?? null)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {reais(Number(it.precoUnitario))}
@@ -155,6 +180,9 @@ export function OrcamentoDoc({
                   .reduce((s, it) => s + it.quantidade, 0)
                   .toLocaleString('pt-BR')}
               </TableCell>
+              <TableCell className="text-right font-semibold tabular-nums print:hidden">
+                {formatarKg(pesos.totalGramas)}
+              </TableCell>
               <TableCell />
               <TableCell className="text-right text-base font-semibold tabular-nums">
                 {reais(orcamento.total)}
@@ -163,6 +191,18 @@ export function OrcamentoDoc({
           </TableFooter>
         </Table>
       </div>
+
+      {/* Aviso de peso incompleto — só na tela, junto do número que ele
+          qualifica. Sem isso o total pareceria fechado quando não é. */}
+      {aviso && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 print:hidden dark:text-amber-400">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+          <div>
+            {aviso} — o peso total ({formatarKg(pesos.totalGramas)}) conta só
+            o que está cadastrado. Preencha o peso em Variações → Tamanhos.
+          </div>
+        </div>
+      )}
 
       {/* Observações */}
       {orcamento.observacao && (

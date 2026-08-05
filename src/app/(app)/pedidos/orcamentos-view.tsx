@@ -376,6 +376,7 @@ type KitComponente = {
   cor: string | null
   quantidade: number
   tamanho?: string | null
+  produtoId?: string | null
 }
 
 type LinhaItem = {
@@ -383,6 +384,9 @@ type LinhaItem = {
   quantidade: string
   preco: string
   kitId?: string | null
+  // Produto do catálogo e tamanho da linha AVULSA. Não aparecem na tela:
+  // existem pra resolver o peso sem depender do texto da descrição.
+  produtoId?: string | null
   tamanho?: string | null
   componentes?: KitComponente[] | null
 }
@@ -426,6 +430,7 @@ function OrcamentoDialog({
           quantidade: String(it.quantidade),
           preco: decimalParaMoeda(it.precoUnitario),
           kitId: it.kitId,
+          produtoId: it.produtoId,
           tamanho: it.tamanho,
           componentes: it.kitComponentes as KitComponente[] | null,
         }))
@@ -469,6 +474,7 @@ function OrcamentoDialog({
         quantidade: Math.max(1, Number(l.quantidade) || 1),
         precoUnitario: moedaParaDecimal(l.preco) || '0',
         kitId: l.kitId ?? null,
+        produtoId: l.produtoId ?? null,
         tamanho: l.tamanho ?? null,
         componentes: l.componentes ?? null,
       }))
@@ -927,6 +933,8 @@ function CatalogoBuilder({
         cor: coresKit[it.id] || null,
         quantidade: it.quantidade,
         tamanho: tamanhoDoComponente(it.produtoId),
+        // Só pro peso: o documento continua imprimindo o produtoNome.
+        produtoId: it.produtoId,
       }))
       linhas = [
         {
@@ -948,6 +956,12 @@ function CatalogoBuilder({
           descricao,
           quantidade,
           preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),
+          // Guardados só pra resolver o peso depois. Até aqui a linha
+          // avulsa virava texto ("Peseira - ARAN King - Rose") e o peso só
+          // podia ser adivinhado pela descrição — é o que ainda acontece
+          // com as linhas antigas.
+          produtoId: produto?.id ?? null,
+          tamanho: tamanho || null,
         }
       })
     }

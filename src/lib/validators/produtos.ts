@@ -53,6 +53,18 @@ export const produtoSchema = z.object({
   nome: z.string().min(2, 'Nome obrigatório').max(120, 'Nome muito longo'),
   descricao: stringOpt(500, 'Descrição'),
 
+  // OVERRIDE opcional do peso do tamanho, em gramas inteiras. O normal é
+  // vazio — só se preenche quando este modelo destoa dos outros que dividem
+  // o mesmo tamanho.
+  pesoGramas: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((v) => (v == null || v === '' ? null : Number(v)))
+    .refine(
+      (v) => v === null || (Number.isInteger(v) && v >= 0),
+      'Informe um número inteiro de gramas (>= 0)',
+    )
+    .optional(),
+
   ativo: z.boolean().default(true),
 
   variacoes: z.array(variacaoSchema).default([]),

@@ -14,11 +14,14 @@ const preco = z
 // POR KIT (igual a kit_itens.quantidade) — a via de separação multiplica
 // pela quantidade do item na hora de montar a lista.
 // `tamanho` é o do componente (a capa continua 45x45 num kit "Queen").
+// `produtoId` serve só pra resolver o PESO do componente sem depender do
+// nome em texto; quem o documento imprime continua sendo `produtoNome`.
 const kitComponenteSchema = z.object({
   produtoNome: z.string(),
   cor: z.string().nullable(),
   quantidade: z.number().int().min(1),
   tamanho: z.string().nullable().optional(),
+  produtoId: z.string().uuid().nullable().optional(),
 })
 
 export const orcamentoItemSchema = z.object({
@@ -35,6 +38,9 @@ export const orcamentoItemSchema = z.object({
   precoUnitario: preco,
   // Nulo pra item avulso e pra orçamentos antigos (sem kit estruturado).
   kitId: z.string().uuid().nullable().optional(),
+  // Produto do catálogo da linha avulsa — usado pra resolver o peso. Nulo
+  // nas linhas de kit e nas antigas, que só têm texto.
+  produtoId: z.string().uuid().nullable().optional(),
   tamanho: z
     .union([z.string(), z.null(), z.undefined()])
     .transform((v) => (v == null || v.trim() === '' ? null : v.trim()))

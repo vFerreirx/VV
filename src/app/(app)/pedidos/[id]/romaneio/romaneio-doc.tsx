@@ -20,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { avisoSemPeso, formatarKg, type ResumoPeso } from '@/lib/peso'
 import { formatarCep, formatarDocumento } from '@/lib/validators/documento'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
@@ -77,9 +78,11 @@ function Assinatura({ rotulo }: { rotulo: string }) {
 export function RomaneioDoc({
   orcamento,
   empresa,
+  pesos,
 }: {
   orcamento: OrcamentoParaRomaneio
   empresa: EmpresaDoDocumento | null
+  pesos: ResumoPeso
 }) {
   const { comprador } = orcamento
   // O cadastro manda no nome quando existe; senão vale o texto digitado no
@@ -87,6 +90,7 @@ export function RomaneioDoc({
   const nome = comprador?.nome ?? orcamento.cliente
   const endereco = comprador ? linhasEndereco(comprador) : []
   const totalUnidades = orcamento.itens.reduce((s, it) => s + it.quantidade, 0)
+  const avisoDePeso = avisoSemPeso(pesos.itensSemPeso)
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 print:space-y-4">
@@ -227,6 +231,27 @@ export function RomaneioDoc({
             </TableRow>
           </TableFooter>
         </Table>
+      </div>
+
+      {/* Peso total — vai PRO PAPEL (ao contrário do orçamento): é o
+          documento que acompanha a mercadoria e o número que a
+          transportadora cobra. O aviso de peso incompleto sai junto, senão
+          o total pareceria fechado quando não é. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm break-inside-avoid print:border-foreground/20">
+        <span className="text-muted-foreground text-xs tracking-wide uppercase">
+          Peso total
+        </span>
+        <span className="text-base font-semibold tabular-nums">
+          {formatarKg(pesos.totalGramas)}
+        </span>
+        {avisoDePeso && (
+          <span className="text-destructive inline-flex w-full items-center gap-1.5 text-xs">
+            <TriangleAlert className="size-3.5 shrink-0" />
+            {avisoDePeso} — o total acima não inclui {
+              pesos.itensSemPeso === 1 ? 'esse item' : 'esses itens'
+            }.
+          </span>
+        )}
       </div>
 
       {/* Assinatura — `break-inside-avoid` pra não partir entre duas

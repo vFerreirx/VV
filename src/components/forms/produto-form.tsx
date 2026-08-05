@@ -64,6 +64,7 @@ export type ProdutoFormDefaults = {
   sku: string
   nome: string
   descricao: string | null
+  pesoGramas: number | null
   ativo: boolean
   variacoes: Array<{
     id?: string
@@ -78,6 +79,7 @@ const VAZIO: ProdutoFormDefaults = {
   sku: '',
   nome: '',
   descricao: null,
+  pesoGramas: null,
   ativo: true,
   variacoes: [],
 }
@@ -87,6 +89,7 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
     sku: d.sku ?? '',
     nome: d.nome ?? '',
     descricao: d.descricao ?? '',
+    pesoGramas: d.pesoGramas ?? '',
     ativo: d.ativo ?? true,
     variacoes: d.variacoes.map((v) => ({
       id: v.id,
@@ -264,6 +267,24 @@ export function ProdutoForm({
               placeholder="Detalhes adicionais sobre o produto"
               disabled={isPending}
               {...form.register('descricao')}
+            />
+          </Field>
+
+          <Field
+            label="Peso (g)"
+            id="pesoGramas"
+            error={errs.pesoGramas?.message}
+            hint="Deixe VAZIO no caso normal — o peso vem do tamanho. Preencha só quando este modelo destoa dos outros que dividem o mesmo tamanho; aqui ele sobrepõe o peso do tamanho."
+          >
+            <Input
+              id="pesoGramas"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              step="1"
+              placeholder="(usa o peso do tamanho)"
+              disabled={isPending}
+              {...form.register('pesoGramas')}
             />
           </Field>
         </CardContent>
