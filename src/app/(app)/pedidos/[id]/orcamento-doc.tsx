@@ -5,7 +5,9 @@ import { ptBR } from 'date-fns/locale'
 import { ArrowLeft, ClipboardList, FileSignature, Printer } from 'lucide-react'
 import Link from 'next/link'
 
+import type { EmpresaDoDocumento } from '../../empresas/actions'
 import type { OrcamentoComItens } from '../actions'
+import { IdentidadeEmpresa, nomeDestaque } from './empresa-doc'
 import { Logo } from '@/components/brand/logo'
 import { Button } from '@/components/ui/button'
 import {
@@ -25,7 +27,13 @@ function reais(v: number): string {
 
 // Documento do orçamento, pronto pra imprimir/salvar em PDF (a impressão
 // esconde sidebar/topbar e a barra de ações pelo print:hidden global).
-export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
+export function OrcamentoDoc({
+  orcamento,
+  empresa,
+}: {
+  orcamento: OrcamentoComItens
+  empresa: EmpresaDoDocumento | null
+}) {
   return (
     <div className="mx-auto max-w-3xl space-y-6 print:space-y-4">
       {/* Barra de ações (fora da impressão) */}
@@ -65,8 +73,8 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
         <div className="flex items-center gap-3">
           <Logo variant="mark" className="size-10" />
           <div>
-            <div className="text-lg font-semibold">Vanvest Home Decor</div>
-            <div className="text-muted-foreground text-sm">
+            <IdentidadeEmpresa empresa={empresa} />
+            <div className="text-muted-foreground mt-1 text-sm">
               Pedido nº {formatarNumeroPedido(orcamento.numero)}
             </div>
           </div>
@@ -110,8 +118,8 @@ export function OrcamentoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
                 colSpan={4}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Pedido nº {formatarNumeroPedido(orcamento.numero)} · Vanvest
-                Home Decor
+                Pedido nº {formatarNumeroPedido(orcamento.numero)} ·{' '}
+                {nomeDestaque(empresa)}
               </TableHead>
             </TableRow>
             <TableRow>

@@ -8,6 +8,7 @@ import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import {
   contasMarketplace,
+  empresas,
   remessasFull,
   type ContaMarketplace,
 } from '@/lib/db/schema'
@@ -25,6 +26,9 @@ export type ContaComUso = ContaMarketplace & {
   // Quantas remessas já saíram por esta conta — a tela usa isso pra avisar
   // antes de excluir.
   remessas: number
+  // Nome da empresa dona. Null nas contas cadastradas antes do vínculo —
+  // a tela mostra "sem empresa" e não quebra.
+  empresaNome: string | null
 }
 
 const UUID_RE =
@@ -41,10 +45,15 @@ export async function listarContas(): Promise<ContaComUso[]> {
       id: contasMarketplace.id,
       canal: contasMarketplace.canal,
       nome: contasMarketplace.nome,
+      empresaId: contasMarketplace.empresaId,
       ativo: contasMarketplace.ativo,
       createdAt: contasMarketplace.createdAt,
       updatedAt: contasMarketplace.updatedAt,
       deletedAt: contasMarketplace.deletedAt,
+      // Os dois campos brutos: o nome exibido é montado em TS logo abaixo,
+      // pra não depender de como o Drizzle qualifica coluna dentro de sql``.
+      empresaRazao: empresas.razaoSocial,
+      empresaFantasia: empresas.nomeFantasia,
       // "contas_marketplace"."id" escrito à mão: num select de tabela única
       // o Drizzle não qualifica as colunas, e aí o `id` da subconsulta se
       // resolveria como remessas_full.id — a contagem daria sempre zero.
@@ -55,10 +64,16 @@ export async function listarContas(): Promise<ContaComUso[]> {
       )`,
     })
     .from(contasMarketplace)
+    // leftJoin: conta sem empresa (as de antes do vínculo) tem que
+    // continuar aparecendo na lista.
+    .leftJoin(empresas, eq(empresas.id, contasMarketplace.empresaId))
     .where(isNull(contasMarketplace.deletedAt))
     .orderBy(asc(contasMarketplace.canal), asc(contasMarketplace.nome))
 
-  return rows as ContaComUso[]
+  return rows.map(({ empresaRazao, empresaFantasia, ...c }) => ({
+    ...c,
+    empresaNome: empresaFantasia ?? empresaRazao,
+  }))
 }
 
 // Só as ativas, do canal pedido — é o que alimenta o seletor na criação de
@@ -81,6 +96,19 @@ export async function listarContasAtivas(): Promise<ContaMarketplace[]> {
 // Criar / atualizar / excluir
 // -----------------------------------------------------------------
 
+// A tela só oferece empresas vivas, mas quem chama a action não é
+// obrigatoriamente a tela — confere de novo aqui.
+async function empresaExiste(id: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: empresas.id })
+    .from(empresas)
+    .where(and(eq(empresas.id, id), isNull(empresas.deletedAt)))
+    .limit(1)
+  return row !== undefined
+}
+
+const EMPRESA_INVALIDA = 'Empresa inválida — escolha uma empresa cadastrada'
+
 function duplicada(canal: string, nome: string): string {
   const label = CANAL_LABEL_CURTO[canal as keyof typeof CANAL_LABEL_CURTO]
   return `Já existe uma conta "${nome}" no ${label}`
@@ -100,11 +128,20 @@ export async function criarContaAction(
   }
   const data = parsed.data
 
+  if (!(await empresaExiste(data.empresaId))) {
+    return { success: false, error: EMPRESA_INVALIDA }
+  }
+
   let inserted: { id: string } | undefined
   try {
     ;[inserted] = await db
       .insert(contasMarketplace)
-      .values({ canal: data.canal, nome: data.nome, ativo: data.ativo })
+      .values({
+        canal: data.canal,
+        nome: data.nome,
+        empresaId: data.empresaId,
+        ativo: data.ativo,
+      })
       .returning({ id: contasMarketplace.id })
   } catch (err) {
     // Índice único parcial (canal, nome) entre as não-excluídas.
@@ -148,10 +185,19 @@ export async function atualizarContaAction(
     .limit(1)
   if (!atual) return { success: false, error: 'Conta não encontrada' }
 
+  if (!(await empresaExiste(data.empresaId))) {
+    return { success: false, error: EMPRESA_INVALIDA }
+  }
+
   try {
     await db
       .update(contasMarketplace)
-      .set({ canal: data.canal, nome: data.nome, ativo: data.ativo })
+      .set({
+        canal: data.canal,
+        nome: data.nome,
+        empresaId: data.empresaId,
+        ativo: data.ativo,
+      })
       .where(eq(contasMarketplace.id, id))
   } catch (err) {
     if (isUniqueViolation(err)) {

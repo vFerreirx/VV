@@ -5,6 +5,7 @@
 import {
   BookUser,
   Boxes,
+  Building2,
   CalendarDays,
   Cog,
   Combine,
@@ -120,6 +121,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     titulo: 'Administração',
     items: [
+      { href: '/empresas', label: 'Empresas', icon: Building2, area: 'empresas' },
       { href: '/usuarios', label: 'Usuários', icon: Users, area: 'usuarios' },
       {
         href: '/permissoes',

@@ -6,7 +6,9 @@ import { ArrowLeft, Printer, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 
+import type { EmpresaDoDocumento } from '../../../empresas/actions'
 import type { OrcamentoParaRomaneio } from '../../actions'
+import { IdentidadeEmpresa, nomeDestaque } from '../empresa-doc'
 import { Logo } from '@/components/brand/logo'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,12 +24,6 @@ import { formatarCep, formatarDocumento } from '@/lib/validators/documento'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 type Comprador = NonNullable<OrcamentoParaRomaneio['comprador']>
-
-// CNPJ da Vanvest, normalizado como o resto do sistema guarda documento (sem
-// pontuação) e formatado na exibição pelo mesmo helper do CPF/CNPJ do
-// comprador — o romaneio é assinado, então precisa identificar quem entrega,
-// não só quem retira.
-const CNPJ_EMPRESA = '11258895000185'
 
 function reais(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -80,8 +76,10 @@ function Assinatura({ rotulo }: { rotulo: string }) {
 // por isso o texto não fala de nenhuma das duas.
 export function RomaneioDoc({
   orcamento,
+  empresa,
 }: {
   orcamento: OrcamentoParaRomaneio
+  empresa: EmpresaDoDocumento | null
 }) {
   const { comprador } = orcamento
   // O cadastro manda no nome quando existe; senão vale o texto digitado no
@@ -126,10 +124,7 @@ export function RomaneioDoc({
         <div className="flex items-center gap-3">
           <Logo variant="mark" className="size-10" />
           <div>
-            <div className="text-lg font-semibold">Vanvest Home Decor</div>
-            <div className="text-muted-foreground text-xs tabular-nums">
-              CNPJ {formatarDocumento(CNPJ_EMPRESA)}
-            </div>
+            <IdentidadeEmpresa empresa={empresa} />
             <div className="text-muted-foreground mt-1 text-sm">
               Romaneio — Pedido nº {formatarNumeroPedido(orcamento.numero)}
             </div>
@@ -190,8 +185,8 @@ export function RomaneioDoc({
                 colSpan={4}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Romaneio — Pedido nº {formatarNumeroPedido(orcamento.numero)} ·
-                Vanvest Home Decor
+                Romaneio — Pedido nº {formatarNumeroPedido(orcamento.numero)} ·{' '}
+                {nomeDestaque(empresa)}
               </TableHead>
             </TableRow>
             <TableRow>

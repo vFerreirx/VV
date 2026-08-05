@@ -82,6 +82,7 @@ export type AreaKey =
   | 'cores'
   | 'modelos'
   | 'tamanhos'
+  | 'empresas'
   | 'usuarios'
   | 'permissoes'
   | 'lixeira'
@@ -254,6 +255,17 @@ export const AREAS: Area[] = [
     href: '/tamanhos',
     editavel: true,
     nivelPadrao: padrao(verCatalogo),
+  },
+  {
+    key: 'empresas',
+    secao: 'Administração',
+    label: 'Empresas',
+    descricao: 'CNPJs do grupo e a empresa que sai nos documentos.',
+    href: '/empresas',
+    editavel: true,
+    // Identidade fiscal: quem emite documento (vendas) precisa enxergar
+    // qual empresa está no cabeçalho; alterar fica com o admin.
+    nivelPadrao: padrao({ [V]: 'ver' }),
   },
   {
     key: 'usuarios',

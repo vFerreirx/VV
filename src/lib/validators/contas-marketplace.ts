@@ -6,6 +6,10 @@ import { fullCanalValues } from './remessas'
 // cadastra escolhe como chama ("ML Principal", "Shopee Outlet").
 export const contaMarketplaceSchema = z.object({
   canal: z.enum(fullCanalValues),
+  // Empresa (CNPJ) dona da conta. Obrigatória AQUI, no formulário — a
+  // coluna do banco é nullable porque as contas cadastradas antes deste
+  // vínculo não têm empresa e não houve backfill.
+  empresaId: z.uuid('Escolha a empresa dona da conta'),
   nome: z
     .string()
     .trim()

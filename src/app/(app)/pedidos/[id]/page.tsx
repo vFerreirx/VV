@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
+import { obterEmpresaPrincipal } from '../../empresas/actions'
 import { obterOrcamento } from '../actions'
 import { OrcamentoDoc } from './orcamento-doc'
 import { requireArea } from '@/lib/auth/require-auth'
@@ -15,8 +16,13 @@ export default async function OrcamentoPage({
   await requireArea('vendas')
   const { id } = await params
 
-  const orcamento = await obterOrcamento(id)
+  // A empresa é carregada AQUI, no server component — o componente de
+  // impressão só recebe o que já veio resolvido.
+  const [orcamento, empresa] = await Promise.all([
+    obterOrcamento(id),
+    obterEmpresaPrincipal(),
+  ])
   if (!orcamento) notFound()
 
-  return <OrcamentoDoc orcamento={orcamento} />
+  return <OrcamentoDoc orcamento={orcamento} empresa={empresa} />
 }

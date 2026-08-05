@@ -9,6 +9,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
+import { empresas } from './empresas'
 import { ordemCanalEnum } from './enums'
 
 // Contas de marketplace: são 3 no Mercado Livre e 3 na Shopee, e cada
@@ -28,6 +29,12 @@ export const contasMarketplace = pgTable(
     // no zod, mesmo padrão de remessasFull).
     canal: ordemCanalEnum().notNull(),
     nome: text().notNull(),
+    // Empresa (CNPJ) dona da conta.
+    // NULLABLE de propósito, e continua assim: as contas cadastradas antes
+    // do cadastro de empresas não têm empresa e não houve backfill. A
+    // obrigatoriedade vive no FORMULÁRIO — mesmo critério do contaId da
+    // remessa. ON DELETE SET NULL: apagar uma empresa nunca apaga conta.
+    empresaId: uuid().references(() => empresas.id, { onDelete: 'set null' }),
     ativo: boolean().notNull().default(true),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -44,6 +51,7 @@ export const contasMarketplace = pgTable(
       .on(table.canal, table.nome)
       .where(sql`${table.deletedAt} IS NULL`),
     index('contas_marketplace_canal_idx').on(table.canal),
+    index('contas_marketplace_empresa_idx').on(table.empresaId),
   ],
 )
 

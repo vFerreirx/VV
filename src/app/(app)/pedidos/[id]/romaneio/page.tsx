@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
+import { obterEmpresaPrincipal } from '../../../empresas/actions'
 import { obterOrcamentoParaRomaneio } from '../../actions'
 import { RomaneioDoc } from './romaneio-doc'
 import { requireArea } from '@/lib/auth/require-auth'
@@ -15,8 +16,13 @@ export default async function RomaneioPage({
   await requireArea('vendas')
   const { id } = await params
 
-  const orcamento = await obterOrcamentoParaRomaneio(id)
+  // A empresa é carregada AQUI, no server component — o componente de
+  // impressão só recebe o que já veio resolvido.
+  const [orcamento, empresa] = await Promise.all([
+    obterOrcamentoParaRomaneio(id),
+    obterEmpresaPrincipal(),
+  ])
   if (!orcamento) notFound()
 
-  return <RomaneioDoc orcamento={orcamento} />
+  return <RomaneioDoc orcamento={orcamento} empresa={empresa} />
 }

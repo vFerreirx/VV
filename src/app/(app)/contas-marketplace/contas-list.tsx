@@ -1,6 +1,7 @@
 'use client'
 
 import { Pencil, Plus, Store, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -45,12 +46,15 @@ import { fullCanalValues } from '@/lib/validators/remessas'
 
 type Canal = (typeof fullCanalValues)[number]
 
+export type EmpresaOpcao = { id: string; nome: string }
+
 type Props = {
   contas: ContaComUso[]
+  empresas: EmpresaOpcao[]
   podeEditar: boolean
 }
 
-export function ContasList({ contas, podeEditar }: Props) {
+export function ContasList({ contas, empresas, podeEditar }: Props) {
   const [criando, setCriando] = useState(false)
   const [editando, setEditando] = useState<ContaComUso | null>(null)
   const [excluindo, setExcluindo] = useState<ContaComUso | null>(null)
@@ -87,6 +91,7 @@ export function ContasList({ contas, podeEditar }: Props) {
               <TableRow>
                 <TableHead>Conta</TableHead>
                 <TableHead className="w-32">Canal</TableHead>
+                <TableHead className="w-48">Empresa</TableHead>
                 <TableHead className="w-28 text-right">Remessas</TableHead>
                 <TableHead className="w-24">Status</TableHead>
                 {podeEditar && <TableHead className="w-24" />}
@@ -100,6 +105,11 @@ export function ContasList({ contas, podeEditar }: Props) {
                     <Badge variant="secondary">
                       {CANAL_LABEL_CURTO[c.canal]}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="truncate">
+                    {c.empresaNome ?? (
+                      <span className="text-muted-foreground">sem empresa</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {c.remessas}
@@ -145,12 +155,17 @@ export function ContasList({ contas, podeEditar }: Props) {
       {/* Renderizados só quando abertos: o formulário lê o estado inicial
           das props, então precisa nascer de novo a cada abertura. */}
       {criando && (
-        <ContaDialog conta={null} onClose={() => setCriando(false)} />
+        <ContaDialog
+          conta={null}
+          empresas={empresas}
+          onClose={() => setCriando(false)}
+        />
       )}
       {editando && (
         <ContaDialog
           key={editando.id}
           conta={editando}
+          empresas={empresas}
           onClose={() => setEditando(null)}
         />
       )}
@@ -161,24 +176,38 @@ export function ContasList({ contas, podeEditar }: Props) {
 
 function ContaDialog({
   conta,
+  empresas,
   onClose,
 }: {
   conta: ContaComUso | null
+  empresas: EmpresaOpcao[]
   onClose: () => void
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [canal, setCanal] = useState<Canal>((conta?.canal as Canal) ?? 'full_ml')
   const [nome, setNome] = useState(conta?.nome ?? '')
+  // null (e não undefined) mantém o Select controlado desde o primeiro
+  // render — com undefined o Base UI reclama de trocar de não-controlado
+  // pra controlado ao escolher a primeira opção.
+  const [empresaId, setEmpresaId] = useState<string | null>(
+    conta?.empresaId ?? null,
+  )
   const [ativo, setAtivo] = useState(conta?.ativo ?? true)
+
+  const semEmpresas = empresas.length === 0
 
   function salvar() {
     if (nome.trim().length < 2) {
       toast.error('Informe o nome da conta')
       return
     }
+    if (!empresaId) {
+      toast.error('Escolha a empresa dona da conta')
+      return
+    }
     startTransition(async () => {
-      const payload = { canal, nome, ativo }
+      const payload = { canal, nome, empresaId, ativo }
       const r = conta
         ? await atualizarContaAction(conta.id, payload)
         : await criarContaAction(payload)
@@ -236,6 +265,36 @@ function ContaDialog({
             />
           </div>
 
+          <div className="space-y-1.5">
+            <Label>Empresa</Label>
+            {semEmpresas ? (
+              <p className="text-muted-foreground rounded-lg border border-dashed p-3 text-sm">
+                Nenhuma empresa cadastrada. Cadastre em{' '}
+                <Link href="/empresas" className="underline">
+                  Empresas
+                </Link>{' '}
+                pra poder dizer de qual CNPJ é a conta.
+              </p>
+            ) : (
+              <Select
+                value={empresaId}
+                onValueChange={(v) => setEmpresaId(v as string | null)}
+                disabled={isPending}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Escolha a empresa" />
+                </SelectTrigger>
+                <SelectContent>
+                  {empresas.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div>
               <div className="text-sm font-medium">Conta ativa</div>
@@ -256,7 +315,7 @@ function ContaDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={isPending}>
+          <Button onClick={salvar} disabled={isPending || semEmpresas}>
             {isPending ? 'Salvando…' : 'Salvar'}
           </Button>
         </DialogFooter>

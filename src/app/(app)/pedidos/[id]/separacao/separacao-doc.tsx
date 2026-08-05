@@ -5,7 +5,9 @@ import { ptBR } from 'date-fns/locale'
 import { ArrowLeft, Printer } from 'lucide-react'
 import Link from 'next/link'
 
+import type { EmpresaDoDocumento } from '../../../empresas/actions'
 import type { OrcamentoComItens } from '../../actions'
+import { IdentidadeEmpresa } from '../empresa-doc'
 import { Logo } from '@/components/brand/logo'
 import { Button } from '@/components/ui/button'
 import {
@@ -63,7 +65,13 @@ function montarLinhas(itens: OrcamentoComItens['itens']): LinhaSeparacao[] {
 
 // Via de separação: SEM preço, kit quebrado em componentes — é a lista que
 // a pessoa usa pra separar de verdade (produto, quantidade e comprador).
-export function SeparacaoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
+export function SeparacaoDoc({
+  orcamento,
+  empresa,
+}: {
+  orcamento: OrcamentoComItens
+  empresa: EmpresaDoDocumento | null
+}) {
   const linhas = montarLinhas(orcamento.itens)
   const totalUnidades = linhas.reduce((s, l) => s + l.quantidade, 0)
 
@@ -90,8 +98,8 @@ export function SeparacaoDoc({ orcamento }: { orcamento: OrcamentoComItens }) {
         <div className="flex items-center gap-3">
           <Logo variant="mark" className="size-10" />
           <div>
-            <div className="text-lg font-semibold">Vanvest Home Decor</div>
-            <div className="text-muted-foreground text-sm">
+            <IdentidadeEmpresa empresa={empresa} />
+            <div className="text-muted-foreground mt-1 text-sm">
               Via de separação — Pedido nº{' '}
               {formatarNumeroPedido(orcamento.numero)}
             </div>
