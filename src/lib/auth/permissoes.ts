@@ -83,6 +83,7 @@ export type AreaKey =
   | 'modelos'
   | 'tamanhos'
   | 'empresas'
+  | 'tarefas'
   | 'usuarios'
   | 'permissoes'
   | 'lixeira'
@@ -255,6 +256,18 @@ export const AREAS: Area[] = [
     href: '/tamanhos',
     editavel: true,
     nivelPadrao: padrao(verCatalogo),
+  },
+  {
+    key: 'tarefas',
+    secao: 'Administração',
+    label: 'Tarefas',
+    descricao: 'Pendências de gestão comercial dos marketplaces.',
+    href: '/tarefas',
+    // Não editável: a lista é da administração e o admin não afrouxa isso
+    // aqui. Com nivelPadrao vazio, todo cargo que não é admin fica em
+    // 'nenhum' — mesma forma de usuarios/permissoes/lixeira.
+    editavel: false,
+    nivelPadrao: padrao({}),
   },
   {
     key: 'empresas',

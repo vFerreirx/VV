@@ -8,6 +8,7 @@ import {
   Factory,
   Grid2x2,
   ListChecks,
+  ListTodo,
   Package,
   PackageSearch,
   Palette,
@@ -52,6 +53,7 @@ const ICONE: Record<TipoLixeira, LucideIcon> = {
   maquina: Factory,
   estacao: Grid2x2,
   remessa: PackageSearch,
+  tarefa: ListTodo,
 }
 
 const TIPO_LABEL: Record<TipoLixeira, string> = {
@@ -64,6 +66,7 @@ const TIPO_LABEL: Record<TipoLixeira, string> = {
   maquina: 'Máquina',
   estacao: 'Estação',
   remessa: 'Remessa',
+  tarefa: 'Tarefa',
 }
 
 // O que some JUNTO com o item, por cascata do banco. Só os tipos que levam

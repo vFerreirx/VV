@@ -14,6 +14,7 @@ import {
   KanbanSquare,
   LayoutDashboard,
   ListChecks,
+  ListTodo,
   Package,
   PackageSearch,
   Shapes,
@@ -121,6 +122,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     titulo: 'Administração',
     items: [
+      { href: '/tarefas', label: 'Tarefas', icon: ListTodo, area: 'tarefas' },
       { href: '/empresas', label: 'Empresas', icon: Building2, area: 'empresas' },
       { href: '/usuarios', label: 'Usuários', icon: Users, area: 'usuarios' },
       {

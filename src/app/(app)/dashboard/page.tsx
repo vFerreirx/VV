@@ -18,7 +18,12 @@ import {
   obterKPIs,
   type DashboardKPIs,
 } from './actions'
+import { TarefasCard } from './tarefas-card'
 import { listarRemessasAbertas, type RemessaAberta } from '../remessas/actions'
+import {
+  contarTarefasPendentes,
+  listarTarefasDoPainel,
+} from '../tarefas/actions'
 import { CanaisChart } from '@/components/charts/canais-chart'
 import { ProducaoChart } from '@/components/charts/producao-chart'
 import { TopProdutosChart } from '@/components/charts/top-produtos-chart'
@@ -61,16 +66,29 @@ export default async function DashboardPage() {
 
   // Remessas só pra quem tem acesso à área (senão a action redirecionaria).
   const nivelRemessas = await nivelDaAreaPara(user.role, 'remessas')
+  // Tarefas são da administração: só admin. Pros demais cargos nem a
+  // consulta acontece — a action redirecionaria.
+  const ehAdmin = user.role === 'admin'
 
-  const [kpis, opsUrgentes, producao14d, canais, topProdutos, remessas] =
-    await Promise.all([
-      obterKPIs(),
-      listarOpsUrgentes(5),
-      listarProducaoUltimosDias(14),
-      listarOpsPorCanal(),
-      listarTopProdutosMes(5),
-      nivelRemessas !== 'nenhum' ? listarRemessasAbertas() : Promise.resolve([]),
-    ])
+  const [
+    kpis,
+    opsUrgentes,
+    producao14d,
+    canais,
+    topProdutos,
+    remessas,
+    tarefas,
+    tarefasPendentes,
+  ] = await Promise.all([
+    obterKPIs(),
+    listarOpsUrgentes(5),
+    listarProducaoUltimosDias(14),
+    listarOpsPorCanal(),
+    listarTopProdutosMes(5),
+    nivelRemessas !== 'nenhum' ? listarRemessasAbertas() : Promise.resolve([]),
+    ehAdmin ? listarTarefasDoPainel(5) : Promise.resolve([]),
+    ehAdmin ? contarTarefasPendentes() : Promise.resolve(0),
+  ])
 
   return (
     <div className="space-y-6">
@@ -114,6 +132,10 @@ export default async function DashboardPage() {
           }
         />
       </div>
+
+      {/* Tarefas da administração — SÓ admin. Pros demais cargos o card
+          nem existe: nada de espaço vazio no lugar. */}
+      {ehAdmin && <TarefasCard tarefas={tarefas} total={tarefasPendentes} />}
 
       {/* Remessas Full em risco/atrasadas (quem tem acesso à área) */}
       {nivelRemessas !== 'nenhum' && <RemessasAlerta remessas={remessas} />}

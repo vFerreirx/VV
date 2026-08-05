@@ -20,6 +20,7 @@ import {
   produtos,
   remessasFull,
   tamanhos,
+  tarefas,
   variacoesProduto,
 } from '@/lib/db/schema'
 import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
@@ -41,6 +42,7 @@ export type TipoLixeira =
   | 'maquina'
   | 'estacao'
   | 'remessa'
+  | 'tarefa'
 
 export type ItemLixeira = {
   tipo: TipoLixeira
@@ -67,69 +69,107 @@ const TABELA = {
   maquina: maquinas,
   estacao: estacoes,
   remessa: remessasFull,
+  tarefa: tarefas,
 } as const
+
+// Executa as consultas UMA DE CADA VEZ, e não com Promise.all.
+//
+// O pool do postgres-js tem 10 conexões (src/lib/db/index.ts). Disparar as
+// dez consultas desta tela de uma vez toma o pool inteiro; com a consulta
+// do contador e os prefetches do Next disputando ao mesmo tempo, a página
+// travava esperando conexão — comprovado: com `max: 40` o travamento some,
+// e ele existia antes desta tela ganhar o décimo tipo.
+//
+// São dez consultas minúsculas (50 linhas cada, por índice): em série
+// custam alguns milissegundos e a tela deixa de depender do tamanho do
+// pool.
+// Parâmetro REST (e não um array): é o que faz o TypeScript inferir uma
+// tupla e manter o tipo de cada consulta separado na desestruturação.
+async function emSerie<T extends readonly (() => PromiseLike<unknown>)[]>(
+  ...consultas: T
+): Promise<{ -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> }> {
+  const saida: unknown[] = []
+  for (const consulta of consultas) saida.push(await consulta())
+  return saida as { -readonly [K in keyof T]: Awaited<ReturnType<T[K]>> }
+}
 
 export async function listarExcluidos(): Promise<ItemLixeira[]> {
   await requireRole(['admin'])
 
-  const [prods, ops, kitsRows, coresRows, modelosRows, tamanhosRows, maqs, ests, remessas] =
-    await Promise.all([
-      db
+  const [
+    prods,
+    ops,
+    kitsRows,
+    coresRows,
+    modelosRows,
+    tamanhosRows,
+    maqs,
+    ests,
+    remessas,
+    tarefasRows,
+  ] = await emSerie(
+      () => db
         .select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku, em: produtos.deletedAt })
         .from(produtos)
         .where(isNotNull(produtos.deletedAt))
         .orderBy(desc(produtos.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      db
+      () => db
         .select({ id: ordensProducao.id, numero: ordensProducao.numero, em: ordensProducao.deletedAt, produtoNome: produtos.nome })
         .from(ordensProducao)
         .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
         .where(isNotNull(ordensProducao.deletedAt))
         .orderBy(desc(ordensProducao.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      db
+      () => db
         .select({ id: kits.id, nome: kits.nome, sku: kits.sku, em: kits.deletedAt })
         .from(kits)
         .where(isNotNull(kits.deletedAt))
         .orderBy(desc(kits.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      db
+      () => db
         .select({ id: cores.id, nome: cores.nome, em: cores.deletedAt })
         .from(cores)
         .where(isNotNull(cores.deletedAt))
         .orderBy(desc(cores.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      db
+      () => db
         .select({ id: modelos.id, nome: modelos.nome, em: modelos.deletedAt })
         .from(modelos)
         .where(isNotNull(modelos.deletedAt))
         .orderBy(desc(modelos.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      db
+      () => db
         .select({ id: tamanhos.id, nome: tamanhos.nome, em: tamanhos.deletedAt })
         .from(tamanhos)
         .where(isNotNull(tamanhos.deletedAt))
         .orderBy(desc(tamanhos.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      db
+      () => db
         .select({ id: maquinas.id, nome: maquinas.nome, codigo: maquinas.codigo, em: maquinas.deletedAt })
         .from(maquinas)
         .where(isNotNull(maquinas.deletedAt))
         .orderBy(desc(maquinas.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      db
+      () => db
         .select({ id: estacoes.id, nome: estacoes.nome, em: estacoes.deletedAt })
         .from(estacoes)
         .where(isNotNull(estacoes.deletedAt))
         .orderBy(desc(estacoes.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      db
+      () => db
         .select({ id: remessasFull.id, canal: remessasFull.canal, dataEnvio: remessasFull.dataEnvio, envioId: remessasFull.envioId, em: remessasFull.deletedAt })
         .from(remessasFull)
         .where(isNotNull(remessasFull.deletedAt))
         .orderBy(desc(remessasFull.deletedAt))
         .limit(LIMITE_POR_TIPO),
-    ])
+      () => db
+        .select({ id: tarefas.id, titulo: tarefas.titulo, concluidaEm: tarefas.concluidaEm, em: tarefas.deletedAt })
+        .from(tarefas)
+        .where(isNotNull(tarefas.deletedAt))
+        .orderBy(desc(tarefas.deletedAt))
+        .limit(LIMITE_POR_TIPO),
+    )
 
   const itens: ItemLixeira[] = [
     ...prods.map((p): ItemLixeira => ({ tipo: 'produto', id: p.id, titulo: p.nome, subtitulo: p.sku, excluidoEm: p.em! })),
@@ -146,6 +186,15 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
       titulo: `${CANAL_LABEL_CURTO[r.canal]} · envio de ${r.dataEnvio.split('-').reverse().join('/')}`,
       subtitulo: r.envioId ? `envio ${r.envioId}` : 'sem identificador de envio',
       excluidoEm: r.em!,
+    })),
+    ...tarefasRows.map((t): ItemLixeira => ({
+      tipo: 'tarefa',
+      id: t.id,
+      titulo: t.titulo,
+      // Restaurar devolve a tarefa no estado em que ela foi excluída, então
+      // vale dizer em qual estado ela vai voltar.
+      subtitulo: t.concluidaEm ? 'volta como concluída' : 'volta como pendente',
+      excluidoEm: t.em!,
     })),
   ]
 
@@ -247,6 +296,13 @@ export async function restaurarAction(
           .set({ deletedAt: null })
           .where(eq(remessasFull.id, id))
         break
+      case 'tarefa':
+        // Volta como estava: se foi excluída já concluída, volta concluída.
+        await db
+          .update(tarefas)
+          .set({ deletedAt: null })
+          .where(eq(tarefas.id, id))
+        break
       default:
         return { success: false, error: 'Tipo desconhecido' }
     }
@@ -266,6 +322,10 @@ export async function restaurarAction(
 
   revalidatePath('/lixeira')
   if (tipo === 'remessa') revalidatePath('/remessas')
+  if (tipo === 'tarefa') {
+    revalidatePath('/tarefas')
+    revalidatePath('/dashboard')
+  }
   return { success: true, message: 'Item restaurado' }
 }
 
@@ -372,6 +432,9 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
       contagem: conta(sql`SELECT count(*) FROM ${ordensProducao} o WHERE o.remessa_full_id = ${remessasFull.id}`),
     },
   ],
+  // Ninguém referencia tarefa: ela é folha do grafo. Apagar de vez só
+  // apaga ela mesma.
+  tarefa: [],
 }
 
 type Bloqueio = { curto: string; detalhado: string }
@@ -464,6 +527,10 @@ export async function excluirDefinitivamenteAction(
 
   revalidatePath('/lixeira')
   if (tipo === 'remessa') revalidatePath('/remessas')
+  if (tipo === 'tarefa') {
+    revalidatePath('/tarefas')
+    revalidatePath('/dashboard')
+  }
   return { success: true, message: 'Apagado definitivamente' }
 }
 
@@ -491,6 +558,8 @@ const ORDEM_ESVAZIAR: TipoLixeira[] = [
   'cor',
   'modelo',
   'tamanho',
+  // Folha do grafo: a posição não importa, vai no fim por convenção.
+  'tarefa',
 ]
 
 export async function esvaziarLixeiraAction(): Promise<
@@ -547,6 +616,8 @@ export async function esvaziarLixeiraAction(): Promise<
 
   revalidatePath('/lixeira')
   revalidatePath('/remessas')
+  revalidatePath('/tarefas')
+  revalidatePath('/dashboard')
   return {
     success: true,
     relatorio: { apagados, pulados: [...pulados.values()] },

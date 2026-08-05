@@ -63,7 +63,8 @@ inserir só linhas extras, nunca substituir.
   (redireciona se o nível efetivo do cargo não permite escrever). É o
   padrão de TODA action de escrita em área editável — assim o que a tela
   de permissões mostra é o que as actions entregam. Exceções fixas por
-  `requireRole(['admin'])`: `usuarios` e `permissoes`. O kanban valida o
+  `requireRole(['admin'])`: `usuarios`, `permissoes` e `tarefas` (áreas
+  com `editavel: false`, que ninguém pode afrouxar em /permissoes). O kanban valida o
   nível dentro das próprias actions (regra do "próprio" do operador).
 - Ao adicionar uma área/tela nova, registre-a em `AREAS` e ponha um item
   no nav com `area`.
