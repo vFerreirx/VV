@@ -26,6 +26,14 @@ function coletarItems(
   return acc
 }
 
+// VAZIO É `null`, NUNCA `undefined`.
+//
+// O Base UI decide no PRIMEIRO render se o select é controlado, e o critério
+// é `value !== undefined`. Escrever `value={x || undefined}` faz o campo
+// nascer não-controlado e virar controlado assim que alguém escolhe algo —
+// aí o React avisa "A component is changing the uncontrolled value state of
+// Select to be controlled" no console. Com `null` ele já nasce controlado e
+// o placeholder aparece igual.
 function Select<Value, Multiple extends boolean | undefined = false>({
   children,
   items,

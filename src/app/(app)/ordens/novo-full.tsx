@@ -304,7 +304,7 @@ export function NovoFull({
                   <div key={idx} className="space-y-2 rounded-lg border p-2.5">
                     <div className="flex items-center gap-2">
                       <Select
-                        value={linha.produtoId || undefined}
+                        value={linha.produtoId || null}
                         onValueChange={(v) =>
                           patchLinha(idx, {
                             produtoId: v ?? '',
@@ -350,7 +350,7 @@ export function NovoFull({
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <Select
-                        value={linha.tamanho || undefined}
+                        value={linha.tamanho || null}
                         onValueChange={(v) =>
                           patchLinha(idx, { tamanho: v ?? '', cor: '' })
                         }
@@ -368,7 +368,7 @@ export function NovoFull({
                         </SelectContent>
                       </Select>
                       <Select
-                        value={linha.cor || undefined}
+                        value={linha.cor || null}
                         onValueChange={(v) => patchLinha(idx, { cor: v ?? '' })}
                         disabled={isPending || !linha.tamanho}
                       >

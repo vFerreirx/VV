@@ -980,7 +980,7 @@ function CatalogoBuilder({
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {/* 1º passo: modelo */}
         <Select
-          value={modeloSel || undefined}
+          value={modeloSel || null}
           onValueChange={(v) => trocarModelo(v ?? '')}
           disabled={disabled}
         >
@@ -999,7 +999,7 @@ function CatalogoBuilder({
         {/* 2º passo: produto ou kit daquele modelo */}
         {modeloSel && (
           <Select
-            value={origem || undefined}
+            value={origem || null}
             onValueChange={(v) => trocarOrigem(v ?? '')}
             disabled={disabled}
           >
@@ -1027,7 +1027,7 @@ function CatalogoBuilder({
 
         {produto && tamanhos.length > 0 && (
           <Select
-            value={tamanho || undefined}
+            value={tamanho || null}
             onValueChange={(v) => {
               setTamanho(v ?? '')
               setCoresSel(new Set())
@@ -1050,7 +1050,7 @@ function CatalogoBuilder({
         {/* Kit: tamanho único pro kit inteiro (vale pra todos os itens) */}
         {kit && tamanhosKit.length > 0 && (
           <Select
-            value={tamanhoKit || undefined}
+            value={tamanhoKit || null}
             onValueChange={(v) => setTamanhoKit(v ?? '')}
             disabled={disabled}
           >
@@ -1107,7 +1107,7 @@ function CatalogoBuilder({
                   {it.quantidade}× {it.produtoNome}
                 </span>
                 <Select
-                  value={coresKit[it.id] || undefined}
+                  value={coresKit[it.id] || null}
                   onValueChange={(v) =>
                     setCoresKit((prev) => ({ ...prev, [it.id]: v ?? '' }))
                   }

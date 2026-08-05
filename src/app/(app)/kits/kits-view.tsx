@@ -248,7 +248,7 @@ function KitDialog({
             {itens.map((linha, idx) => (
               <div key={idx} className="flex items-center gap-2">
                 <Select
-                  value={linha.produtoId || undefined}
+                  value={linha.produtoId || null}
                   onValueChange={(v) => patchItem(idx, { produtoId: v ?? '' })}
                   disabled={isPending}
                 >

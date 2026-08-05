@@ -135,7 +135,7 @@ export function GerarDeKit({
             <div className="space-y-1.5">
               <Label>Kit</Label>
               <Select
-                value={kitId || undefined}
+                value={kitId || null}
                 onValueChange={(v) => trocarKit(v ?? '')}
                 disabled={isPending}
               >
@@ -240,7 +240,7 @@ export function GerarDeKit({
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <Select
-                          value={e?.tamanho || undefined}
+                          value={e?.tamanho || null}
                           onValueChange={(v) =>
                             patchSel(it.id, { tamanho: v ?? '', cor: '' })
                           }
@@ -258,7 +258,7 @@ export function GerarDeKit({
                           </SelectContent>
                         </Select>
                         <Select
-                          value={e?.cor || undefined}
+                          value={e?.cor || null}
                           onValueChange={(v) => patchSel(it.id, { cor: v ?? '' })}
                           disabled={isPending || !e?.tamanho}
                         >
