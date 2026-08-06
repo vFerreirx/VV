@@ -9,6 +9,7 @@ import {
   criarKitAction,
   excluirKitAction,
   type KitComItens,
+  type KitItemDetalhe,
 } from './actions'
 import type { ProdutoComVariacoesParaForm } from '../ordens/actions'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +34,13 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  avisoPesoDeKit,
+  formatarPesoDeKit,
+  formatarPesoDeProduto,
+  pesoDeKit,
+  pesoDeProduto,
+} from '@/lib/peso'
 
 type Props = {
   kits: KitComItens[]
@@ -118,6 +126,8 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
                     </Badge>
                   ))}
                 </div>
+
+                <PesoDoKit itens={kit.itens} />
               </article>
             )
           })}
@@ -134,6 +144,52 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
       <ExcluirDialog kit={excluindo} onClose={() => setExcluindo(null)} />
     </div>
   )
+}
+
+// -----------------------------------------------------------------
+// Peso do kit
+// -----------------------------------------------------------------
+
+// O peso do kit é uma FAIXA sempre que algum componente existe em tamanhos
+// que pesam diferente — a Peseira em Casal/King/Queen. O kit não guarda
+// tamanho: isso só é escolhido ao gerar as OPs, então aqui não dá pra
+// apontar um número só.
+//
+// E vira "—" inteiro quando falta peso em qualquer componente, a mesma regra
+// que o pedido aplica: somar só o que está cadastrado devolveria um kit mais
+// leve do que ele é, e é justamente esse número que iria pro frete. O aviso
+// diz QUAL componente está segurando, senão o traço não ajuda a resolver.
+function PesoDoKit({ itens }: { itens: KitItemDetalhe[] }) {
+  const peso = pesoDeKit(itens)
+  const aviso = avisoPesoDeKit(peso)
+
+  return (
+    <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t pt-2 text-xs">
+      <span className="text-muted-foreground">Peso do kit</span>
+      <span
+        className="font-medium tabular-nums"
+        title={detalhePorComponente(itens)}
+      >
+        {formatarPesoDeKit(peso)}
+      </span>
+      {aviso && (
+        <span className="text-amber-600 dark:text-amber-500">{aviso}</span>
+      )}
+    </div>
+  )
+}
+
+// Tooltip com a conta aberta: quanto pesa cada componente e quantos entram no
+// kit. Sem isso, um "0,900–1,070 kg" não diz de onde saiu a faixa.
+function detalhePorComponente(itens: KitItemDetalhe[]): string {
+  return itens
+    .map((it) => {
+      const p = pesoDeProduto(it.pesoGramas, it.tamanhosPeso)
+      const falta =
+        p.semPeso.length > 0 ? ` (sem peso: ${p.semPeso.join(', ')})` : ''
+      return `${it.quantidade}× ${it.produtoNome}: ${formatarPesoDeProduto(p)}${falta}`
+    })
+    .join('\n')
 }
 
 // -----------------------------------------------------------------

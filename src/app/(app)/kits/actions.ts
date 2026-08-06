@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { tamanhosPesoPorProduto } from '@/lib/db/pesos'
 import {
   eventosKanban,
   kitItens,
@@ -14,6 +15,7 @@ import {
   variacoesProduto,
   type Kit,
 } from '@/lib/db/schema'
+import type { TamanhoDoProduto } from '@/lib/peso'
 import {
   gerarOpsKitSchema,
   kitSchema,
@@ -34,6 +36,12 @@ export type KitItemDetalhe = {
   produtoId: string
   produtoNome: string
   quantidade: number
+  // Peso do componente: o override do produto, quando existe, e os tamanhos
+  // das variações com o peso de cada um. O kit não guarda tamanho (isso só é
+  // escolhido ao gerar as OPs), então é daqui que sai a faixa de peso do kit
+  // — ver `pesoDeKit` em src/lib/peso.ts.
+  pesoGramas: number | null
+  tamanhosPeso: TamanhoDoProduto[]
 }
 
 export type KitComItens = Kit & { itens: KitItemDetalhe[] }
@@ -60,18 +68,27 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
       produtoId: kitItens.produtoId,
       quantidade: kitItens.quantidade,
       produtoNome: produtos.nome,
+      pesoGramas: produtos.pesoGramas,
     })
     .from(kitItens)
     .innerJoin(produtos, eq(produtos.id, kitItens.produtoId))
     .where(inArray(kitItens.kitId, ids))
     .orderBy(asc(produtos.nome))
 
+  const tamanhosPorProduto = await tamanhosPesoPorProduto([
+    ...new Set(itens.map((it) => it.produtoId)),
+  ])
+
   const porKit = new Map<string, KitItemDetalhe[]>()
   for (const it of itens) {
     const { kitId, ...resto } = it
+    const detalhe: KitItemDetalhe = {
+      ...resto,
+      tamanhosPeso: tamanhosPorProduto.get(it.produtoId) ?? [],
+    }
     const arr = porKit.get(kitId)
-    if (arr) arr.push(resto)
-    else porKit.set(kitId, [resto])
+    if (arr) arr.push(detalhe)
+    else porKit.set(kitId, [detalhe])
   }
 
   return rows.map((k) => ({ ...k, itens: porKit.get(k.id) ?? [] }))

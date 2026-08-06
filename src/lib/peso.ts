@@ -303,3 +303,76 @@ export function formatarPesoDeProduto(p: PesoDeProduto): string {
   if (p.min === p.max) return formatarGramas(p.min)
   return `${p.min.toLocaleString('pt-BR')}–${formatarGramas(p.max)}`
 }
+
+// -----------------------------------------------------------------
+// Peso na tela de KITS (/kits)
+// -----------------------------------------------------------------
+
+// O kit não guarda tamanho: `kit_itens` aponta pro PRODUTO e o tamanho só é
+// escolhido ao gerar as OPs. Então o peso de um kit é a soma dos
+// componentes, e quando um componente existe em vários tamanhos que pesam
+// diferente (a Peseira em Casal/King/Queen) o resultado é uma faixa.
+export type ComponenteDeKit = {
+  produtoNome: string
+  quantidade: number
+  // Override do produto, se houver.
+  pesoGramas: number | null
+  tamanhosPeso: TamanhoDoProduto[]
+}
+
+export type PesoDeKit = {
+  min: number | null
+  max: number | null
+  // Componentes cujo peso não dá pra resolver por completo. Enquanto tiver
+  // algum aqui, `min`/`max` ficam nulos — ver o porquê logo abaixo.
+  semPeso: string[]
+}
+
+export function pesoDeKit(componentes: ComponenteDeKit[]): PesoDeKit {
+  const semPeso: string[] = []
+  let min = 0
+  let max = 0
+
+  for (const c of componentes) {
+    const p = pesoDeProduto(c.pesoGramas, c.tamanhosPeso)
+    // Um componente só conta como resolvido quando TODOS os tamanhos dele
+    // têm peso: se a Peseira só foi pesada no Casal, o kit em King fica sem
+    // resposta e a faixa mentiria pra baixo.
+    if (p.min == null || p.max == null || p.semPeso.length > 0) {
+      semPeso.push(c.produtoNome)
+      continue
+    }
+    min += p.min * c.quantidade
+    max += p.max * c.quantidade
+  }
+
+  // Mesma regra do pedido (ver `pesoUnitarioDaLinha`): um componente sem
+  // peso zera o kit inteiro em vez de somar só o que dá. Um total parcial
+  // parece completo e some calado na cotação do frete; o "—" aparece e
+  // alguém vai lá cadastrar o que falta.
+  if (semPeso.length > 0) return { min: null, max: null, semPeso }
+
+  return { min, max, semPeso }
+}
+
+function kgSemUnidade(gramas: number): string {
+  return (gramas / 1000).toLocaleString('pt-BR', {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  })
+}
+
+// Kit vai em kg: é o peso do que se despacha, e é assim que transportadora
+// cota. O detalhe por componente, esse sim, fica em gramas.
+export function formatarPesoDeKit(p: PesoDeKit): string {
+  if (p.min == null || p.max == null) return '—'
+  if (p.min === p.max) return formatarKg(p.min)
+  return `${kgSemUnidade(p.min)}–${formatarKg(p.max)}`
+}
+
+// "falta peso em Manta - SIENA" — diz QUAL componente segurar, senão o "—"
+// não ajuda ninguém a resolver.
+export function avisoPesoDeKit(p: PesoDeKit): string | null {
+  if (p.semPeso.length === 0) return null
+  return `falta peso em ${p.semPeso.join(', ')}`
+}
