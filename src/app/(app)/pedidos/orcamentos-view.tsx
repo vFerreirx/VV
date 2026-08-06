@@ -57,6 +57,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import { cn } from '@/lib/utils'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
@@ -380,6 +381,10 @@ type KitComponente = {
 }
 
 type LinhaItem = {
+  // Chave estável da linha. Com `key={idx}` o React reaproveita o <div> ao
+  // remover uma linha do meio, e o auto-animate acabava animando a saída da
+  // ÚLTIMA linha em vez da que foi apagada.
+  id: string
   descricao: string
   quantidade: string
   preco: string
@@ -391,7 +396,17 @@ type LinhaItem = {
   componentes?: KitComponente[] | null
 }
 
-const LINHA_VAZIA: LinhaItem = { descricao: '', quantidade: '1', preco: '' }
+// Contador de módulo em vez de crypto.randomUUID(): a chave nunca vai pro
+// HTML, então não precisa ser global — só precisa não repetir na sessão.
+let seqLinha = 0
+const novaLinhaId = () => `linha-${++seqLinha}`
+
+const linhaVazia = (): LinhaItem => ({
+  id: novaLinhaId(),
+  descricao: '',
+  quantidade: '1',
+  preco: '',
+})
 
 function OrcamentoDialog({
   edicao,
@@ -426,6 +441,7 @@ function OrcamentoDialog({
   const [itens, setItens] = useState<LinhaItem[]>(() =>
     dados
       ? dados.itens.map((it) => ({
+          id: novaLinhaId(),
           descricao: it.descricao,
           quantidade: String(it.quantidade),
           preco: decimalParaMoeda(it.precoUnitario),
@@ -434,8 +450,10 @@ function OrcamentoDialog({
           tamanho: it.tamanho,
           componentes: it.kitComponentes as KitComponente[] | null,
         }))
-      : [{ ...LINHA_VAZIA }],
+      : [linhaVazia()],
   )
+
+  const [listaItens] = useListaAnimada<HTMLDivElement>()
 
   function patchItem(idx: number, patch: Partial<LinhaItem>) {
     setItens((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
@@ -446,7 +464,7 @@ function OrcamentoDialog({
     setItens((prev) => [
       ...prev,
       {
-        ...LINHA_VAZIA,
+        ...linhaVazia(),
         descricao,
         preco: precoSalvo ? decimalParaMoeda(precoSalvo) : '',
       },
@@ -626,9 +644,13 @@ function OrcamentoDialog({
           <div className="space-y-2">
             <Label>Itens</Label>
 
-            {itens.map((linha, idx) => (
+            {/* O ref vai num wrapper só das linhas: o auto-animate anima os
+                FILHOS DIRETOS, e com o <Label> e o botão aqui dentro ele
+                trataria os dois como itens da lista. */}
+            <div ref={listaItens} className="space-y-2">
+              {itens.map((linha, idx) => (
               <div
-                key={idx}
+                key={linha.id}
                 className="grid grid-cols-[1fr_4rem_7rem_auto] items-center gap-2"
               >
                 <Input
@@ -677,8 +699,9 @@ function OrcamentoDialog({
                 >
                   <X />
                 </Button>
-              </div>
-            ))}
+                </div>
+              ))}
+            </div>
             <Button
               size="sm"
               variant="outline"
@@ -938,6 +961,7 @@ function CatalogoBuilder({
       }))
       linhas = [
         {
+          id: novaLinhaId(),
           descricao,
           quantidade,
           preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),
@@ -953,6 +977,7 @@ function CatalogoBuilder({
         // Preço digitado vale pra todas; em branco, usa a memória por item.
         const daMemoria = precos[descricao]
         return {
+          id: novaLinhaId(),
           descricao,
           quantidade,
           preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),

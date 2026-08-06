@@ -36,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import type { Cor } from '@/lib/db/schema'
 import { corSchema, type CorInput } from '@/lib/validators/cores'
 
@@ -45,6 +46,7 @@ type Props = {
 }
 
 export function CoresList({ cores, podeEditar }: Props) {
+  const [corpoTabela] = useListaAnimada<HTMLTableSectionElement>()
   const [editingCor, setEditingCor] = useState<Cor | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<Cor | null>(null)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
@@ -131,7 +133,7 @@ export function CoresList({ cores, podeEditar }: Props) {
                   {podeEditar && <TableHead className="w-24" />}
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody ref={corpoTabela}>
                 {cores.map((c) => (
                   <TableRow
                     key={c.id}

@@ -40,6 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import { Textarea } from '@/components/ui/textarea'
 import type { Comprador } from '@/lib/db/schema'
 import {
@@ -63,6 +64,7 @@ type Props = {
 }
 
 export function CompradoresList({ compradores, podeEditar }: Props) {
+  const [corpoTabela] = useListaAnimada<HTMLTableSectionElement>()
   const [busca, setBusca] = useState('')
   const [editando, setEditando] = useState<Comprador | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<Comprador | null>(null)
@@ -131,7 +133,7 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
                   {podeEditar && <TableHead className="w-24" />}
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody ref={corpoTabela}>
                 {filtrados.length === 0 ? (
                   <TableRow>
                     <TableCell

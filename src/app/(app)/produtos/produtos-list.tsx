@@ -41,6 +41,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import {
   formatarPesoDeProduto,
   pesoDeProduto,
@@ -63,6 +64,7 @@ export function ProdutosList({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
+  const [corpoTabela] = useListaAnimada<HTMLTableSectionElement>()
 
   const [busca, setBusca] = useState(filtrosIniciais.q ?? '')
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
@@ -199,7 +201,7 @@ export function ProdutosList({
                   {podeEditar && <TableHead className="w-24" />}
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody ref={corpoTabela}>
                 {produtos.map((p) => (
                   <TableRow
                     key={p.id}

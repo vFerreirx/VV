@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import {
   avisoPesoDeKit,
   formatarPesoDeKit,
@@ -196,9 +197,18 @@ function detalhePorComponente(itens: KitItemDetalhe[]): string {
 // Dialog: criar / editar kit (produto + quantidade por item)
 // -----------------------------------------------------------------
 
-type LinhaItem = { produtoId: string; quantidade: string }
+// `id` e chave estavel da linha: com `key={idx}` o React reaproveita o <div>
+// ao remover uma linha do meio, e o auto-animate animaria a saida da ULTIMA
+// em vez da que foi apagada. Contador de modulo basta - a chave nunca vai
+// pro HTML, so precisa nao repetir na sessao.
+type LinhaItem = { id: string; produtoId: string; quantidade: string }
 
-const LINHA_VAZIA: LinhaItem = { produtoId: '', quantidade: '1' }
+let seqLinha = 0
+const linhaVazia = (): LinhaItem => ({
+  id: `linha-${++seqLinha}`,
+  produtoId: '',
+  quantidade: '1',
+})
 
 function KitDialog({
   kit,
@@ -217,16 +227,18 @@ function KitDialog({
   const [ativo, setAtivo] = useState(kit?.ativo ?? true)
   const [itens, setItens] = useState<LinhaItem[]>(
     kit?.itens.map((i) => ({
+      ...linhaVazia(),
       produtoId: i.produtoId,
       quantidade: String(i.quantidade),
-    })) ?? [{ ...LINHA_VAZIA }],
+    })) ?? [linhaVazia()],
   )
+  const [listaItens] = useListaAnimada<HTMLDivElement>()
 
   function patchItem(idx: number, patch: Partial<LinhaItem>) {
     setItens((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
   }
   function addItem() {
-    setItens((prev) => [...prev, { ...LINHA_VAZIA }])
+    setItens((prev) => [...prev, linhaVazia()])
   }
   function removeItem(idx: number) {
     setItens((prev) => prev.filter((_, i) => i !== idx))
@@ -301,8 +313,12 @@ function KitDialog({
 
           <div className="space-y-2">
             <Label>Produtos do kit</Label>
-            {itens.map((linha, idx) => (
-              <div key={idx} className="flex items-center gap-2">
+            {/* O ref vai num wrapper so das linhas: o auto-animate anima os
+                FILHOS DIRETOS, e o <Label> e o botao de adicionar seriam
+                tratados como itens da lista se ficassem juntos. */}
+            <div ref={listaItens} className="space-y-2">
+              {itens.map((linha, idx) => (
+                <div key={linha.id} className="flex items-center gap-2">
                 <Select
                   value={linha.produtoId || null}
                   onValueChange={(v) => patchItem(idx, { produtoId: v ?? '' })}
@@ -340,8 +356,9 @@ function KitDialog({
                 >
                   <X />
                 </Button>
-              </div>
-            ))}
+                </div>
+              ))}
+            </div>
             <Button
               size="sm"
               variant="outline"

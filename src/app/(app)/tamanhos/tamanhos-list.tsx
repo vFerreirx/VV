@@ -36,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import type { Tamanho } from '@/lib/db/schema'
 import { tamanhoSchema, type TamanhoInput } from '@/lib/validators/tamanhos'
 
@@ -45,6 +46,7 @@ type Props = {
 }
 
 export function TamanhosList({ tamanhos, podeEditar }: Props) {
+  const [corpoTabela] = useListaAnimada<HTMLTableSectionElement>()
   const [editando, setEditando] = useState<Tamanho | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<Tamanho | null>(null)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
@@ -134,7 +136,7 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                   {podeEditar && <TableHead className="w-24" />}
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody ref={corpoTabela}>
                 {tamanhos.map((t) => (
                   <TableRow
                     key={t.id}

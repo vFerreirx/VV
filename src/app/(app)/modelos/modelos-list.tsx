@@ -36,6 +36,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import { Textarea } from '@/components/ui/textarea'
 import type { Modelo } from '@/lib/db/schema'
 import { modeloSchema, type ModeloInput } from '@/lib/validators/modelos'
@@ -46,6 +47,7 @@ type Props = {
 }
 
 export function ModelosList({ modelos, podeEditar }: Props) {
+  const [corpoTabela] = useListaAnimada<HTMLTableSectionElement>()
   const [editando, setEditando] = useState<Modelo | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<Modelo | null>(null)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
@@ -132,7 +134,7 @@ export function ModelosList({ modelos, podeEditar }: Props) {
                   {podeEditar && <TableHead className="w-24" />}
                 </TableRow>
               </TableHeader>
-              <TableBody>
+              <TableBody ref={corpoTabela}>
                 {modelos.map((m) => (
                   <TableRow
                     key={m.id}
