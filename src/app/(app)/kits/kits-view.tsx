@@ -77,7 +77,7 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
           description="Crie um kit combinando produtos e a quantidade de cada um."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className="vv-reveal grid grid-cols-1 gap-3 lg:grid-cols-2">
           {kits.map((kit) => {
             const pecas = kit.itens.reduce((s, i) => s + i.quantidade, 0)
             return (
@@ -381,8 +381,8 @@ function KitDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={isPending}>
-            {isPending ? 'Salvando…' : 'Salvar'}
+          <Button loading={isPending} onClick={salvar} disabled={isPending}>
+            {'Salvar'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -429,8 +429,8 @@ function ExcluirDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={excluir} disabled={isPending}>
-            {isPending ? 'Excluindo…' : 'Excluir'}
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+            {'Excluir'}
           </Button>
         </DialogFooter>
       </DialogContent>

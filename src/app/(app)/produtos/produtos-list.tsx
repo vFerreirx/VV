@@ -246,7 +246,7 @@ export function ProdutosList({
           </div>
 
           {/* Mobile/Tablet retrato: cards */}
-          <div className="vv-stagger space-y-3 md:hidden">
+          <div className="vv-reveal space-y-3 md:hidden">
             {produtos.map((p) => (
               <div key={p.id} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -417,8 +417,8 @@ function BulkExcluirDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={excluir} disabled={isPending}>
-            {isPending ? 'Excluindo…' : `Excluir ${ids.length}`}
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+            {`Excluir ${ids.length}`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -513,12 +513,12 @@ function RowActions({ produto }: { produto: ProdutoListItem }) {
             >
               Cancelar
             </Button>
-            <Button
+            <Button loading={isPending}
               variant="destructive"
               onClick={excluir}
               disabled={isPending}
             >
-              {isPending ? 'Excluindo…' : 'Excluir'}
+              {'Excluir'}
             </Button>
           </DialogFooter>
         </DialogContent>

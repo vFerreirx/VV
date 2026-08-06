@@ -252,9 +252,16 @@ function ApagarDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={apagar} disabled={isPending}>
-            <Trash2 />
-            {isPending ? 'Apagando…' : 'Apagar de vez'}
+          <Button
+            variant="destructive"
+            onClick={apagar}
+            loading={isPending}
+            disabled={isPending}
+          >
+            {/* O spinner entra no LUGAR do ícone: mesma largura, rótulo
+                parado, botão não pula. */}
+            {!isPending && <Trash2 />}
+            Apagar de vez
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -371,10 +378,11 @@ function EsvaziarDialog({
               <Button
                 variant="destructive"
                 onClick={esvaziar}
+                loading={isPending}
                 disabled={isPending || texto.trim() !== PALAVRA_CONFIRMACAO}
               >
-                <Trash2 />
-                {isPending ? 'Apagando…' : 'Esvaziar'}
+                {!isPending && <Trash2 />}
+                Esvaziar
               </Button>
             </DialogFooter>
           </>

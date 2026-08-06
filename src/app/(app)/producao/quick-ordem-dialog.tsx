@@ -234,8 +234,8 @@ export function QuickOrdemDialog({
           <Button variant="outline" onClick={fechar} disabled={isPending}>
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={isPending || !valido}>
-            {isPending ? 'Criando…' : 'Criar OP'}
+          <Button loading={isPending} onClick={salvar} disabled={isPending || !valido}>
+            {'Criar OP'}
           </Button>
         </DialogFooter>
       </DialogContent>

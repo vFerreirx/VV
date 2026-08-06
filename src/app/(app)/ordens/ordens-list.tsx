@@ -434,7 +434,7 @@ export function OrdensList({
           </div>
 
           {/* Mobile / tablet retrato */}
-          <div className="vv-stagger space-y-3 md:hidden">
+          <div className="vv-reveal space-y-3 md:hidden">
             {ordens.map((o) => (
               <div
                 key={o.id}
@@ -598,8 +598,8 @@ function BulkExcluirDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={excluir} disabled={isPending}>
-            {isPending ? 'Excluindo…' : `Excluir ${ids.length}`}
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+            {`Excluir ${ids.length}`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -649,12 +649,12 @@ function ExcluirDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button
+          <Button loading={isPending}
             variant="destructive"
             onClick={excluir}
             disabled={isPending}
           >
-            {isPending ? 'Excluindo…' : 'Excluir'}
+            {'Excluir'}
           </Button>
         </DialogFooter>
       </DialogContent>

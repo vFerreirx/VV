@@ -144,7 +144,7 @@ export function EstoqueList({ itens, podeMovimentar, buscaInicial }: Props) {
           </div>
 
           {/* Mobile */}
-          <div className="vv-stagger space-y-3 md:hidden">
+          <div className="vv-reveal space-y-3 md:hidden">
             {itens.map((i) => (
               <div key={i.variacaoId} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-2">
@@ -299,11 +299,11 @@ function MovimentarDialog({
           <Button variant="outline" onClick={fechar} disabled={isPending}>
             Cancelar
           </Button>
-          <Button
+          <Button loading={isPending}
             onClick={salvar}
             disabled={isPending || !(Number(quantidade) > 0)}
           >
-            {isPending ? 'Salvando…' : 'Registrar'}
+            {'Registrar'}
           </Button>
         </DialogFooter>
       </DialogContent>

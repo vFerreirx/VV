@@ -386,8 +386,8 @@ function CriarUsuarioDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? 'Criando…' : 'Criar'}
+            <Button loading={isPending} type="submit" disabled={isPending}>
+              {'Criar'}
             </Button>
           </DialogFooter>
         </form>
@@ -543,8 +543,8 @@ function EditarBody({
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? 'Salvando…' : 'Salvar'}
+          <Button loading={isPending} type="submit" disabled={isPending}>
+            {'Salvar'}
           </Button>
         </DialogFooter>
       </form>
@@ -628,8 +628,8 @@ function ResetSenhaDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? 'Redefinindo…' : 'Redefinir senha'}
+            <Button loading={isPending} type="submit" disabled={isPending}>
+              {'Redefinir senha'}
             </Button>
           </DialogFooter>
         </form>
@@ -681,12 +681,12 @@ function ExcluirUsuarioDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button
+          <Button loading={isPending}
             variant="destructive"
             onClick={excluir}
             disabled={isPending}
           >
-            {isPending ? 'Excluindo…' : 'Excluir'}
+            {'Excluir'}
           </Button>
         </DialogFooter>
       </DialogContent>

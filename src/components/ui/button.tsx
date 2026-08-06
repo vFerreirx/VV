@@ -1,10 +1,11 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px active:not-aria-[haspopup]:scale-[0.98] motion-reduce:active:not-aria-[haspopup]:scale-100 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -46,8 +47,24 @@ function Button({
   size = "default",
   nativeButton,
   render,
+  loading = false,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & {
+    /**
+     * Mostra um spinner ANTES do rótulo, sem trocar o rótulo.
+     *
+     * O padrão antigo era `{isPending ? 'Salvando…' : 'Salvar'}`, e a
+     * largura do botão saltava na troca — às vezes empurrando o botão do
+     * lado. Com o spinner o rótulo fica parado e quem lê continua sabendo
+     * o que o botão faz enquanto ele roda.
+     *
+     * Não desabilita sozinho: quem chama já passa `disabled={isPending}` e
+     * é ele quem sabe se a ação pode ser repetida.
+     */
+    loading?: boolean
+  }) {
   // Quando o usuário passa `render` (ex: <Link/>), o elemento não é um
   // <button> nativo. Base UI exige nativeButton=false nesses casos.
   const resolvedNativeButton = nativeButton ?? render === undefined
@@ -57,9 +74,18 @@ function Button({
       data-slot="button"
       nativeButton={resolvedNativeButton}
       render={render}
+      aria-busy={loading || undefined}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    />
+    >
+      {loading && (
+        <Loader2
+          aria-hidden
+          className="animate-spin motion-reduce:animate-none"
+        />
+      )}
+      {children}
+    </ButtonPrimitive>
   )
 }
 

@@ -321,8 +321,8 @@ function BulkExcluirDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={excluir} disabled={isPending}>
-            {isPending ? 'Excluindo…' : `Excluir ${ids.length}`}
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+            {`Excluir ${ids.length}`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -537,8 +537,8 @@ function TamanhoDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? 'Salvando…' : isEdit ? 'Salvar' : 'Criar'}
+            <Button loading={isPending} type="submit" disabled={isPending}>
+              {isEdit ? 'Salvar' : 'Criar'}
             </Button>
           </DialogFooter>
         </form>
@@ -585,12 +585,12 @@ function ExcluirDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button
+          <Button loading={isPending}
             variant="destructive"
             onClick={excluir}
             disabled={isPending}
           >
-            {isPending ? 'Excluindo…' : 'Excluir'}
+            {'Excluir'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -194,9 +194,9 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
           autoComplete="off"
           className="min-w-56 flex-1"
         />
-        <Button onClick={salvar} disabled={isPending}>
-          <Plus />
-          {isPending ? 'Salvando…' : 'Adicionar'}
+        <Button onClick={salvar} loading={isPending} disabled={isPending}>
+          {!isPending && <Plus />}
+          Adicionar
         </Button>
       </div>
 
@@ -503,8 +503,8 @@ function TarefaDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={isPending}>
-            {isPending ? 'Salvando…' : 'Salvar'}
+          <Button loading={isPending} onClick={salvar} disabled={isPending}>
+            {'Salvar'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -552,8 +552,8 @@ function ExcluirDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={excluir} disabled={isPending}>
-            {isPending ? 'Excluindo…' : 'Excluir'}
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+            {'Excluir'}
           </Button>
         </DialogFooter>
       </DialogContent>

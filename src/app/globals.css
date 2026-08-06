@@ -331,6 +331,107 @@
 }
 
 /* ──────────────────────────────────────────────────────────
+ * Animações dirigidas pelo scroll (CSS puro, zero JS)
+ * ────────────────────────────────────────────────────────── */
+
+/* Cards que sobem ao ENTRAR na viewport, em vez de ao montar.
+ *
+ * É o irmão de .vv-stagger pra lista longa: o stagger anima uma vez, na
+ * montagem, então só quem está no topo vê o efeito — o resto da lista já
+ * nasceu animada lá embaixo. Aqui quem dirige a animação é a posição do
+ * card no scroller.
+ *
+ * O @supports não é enfeite: onde o navegador não tem scroll-driven
+ * animation a regra inteira é ignorada e o card simplesmente aparece. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .vv-reveal > * {
+      animation: vv-rise linear both;
+      animation-timeline: view();
+      /* Termina cedo: o card fica pronto bem antes de chegar ao meio da
+       * tela, senão a lista parece que está sempre "carregando". */
+      animation-range: entry 0% cover 15%;
+    }
+  }
+}
+
+/* Sombra que nasce sob a topbar conforme o conteúdo rola por baixo dela. */
+@keyframes vv-topbar-shadow {
+  from {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  to {
+    box-shadow: 0 6px 16px -12px
+      color-mix(in oklch, var(--foreground) 55%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: scroll()) {
+    /* Quem rola é o <main>, e a topbar é IRMÃ dele — então o `scroll()`
+     * puro (que pega o ancestral rolável mais próximo) não serve aqui: ia
+     * cair no wrapper `overflow-hidden`, que nunca rola, e a sombra nunca
+     * apareceria. Nomear a timeline no scroller e expor com
+     * `timeline-scope` no pai comum é o que liga os dois. */
+    [data-app-scroll] {
+      scroll-timeline-name: --app-scroll;
+    }
+    [data-app-shell] {
+      timeline-scope: --app-scroll;
+    }
+    [data-slot='topbar'] {
+      animation: vv-topbar-shadow linear both;
+      animation-timeline: --app-scroll;
+      animation-range: 0 48px;
+    }
+  }
+}
+
+/* ──────────────────────────────────────────────────────────
+ * Pista de link pendente (useLinkStatus)
+ * ────────────────────────────────────────────────────────── */
+
+/* Tamanho fixo e sempre no DOM: alternar só a opacidade evita o item de
+ * menu pular quando a pista aparece. O atraso de 120ms é o que segura o
+ * pisca-pisca em navegação rápida — se a rota abre antes disso, a
+ * animação nem chega a ficar visível. */
+.link-hint {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.link-hint[data-pending='true'] {
+  visibility: visible;
+  animation:
+    vv-hint-in 160ms ease 120ms forwards,
+    vv-hint-pulse 1s ease-in-out 120ms infinite;
+}
+
+@keyframes vv-hint-in {
+  to {
+    opacity: 0.6;
+  }
+}
+
+@keyframes vv-hint-pulse {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .link-hint[data-pending='true'] {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────
  * Impressão / Salvar como PDF: documento limpo (sem chrome do app).
  * ────────────────────────────────────────────────────────── */
 @media print {
@@ -340,6 +441,12 @@
   *::after {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    /* Documento impresso tem animação ZERO. Não é só estética: uma
+     * animação com `both` pode ser capturada no meio (elemento a meio
+     * fade) e sair desbotada no papel — e o romaneio é assinado. */
+    animation: none !important;
+    transition: none !important;
+    view-transition-name: none !important;
   }
   html,
   body {

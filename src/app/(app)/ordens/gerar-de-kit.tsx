@@ -289,8 +289,8 @@ export function GerarDeKit({
             >
               Cancelar
             </Button>
-            <Button onClick={gerar} disabled={isPending || !kit}>
-              {isPending ? 'Gerando…' : 'Gerar OPs'}
+            <Button loading={isPending} onClick={gerar} disabled={isPending || !kit}>
+              {'Gerar OPs'}
             </Button>
           </DialogFooter>
         </DialogContent>

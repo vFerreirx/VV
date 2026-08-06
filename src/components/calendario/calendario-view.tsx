@@ -400,8 +400,8 @@ function NovoEventoDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={isPending}>
-            {isPending ? 'Salvando…' : 'Agendar'}
+          <Button loading={isPending} onClick={salvar} disabled={isPending}>
+            {'Agendar'}
           </Button>
         </DialogFooter>
       </DialogContent>

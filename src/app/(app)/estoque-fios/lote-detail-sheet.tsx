@@ -317,8 +317,8 @@ function SaidaForm({
         />
       </div>
 
-      <Button type="submit" size="sm" disabled={isPending}>
-        {isPending ? 'Salvando…' : 'Registrar saída'}
+      <Button loading={isPending} type="submit" size="sm" disabled={isPending}>
+        {'Registrar saída'}
       </Button>
     </form>
   )

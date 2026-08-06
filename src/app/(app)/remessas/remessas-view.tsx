@@ -198,8 +198,8 @@ function ExcluirRemessaDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={excluir} disabled={isPending}>
-            {isPending ? 'Excluindo…' : 'Excluir'}
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+            {'Excluir'}
           </Button>
         </DialogFooter>
       </DialogContent>

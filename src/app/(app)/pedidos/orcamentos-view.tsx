@@ -716,8 +716,8 @@ function OrcamentoDialog({
             <Button variant="outline" onClick={onClose} disabled={isPending}>
               Cancelar
             </Button>
-            <Button onClick={salvar} disabled={isPending}>
-              {isPending ? 'Salvando…' : 'Salvar'}
+            <Button loading={isPending} onClick={salvar} disabled={isPending}>
+              {'Salvar'}
             </Button>
           </div>
         </DialogFooter>
@@ -1206,8 +1206,8 @@ function ExcluirDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={excluir} disabled={isPending}>
-            {isPending ? 'Excluindo…' : 'Excluir'}
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+            {'Excluir'}
           </Button>
         </DialogFooter>
       </DialogContent>

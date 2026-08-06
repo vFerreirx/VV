@@ -66,8 +66,8 @@ export function LoginForm({ next }: { next?: string }) {
         )}
       </div>
 
-      <Button type="submit" disabled={isPending} className="w-full">
-        {isPending ? 'Entrando…' : 'Entrar'}
+      <Button loading={isPending} type="submit" disabled={isPending} className="w-full">
+        {'Entrar'}
       </Button>
 
       <p className="text-muted-foreground text-center text-xs">

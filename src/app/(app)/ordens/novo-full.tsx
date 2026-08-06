@@ -414,8 +414,8 @@ export function NovoFull({
               >
                 Cancelar
               </Button>
-              <Button onClick={criar} disabled={isPending}>
-                {isPending ? 'Criando…' : 'Criar OPs do Full'}
+              <Button loading={isPending} onClick={criar} disabled={isPending}>
+                {'Criar OPs do Full'}
               </Button>
             </div>
           </DialogFooter>

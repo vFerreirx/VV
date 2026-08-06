@@ -324,8 +324,8 @@ function Formulario({
           <Button variant="outline" onClick={onFechar} disabled={isPending}>
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={isPending}>
-            {isPending ? 'Salvando…' : 'Salvar mapeamento'}
+          <Button loading={isPending} onClick={salvar} disabled={isPending}>
+            {'Salvar mapeamento'}
           </Button>
         </div>
       </DialogFooter>

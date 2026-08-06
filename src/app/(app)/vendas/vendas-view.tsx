@@ -607,8 +607,8 @@ function EditarDialog({
             <Button variant="outline" onClick={onClose} disabled={isPending}>
               Cancelar
             </Button>
-            <Button onClick={salvar} disabled={isPending}>
-              {isPending ? 'Salvando…' : 'Salvar'}
+            <Button loading={isPending} onClick={salvar} disabled={isPending}>
+              {'Salvar'}
             </Button>
           </div>
         </DialogFooter>

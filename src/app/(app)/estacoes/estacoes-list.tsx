@@ -398,8 +398,8 @@ function EstacaoBody({
         <Button variant="outline" onClick={onClose} disabled={isPending}>
           Cancelar
         </Button>
-        <Button onClick={salvar} disabled={isPending || nome.trim().length < 2}>
-          {isPending ? 'Salvando…' : isEdit ? 'Salvar' : 'Criar'}
+        <Button loading={isPending} onClick={salvar} disabled={isPending || nome.trim().length < 2}>
+          {isEdit ? 'Salvar' : 'Criar'}
         </Button>
       </DialogFooter>
     </>
@@ -448,8 +448,8 @@ function ExcluirDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button variant="destructive" onClick={excluir} disabled={isPending}>
-            {isPending ? 'Excluindo…' : 'Excluir'}
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+            {'Excluir'}
           </Button>
         </DialogFooter>
       </DialogContent>

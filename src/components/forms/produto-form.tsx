@@ -599,8 +599,8 @@ export function ProdutoForm({
         >
           Cancelar
         </Button>
-        <Button type="submit" disabled={isPending}>
-          {isPending ? 'Salvando…' : isEdit ? 'Salvar alterações' : 'Criar produto'}
+        <Button loading={isPending} type="submit" disabled={isPending}>
+          {isEdit ? 'Salvar alterações' : 'Criar produto'}
         </Button>
       </div>
 

@@ -213,8 +213,8 @@ export function MaquinaForm({
         >
           Cancelar
         </Button>
-        <Button type="submit" disabled={isPending}>
-          {isPending ? 'Salvando…' : isEdit ? 'Salvar alterações' : 'Criar máquina'}
+        <Button loading={isPending} type="submit" disabled={isPending}>
+          {isEdit ? 'Salvar alterações' : 'Criar máquina'}
         </Button>
       </div>
     </form>

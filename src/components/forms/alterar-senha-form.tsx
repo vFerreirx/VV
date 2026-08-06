@@ -84,8 +84,8 @@ export function AlterarSenhaForm() {
         )}
       </div>
 
-      <Button type="submit" disabled={isPending}>
-        {isPending ? 'Alterando…' : 'Alterar senha'}
+      <Button loading={isPending} type="submit" disabled={isPending}>
+        {'Alterar senha'}
       </Button>
     </form>
   )

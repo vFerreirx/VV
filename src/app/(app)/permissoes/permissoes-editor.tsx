@@ -196,8 +196,8 @@ export function PermissoesEditor({
               >
                 Descartar
               </Button>
-              <Button onClick={salvar} disabled={isPending}>
-                {isPending ? 'Salvando…' : 'Salvar permissões'}
+              <Button loading={isPending} onClick={salvar} disabled={isPending}>
+                {'Salvar permissões'}
               </Button>
             </div>
           </div>

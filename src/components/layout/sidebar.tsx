@@ -3,10 +3,11 @@
 import { ChevronDown, LogOut } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useRef, useState, useTransition } from 'react'
+import { useLayoutEffect, useRef, useState, useTransition } from 'react'
 
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
+import { NavLinkHint } from '@/components/layout/nav-link-hint'
 import { visibleGroups } from '@/components/layout/nav-items'
 import { useNavCollapse } from '@/components/layout/use-nav-collapse'
 import type { AreaKey } from '@/lib/auth/permissoes'
@@ -18,12 +19,19 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
   const grupos = visibleGroups(bloqueadas)
   const { collapsed, toggle } = useNavCollapse()
 
-  // Indicator deslizante: mede a posição do item ativo e move uma barra.
+  // Indicator deslizante: mede a posição do item ativo e move a pílula até
+  // ele. O fundo do item ativo saiu do próprio <Link> — se ficasse lá, o
+  // destaque apareceria instantâneo no destino enquanto a pílula ainda
+  // estivesse deslizando, e dois itens ficariam acesos ao mesmo tempo.
+  //
+  // useLayoutEffect (e não useEffect) porque a medida tem que estar pronta
+  // ANTES da primeira pintura: com useEffect o item ativo ficaria um quadro
+  // sem nenhum destaque.
   const navRef = useRef<HTMLElement>(null)
   const [indicator, setIndicator] = useState<{ top: number; height: number } | null>(
     null,
   )
-  useEffect(() => {
+  useLayoutEffect(() => {
     const nav = navRef.current
     if (!nav) return
     const ativo = nav.querySelector<HTMLElement>('[data-active="true"]')
@@ -60,7 +68,7 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
         {indicator && (
           <span
             aria-hidden
-            className="bg-sidebar-primary absolute left-1 w-0.5 rounded-full transition-all duration-300 ease-out"
+            className="bg-sidebar-accent absolute inset-x-2 rounded-md transition-[top,height] duration-200 ease-out motion-reduce:transition-none"
             style={{ top: indicator.top, height: indicator.height }}
           />
         )}
@@ -92,14 +100,17 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
                       href={item.href}
                       data-active={active}
                       className={cn(
-                        'group/nav flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
+                        // `relative`: o item vem depois da pílula no DOM, e
+                        // isso basta pra o texto ficar por cima dela.
+                        'group/nav relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
                         active
-                          ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                          ? 'text-sidebar-accent-foreground font-medium'
                           : 'text-sidebar-foreground hover:bg-sidebar-accent/50',
                       )}
                     >
                       <item.icon className="size-4 transition-transform duration-200 group-hover/nav:translate-x-0.5" />
                       {item.label}
+                      <NavLinkHint className="ml-auto" />
                     </Link>
                   )
                 })}

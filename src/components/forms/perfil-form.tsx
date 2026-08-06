@@ -61,8 +61,8 @@ export function PerfilForm({
         )}
       </div>
 
-      <Button type="submit" disabled={isPending || !form.formState.isDirty}>
-        {isPending ? 'Salvando…' : 'Salvar'}
+      <Button loading={isPending} type="submit" disabled={isPending || !form.formState.isDirty}>
+        {'Salvar'}
       </Button>
     </form>
   )
