@@ -1,3 +1,4 @@
+import { ViewTransition } from 'react'
 import { FileUp } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
@@ -43,43 +44,48 @@ export default async function OrdensPage({
     podeEditar ? listarContasAtivas() : Promise.resolve([]),
   ])
 
+  // Entrada do reveal de Suspense: par do exit no loading.tsx desta rota.
+  // `default="none"` impede este ViewTransition de animar junto em qualquer
+  // outra transicao da pagina.
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Ordens de produção</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {pagina.total} OP{pagina.total === 1 ? '' : 's'}
-          </p>
+    <ViewTransition enter="vt-entra-sobe" default="none">
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Ordens de produção</h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              {pagina.total} OP{pagina.total === 1 ? '' : 's'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {podeEditar && (
+              <Button variant="outline" render={<Link href="/ordens/importar-full" />}>
+                <FileUp />
+                Importar Full (PDF)
+              </Button>
+            )}
+            {podeEditar && (
+              <NovoFull
+                remessas={remessas}
+                produtos={produtosParaKit}
+                contas={contas}
+              />
+            )}
+            {podeGerarKit && kits.length > 0 && <GerarDeKit kits={kits} produtos={produtosParaKit} />}
+            {podeEditar && <Button render={<Link href="/ordens/novo" />}>Nova OP</Button>}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {podeEditar && (
-            <Button variant="outline" render={<Link href="/ordens/importar-full" />}>
-              <FileUp />
-              Importar Full (PDF)
-            </Button>
-          )}
-          {podeEditar && (
-            <NovoFull
-              remessas={remessas}
-              produtos={produtosParaKit}
-              contas={contas}
-            />
-          )}
-          {podeGerarKit && kits.length > 0 && <GerarDeKit kits={kits} produtos={produtosParaKit} />}
-          {podeEditar && <Button render={<Link href="/ordens/novo" />}>Nova OP</Button>}
-        </div>
-      </div>
 
-      <OrdensList
-        ordens={pagina.ordens}
-        total={pagina.total}
-        pagina={pagina.pagina}
-        totalPaginas={pagina.totalPaginas}
-        remessas={remessas}
-        podeEditar={podeEditar}
-        filtrosIniciais={filtros}
-      />
-    </div>
+        <OrdensList
+          ordens={pagina.ordens}
+          total={pagina.total}
+          pagina={pagina.pagina}
+          totalPaginas={pagina.totalPaginas}
+          remessas={remessas}
+          podeEditar={podeEditar}
+          filtrosIniciais={filtros}
+        />
+      </div>
+    </ViewTransition>
   )
 }

@@ -1,3 +1,4 @@
+import { ViewTransition } from 'react'
 import type { Metadata } from 'next'
 
 import {
@@ -35,15 +36,20 @@ export default async function OrcamentosPage() {
         : Promise.resolve([]),
     ])
 
+  // Entrada do reveal de Suspense: par do exit no loading.tsx desta rota.
+  // `default="none"` impede este ViewTransition de animar junto em qualquer
+  // outra transicao da pagina.
   return (
-    <OrcamentosView
-      orcamentos={orcamentos}
-      produtos={produtos}
-      kits={kits}
-      precos={precos}
-      clientes={clientes}
-      compradores={compradores}
-      podeEditar={podeEditar}
-    />
+    <ViewTransition enter="vt-entra-sobe" default="none">
+      <OrcamentosView
+        orcamentos={orcamentos}
+        produtos={produtos}
+        kits={kits}
+        precos={precos}
+        clientes={clientes}
+        compradores={compradores}
+        podeEditar={podeEditar}
+      />
+    </ViewTransition>
   )
 }

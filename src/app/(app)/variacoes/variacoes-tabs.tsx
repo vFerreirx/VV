@@ -1,5 +1,7 @@
 'use client'
 
+import { useState, useTransition, ViewTransition } from 'react'
+
 import { CoresList } from '../cores/cores-list'
 import { ModelosList } from '../modelos/modelos-list'
 import { TamanhosList } from '../tamanhos/tamanhos-list'
@@ -35,6 +37,9 @@ export function VariacoesTabs({
     ? tabInicial
     : abas[0]?.value
 
+  const [aba, setAba] = useState(def)
+  const [, startTransition] = useTransition()
+
   return (
     <div className="space-y-6">
       <div>
@@ -44,7 +49,10 @@ export function VariacoesTabs({
         </p>
       </div>
 
-      <Tabs defaultValue={def}>
+      <Tabs
+        value={aba}
+        onValueChange={(v) => startTransition(() => setAba(v ?? def))}
+      >
         <TabsList>
           {abas.map((a) => (
             <TabsTrigger key={a.value} value={a.value}>
@@ -53,24 +61,42 @@ export function VariacoesTabs({
           ))}
         </TabsList>
 
-        {acessoCores.ver && (
-          <TabsContent value="cores" className="mt-2">
-            <CoresList cores={cores} podeEditar={acessoCores.editar} />
-          </TabsContent>
-        )}
-        {acessoModelos.ver && (
-          <TabsContent value="modelos" className="mt-2">
-            <ModelosList modelos={modelos} podeEditar={acessoModelos.editar} />
-          </TabsContent>
-        )}
-        {acessoTamanhos.ver && (
-          <TabsContent value="tamanhos" className="mt-2">
-            <TamanhosList
-              tamanhos={tamanhos}
-              podeEditar={acessoTamanhos.editar}
-            />
-          </TabsContent>
-        )}
+        {/* Crossfade: "mesmo lugar, outro conteudo". Um slide diria "fui
+            pra outra tela", que nao e o caso — a barra de abas e o resto do
+            layout ficam parados.
+
+            As abas viraram controladas e a troca vai dentro de
+            startTransition porque o <ViewTransition> so e ativado por
+            Transition/Suspense; setState puro nao dispara nada. */}
+        <ViewTransition
+          key={aba}
+          name="conteudo-abas"
+          share="auto"
+          enter="auto"
+          default="none"
+        >
+          <div>
+
+            {acessoCores.ver && (
+              <TabsContent value="cores" className="mt-2">
+                <CoresList cores={cores} podeEditar={acessoCores.editar} />
+              </TabsContent>
+            )}
+            {acessoModelos.ver && (
+              <TabsContent value="modelos" className="mt-2">
+                <ModelosList modelos={modelos} podeEditar={acessoModelos.editar} />
+              </TabsContent>
+            )}
+            {acessoTamanhos.ver && (
+              <TabsContent value="tamanhos" className="mt-2">
+                <TamanhosList
+                  tamanhos={tamanhos}
+                  podeEditar={acessoTamanhos.editar}
+                />
+              </TabsContent>
+            )}
+          </div>
+        </ViewTransition>
       </Tabs>
     </div>
   )

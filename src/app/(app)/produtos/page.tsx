@@ -1,3 +1,4 @@
+import { ViewTransition } from 'react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
@@ -33,26 +34,31 @@ export default async function ProdutosPage({
 
   const produtos = await listarProdutos(filtros)
 
+  // Entrada do reveal de Suspense: par do exit no loading.tsx desta rota.
+  // `default="none"` impede este ViewTransition de animar junto em qualquer
+  // outra transicao da pagina.
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Produtos</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {produtos.length} produto{produtos.length === 1 ? '' : 's'} encontrado
-            {produtos.length === 1 ? '' : 's'}
-          </p>
+    <ViewTransition enter="vt-entra-sobe" default="none">
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Produtos</h1>
+            <p className="text-muted-foreground mt-1 text-sm">
+              {produtos.length} produto{produtos.length === 1 ? '' : 's'} encontrado
+              {produtos.length === 1 ? '' : 's'}
+            </p>
+          </div>
+          {podeEditar && (
+            <Button render={<Link href="/produtos/novo" />}>Novo produto</Button>
+          )}
         </div>
-        {podeEditar && (
-          <Button render={<Link href="/produtos/novo" />}>Novo produto</Button>
-        )}
-      </div>
 
-      <ProdutosList
-        produtos={produtos}
-        podeEditar={podeEditar}
-        filtrosIniciais={filtros}
-      />
-    </div>
+        <ProdutosList
+          produtos={produtos}
+          podeEditar={podeEditar}
+          filtrosIniciais={filtros}
+        />
+      </div>
+    </ViewTransition>
   )
 }

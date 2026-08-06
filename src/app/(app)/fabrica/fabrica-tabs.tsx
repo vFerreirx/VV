@@ -1,5 +1,7 @@
 'use client'
 
+import { useState, useTransition, ViewTransition } from 'react'
+
 import Link from 'next/link'
 
 import type { MaquinaListItem } from '../maquinas/actions'
@@ -41,6 +43,9 @@ export function FabricaTabs({
     ? tabInicial
     : abas[0]?.value
 
+  const [aba, setAba] = useState(def)
+  const [, startTransition] = useTransition()
+
   return (
     <div className="space-y-6">
       <div>
@@ -51,7 +56,10 @@ export function FabricaTabs({
         </p>
       </div>
 
-      <Tabs defaultValue={def}>
+      <Tabs
+        value={aba}
+        onValueChange={(v) => startTransition(() => setAba(v ?? def))}
+      >
         <TabsList>
           {abas.map((a) => (
             <TabsTrigger key={a.value} value={a.value}>
@@ -60,17 +68,33 @@ export function FabricaTabs({
           ))}
         </TabsList>
 
-        {verMaquinas && (
-          <TabsContent value="maquinas" className="mt-2 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-muted-foreground text-sm">
-                {maquinas.length} máquina{maquinas.length === 1 ? '' : 's'}
-              </p>
-              {podeEditarMaquinas && (
-                <Button render={<Link href="/maquinas/novo" />}>
-                  Nova máquina
-                </Button>
-              )}
+        {/* Crossfade: "mesmo lugar, outro conteudo". Um slide diria "fui
+            pra outra tela", que nao e o caso — a barra de abas e o resto do
+            layout ficam parados.
+
+            As abas viraram controladas e a troca vai dentro de
+            startTransition porque o <ViewTransition> so e ativado por
+            Transition/Suspense; setState puro nao dispara nada. */}
+        <ViewTransition
+          key={aba}
+          name="conteudo-abas"
+          share="auto"
+          enter="auto"
+          default="none"
+        >
+          <div>
+
+            {verMaquinas && (
+              <TabsContent value="maquinas" className="mt-2 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-muted-foreground text-sm">
+                    {maquinas.length} máquina{maquinas.length === 1 ? '' : 's'}
+                  </p>
+                  {podeEditarMaquinas && (
+                    <Button render={<Link href="/maquinas/novo" />}>
+                      Nova máquina
+                    </Button>
+                  )}
             </div>
             <MaquinasGrid maquinas={maquinas} podeEditar={podeEditarMaquinas} />
           </TabsContent>
@@ -85,6 +109,8 @@ export function FabricaTabs({
             />
           </TabsContent>
         )}
+          </div>
+        </ViewTransition>
       </Tabs>
     </div>
   )

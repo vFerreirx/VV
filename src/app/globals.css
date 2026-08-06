@@ -432,6 +432,78 @@
 }
 
 /* ──────────────────────────────────────────────────────────
+ * View Transitions
+ * ────────────────────────────────────────────────────────── */
+
+:root {
+  /* Assimetria de propósito: o conteúdo velho sai rápido pra não disputar
+   * atenção, e o novo entra mais devagar (e só depois que o velho saiu). */
+  --vt-saida: 150ms;
+  --vt-entrada: 210ms;
+}
+
+@keyframes vv-vt-fade {
+  from {
+    filter: blur(3px);
+    opacity: 0;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+@keyframes vv-vt-sobe {
+  from {
+    transform: translateY(10px);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* Reveal de Suspense: o esqueleto desce e sai, o conteúdo sobe e entra. */
+::view-transition-old(.vt-sai-desce) {
+  animation:
+    var(--vt-saida) ease-out both vv-vt-fade reverse,
+    var(--vt-saida) ease-out both vv-vt-sobe reverse;
+}
+::view-transition-new(.vt-entra-sobe) {
+  animation:
+    var(--vt-entrada) ease-in var(--vt-saida) both vv-vt-fade,
+    240ms ease-in both vv-vt-sobe;
+}
+
+/* Sidebar e topbar ancoradas: com o chrome deslizando junto, o usuário
+ * perde a referência e a tela inteira parece ter trocado de lugar. O
+ * `display: none` no snapshot antigo evita o flash dos dois ao mesmo
+ * tempo. */
+::view-transition-group(vv-sidebar),
+::view-transition-group(vv-topbar) {
+  animation: none;
+  z-index: 100;
+}
+::view-transition-old(vv-sidebar),
+::view-transition-old(vv-topbar) {
+  display: none;
+}
+::view-transition-new(vv-sidebar),
+::view-transition-new(vv-topbar) {
+  animation: none;
+}
+
+/* Zera tudo: sem animação o conteúdo troca na hora, que é o padrão do
+ * navegador quando não há view transition. Não é opcional. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────
  * Impressão / Salvar como PDF: documento limpo (sem chrome do app).
  * ────────────────────────────────────────────────────────── */
 @media print {

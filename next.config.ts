@@ -27,6 +27,11 @@ const nextConfig: NextConfig = {
   },
 
   experimental: {
+    // Liga o <ViewTransition> do React (morph, slide direcional, crossfade e
+    // reveal de Suspense). Ligar isso troca o React do bundle pelo canal
+    // experimental que o Next empacota — é o que dá acesso ao componente.
+    viewTransition: true,
+
     serverActions: {
       // O PDF do envio sobe por server action. Os arquivos reais têm ~30-45KB,
       // mas o padrão do Next é 1MB e um envio grande passaria disso.

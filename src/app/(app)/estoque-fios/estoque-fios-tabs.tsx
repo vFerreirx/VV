@@ -1,5 +1,7 @@
 'use client'
 
+import { useState, useTransition, ViewTransition } from 'react'
+
 import { CoresFornecedorList } from './cores-fornecedor-list'
 import { LotesFioList } from './lotes-fio-list'
 import type { CorFornecedorItem, LoteFioItem } from './actions'
@@ -29,6 +31,9 @@ export function EstoqueFiosTabs({
 
   const coresFornecedorAtivas = coresFornecedor.filter((c) => c.ativo)
 
+  const [aba, setAba] = useState(def)
+  const [, startTransition] = useTransition()
+
   return (
     <div className="space-y-6">
       <div>
@@ -39,7 +44,10 @@ export function EstoqueFiosTabs({
         </p>
       </div>
 
-      <Tabs defaultValue={def}>
+      <Tabs
+        value={aba}
+        onValueChange={(v) => startTransition(() => setAba(v ?? def))}
+      >
         <TabsList>
           {abas.map((a) => (
             <TabsTrigger key={a.value} value={a.value}>
@@ -48,21 +56,39 @@ export function EstoqueFiosTabs({
           ))}
         </TabsList>
 
-        <TabsContent value="entradas" className="mt-2">
-          <LotesFioList
-            lotes={lotes}
-            coresFornecedorAtivas={coresFornecedorAtivas}
-            podeEditar={podeEditar}
-          />
-        </TabsContent>
+        {/* Crossfade: "mesmo lugar, outro conteudo". Um slide diria "fui
+            pra outra tela", que nao e o caso — a barra de abas e o resto do
+            layout ficam parados.
 
-        <TabsContent value="cores" className="mt-2">
-          <CoresFornecedorList
-            coresFornecedor={coresFornecedor}
-            coresAtivas={coresAtivas}
-            podeEditar={podeEditar}
-          />
-        </TabsContent>
+            As abas viraram controladas e a troca vai dentro de
+            startTransition porque o <ViewTransition> so e ativado por
+            Transition/Suspense; setState puro nao dispara nada. */}
+        <ViewTransition
+          key={aba}
+          name="conteudo-abas"
+          share="auto"
+          enter="auto"
+          default="none"
+        >
+          <div>
+
+            <TabsContent value="entradas" className="mt-2">
+              <LotesFioList
+                lotes={lotes}
+                coresFornecedorAtivas={coresFornecedorAtivas}
+                podeEditar={podeEditar}
+              />
+            </TabsContent>
+
+            <TabsContent value="cores" className="mt-2">
+              <CoresFornecedorList
+                coresFornecedor={coresFornecedor}
+                coresAtivas={coresAtivas}
+                podeEditar={podeEditar}
+              />
+            </TabsContent>
+          </div>
+        </ViewTransition>
       </Tabs>
     </div>
   )

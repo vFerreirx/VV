@@ -1,3 +1,4 @@
+import { ViewTransition } from 'react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -90,172 +91,177 @@ export default async function DashboardPage() {
     ehAdmin ? contarTarefasPendentes() : Promise.resolve(0),
   ])
 
+  // Entrada do reveal de Suspense: par do exit no loading.tsx desta rota.
+  // `default="none"` impede este ViewTransition de animar junto em qualquer
+  // outra transicao da pagina.
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="text-muted-foreground text-sm">
-          Bem-vindo, {user.nome.split(' ')[0]}.
-        </p>
-      </div>
-
-      {/* KPI cards */}
-      <div className="vv-reveal grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KPICard
-          label="OPs ativas"
-          value={kpis.opsAtivas}
-          icon={Package}
-          accent="text-blue-600"
-        />
-        <KPICard
-          label="Em produção"
-          value={kpis.opsEmProducao}
-          icon={Activity}
-          accent="text-emerald-600"
-        />
-        <KPICard
-          label="Atrasadas"
-          value={kpis.opsAtrasadas}
-          icon={AlertTriangle}
-          accent={kpis.opsAtrasadas > 0 ? 'text-destructive' : 'text-muted-foreground'}
-          alerta={kpis.opsAtrasadas > 0}
-        />
-        <KPICard
-          label="Máquinas operando"
-          value={`${kpis.maquinasOperando} / ${kpis.maquinasTotal}`}
-          icon={Factory}
-          accent="text-cyan-600"
-          subtitle={
-            kpis.maquinasTotal > 0
-              ? `${Math.round((kpis.maquinasOperando / kpis.maquinasTotal) * 100)}% em uso`
-              : undefined
-          }
-        />
-      </div>
-
-      {/* Tarefas da administração — SÓ admin. Pros demais cargos o card
-          nem existe: nada de espaço vazio no lugar. */}
-      {ehAdmin && <TarefasCard tarefas={tarefas} total={tarefasPendentes} />}
-
-      {/* Remessas Full em risco/atrasadas (quem tem acesso à área) */}
-      {nivelRemessas !== 'nenhum' && <RemessasAlerta remessas={remessas} />}
-
-      {/* Produção dos últimos 14 dias */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Produção dos últimos 14 dias</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ProducaoChart data={producao14d} />
-        </CardContent>
-      </Card>
-
-      {/* Distribuição por status */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Fluxo do kanban</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <DistribuicaoStatus kpis={kpis} />
-        </CardContent>
-      </Card>
-
-      {/* Canais + Top produtos */}
-      <div className="vv-reveal grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>OPs por canal de destino</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CanaisChart data={canais} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Top produtos do mês</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TopProdutosChart data={topProdutos} />
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* OPs urgentes */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>OPs urgentes / atrasadas</CardTitle>
-            <Link
-              href="/ordens"
-              className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
-            >
-              Ver todas →
-            </Link>
+    <ViewTransition enter="vt-entra-sobe" default="none">
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-semibold">Dashboard</h1>
+            <p className="text-muted-foreground text-sm">
+              Bem-vindo, {user.nome.split(' ')[0]}.
+            </p>
           </div>
-        </CardHeader>
-        <CardContent>
-          {opsUrgentes.length === 0 ? (
-            <p className="text-muted-foreground text-sm">Nenhuma OP urgente.</p>
-          ) : (
-            <ul className="divide-y">
-              {opsUrgentes.map((op) => (
-                <li key={op.id} className="flex items-center gap-3 py-2.5">
-                  <Link
-                    href={`/ordens/${op.id}`}
-                    className="font-mono text-xs hover:underline"
-                  >
-                    {op.numero}
-                  </Link>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">
-                      {op.produtoNome}
-                    </div>
-                    <div className="text-muted-foreground truncate text-xs">
-                      {[op.variacaoCor, op.variacaoTamanho]
-                        .filter(Boolean)
-                        .join(' / ') || op.produtoSku}
-                      {op.maquinaNome && (
-                        <>
-                          {' · '}
-                          <span>{op.maquinaNome}</span>
-                        </>
+
+          {/* KPI cards */}
+          <div className="vv-reveal grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KPICard
+              label="OPs ativas"
+              value={kpis.opsAtivas}
+              icon={Package}
+              accent="text-blue-600"
+            />
+            <KPICard
+              label="Em produção"
+              value={kpis.opsEmProducao}
+              icon={Activity}
+              accent="text-emerald-600"
+            />
+            <KPICard
+              label="Atrasadas"
+              value={kpis.opsAtrasadas}
+              icon={AlertTriangle}
+              accent={kpis.opsAtrasadas > 0 ? 'text-destructive' : 'text-muted-foreground'}
+              alerta={kpis.opsAtrasadas > 0}
+            />
+            <KPICard
+              label="Máquinas operando"
+              value={`${kpis.maquinasOperando} / ${kpis.maquinasTotal}`}
+              icon={Factory}
+              accent="text-cyan-600"
+              subtitle={
+                kpis.maquinasTotal > 0
+                  ? `${Math.round((kpis.maquinasOperando / kpis.maquinasTotal) * 100)}% em uso`
+                  : undefined
+              }
+            />
+          </div>
+
+          {/* Tarefas da administração — SÓ admin. Pros demais cargos o card
+              nem existe: nada de espaço vazio no lugar. */}
+          {ehAdmin && <TarefasCard tarefas={tarefas} total={tarefasPendentes} />}
+
+          {/* Remessas Full em risco/atrasadas (quem tem acesso à área) */}
+          {nivelRemessas !== 'nenhum' && <RemessasAlerta remessas={remessas} />}
+
+          {/* Produção dos últimos 14 dias */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Produção dos últimos 14 dias</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ProducaoChart data={producao14d} />
+            </CardContent>
+          </Card>
+
+          {/* Distribuição por status */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Fluxo do kanban</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <DistribuicaoStatus kpis={kpis} />
+            </CardContent>
+          </Card>
+
+          {/* Canais + Top produtos */}
+          <div className="vv-reveal grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>OPs por canal de destino</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CanaisChart data={canais} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Top produtos do mês</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <TopProdutosChart data={topProdutos} />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* OPs urgentes */}
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle>OPs urgentes / atrasadas</CardTitle>
+                <Link
+                  href="/ordens"
+                  className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+                >
+                  Ver todas →
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {opsUrgentes.length === 0 ? (
+                <p className="text-muted-foreground text-sm">Nenhuma OP urgente.</p>
+              ) : (
+                <ul className="divide-y">
+                  {opsUrgentes.map((op) => (
+                    <li key={op.id} className="flex items-center gap-3 py-2.5">
+                      <Link
+                        href={`/ordens/${op.id}`}
+                        className="font-mono text-xs hover:underline"
+                      >
+                        {op.numero}
+                      </Link>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">
+                          {op.produtoNome}
+                        </div>
+                        <div className="text-muted-foreground truncate text-xs">
+                          {[op.variacaoCor, op.variacaoTamanho]
+                            .filter(Boolean)
+                            .join(' / ') || op.produtoSku}
+                          {op.maquinaNome && (
+                            <>
+                              {' · '}
+                              <span>{op.maquinaNome}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <Badge
+                        className={cn(
+                          'shrink-0',
+                          PRIORIDADE_BADGE[op.prioridade],
+                          op.prioridade === 'urgente' && 'pulse-urgente',
+                        )}
+                      >
+                        {PRIORIDADE_LABEL[op.prioridade]}
+                      </Badge>
+                      <Badge variant="secondary" className="shrink-0">
+                        {STATUS_LABEL_CURTO[op.status]}
+                      </Badge>
+                      {op.dataPrevistaFim && (
+                        <span
+                          className={cn(
+                            'hidden shrink-0 items-center gap-1 tabular-nums text-xs sm:inline-flex',
+                            op.atrasada
+                              ? 'text-destructive font-medium'
+                              : 'text-muted-foreground',
+                          )}
+                        >
+                          {op.atrasada && <CircleAlert className="size-3.5" />}
+                          {format(new Date(op.dataPrevistaFim), 'dd/MM/yy', {
+                            locale: ptBR,
+                          })}
+                        </span>
                       )}
-                    </div>
-                  </div>
-                  <Badge
-                    className={cn(
-                      'shrink-0',
-                      PRIORIDADE_BADGE[op.prioridade],
-                      op.prioridade === 'urgente' && 'pulse-urgente',
-                    )}
-                  >
-                    {PRIORIDADE_LABEL[op.prioridade]}
-                  </Badge>
-                  <Badge variant="secondary" className="shrink-0">
-                    {STATUS_LABEL_CURTO[op.status]}
-                  </Badge>
-                  {op.dataPrevistaFim && (
-                    <span
-                      className={cn(
-                        'hidden shrink-0 items-center gap-1 tabular-nums text-xs sm:inline-flex',
-                        op.atrasada
-                          ? 'text-destructive font-medium'
-                          : 'text-muted-foreground',
-                      )}
-                    >
-                      {op.atrasada && <CircleAlert className="size-3.5" />}
-                      {format(new Date(op.dataPrevistaFim), 'dd/MM/yy', {
-                        locale: ptBR,
-                      })}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+    </ViewTransition>
   )
 }
 
