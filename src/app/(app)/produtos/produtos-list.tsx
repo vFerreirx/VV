@@ -41,6 +41,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  formatarPesoDeProduto,
+  pesoDeProduto,
+  type PesoDeProduto,
+} from '@/lib/peso'
+import { cn } from '@/lib/utils'
 
 type Props = {
   produtos: ProdutoListItem[]
@@ -187,6 +193,7 @@ export function ProdutosList({
                   )}
                   <TableHead>SKU</TableHead>
                   <TableHead>Nome</TableHead>
+                  <TableHead className="w-28 text-right">Peso</TableHead>
                   <TableHead className="text-right">Variações</TableHead>
                   <TableHead>Status</TableHead>
                   {podeEditar && <TableHead className="w-24" />}
@@ -215,6 +222,9 @@ export function ProdutosList({
                       >
                         {p.nome}
                       </Link>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <PesoCelula produto={p} />
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {p.totalVariacoes}
@@ -270,6 +280,10 @@ export function ProdutosList({
                   <div className="text-right text-foreground tabular-nums">
                     {p.totalVariacoes}
                   </div>
+                  <div>Peso</div>
+                  <div className="text-right">
+                    <PesoCelula produto={p} />
+                  </div>
                 </div>
                 {podeEditar && (
                   <div className="mt-3 flex justify-end gap-1">
@@ -293,6 +307,70 @@ export function ProdutosList({
       />
     </div>
   )
+}
+
+// -----------------------------------------------------------------
+// Peso
+// -----------------------------------------------------------------
+
+// O número em destaque é o override do PRÓPRIO produto; em cinza, o peso que
+// vem do TAMANHO das variações. Os dois são reais — o pedido resolve o peso
+// pela mesma cadeia (ver src/lib/peso.ts) —, mas quem edita o cadastro
+// precisa saber qual dos dois está vendo antes de sair mexendo.
+//
+// O asterisco marca peso PARCIAL: o produto tem mais de um tamanho e algum
+// deles ainda está sem peso. Sem essa marca, "350 g" numa Peseira daria a
+// entender que Casal, King e Queen já estão todos cadastrados.
+function PesoCelula({ produto }: { produto: ProdutoListItem }) {
+  const peso = pesoDeProduto(produto.pesoGramas, produto.tamanhosPeso)
+  const parcial = peso.min != null && peso.semPeso.length > 0
+
+  return (
+    <span
+      className={cn(
+        'tabular-nums',
+        peso.origem === 'produto' ? 'font-medium' : 'text-muted-foreground',
+      )}
+      title={tituloDoPeso(produto, peso)}
+    >
+      {formatarPesoDeProduto(peso)}
+      {parcial && (
+        <span className="text-amber-600 dark:text-amber-500"> *</span>
+      )}
+    </span>
+  )
+}
+
+function tituloDoPeso(produto: ProdutoListItem, peso: PesoDeProduto): string {
+  const porTamanho = produto.tamanhosPeso
+    .map(
+      (t) =>
+        `${t.tamanho}: ${t.pesoGramas == null ? '—' : `${t.pesoGramas} g`}`,
+    )
+    .join(' · ')
+
+  if (peso.origem === 'produto') {
+    return [
+      'Peso cadastrado no próprio produto — vale para todos os tamanhos.',
+      porTamanho && `Tamanhos: ${porTamanho}`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  if (peso.origem === 'tamanho') {
+    return [
+      'Peso herdado do tamanho (o produto não tem peso próprio).',
+      porTamanho,
+      peso.semPeso.length > 0 && `Ainda sem peso: ${peso.semPeso.join(', ')}.`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  return produto.tamanhosPeso.length === 0
+    ? 'Sem peso: o produto não tem peso próprio e as variações não têm tamanho.'
+    : `Sem peso: nem o produto nem os tamanhos têm peso cadastrado.\n${porTamanho}`
 }
 
 function BulkExcluirDialog({

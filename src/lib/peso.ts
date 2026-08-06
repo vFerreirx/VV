@@ -248,3 +248,58 @@ export function avisoSemPeso(itensSemPeso: number): string | null {
     ? '1 item sem peso cadastrado'
     : `${itensSemPeso} itens sem peso cadastrado`
 }
+
+// -----------------------------------------------------------------
+// Peso na LISTA de produtos (/produtos)
+// -----------------------------------------------------------------
+
+// A coluna "Peso" do cadastro espelha os passos 1 e 3 de `pesoUnitario`: o
+// override do produto vence, e sem ele vale o peso do TAMANHO. Mostrar só o
+// override deixaria a coluna quase toda vazia e faria parecer que não há
+// peso cadastrado, quando o pedido resolve o peso pelo tamanho e soma
+// normalmente.
+//
+// Não dá pra devolver um número só: um produto pode ter vários tamanhos (a
+// Peseira existe em Casal, King e Queen) e cada um pesa o seu. Daí a faixa.
+export type TamanhoDoProduto = { tamanho: string; pesoGramas: number | null }
+
+export type PesoDeProduto = {
+  origem: 'produto' | 'tamanho' | 'nenhum'
+  // Faixa dos pesos conhecidos; min === max quando só existe um valor.
+  min: number | null
+  max: number | null
+  // Tamanhos do produto ainda sem peso. Enquanto tiver algum aqui o número
+  // exibido é parcial e não pode ser lido como "o peso do produto".
+  semPeso: string[]
+}
+
+export function pesoDeProduto(
+  pesoGramas: number | null,
+  tamanhosDoProduto: TamanhoDoProduto[],
+): PesoDeProduto {
+  // Override do produto: vale pra todos os tamanhos, então não há faixa nem
+  // pendência a apontar.
+  if (pesoGramas != null) {
+    return { origem: 'produto', min: pesoGramas, max: pesoGramas, semPeso: [] }
+  }
+
+  const semPeso: string[] = []
+  let min: number | null = null
+  let max: number | null = null
+  for (const t of tamanhosDoProduto) {
+    if (t.pesoGramas == null) {
+      semPeso.push(t.tamanho)
+      continue
+    }
+    min = min == null ? t.pesoGramas : Math.min(min, t.pesoGramas)
+    max = max == null ? t.pesoGramas : Math.max(max, t.pesoGramas)
+  }
+
+  return { origem: min == null ? 'nenhum' : 'tamanho', min, max, semPeso }
+}
+
+export function formatarPesoDeProduto(p: PesoDeProduto): string {
+  if (p.min == null || p.max == null) return '—'
+  if (p.min === p.max) return formatarGramas(p.min)
+  return `${p.min.toLocaleString('pt-BR')}–${formatarGramas(p.max)}`
+}

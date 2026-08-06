@@ -7,6 +7,7 @@ import {
   eq,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   or,
   sql,
@@ -17,10 +18,12 @@ import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   produtos,
+  tamanhos,
   variacoesProduto,
   type Produto,
   type VariacaoProduto,
 } from '@/lib/db/schema'
+import type { TamanhoDoProduto } from '@/lib/peso'
 import {
   produtoSchema,
   produtosFiltrosSchema,
@@ -36,7 +39,13 @@ export type ActionResult<T = undefined> =
 // Listagem com filtros
 // -----------------------------------------------------------------
 
-export type ProdutoListItem = Produto & { totalVariacoes: number }
+export type ProdutoListItem = Produto & {
+  totalVariacoes: number
+  // Tamanhos distintos das variações, com o peso cadastrado em cada um. É a
+  // origem do peso quando o produto não tem override — ver `pesoDeProduto`
+  // em src/lib/peso.ts.
+  tamanhosPeso: TamanhoDoProduto[]
+}
 
 export async function listarProdutos(
   filtros: ProdutosFiltros = {},
@@ -88,7 +97,53 @@ export async function listarProdutos(
     .where(and(...conditions))
     .orderBy(desc(produtos.ativo), asc(produtos.sku))
 
-  return rows
+  return comTamanhosPeso(rows)
+}
+
+// Anexa a cada produto os tamanhos das suas variações com o peso de cada um.
+// Uma consulta só pra lista inteira (nada de N+1): o vínculo variação →
+// tamanho é por NOME, comparado sem caixa igual `src/lib/peso.ts` faz no
+// pedido — assim o peso que aparece aqui é o mesmo que vai somar no frete.
+async function comTamanhosPeso<T extends { id: string }>(
+  rows: T[],
+): Promise<(T & { tamanhosPeso: TamanhoDoProduto[] })[]> {
+  if (rows.length === 0) return []
+
+  const vinculos = await db
+    .selectDistinct({
+      produtoId: variacoesProduto.produtoId,
+      tamanho: variacoesProduto.tamanho,
+      pesoGramas: tamanhos.pesoGramas,
+    })
+    .from(variacoesProduto)
+    .leftJoin(
+      tamanhos,
+      and(
+        sql`lower(${tamanhos.nome}) = lower(${variacoesProduto.tamanho})`,
+        isNull(tamanhos.deletedAt),
+      ),
+    )
+    .where(
+      and(
+        inArray(
+          variacoesProduto.produtoId,
+          rows.map((r) => r.id),
+        ),
+        isNull(variacoesProduto.deletedAt),
+        isNotNull(variacoesProduto.tamanho),
+      ),
+    )
+    .orderBy(asc(variacoesProduto.tamanho))
+
+  const porProduto = new Map<string, TamanhoDoProduto[]>()
+  for (const v of vinculos) {
+    if (!v.tamanho) continue
+    const lista = porProduto.get(v.produtoId) ?? []
+    lista.push({ tamanho: v.tamanho, pesoGramas: v.pesoGramas })
+    porProduto.set(v.produtoId, lista)
+  }
+
+  return rows.map((r) => ({ ...r, tamanhosPeso: porProduto.get(r.id) ?? [] }))
 }
 
 // -----------------------------------------------------------------
