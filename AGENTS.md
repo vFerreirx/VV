@@ -21,12 +21,76 @@ playground.
 
 **Sempre OK:**
 
-- ✅ `npm run db:setup` — só altera schema (CREATE/ALTER), idempotente.
+- ✅ `npm run db:setup` — idempotente. Aplica os `supabase/sql/NN_*.sql` em
+  ordem. Quase tudo ali é schema (CREATE/ALTER), mas há **carga de dados**
+  também (`39_precos_carga.sql`): são `INSERT ... ON CONFLICT DO NOTHING`,
+  que só preenchem buraco e nunca sobrescrevem o que o usuário editou. Se
+  for escrever carga nova, é esse o padrão — `UPSERT` faria o valor
+  cadastrado por ele voltar pro original no próximo setup, em silêncio.
 - ✅ `INSERT` pontual pra adicionar dado de teste sem mexer no existente.
 - ✅ Mudanças de UI/código que não tocam o banco.
 
 Se precisar testar com dados de demonstração, **avise antes** e proponha
 inserir só linhas extras, nunca substituir.
+
+## Catálogo: peso e preço vivem no par (produto, tamanho)
+
+Não existe peso nem preço "do produto". A Peseira ACONCHEGO pesa 950 g no
+Casal e 1200 g no King, e custa 50 no Casal e 70 no King; no 45x45 a capa
+ACONCHEGO custa 25 e a LINKS custa 20. **Só o par resolve.**
+
+- `produto_tamanho_preco` (`supabase/sql/38_precos.sql`) — preço de tabela.
+- `produto_tamanho_peso` (`supabase/sql/40_peso_produto_tamanho.sql`) —
+  peso. Espelha a de preço de propósito: mesmo eixo, mesma forma.
+- `kit_tamanho_preco` (38) — preço FECHADO do kit. Opcional; ver kits abaixo.
+- `tamanhos.peso_gramas` continua sendo o **padrão** por tamanho. O par
+  vence quando existe; sem ele, vale o do tamanho.
+- ⚠️ `produtos.peso_gramas` é **legado**. Não leia nem escreva — está no
+  banco só como histórico do que a migration 40 copiou, igual a
+  `largura_cm`/`comprimento_cm`. Mesma coisa: não existe campo único de
+  preço em `produtos` nem em `kits`.
+
+### Peso é recalculado, preço é snapshot — e isso é de propósito
+
+São opostos, e confundir os dois quebra o sistema de um jeito silencioso:
+
+- **Peso**: SEMPRE recalculado na leitura, do catálogo de agora. Corrigir o
+  peso de um tamanho tem que passar a valer em todo pedido, inclusive nos
+  antigos — peso serve pra cotar frete.
+- **Preço**: `orcamento_itens.preco_unitario` é SNAPSHOT do negociado.
+  Mexer no preço de tabela **não pode** alterar pedido já salvo. O preço de
+  tabela é só SUGESTÃO, que preenche o campo e para por aí — o campo é
+  sempre editável.
+
+Os comentários de topo de `src/lib/peso.ts` e `src/lib/preco.ts` explicam
+isso e se referenciam. Ao mexer num, mantenha o outro coerente.
+
+### Onde está o quê
+
+- Lógica pura (sem banco): `src/lib/peso.ts`, `src/lib/preco.ts`,
+  `src/lib/kit-tamanhos.ts`.
+- Consultas: `src/lib/db/pesos.ts` e `src/lib/db/precos.ts` — uma consulta
+  pra lista inteira, nada de N+1.
+- Catálogos do pedido: `obterCatalogoDePesos` / `obterCatalogoDePrecos` em
+  `src/app/(app)/pedidos/actions.ts`, chaveados por `${donoId}|${tamanho}`.
+- Cadastro: a tela do produto tem UMA lista por tamanho com preço e peso na
+  mesma linha (`src/components/forms/produto-form.tsx`). Campo vazio apaga a
+  linha e quer dizer "sem preço" / "usa o peso do tamanho" — nunca zero.
+
+### Kit: o tamanho é POR COMPONENTE
+
+`src/lib/kit-tamanhos.ts` é a fonte única da regra, compartilhada por três
+lugares — o builder do pedido, o cadastro de preço do kit e o cálculo de
+preço. **Se divergirem, um preço cadastrado vira inalcançável pelo pedido
+sem ninguém perceber.** Está escrito no topo do arquivo; leia antes de mexer.
+
+- Componente com 2+ tamanhos ganha o próprio seletor; com um só, resolve
+  sozinho (capa 45x45, manta Manta).
+- `orcamento_itens.tamanho` só guarda algo quando há EXATAMENTE um
+  componente variável. Com zero ou 2+ vai null — a fonte real de cada peça é
+  o snapshot `kit_componentes[].tamanho`, sempre preenchido.
+- `kit_tamanho_preco` idem: só faz sentido com um tamanho único. Kit sem
+  preço fechado cai na SOMA dos componentes, cada um no tamanho dele.
 
 ## Permissões — REGRAS FIXAS
 
