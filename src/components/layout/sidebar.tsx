@@ -19,7 +19,7 @@ import { NavLinkHint } from '@/components/layout/nav-link-hint'
 import { visibleGroups } from '@/components/layout/nav-items'
 import { SIDEBAR_ID } from '@/components/layout/sidebar-cookie'
 import { useSidebar } from '@/components/layout/sidebar-estado'
-import { SidebarResizer } from '@/components/layout/sidebar-resizer'
+import { NavResizer } from '@/components/layout/nav-resizer'
 import { useNavCollapse } from '@/components/layout/use-nav-collapse'
 import type { AreaKey } from '@/lib/auth/permissoes'
 import { cn } from '@/lib/utils'
@@ -29,7 +29,7 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
   const [isPending, startTransition] = useTransition()
   const grupos = visibleGroups(bloqueadas)
   const { collapsed, toggle, anima } = useNavCollapse()
-  const { oculta, largura } = useSidebar()
+  const { oculta, larguras } = useSidebar()
 
   // Indicator deslizante: mede a posição do item ativo e move a pílula até
   // ele. O fundo do item ativo saiu do próprio <Link> — se ficasse lá, o
@@ -121,7 +121,7 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
       style={
         {
           viewTransitionName: 'vv-sidebar',
-          '--vv-sidebar-w': `${largura}px`,
+          '--vv-sidebar-w': `${larguras.sidebar}px`,
         } as React.CSSProperties
       }
       className={cn(
@@ -140,7 +140,7 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
           oculta && '-translate-x-2 opacity-0',
         )}
       >
-        <SidebarResizer alvoRef={asideRef} />
+        <NavResizer alvo="sidebar" alvoRef={asideRef} />
         <div className="border-sidebar-border flex h-14 items-center gap-2.5 border-b px-4">
           <Logo variant="mark" className="text-sidebar-primary size-7" />
           <div className="leading-tight">

@@ -7,8 +7,8 @@ import { Suspense } from 'react'
 import { Sidebar } from '@/components/layout/sidebar'
 import {
   larguraDoCookie,
+  LARGURAS,
   SIDEBAR_COOKIE,
-  SIDEBAR_LARGURA_COOKIE,
 } from '@/components/layout/sidebar-cookie'
 import { SidebarProvider } from '@/components/layout/sidebar-estado'
 import { Topbar } from '@/components/layout/topbar'
@@ -24,14 +24,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // dinâmica por causa do requireAuth().
   const biscoitos = await cookies()
   const sidebarOculta = biscoitos.get(SIDEBAR_COOKIE)?.value === '1'
-  const sidebarLargura = larguraDoCookie(
-    biscoitos.get(SIDEBAR_LARGURA_COOKIE)?.value,
-  )
+  const largurasIniciais = {
+    sidebar: larguraDoCookie(
+      'sidebar',
+      biscoitos.get(LARGURAS.sidebar.cookie)?.value,
+    ),
+    gaveta: larguraDoCookie(
+      'gaveta',
+      biscoitos.get(LARGURAS.gaveta.cookie)?.value,
+    ),
+  }
 
   return (
     <SidebarProvider
       ocultaInicial={sidebarOculta}
-      larguraInicial={sidebarLargura}
+      largurasIniciais={largurasIniciais}
     >
       <div className="flex h-screen w-full overflow-hidden print:block print:h-auto print:overflow-visible">
         <Sidebar bloqueadas={bloqueadas} />

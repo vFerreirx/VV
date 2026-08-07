@@ -65,7 +65,10 @@ function SheetContent({
             render={
               <Button
                 variant="ghost"
-                className="absolute top-3 right-3"
+                // z-20: fica acima de qualquer coisa posicionada que o
+                // conteúdo do sheet encoste na borda (o resizer da gaveta
+                // de navegação cobria os 8px da direita do botão).
+                className="absolute top-3 right-3 z-20"
                 size="icon-sm"
               />
             }

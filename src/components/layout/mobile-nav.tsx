@@ -7,12 +7,14 @@
 import { LogOut, Menu } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
 import { NavGrupo } from '@/components/layout/nav-grupo'
 import { visibleGroups } from '@/components/layout/nav-items'
+import { NavResizer } from '@/components/layout/nav-resizer'
+import { useSidebar } from '@/components/layout/sidebar-estado'
 import { useNavCollapse } from '@/components/layout/use-nav-collapse'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,6 +32,8 @@ export function MobileNav({ bloqueadas }: { bloqueadas: AreaKey[] }) {
   const [isPending, startTransition] = useTransition()
   const grupos = visibleGroups(bloqueadas)
   const { collapsed, toggle, anima } = useNavCollapse()
+  const { larguras } = useSidebar()
+  const painelRef = useRef<HTMLDivElement>(null)
 
   function handleLogout() {
     startTransition(async () => {
@@ -51,7 +55,24 @@ export function MobileNav({ bloqueadas }: { bloqueadas: AreaKey[] }) {
       >
         <Menu />
       </SheetTrigger>
-      <SheetContent side="left" className="w-72 max-w-[85vw] p-0">
+      {/* Largura inline (e não por classe): o SheetContent já traz um
+          `data-[side=left]:w-3/4`, e o seletor de atributo dele ganha de
+          qualquer `w-*` solto — a largura salva era ignorada.
+          `max-w-[85vw]` continua como rede de segurança: o resizer já
+          limita pela tela, mas o cookie pode ter sido gravado num aparelho
+          maior ou antes de girar a tela. */}
+      <SheetContent
+        ref={painelRef}
+        side="left"
+        style={
+          {
+            '--vv-gaveta-w': `${larguras.gaveta}px`,
+            width: 'var(--vv-gaveta-w)',
+          } as React.CSSProperties
+        }
+        className="max-w-[85vw] p-0"
+      >
+        <NavResizer alvo="gaveta" alvoRef={painelRef} pega />
         <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
         <div className="flex h-full flex-col pl-[var(--sa-left,env(safe-area-inset-left))]">
           <div className="border-border flex h-[calc(3.5rem_+_var(--sa-top,env(safe-area-inset-top)))] items-center gap-2.5 border-b px-4 pt-[var(--sa-top,env(safe-area-inset-top))]">
