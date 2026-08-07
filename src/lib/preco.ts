@@ -59,6 +59,55 @@ export type ComponentePrecificavel = {
   tamanho: string | null
 }
 
+// -----------------------------------------------------------------
+// Preço na LISTA de produtos (/produtos)
+// -----------------------------------------------------------------
+
+// Não dá pra mostrar um número só: o preço mora no par (produto, tamanho) e
+// a Peseira custa 50 no Casal, 60 no Queen e 70 no King. Daí a faixa — mesma
+// forma de `pesoDeProduto` em src/lib/peso.ts, e pela mesma razão.
+//
+// A diferença é que aqui não existe "origem": preço não tem override no
+// produto pra herdar do tamanho. Ou o par tem preço cadastrado, ou não tem.
+export type TamanhoComPreco = { tamanho: string; centavos: number | null }
+
+export type PrecoDeProduto = {
+  min: number | null
+  max: number | null
+  // Tamanhos do produto ainda sem preço. Enquanto tiver algum aqui a faixa
+  // exibida é parcial e não pode ser lida como "o preço do produto".
+  semPreco: string[]
+}
+
+export function precoDeProdutoNaLista(
+  tamanhosDoProduto: TamanhoComPreco[],
+): PrecoDeProduto {
+  const semPreco: string[] = []
+  let min: number | null = null
+  let max: number | null = null
+
+  for (const t of tamanhosDoProduto) {
+    if (t.centavos == null) {
+      semPreco.push(t.tamanho)
+      continue
+    }
+    min = min == null ? t.centavos : Math.min(min, t.centavos)
+    max = max == null ? t.centavos : Math.max(max, t.centavos)
+  }
+
+  return { min, max, semPreco }
+}
+
+export function formatarPrecoDeProduto(p: PrecoDeProduto): string {
+  if (p.min == null || p.max == null) return '—'
+  if (p.min === p.max) return `R$ ${centavosParaMoeda(p.min)}`
+  return `R$ ${centavosParaMoeda(p.min)}–${centavosParaMoeda(p.max)}`
+}
+
+// -----------------------------------------------------------------
+// Sugestão para uma linha (continuação)
+// -----------------------------------------------------------------
+
 /** Preço de tabela de um produto avulso. Nulo = não cadastrado. */
 export function precoDeProduto(
   tabela: TabelaDePrecos,

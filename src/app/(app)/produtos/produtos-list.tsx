@@ -47,6 +47,11 @@ import {
   pesoDeProduto,
   type PesoDeProduto,
 } from '@/lib/peso'
+import {
+  formatarPrecoDeProduto,
+  precoDeProdutoNaLista,
+  type PrecoDeProduto,
+} from '@/lib/preco'
 import { cn } from '@/lib/utils'
 
 type Props = {
@@ -195,7 +200,8 @@ export function ProdutosList({
                   )}
                   <TableHead>SKU</TableHead>
                   <TableHead>Nome</TableHead>
-                  <TableHead className="w-28 text-right">Peso</TableHead>
+                  <TableHead className="w-32 text-right">Preço</TableHead>
+                <TableHead className="w-28 text-right">Peso</TableHead>
                   <TableHead className="text-right">Variações</TableHead>
                   <TableHead>Status</TableHead>
                   {podeEditar && <TableHead className="w-24" />}
@@ -224,6 +230,9 @@ export function ProdutosList({
                       >
                         {p.nome}
                       </Link>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <PrecoCelula produto={p} />
                     </TableCell>
                     <TableCell className="text-right">
                       <PesoCelula produto={p} />
@@ -282,6 +291,10 @@ export function ProdutosList({
                   <div className="text-right text-foreground tabular-nums">
                     {p.totalVariacoes}
                   </div>
+                  <div>Preço</div>
+                  <div className="text-right">
+                    <PrecoCelula produto={p} />
+                  </div>
                   <div>Peso</div>
                   <div className="text-right">
                     <PesoCelula produto={p} />
@@ -309,6 +322,71 @@ export function ProdutosList({
       />
     </div>
   )
+}
+
+// -----------------------------------------------------------------
+// Preço de tabela
+// -----------------------------------------------------------------
+
+// Faixa dos preços cadastrados nos tamanhos que o produto oferece. Não há
+// número único porque não há preço único: a Peseira custa 50 no Casal e 70
+// no King (ver `precoDeProdutoNaLista` em src/lib/preco.ts).
+//
+// O asterisco marca preço PARCIAL — o produto tem tamanho sem preço. É a
+// informação que interessa a quem está preenchendo o catálogo: sem ele,
+// "R$ 50,00" numa Peseira daria a entender que os três tamanhos já estão
+// cadastrados, quando só o Queen está.
+function PrecoCelula({ produto }: { produto: ProdutoListItem }) {
+  const preco = precoDeProdutoNaLista(produto.tamanhosPreco)
+  const parcial = preco.min != null && preco.semPreco.length > 0
+
+  return (
+    <span
+      className={cn(
+        'tabular-nums',
+        preco.min == null ? 'text-muted-foreground' : 'font-medium',
+      )}
+      title={tituloDoPreco(produto, preco)}
+    >
+      {formatarPrecoDeProduto(preco)}
+      {parcial && (
+        <span className="text-amber-600 dark:text-amber-500"> *</span>
+      )}
+    </span>
+  )
+}
+
+function tituloDoPreco(
+  produto: ProdutoListItem,
+  preco: PrecoDeProduto,
+): string {
+  if (produto.tamanhosPreco.length === 0) {
+    return 'Sem tamanho nas variações — preço é por tamanho.'
+  }
+
+  const porTamanho = produto.tamanhosPreco
+    .map(
+      (t) =>
+        `${t.tamanho}: ${
+          t.centavos == null
+            ? '—'
+            : `R$ ${(t.centavos / 100).toLocaleString('pt-BR', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}`
+        }`,
+    )
+    .join(' · ')
+
+  const cabecalho =
+    preco.min == null
+      ? 'Nenhum tamanho deste produto tem preço de tabela. O pedido cai no último preço praticado.'
+      : preco.semPreco.length > 0
+        ? `Preço parcial — falta em ${preco.semPreco.join(', ')}.`
+        : 'Preço de tabela de todos os tamanhos.'
+
+  return `${cabecalho}
+${porTamanho}`
 }
 
 // -----------------------------------------------------------------

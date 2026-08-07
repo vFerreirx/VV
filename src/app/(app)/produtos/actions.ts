@@ -16,6 +16,7 @@ import { revalidatePath } from 'next/cache'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { tamanhosPesoPorProduto } from '@/lib/db/pesos'
+import { precosPorProduto } from '@/lib/db/precos'
 import {
   produtos,
   produtoTamanhoPreco,
@@ -25,6 +26,7 @@ import {
   type VariacaoProduto,
 } from '@/lib/db/schema'
 import type { TamanhoDoProduto } from '@/lib/peso'
+import type { TamanhoComPreco } from '@/lib/preco'
 import {
   produtoSchema,
   produtosFiltrosSchema,
@@ -46,6 +48,10 @@ export type ProdutoListItem = Produto & {
   // origem do peso quando o produto não tem override — ver `pesoDeProduto`
   // em src/lib/peso.ts.
   tamanhosPeso: TamanhoDoProduto[]
+  // Os MESMOS tamanhos, com o preço de tabela de cada um (em centavos).
+  // Mesma lista de propósito: um tamanho que o produto oferece e não tem
+  // preço precisa aparecer como pendência, não sumir da conta.
+  tamanhosPreco: TamanhoComPreco[]
 }
 
 export async function listarProdutos(
@@ -98,8 +104,24 @@ export async function listarProdutos(
     .where(and(...conditions))
     .orderBy(desc(produtos.ativo), asc(produtos.sku))
 
-  const porProduto = await tamanhosPesoPorProduto(rows.map((r) => r.id))
-  return rows.map((r) => ({ ...r, tamanhosPeso: porProduto.get(r.id) ?? [] }))
+  const ids = rows.map((r) => r.id)
+  const [porProduto, precos] = await Promise.all([
+    tamanhosPesoPorProduto(ids),
+    precosPorProduto(ids),
+  ])
+
+  return rows.map((r) => {
+    const tamanhosPeso = porProduto.get(r.id) ?? []
+    const doProduto = precos.get(r.id)
+    return {
+      ...r,
+      tamanhosPeso,
+      tamanhosPreco: tamanhosPeso.map((t) => ({
+        tamanho: t.tamanho,
+        centavos: doProduto?.get(t.tamanho.trim().toLowerCase()) ?? null,
+      })),
+    }
+  })
 }
 
 // -----------------------------------------------------------------
