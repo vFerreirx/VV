@@ -18,6 +18,8 @@ import { db } from '@/lib/db'
 import { tamanhosPesoPorProduto } from '@/lib/db/pesos'
 import {
   produtos,
+  produtoTamanhoPreco,
+  tamanhos,
   variacoesProduto,
   type Produto,
   type VariacaoProduto,
@@ -104,7 +106,13 @@ export async function listarProdutos(
 // Buscar por id (com variações)
 // -----------------------------------------------------------------
 
-export type ProdutoComVariacoes = Produto & { variacoes: VariacaoProduto[] }
+export type ProdutoComVariacoes = Produto & {
+  variacoes: VariacaoProduto[]
+  // Preço de tabela por NOME do tamanho ("Casal" → "50.00"). Por nome e não
+  // por id porque é assim que o produto conhece os tamanhos dele: a variação
+  // guarda texto (`variacoes_produto.tamanho`), não FK.
+  precos: Record<string, string>
+}
 
 export async function obterProduto(
   id: string,
@@ -118,18 +126,89 @@ export async function obterProduto(
 
   if (!produto) return null
 
-  const variacoes = await db
-    .select()
-    .from(variacoesProduto)
-    .where(
-      and(
-        eq(variacoesProduto.produtoId, id),
-        isNull(variacoesProduto.deletedAt),
-      ),
-    )
-    .orderBy(asc(variacoesProduto.skuVariacao))
+  const [variacoes, linhasPreco] = await Promise.all([
+    db
+      .select()
+      .from(variacoesProduto)
+      .where(
+        and(
+          eq(variacoesProduto.produtoId, id),
+          isNull(variacoesProduto.deletedAt),
+        ),
+      )
+      .orderBy(asc(variacoesProduto.skuVariacao)),
+    db
+      .select({ tamanho: tamanhos.nome, preco: produtoTamanhoPreco.preco })
+      .from(produtoTamanhoPreco)
+      .innerJoin(tamanhos, eq(tamanhos.id, produtoTamanhoPreco.tamanhoId))
+      .where(eq(produtoTamanhoPreco.produtoId, id)),
+  ])
 
-  return { ...produto, variacoes }
+  const precos: Record<string, string> = {}
+  for (const l of linhasPreco) precos[l.tamanho] = l.preco
+
+  return { ...produto, variacoes, precos }
+}
+
+// -----------------------------------------------------------------
+// Preço de tabela (produto × tamanho)
+// -----------------------------------------------------------------
+
+// Grava o que a tela mandou, resolvendo o tamanho por NOME.
+//
+// Só mexe nos tamanhos QUE VIERAM no input. Tamanho que o produto deixou de
+// oferecer (variação removida) não é mencionado e fica intacto: apagar preço
+// como efeito colateral de mexer numa variação seria perda de dado calada, e
+// a linha órfã não faz mal — o builder não consegue montar um par que o
+// produto não oferece.
+//
+// Preço vazio, esse sim, apaga: é o usuário dizendo "este tamanho não tem
+// preço de tabela".
+async function salvarPrecosDoProduto(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  produtoId: string,
+  entradas: { tamanho: string; preco: number | null }[],
+) {
+  if (entradas.length === 0) return
+
+  const nomes = [...new Set(entradas.map((e) => e.tamanho.trim().toLowerCase()))]
+  const conhecidos = await tx
+    .select({ id: tamanhos.id, nome: tamanhos.nome })
+    .from(tamanhos)
+    .where(isNull(tamanhos.deletedAt))
+  const porNome = new Map(
+    conhecidos
+      .filter((t) => nomes.includes(t.nome.trim().toLowerCase()))
+      .map((t) => [t.nome.trim().toLowerCase(), t.id]),
+  )
+
+  for (const e of entradas) {
+    // Tamanho digitado à mão na variação que não existe no cadastro de
+    // tamanhos: não há onde pendurar o preço. Ignora em silêncio — a tela
+    // nem oferece campo pra ele.
+    const tamanhoId = porNome.get(e.tamanho.trim().toLowerCase())
+    if (!tamanhoId) continue
+
+    if (e.preco == null) {
+      await tx
+        .delete(produtoTamanhoPreco)
+        .where(
+          and(
+            eq(produtoTamanhoPreco.produtoId, produtoId),
+            eq(produtoTamanhoPreco.tamanhoId, tamanhoId),
+          ),
+        )
+      continue
+    }
+
+    await tx
+      .insert(produtoTamanhoPreco)
+      .values({ produtoId, tamanhoId, preco: e.preco.toFixed(2) })
+      .onConflictDoUpdate({
+        target: [produtoTamanhoPreco.produtoId, produtoTamanhoPreco.tamanhoId],
+        set: { preco: e.preco.toFixed(2), updatedAt: sql`now()` },
+      })
+  }
 }
 
 // -----------------------------------------------------------------
@@ -183,6 +262,8 @@ export async function criarProdutoAction(
         })),
       )
     }
+
+    await salvarPrecosDoProduto(tx, inserted!.id, data.precos)
 
     return inserted!.id
   })
@@ -288,10 +369,15 @@ export async function atualizarProdutoAction(
         })
       }
     }
+
+    await salvarPrecosDoProduto(tx, id, data.precos)
   })
 
   revalidatePath('/produtos')
   revalidatePath(`/produtos/${id}`)
+  // O builder do pedido lê o catálogo de preços; sem isto a sugestão
+  // continuaria vindo do valor antigo até a página de pedidos recarregar.
+  revalidatePath('/pedidos')
   return { success: true, message: 'Produto atualizado' }
 }
 

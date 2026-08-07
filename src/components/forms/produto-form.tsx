@@ -73,6 +73,9 @@ export type ProdutoFormDefaults = {
     modelo: string | null
     tamanho: string | null
   }>
+  // Preço de tabela por NOME do tamanho ("Casal" → "50.00"), como vem do
+  // banco. Vira máscara BRL só na tela.
+  precos?: Record<string, string>
 }
 
 const VAZIO: ProdutoFormDefaults = {
@@ -82,6 +85,26 @@ const VAZIO: ProdutoFormDefaults = {
   pesoGramas: null,
   ativo: true,
   variacoes: [],
+  precos: {},
+}
+
+// Máscara BRL: dígitos preenchem da direita (centavos). Mesma do builder do
+// pedido — o valor daqui vai preencher aquele campo, então os dois têm que
+// falar a mesma língua.
+function mascararMoeda(valor: string): string {
+  const digits = valor.replace(/\D/g, '')
+  if (!digits) return ''
+  return (Number(digits) / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+function decimalParaMoeda(dec: string | undefined): string {
+  if (!dec) return ''
+  const cents = Math.round(Number(dec) * 100)
+  if (!Number.isFinite(cents)) return ''
+  return mascararMoeda(String(cents))
 }
 
 function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
@@ -98,6 +121,7 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
       modelo: v.modelo ?? '',
       tamanho: v.tamanho ?? '',
     })),
+    precos: [],
   }
 }
 
@@ -168,6 +192,49 @@ export function ProdutoForm({
     [variacoesAtuais],
   )
 
+  // -----------------------------------------------------------------
+  // Preço de tabela por tamanho
+  // -----------------------------------------------------------------
+  //
+  // A lista de tamanhos NÃO é fixa: sai das variações que estão na tela
+  // agora. Acrescentar a variação King faz a linha de preço King aparecer
+  // sem salvar antes — é a mesma informação, não faz sentido pedir dois
+  // passos.
+  const ordemTamanho = useMemo(
+    () => new Map(tamanhos.map((t, i) => [t.nome.trim().toLowerCase(), i])),
+    [tamanhos],
+  )
+
+  const tamanhosDoProduto = useMemo(() => {
+    const vistos = new Set<string>()
+    const lista: string[] = []
+    for (const v of variacoesAtuais ?? []) {
+      const t = (v?.tamanho ?? '').trim()
+      const chave = t.toLowerCase()
+      if (!t || vistos.has(chave)) continue
+      vistos.add(chave)
+      lista.push(t)
+    }
+    // Ordem do cadastro de tamanhos (Casal antes de King antes de Queen, como
+    // o usuário ordenou lá); o que não estiver no cadastro vai pro fim.
+    return lista.sort(
+      (a, b) =>
+        (ordemTamanho.get(a.toLowerCase()) ?? Number.MAX_SAFE_INTEGER) -
+        (ordemTamanho.get(b.toLowerCase()) ?? Number.MAX_SAFE_INTEGER),
+    )
+  }, [variacoesAtuais, ordemTamanho])
+
+  // Guardado mascarado ("50,00"), fora do react-hook-form: a chave é o NOME
+  // do tamanho e o conjunto muda conforme as variações — um field array
+  // indexado brigaria com isso a cada linha adicionada.
+  const [precos, setPrecos] = useState<Record<string, string>>(() => {
+    const inicial: Record<string, string> = {}
+    for (const [tam, dec] of Object.entries(defaults.precos ?? {})) {
+      inicial[tam] = decimalParaMoeda(dec)
+    }
+    return inicial
+  })
+
   // Código de SKU do tamanho selecionado (ex.: King -> "K", Manta -> "MANTA").
   function codigoDoTamanho(nomeTamanho: string): string {
     const t = tamanhos.find((x) => x.nome === nomeTamanho)
@@ -190,10 +257,19 @@ export function ProdutoForm({
   }
 
   const onSubmit = form.handleSubmit((values) => {
+    // Só vão os tamanhos que a tela mostrou E que existem no cadastro de
+    // tamanhos — preço se pendura no par (produto, tamanho), e tamanho
+    // digitado à mão na variação não tem em quê. Campo vazio vai como ''
+    // de propósito: é o que apaga o preço daquele tamanho.
+    const precosParaSalvar = tamanhosDoProduto
+      .filter((t) => ordemTamanho.has(t.toLowerCase()))
+      .map((t) => ({ tamanho: t, preco: precos[t] ?? '' }))
+    const payload = { ...values, precos: precosParaSalvar }
+
     startTransition(async () => {
       const result = isEdit
-        ? await atualizarProdutoAction(defaults.id!, values)
-        : await criarProdutoAction(values)
+        ? await atualizarProdutoAction(defaults.id!, payload)
+        : await criarProdutoAction(payload)
 
       if (!result.success) {
         toast.error(result.error)
@@ -581,6 +657,65 @@ export function ProdutoForm({
                       >
                         <Trash2 className="text-destructive" />
                       </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Preço por tamanho</CardTitle>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Preço de tabela do catálogo. Preenche sozinho o preço do pedido
+            quando o vendedor puxa este produto — e lá continua editável.
+            Mexer aqui <strong>não</strong> altera pedido já salvo.
+          </p>
+        </CardHeader>
+        <CardContent>
+          {tamanhosDoProduto.length === 0 ? (
+            <p className="text-muted-foreground py-6 text-center text-sm">
+              Nenhum tamanho nas variações. O preço é por tamanho — cadastre
+              as variações primeiro.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {tamanhosDoProduto.map((t) => {
+                const noCadastro = ordemTamanho.has(t.trim().toLowerCase())
+                return (
+                  <div
+                    key={t}
+                    className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 last:border-0 last:pb-0"
+                  >
+                    <div className="min-w-0">
+                      <Label htmlFor={`preco-${t}`} className="text-sm">
+                        {t}
+                      </Label>
+                      {!noCadastro && (
+                        <p className="text-muted-foreground mt-0.5 text-xs">
+                          Tamanho fora do cadastro — sem preço de tabela.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-sm">R$</span>
+                      <Input
+                        id={`preco-${t}`}
+                        inputMode="numeric"
+                        placeholder="(sem preço)"
+                        className="w-32 text-right tabular-nums"
+                        value={precos[t] ?? ''}
+                        onChange={(e) =>
+                          setPrecos((prev) => ({
+                            ...prev,
+                            [t]: mascararMoeda(e.target.value),
+                          }))
+                        }
+                        disabled={isPending || !noCadastro}
+                      />
                     </div>
                   </div>
                 )

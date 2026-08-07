@@ -5,6 +5,7 @@ import {
   listarClientesOrcamentos,
   listarOrcamentos,
   listarPrecosRecentes,
+  obterCatalogoDePrecos,
 } from './actions'
 import { OrcamentosView } from './orcamentos-view'
 import { listarCompradoresParaSelecao } from '../compradores/actions'
@@ -24,12 +25,20 @@ export default async function OrcamentosPage() {
   // tem `vendas` mas não tem `compradores` não recebe dado pessoal nenhum.
   const nivelCompradores = await nivelDaAreaPara(user.role, 'compradores')
 
-  const [orcamentos, produtos, kits, precos, clientes, compradores] =
-    await Promise.all([
+  const [
+    orcamentos,
+    produtos,
+    kits,
+    precos,
+    tabela,
+    clientes,
+    compradores,
+  ] = await Promise.all([
       listarOrcamentos(),
       listarProdutosParaOrdem(),
       listarKitsComItens(),
       listarPrecosRecentes(),
+      obterCatalogoDePrecos(),
       listarClientesOrcamentos(),
       nivelCompradores !== 'nenhum'
         ? listarCompradoresParaSelecao()
@@ -46,6 +55,7 @@ export default async function OrcamentosPage() {
         produtos={produtos}
         kits={kits}
         precos={precos}
+        tabela={tabela}
         clientes={clientes}
         compradores={compradores}
         podeEditar={podeEditar}

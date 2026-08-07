@@ -3,12 +3,16 @@ import {
   boolean,
   index,
   integer,
+  numeric,
   pgTable,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+
+import { tamanhos } from './tamanhos'
 
 // Catálogo de produtos. SKU é único apenas entre produtos NÃO excluídos
 // (índice parcial) — assim o SKU de um produto excluído pode ser reusado.
@@ -82,7 +86,39 @@ export const variacoesProduto = pgTable(
   ],
 )
 
+// Preço de TABELA do par (produto, tamanho) — ver supabase/sql/38_precos.sql.
+// É o preço do catálogo, não o do pedido: `orcamento_itens.preco_unitario`
+// continua sendo snapshot do negociado e não muda quando este aqui muda.
+//
+// Sem `deletedAt` de propósito: preço não é entidade de cadastro, é um valor
+// do par. Tirar o preço é apagar a linha.
+export const produtoTamanhoPreco = pgTable(
+  'produto_tamanho_preco',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    produtoId: uuid()
+      .notNull()
+      .references(() => produtos.id, { onDelete: 'cascade' }),
+    tamanhoId: uuid()
+      .notNull()
+      .references(() => tamanhos.id),
+    preco: numeric({ precision: 12, scale: 2 }).notNull(),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => sql`now()`),
+  },
+  (table) => [
+    unique('produto_tamanho_preco_uk').on(table.produtoId, table.tamanhoId),
+    index('produto_tamanho_preco_produto_idx').on(table.produtoId),
+  ],
+)
+
 export type Produto = typeof produtos.$inferSelect
 export type NewProduto = typeof produtos.$inferInsert
 export type VariacaoProduto = typeof variacoesProduto.$inferSelect
 export type NewVariacaoProduto = typeof variacoesProduto.$inferInsert
+export type ProdutoTamanhoPreco = typeof produtoTamanhoPreco.$inferSelect
+export type NewProdutoTamanhoPreco = typeof produtoTamanhoPreco.$inferInsert

@@ -3,9 +3,11 @@ import { relations } from 'drizzle-orm'
 import { cores } from './cores'
 import { movimentacoesEstoque } from './estoque'
 import { coresFornecedorFio, lotesFio, movimentacoesFio } from './fios'
+import { kitItens, kits, kitTamanhoPreco } from './kits'
 import { maquinas } from './maquinas'
 import { apontamentosProducao, eventosKanban, ordensProducao } from './ordens'
-import { produtos, variacoesProduto } from './produtos'
+import { produtos, produtoTamanhoPreco, variacoesProduto } from './produtos'
+import { tamanhos } from './tamanhos'
 import { users } from './users'
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -25,6 +27,48 @@ export const produtosRelations = relations(produtos, ({ many }) => ({
   variacoes: many(variacoesProduto),
   ordens: many(ordensProducao),
   movimentacoes: many(movimentacoesEstoque),
+  precos: many(produtoTamanhoPreco),
+}))
+
+export const produtoTamanhoPrecoRelations = relations(
+  produtoTamanhoPreco,
+  ({ one }) => ({
+    produto: one(produtos, {
+      fields: [produtoTamanhoPreco.produtoId],
+      references: [produtos.id],
+    }),
+    tamanho: one(tamanhos, {
+      fields: [produtoTamanhoPreco.tamanhoId],
+      references: [tamanhos.id],
+    }),
+  }),
+)
+
+export const kitsRelations = relations(kits, ({ many }) => ({
+  itens: many(kitItens),
+  precos: many(kitTamanhoPreco),
+}))
+
+export const kitItensRelations = relations(kitItens, ({ one }) => ({
+  kit: one(kits, {
+    fields: [kitItens.kitId],
+    references: [kits.id],
+  }),
+  produto: one(produtos, {
+    fields: [kitItens.produtoId],
+    references: [produtos.id],
+  }),
+}))
+
+export const kitTamanhoPrecoRelations = relations(kitTamanhoPreco, ({ one }) => ({
+  kit: one(kits, {
+    fields: [kitTamanhoPreco.kitId],
+    references: [kits.id],
+  }),
+  tamanho: one(tamanhos, {
+    fields: [kitTamanhoPreco.tamanhoId],
+    references: [tamanhos.id],
+  }),
 }))
 
 export const variacoesProdutoRelations = relations(variacoesProduto, ({ one, many }) => ({

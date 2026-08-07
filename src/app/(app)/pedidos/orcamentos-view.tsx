@@ -59,6 +59,13 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import { cn } from '@/lib/utils'
+import { tamanhoDoComponente as resolverTamanhoComponente, tamanhosDoKit } from '@/lib/kit-tamanhos'
+import {
+  centavosParaMoeda,
+  precoDeKit,
+  precoDeProduto,
+  type TabelaDePrecos,
+} from '@/lib/preco'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 type Props = {
@@ -66,7 +73,10 @@ type Props = {
   produtos: ProdutoComVariacoesParaForm[]
   kits: KitComItens[]
   // Último preço usado por descrição (pré-preenche ao puxar do catálogo).
+  // É a RESERVA: só vale onde não há preço de tabela cadastrado.
   precos: Record<string, string>
+  // Preço de TABELA do catálogo (produto/kit × tamanho). Primeira escolha.
+  tabela: TabelaDePrecos
   // Clientes de orçamentos anteriores (autocomplete).
   clientes: string[]
   // Compradores cadastrados (vínculo opcional). Vem vazio quando o cargo não
@@ -121,6 +131,7 @@ export function OrcamentosView({
   produtos,
   kits,
   precos,
+  tabela,
   clientes,
   compradores,
   podeEditar,
@@ -353,6 +364,7 @@ export function OrcamentosView({
           produtos={produtos}
           kits={kits}
           precos={precos}
+          tabela={tabela}
           clientes={clientes}
           compradores={compradores}
           onClose={() => setEditando(null)}
@@ -413,6 +425,7 @@ function OrcamentoDialog({
   produtos,
   kits,
   precos,
+  tabela,
   clientes,
   compradores,
   onClose,
@@ -421,6 +434,7 @@ function OrcamentoDialog({
   produtos: ProdutoComVariacoesParaForm[]
   kits: KitComItens[]
   precos: Record<string, string>
+  tabela: TabelaDePrecos
   clientes: string[]
   compradores: CompradorOpcao[]
   onClose: () => void
@@ -626,6 +640,7 @@ function OrcamentoDialog({
             produtos={produtos}
             kits={kits}
             precos={precos}
+            tabela={tabela}
             disabled={isPending}
             onAdd={(novas) =>
               setItens((prev) => {
@@ -758,12 +773,14 @@ function CatalogoBuilder({
   produtos,
   kits,
   precos,
+  tabela,
   disabled,
   onAdd,
 }: {
   produtos: ProdutoComVariacoesParaForm[]
   kits: KitComItens[]
   precos: Record<string, string>
+  tabela: TabelaDePrecos
   disabled: boolean
   onAdd: (linhas: LinhaItem[]) => void
 }) {
@@ -854,29 +871,14 @@ function CatalogoBuilder({
     )
   }
 
-  // Tamanhos oferecidos pro kit inteiro (um seletor só). Só entram os
-  // tamanhos dos componentes que TÊM escolha de tamanho (2+ opções) — no
-  // catálogo real capa é sempre 45x45, manta sempre Manta e baguete sempre
-  // Baguete; o único componente com tamanho variável é a peseira
-  // (Casal/King/Queen). Oferecer a união crua faria escolher "45x45" como
-  // "tamanho do kit", que não quer dizer nada.
-  const tamanhosKit = kit
-    ? distintos(
-        kit.itens.flatMap((it) => {
-          const ts = tamanhosDoProduto(it.produtoId)
-          return ts.length > 1 ? ts : []
-        }),
-      )
-    : []
+  // Tamanhos oferecidos pro kit inteiro e o tamanho de cada componente vêm
+  // de src/lib/kit-tamanhos.ts — a MESMA regra que a tela de kits usa pra
+  // decidir em que tamanho cabe um preço fechado. Se divergissem, um preço
+  // cadastrado lá viraria preço que o pedido nunca alcança.
+  const tamanhosKit = kit ? tamanhosDoKit(kit.itens, tamanhosDoProduto) : []
 
-  // Resolve o tamanho DESTE componente a partir da escolha única do kit:
-  // usa o tamanho do kit quando o componente tem esse tamanho; senão, se o
-  // componente só tem um tamanho possível, é ele (capa 45x45, manta Manta).
   function tamanhoDoComponente(produtoId: string): string | null {
-    const ts = tamanhosDoProduto(produtoId)
-    if (tamanhoKit && ts.includes(tamanhoKit)) return tamanhoKit
-    if (ts.length === 1) return ts[0]
-    return null
+    return resolverTamanhoComponente(produtoId, tamanhoKit, tamanhosDoProduto)
   }
 
   function trocarModelo(m: string) {
@@ -933,6 +935,18 @@ function CatalogoBuilder({
       .join(' · ')}`
   }
 
+  // Ordem da sugestão: o que o vendedor digitou no campo do builder vence
+  // sempre (ele está dizendo o preço desta remessa); depois o PREÇO DE
+  // TABELA do catálogo; e só então a reserva, que é o último preço praticado
+  // naquela descrição. Nada disso trava: o campo da linha continua editável,
+  // e é o que ficar lá que vira snapshot no pedido.
+  function precoSugerido(daTabela: number | null, descricao: string): string {
+    if (preco) return preco
+    if (daTabela != null) return centavosParaMoeda(daTabela)
+    const daMemoria = precos[descricao]
+    return daMemoria ? decimalParaMoeda(daMemoria) : ''
+  }
+
   function adicionar() {
     if (!produto && !kit) return
     const quantidade = qtd || '1'
@@ -948,7 +962,6 @@ function CatalogoBuilder({
         return
       }
       const descricao = descricaoKit()
-      const daMemoria = precos[descricao]
       // Snapshot dos componentes (quantidade é POR KIT) — a via de
       // separação multiplica pela quantidade deste item na hora de montar.
       const componentes: KitComponente[] = kit.itens.map((it) => ({
@@ -959,12 +972,25 @@ function CatalogoBuilder({
         // Só pro peso: o documento continua imprimindo o produtoNome.
         produtoId: it.produtoId,
       }))
+      // Preço fechado do kit, senão a soma dos componentes (cada um no
+      // tamanho dele). Os componentes já vêm com o tamanho resolvido acima —
+      // é a mesma lista, não uma segunda regra.
+      const daTabela = precoDeKit(
+        tabela,
+        kit.id,
+        tamanhoKit || null,
+        kit.itens.map((it) => ({
+          produtoId: it.produtoId,
+          quantidade: it.quantidade,
+          tamanho: tamanhoDoComponente(it.produtoId),
+        })),
+      )
       linhas = [
         {
           id: novaLinhaId(),
           descricao,
           quantidade,
-          preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),
+          preco: precoSugerido(daTabela, descricao),
           kitId: kit.id,
           tamanho: tamanhoKit || null,
           componentes,
@@ -972,15 +998,14 @@ function CatalogoBuilder({
       ]
     } else {
       const listaCores = coresSel.size > 0 ? [...coresSel] : [undefined]
+      const daTabela = precoDeProduto(tabela, produto?.id, tamanho || null)
       linhas = listaCores.map((cor) => {
         const descricao = descricaoDe(cor)
-        // Preço digitado vale pra todas; em branco, usa a memória por item.
-        const daMemoria = precos[descricao]
         return {
           id: novaLinhaId(),
           descricao,
           quantidade,
-          preco: preco || (daMemoria ? decimalParaMoeda(daMemoria) : ''),
+          preco: precoSugerido(daTabela, descricao),
           // Guardados só pra resolver o peso depois. Até aqui a linha
           // avulsa virava texto ("Peseira - ARAN King - Rose") e o peso só
           // podia ser adivinhado pela descrição — é o que ainda acontece

@@ -13,6 +13,25 @@ export const kitItemSchema = z.object({
     .max(9999, 'Quantidade muito alta'),
 })
 
+// Preço FECHADO do kit num tamanho. Vazio = sem preço fechado, e aí o kit
+// cai na soma dos componentes — que é o caso normal. Ver src/lib/preco.ts.
+export const kitPrecoSchema = z.object({
+  tamanho: z.string().trim().min(1, 'Tamanho obrigatório').max(40),
+  preco: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((v) => {
+      if (v == null || v === '') return null
+      if (typeof v === 'number') return v
+      const limpo = v.trim().replace(/\./g, '').replace(',', '.')
+      if (limpo === '') return null
+      return Number(limpo)
+    })
+    .refine(
+      (v) => v === null || (Number.isFinite(v) && v >= 0),
+      'Informe um preço válido (>= 0)',
+    ),
+})
+
 export const kitSchema = z.object({
   nome: z.string().trim().min(2, 'Nome muito curto').max(120, 'Nome muito longo'),
   sku: z.string().trim().min(1, 'Informe o SKU').max(60, 'SKU muito longo'),
@@ -22,6 +41,7 @@ export const kitSchema = z.object({
     .optional(),
   ativo: z.boolean().default(true),
   itens: z.array(kitItemSchema).min(1, 'Adicione ao menos um item ao kit'),
+  precos: z.array(kitPrecoSchema).default([]),
 })
 
 // Gerar OPs dos componentes a partir de um kit. A escolha de tamanho/cor

@@ -38,6 +38,33 @@ export const variacaoSchema = z.object({
 export type VariacaoInput = z.infer<typeof variacaoSchema>
 
 // -----------------------------------------------------------------
+// Preço de tabela por tamanho
+// -----------------------------------------------------------------
+
+// O campo vem mascarado em BRL ("1.234,56"), igual ao do builder do pedido.
+// VAZIO é um valor legítimo e quer dizer "sem preço neste tamanho" — vira
+// null e apaga a linha, não vira zero. Zero seria um preço, e produto de
+// graça é decisão, não ausência de cadastro.
+export const precoTamanhoSchema = z.object({
+  tamanho: z.string().trim().min(1, 'Tamanho obrigatório').max(40),
+  preco: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((v) => {
+      if (v == null || v === '') return null
+      if (typeof v === 'number') return v
+      const limpo = v.trim().replace(/\./g, '').replace(',', '.')
+      if (limpo === '') return null
+      return Number(limpo)
+    })
+    .refine(
+      (v) => v === null || (Number.isFinite(v) && v >= 0),
+      'Informe um preço válido (>= 0)',
+    ),
+})
+
+export type PrecoTamanhoInput = z.input<typeof precoTamanhoSchema>
+
+// -----------------------------------------------------------------
 // Produto
 // -----------------------------------------------------------------
 
@@ -68,6 +95,11 @@ export const produtoSchema = z.object({
   ativo: z.boolean().default(true),
 
   variacoes: z.array(variacaoSchema).default([]),
+
+  // Uma entrada por tamanho que o produto oferece. Só chega o que a tela
+  // mostrou: tamanho que saiu das variações não é mencionado aqui e o preço
+  // dele fica intacto no banco (ver `salvarPrecosDoProduto`).
+  precos: z.array(precoTamanhoSchema).default([]),
 })
 
 export type ProdutoInput = z.input<typeof produtoSchema>

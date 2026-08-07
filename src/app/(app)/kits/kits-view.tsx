@@ -35,6 +35,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
+import { tamanhosDoKit } from '@/lib/kit-tamanhos'
 import {
   avisoPesoDeKit,
   formatarPesoDeKit,
@@ -201,6 +202,24 @@ function detalhePorComponente(itens: KitItemDetalhe[]): string {
 // ao remover uma linha do meio, e o auto-animate animaria a saida da ULTIMA
 // em vez da que foi apagada. Contador de modulo basta - a chave nunca vai
 // pro HTML, so precisa nao repetir na sessao.
+// Mascara BRL, igual a do builder do pedido e a do form do produto: o valor
+// daqui vai preencher aquele campo, entao os tres falam a mesma lingua.
+function mascararMoeda(valor: string): string {
+  const digits = valor.replace(/\D/g, '')
+  if (!digits) return ''
+  return (Number(digits) / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+function decimalParaMoeda(dec: string | undefined): string {
+  if (!dec) return ''
+  const cents = Math.round(Number(dec) * 100)
+  if (!Number.isFinite(cents)) return ''
+  return mascararMoeda(String(cents))
+}
+
 type LinhaItem = { id: string; produtoId: string; quantidade: string }
 
 let seqLinha = 0
@@ -234,6 +253,33 @@ function KitDialog({
   )
   const [listaItens] = useListaAnimada<HTMLDivElement>()
 
+  // Preco FECHADO do kit, mascarado ("105,00"). Chave = nome do tamanho.
+  const [precos, setPrecos] = useState<Record<string, string>>(() => {
+    const inicial: Record<string, string> = {}
+    for (const [tam, dec] of Object.entries(kit?.precos ?? {})) {
+      inicial[tam] = decimalParaMoeda(dec)
+    }
+    return inicial
+  })
+
+  // Tamanhos que o kit pode assumir, pela MESMA regra do builder do pedido
+  // (src/lib/kit-tamanhos.ts). Precisa ser a mesma: preco cadastrado num
+  // tamanho que o pedido nunca escolhe e preco que nunca vai ser usado.
+  const tamanhosDe = (produtoId: string) => {
+    const p = produtos.find((x) => x.id === produtoId)
+    return [
+      ...new Set(
+        (p?.variacoes ?? [])
+          .map((v) => v.tamanho)
+          .filter((t): t is string => Boolean(t)),
+      ),
+    ]
+  }
+  const tamanhosKit = tamanhosDoKit(
+    itens.filter((l) => l.produtoId).map((l) => ({ produtoId: l.produtoId })),
+    tamanhosDe,
+  )
+
   function patchItem(idx: number, patch: Partial<LinhaItem>) {
     setItens((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
   }
@@ -263,6 +309,9 @@ function KitDialog({
         descricao: descricao || undefined,
         ativo,
         itens: itensLimpos,
+        // Vazio apaga: e o usuario dizendo "este kit nao tem preco fechado
+        // neste tamanho", e ai vale a soma dos componentes.
+        precos: tamanhosKit.map((t) => ({ tamanho: t, preco: precos[t] ?? '' })),
       }
       const result = isEdit
         ? await atualizarKitAction(kit.id, payload)
@@ -368,6 +417,49 @@ function KitDialog({
               <Plus />
               Adicionar produto
             </Button>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Preço fechado por tamanho (opcional)</Label>
+            <p className="text-muted-foreground text-xs">
+              Deixe vazio no caso normal — o pedido soma o preço dos
+              componentes. Preencha só quando o combo custa diferente da
+              soma. Mexer aqui não altera pedido já salvo.
+            </p>
+            {tamanhosKit.length === 0 ? (
+              <p className="text-muted-foreground py-2 text-sm">
+                Nenhum componente deste kit varia de tamanho, então ele não
+                tem tamanho a escolher no pedido — e não há onde pendurar um
+                preço fechado. Vale a soma dos componentes.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {tamanhosKit.map((t) => (
+                  <div key={t} className="flex items-center justify-between gap-3">
+                    <Label htmlFor={`kit-preco-${t}`} className="text-sm font-normal">
+                      {t}
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground text-sm">R$</span>
+                      <Input
+                        id={`kit-preco-${t}`}
+                        inputMode="numeric"
+                        placeholder="(soma os componentes)"
+                        className="h-9 w-40 text-right tabular-nums"
+                        value={precos[t] ?? ''}
+                        onChange={(e) =>
+                          setPrecos((prev) => ({
+                            ...prev,
+                            [t]: mascararMoeda(e.target.value),
+                          }))
+                        }
+                        disabled={isPending}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">

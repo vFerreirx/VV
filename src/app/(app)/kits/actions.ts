@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
@@ -10,8 +10,10 @@ import {
   eventosKanban,
   kitItens,
   kits,
+  kitTamanhoPreco,
   ordensProducao,
   produtos,
+  tamanhos,
   variacoesProduto,
   type Kit,
 } from '@/lib/db/schema'
@@ -44,7 +46,12 @@ export type KitItemDetalhe = {
   tamanhosPeso: TamanhoDoProduto[]
 }
 
-export type KitComItens = Kit & { itens: KitItemDetalhe[] }
+export type KitComItens = Kit & {
+  itens: KitItemDetalhe[]
+  // Preço FECHADO do kit por NOME do tamanho ("Queen" → "90.00"). Quase
+  // sempre vazio: kit sem preço fechado cai na soma dos componentes.
+  precos: Record<string, string>
+}
 
 // -----------------------------------------------------------------
 // Listagem
@@ -75,9 +82,25 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
     .where(inArray(kitItens.kitId, ids))
     .orderBy(asc(produtos.nome))
 
-  const tamanhosPorProduto = await tamanhosPesoPorProduto([
-    ...new Set(itens.map((it) => it.produtoId)),
+  const [tamanhosPorProduto, linhasPreco] = await Promise.all([
+    tamanhosPesoPorProduto([...new Set(itens.map((it) => it.produtoId))]),
+    db
+      .select({
+        kitId: kitTamanhoPreco.kitId,
+        tamanho: tamanhos.nome,
+        preco: kitTamanhoPreco.preco,
+      })
+      .from(kitTamanhoPreco)
+      .innerJoin(tamanhos, eq(tamanhos.id, kitTamanhoPreco.tamanhoId))
+      .where(inArray(kitTamanhoPreco.kitId, ids)),
   ])
+
+  const precosPorKit = new Map<string, Record<string, string>>()
+  for (const l of linhasPreco) {
+    const atual = precosPorKit.get(l.kitId) ?? {}
+    atual[l.tamanho] = l.preco
+    precosPorKit.set(l.kitId, atual)
+  }
 
   const porKit = new Map<string, KitItemDetalhe[]>()
   for (const it of itens) {
@@ -91,7 +114,58 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
     else porKit.set(kitId, [detalhe])
   }
 
-  return rows.map((k) => ({ ...k, itens: porKit.get(k.id) ?? [] }))
+  return rows.map((k) => ({
+    ...k,
+    itens: porKit.get(k.id) ?? [],
+    precos: precosPorKit.get(k.id) ?? {},
+  }))
+}
+
+// Grava o preço FECHADO do kit, resolvendo o tamanho por NOME. Mesma regra
+// do produto (ver `salvarPrecosDoProduto`): só mexe no que veio, e preço
+// vazio apaga a linha em vez de virar zero.
+async function salvarPrecosDoKit(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  kitId: string,
+  entradas: { tamanho: string; preco: number | null }[],
+) {
+  if (entradas.length === 0) return
+
+  const nomes = entradas.map((e) => e.tamanho.trim().toLowerCase())
+  const conhecidos = await tx
+    .select({ id: tamanhos.id, nome: tamanhos.nome })
+    .from(tamanhos)
+    .where(isNull(tamanhos.deletedAt))
+  const porNome = new Map(
+    conhecidos
+      .filter((t) => nomes.includes(t.nome.trim().toLowerCase()))
+      .map((t) => [t.nome.trim().toLowerCase(), t.id]),
+  )
+
+  for (const e of entradas) {
+    const tamanhoId = porNome.get(e.tamanho.trim().toLowerCase())
+    if (!tamanhoId) continue
+
+    if (e.preco == null) {
+      await tx
+        .delete(kitTamanhoPreco)
+        .where(
+          and(
+            eq(kitTamanhoPreco.kitId, kitId),
+            eq(kitTamanhoPreco.tamanhoId, tamanhoId),
+          ),
+        )
+      continue
+    }
+
+    await tx
+      .insert(kitTamanhoPreco)
+      .values({ kitId, tamanhoId, preco: e.preco.toFixed(2) })
+      .onConflictDoUpdate({
+        target: [kitTamanhoPreco.kitId, kitTamanhoPreco.tamanhoId],
+        set: { preco: e.preco.toFixed(2), updatedAt: sql`now()` },
+      })
+  }
 }
 
 // -----------------------------------------------------------------
@@ -142,10 +216,12 @@ export async function criarKitAction(
         quantidade: it.quantidade,
       })),
     )
+    await salvarPrecosDoKit(tx, inserted!.id, data.precos)
     return inserted!.id
   })
 
   revalidatePath('/kits')
+  revalidatePath('/pedidos')
   return { success: true, data: { id: novoId }, message: 'Kit criado' }
 }
 
@@ -194,9 +270,12 @@ export async function atualizarKitAction(
         quantidade: it.quantidade,
       })),
     )
+    await salvarPrecosDoKit(tx, id, data.precos)
   })
 
   revalidatePath('/kits')
+  // O builder do pedido lê o catalogo de precos.
+  revalidatePath('/pedidos')
   return { success: true, message: 'Kit atualizado' }
 }
 

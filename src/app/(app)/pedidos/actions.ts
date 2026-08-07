@@ -7,15 +7,23 @@ import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   compradores,
+  kitTamanhoPreco,
   orcamentoItens,
   orcamentos,
   produtos,
+  produtoTamanhoPreco,
   tamanhos,
   type Comprador,
   type Orcamento,
   type OrcamentoItem,
 } from '@/lib/db/schema'
 import type { CatalogoPesos } from '@/lib/peso'
+import {
+  chave,
+  decimalParaCentavos,
+  tabelaVazia,
+  type TabelaDePrecos,
+} from '@/lib/preco'
 import {
   orcamentoSchema,
   type OrcamentoInput,
@@ -155,6 +163,48 @@ export async function obterCatalogoDePesos(): Promise<CatalogoPesos> {
   ])
 
   return { produtos: prods, tamanhos: tams }
+}
+
+// Catálogo de PREÇO DE TABELA, pra sugerir o preço unitário no builder.
+//
+// Mesma forma do `obterCatalogoDePesos` logo acima: duas consultas pequenas
+// no catálogo inteiro (29 preços hoje) em vez de ida ao banco por linha
+// digitada. Chaveado por (id do dono, nome do tamanho em minúscula) porque
+// é assim que o builder conhece o tamanho — texto vindo da variação, não FK.
+//
+// ATENÇÃO: isto é SUGESTÃO, não o preço do pedido. Ver o topo de
+// src/lib/preco.ts — `orcamento_itens.preco_unitario` é snapshot e não muda
+// quando o preço de tabela muda.
+export async function obterCatalogoDePrecos(): Promise<TabelaDePrecos> {
+  await requireArea('vendas')
+
+  const [deProduto, deKit] = await Promise.all([
+    db
+      .select({
+        donoId: produtoTamanhoPreco.produtoId,
+        tamanho: tamanhos.nome,
+        preco: produtoTamanhoPreco.preco,
+      })
+      .from(produtoTamanhoPreco)
+      .innerJoin(tamanhos, eq(tamanhos.id, produtoTamanhoPreco.tamanhoId)),
+    db
+      .select({
+        donoId: kitTamanhoPreco.kitId,
+        tamanho: tamanhos.nome,
+        preco: kitTamanhoPreco.preco,
+      })
+      .from(kitTamanhoPreco)
+      .innerJoin(tamanhos, eq(tamanhos.id, kitTamanhoPreco.tamanhoId)),
+  ])
+
+  const tabela = tabelaVazia()
+  for (const l of deProduto) {
+    tabela.produto[chave(l.donoId, l.tamanho)] = decimalParaCentavos(l.preco)
+  }
+  for (const l of deKit) {
+    tabela.kit[chave(l.donoId, l.tamanho)] = decimalParaCentavos(l.preco)
+  }
+  return tabela
 }
 
 // Clientes já usados (distintos, mais recentes primeiro) — autocomplete.
