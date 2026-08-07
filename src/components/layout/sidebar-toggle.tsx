@@ -10,11 +10,11 @@
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 import { SIDEBAR_ID } from '@/components/layout/sidebar-cookie'
-import { useSidebarOculta } from '@/components/layout/sidebar-visibility'
+import { useSidebar } from '@/components/layout/sidebar-estado'
 import { Button } from '@/components/ui/button'
 
 export function SidebarToggle() {
-  const { oculta, alternar } = useSidebarOculta()
+  const { oculta, alternar } = useSidebar()
   const rotulo = oculta ? 'Mostrar menu' : 'Ocultar menu'
 
   return (

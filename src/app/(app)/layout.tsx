@@ -5,8 +5,12 @@ import { cookies } from 'next/headers'
 import { Suspense } from 'react'
 
 import { Sidebar } from '@/components/layout/sidebar'
-import { SIDEBAR_COOKIE } from '@/components/layout/sidebar-cookie'
-import { SidebarVisibilityProvider } from '@/components/layout/sidebar-visibility'
+import {
+  larguraDoCookie,
+  SIDEBAR_COOKIE,
+  SIDEBAR_LARGURA_COOKIE,
+} from '@/components/layout/sidebar-cookie'
+import { SidebarProvider } from '@/components/layout/sidebar-estado'
 import { Topbar } from '@/components/layout/topbar'
 import { TopbarFallback } from '@/components/layout/topbar-fallback'
 import { areasBloqueadas } from '@/lib/auth/permissoes-db'
@@ -15,14 +19,20 @@ import { requireAuth } from '@/lib/auth/require-auth'
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAuth()
   const bloqueadas = await areasBloqueadas(user.role)
-  // Sidebar oculta lida no servidor pra o HTML já nascer com a largura
-  // certa (o botão escreve esse cookie no client). A rota já era dinâmica
-  // por causa do requireAuth().
-  const sidebarOculta =
-    (await cookies()).get(SIDEBAR_COOKIE)?.value === '1'
+  // Estado da sidebar lido no servidor pra o HTML já nascer com a largura
+  // certa (botão e resizer escrevem esses cookies no client). A rota já era
+  // dinâmica por causa do requireAuth().
+  const biscoitos = await cookies()
+  const sidebarOculta = biscoitos.get(SIDEBAR_COOKIE)?.value === '1'
+  const sidebarLargura = larguraDoCookie(
+    biscoitos.get(SIDEBAR_LARGURA_COOKIE)?.value,
+  )
 
   return (
-    <SidebarVisibilityProvider inicial={sidebarOculta}>
+    <SidebarProvider
+      ocultaInicial={sidebarOculta}
+      larguraInicial={sidebarLargura}
+    >
       <div className="flex h-screen w-full overflow-hidden print:block print:h-auto print:overflow-visible">
         <Sidebar bloqueadas={bloqueadas} />
         {/* data-app-shell / data-app-scroll: âncoras da sombra scroll-driven
@@ -38,6 +48,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </main>
         </div>
       </div>
-    </SidebarVisibilityProvider>
+    </SidebarProvider>
   )
 }

@@ -18,7 +18,8 @@ import { NavGrupo } from '@/components/layout/nav-grupo'
 import { NavLinkHint } from '@/components/layout/nav-link-hint'
 import { visibleGroups } from '@/components/layout/nav-items'
 import { SIDEBAR_ID } from '@/components/layout/sidebar-cookie'
-import { useSidebarOculta } from '@/components/layout/sidebar-visibility'
+import { useSidebar } from '@/components/layout/sidebar-estado'
+import { SidebarResizer } from '@/components/layout/sidebar-resizer'
 import { useNavCollapse } from '@/components/layout/use-nav-collapse'
 import type { AreaKey } from '@/lib/auth/permissoes'
 import { cn } from '@/lib/utils'
@@ -28,7 +29,7 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
   const [isPending, startTransition] = useTransition()
   const grupos = visibleGroups(bloqueadas)
   const { collapsed, toggle, anima } = useNavCollapse()
-  const { oculta } = useSidebarOculta()
+  const { oculta, largura } = useSidebar()
 
   // Indicator deslizante: mede a posição do item ativo e move a pílula até
   // ele. O fundo do item ativo saiu do próprio <Link> — se ficasse lá, o
@@ -38,6 +39,7 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
   // useLayoutEffect (e não useEffect) porque a medida tem que estar pronta
   // ANTES da primeira pintura: com useEffect o item ativo ficaria um quadro
   // sem nenhum destaque.
+  const asideRef = useRef<HTMLElement>(null)
   const navRef = useRef<HTMLElement>(null)
   const conteudoRef = useRef<HTMLDivElement>(null)
   const [indicator, setIndicator] = useState<{
@@ -113,24 +115,32 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
 
   return (
     <aside
+      ref={asideRef}
       id={SIDEBAR_ID}
       data-oculta={oculta || undefined}
-      style={{ viewTransitionName: 'vv-sidebar' }}
+      style={
+        {
+          viewTransitionName: 'vv-sidebar',
+          '--vv-sidebar-w': `${largura}px`,
+        } as React.CSSProperties
+      }
       className={cn(
-        'bg-sidebar hidden w-56 shrink-0 overflow-hidden transition-[width] duration-200 ease-out md:flex motion-reduce:transition-none print:hidden',
+        'bg-sidebar hidden w-[var(--vv-sidebar-w)] shrink-0 overflow-hidden transition-[width] duration-200 ease-out md:flex data-arrastando:transition-none motion-reduce:transition-none print:hidden',
         oculta && 'w-0',
       )}
     >
-      {/* Largura fixa aqui dentro: enquanto a <aside> encolhe, o conteúdo
+      {/* Largura própria aqui dentro: enquanto a <aside> encolhe, o conteúdo
           não reflui (o texto amassaria), só desliza e apaga junto.
-          `inert` tira tudo da ordem de tabulação quando oculta. */}
+          `inert` tira tudo da ordem de tabulação quando oculta — inclusive
+          o resizer, que não teria o que redimensionar. */}
       <div
         inert={oculta || undefined}
         className={cn(
-          'border-sidebar-border flex w-56 shrink-0 flex-col border-r transition-[opacity,translate] duration-200 ease-out motion-reduce:transition-none',
+          'border-sidebar-border relative flex w-[var(--vv-sidebar-w)] shrink-0 flex-col border-r transition-[opacity,translate] duration-200 ease-out motion-reduce:transition-none',
           oculta && '-translate-x-2 opacity-0',
         )}
       >
+        <SidebarResizer alvoRef={asideRef} />
         <div className="border-sidebar-border flex h-14 items-center gap-2.5 border-b px-4">
           <Logo variant="mark" className="text-sidebar-primary size-7" />
           <div className="leading-tight">
