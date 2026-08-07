@@ -11,13 +11,14 @@ import {
   orcamentoItens,
   orcamentos,
   produtos,
+  produtoTamanhoPeso,
   produtoTamanhoPreco,
   tamanhos,
   type Comprador,
   type Orcamento,
   type OrcamentoItem,
 } from '@/lib/db/schema'
-import type { CatalogoPesos } from '@/lib/peso'
+import { catalogoVazio, chavePeso, type CatalogoPesos } from '@/lib/peso'
 import {
   chave,
   decimalParaCentavos,
@@ -149,20 +150,45 @@ export async function obterOrcamentoParaRomaneio(
 export async function obterCatalogoDePesos(): Promise<CatalogoPesos> {
   await requireArea('vendas')
 
-  const [prods, tams] = await Promise.all([
+  const [pares, prods, tams] = await Promise.all([
     db
       .select({
-        id: produtos.id,
-        nome: produtos.nome,
-        pesoGramas: produtos.pesoGramas,
+        produtoId: produtoTamanhoPeso.produtoId,
+        produtoNome: produtos.nome,
+        tamanho: tamanhos.nome,
+        pesoGramas: produtoTamanhoPeso.pesoGramas,
       })
-      .from(produtos),
+      .from(produtoTamanhoPeso)
+      .innerJoin(produtos, eq(produtos.id, produtoTamanhoPeso.produtoId))
+      .innerJoin(tamanhos, eq(tamanhos.id, produtoTamanhoPeso.tamanhoId)),
+    db.select({ nome: produtos.nome }).from(produtos),
     db
       .select({ nome: tamanhos.nome, pesoGramas: tamanhos.pesoGramas })
       .from(tamanhos),
   ])
 
-  return { produtos: prods, tamanhos: tams }
+  const catalogo = catalogoVazio()
+  for (const l of pares) {
+    catalogo.porId[chavePeso(l.produtoId, l.tamanho)] = l.pesoGramas
+    catalogo.porNome[chavePeso(l.produtoNome, l.tamanho)] = l.pesoGramas
+  }
+  for (const t of tams) {
+    if (t.pesoGramas != null) {
+      catalogo.porTamanho[t.nome.trim().toLowerCase()] = t.pesoGramas
+    }
+  }
+
+  // Do mais LONGO pro mais curto: no fallback por texto, "Peseira -
+  // Aconchego" tem que ganhar de "Peseira".
+  const porTamanhoDoNome = (a: string, b: string) => b.length - a.length
+  catalogo.nomesProduto = [
+    ...new Set(prods.map((p) => p.nome.trim().toLowerCase())),
+  ].sort(porTamanhoDoNome)
+  catalogo.nomesTamanho = [
+    ...new Set(tams.map((t) => t.nome.trim().toLowerCase())),
+  ].sort(porTamanhoDoNome)
+
+  return catalogo
 }
 
 // Catálogo de PREÇO DE TABELA, pra sugerir o preço unitário no builder.

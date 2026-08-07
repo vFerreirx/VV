@@ -1,12 +1,12 @@
-import { and, asc, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 
 import { db } from '.'
-import { tamanhos, variacoesProduto } from './schema'
+import { produtoTamanhoPeso, tamanhos, variacoesProduto } from './schema'
 import type { TamanhoDoProduto } from '@/lib/peso'
 
-// Tamanhos distintos das variações de cada produto, com o peso cadastrado em
-// cada um. É a origem do peso quando o produto não tem override — o cadastro
-// de produtos e o de kits leem os dois daqui.
+// Tamanhos distintos das variações de cada produto, com o peso EFETIVO de
+// cada um: o do par (produto, tamanho) quando existe, senão o do tamanho.
+// O cadastro de produtos e o de kits leem os dois daqui.
 //
 // Uma consulta só pra lista inteira (nada de N+1). O vínculo variação →
 // tamanho é por NOME, comparado sem caixa igual `src/lib/peso.ts` faz no
@@ -22,7 +22,8 @@ export async function tamanhosPesoPorProduto(
     .selectDistinct({
       produtoId: variacoesProduto.produtoId,
       tamanho: variacoesProduto.tamanho,
-      pesoGramas: tamanhos.pesoGramas,
+      pesoDoTamanho: tamanhos.pesoGramas,
+      pesoDoPar: produtoTamanhoPeso.pesoGramas,
     })
     .from(variacoesProduto)
     .leftJoin(
@@ -30,6 +31,15 @@ export async function tamanhosPesoPorProduto(
       and(
         sql`lower(${tamanhos.nome}) = lower(${variacoesProduto.tamanho})`,
         isNull(tamanhos.deletedAt),
+      ),
+    )
+    // O par é por (produto, tamanho); o join sai do tamanho já resolvido
+    // acima pra não repetir a comparação por nome.
+    .leftJoin(
+      produtoTamanhoPeso,
+      and(
+        eq(produtoTamanhoPeso.produtoId, variacoesProduto.produtoId),
+        eq(produtoTamanhoPeso.tamanhoId, tamanhos.id),
       ),
     )
     .where(
@@ -44,7 +54,10 @@ export async function tamanhosPesoPorProduto(
   for (const v of vinculos) {
     if (!v.tamanho) continue
     const lista = porProduto.get(v.produtoId) ?? []
-    lista.push({ tamanho: v.tamanho, pesoGramas: v.pesoGramas })
+    lista.push({
+      tamanho: v.tamanho,
+      pesoGramas: v.pesoDoPar ?? v.pesoDoTamanho,
+    })
     porProduto.set(v.produtoId, lista)
   }
 

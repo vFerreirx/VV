@@ -393,23 +393,26 @@ ${porTamanho}`
 // Peso
 // -----------------------------------------------------------------
 
-// O número em destaque é o override do PRÓPRIO produto; em cinza, o peso que
-// vem do TAMANHO das variações. Os dois são reais — o pedido resolve o peso
-// pela mesma cadeia (ver src/lib/peso.ts) —, mas quem edita o cadastro
-// precisa saber qual dos dois está vendo antes de sair mexendo.
+// O peso mostrado é o EFETIVO de cada tamanho: o do par (produto, tamanho)
+// quando cadastrado, senão o do tamanho. É a mesma cadeia que o pedido usa
+// (ver src/lib/peso.ts), então o número aqui é o que vai somar no frete.
 //
-// O asterisco marca peso PARCIAL: o produto tem mais de um tamanho e algum
-// deles ainda está sem peso. Sem essa marca, "350 g" numa Peseira daria a
-// entender que Casal, King e Queen já estão todos cadastrados.
+// Faixa e não número único porque o produto tem vários tamanhos e cada um
+// pesa o seu — era exatamente isso que o antigo peso por PRODUTO não
+// conseguia dizer (ver supabase/sql/40_peso_produto_tamanho.sql).
+//
+// O asterisco marca peso PARCIAL: algum tamanho do produto ainda está sem
+// peso. Sem essa marca, "950 g" numa Peseira daria a entender que Casal,
+// King e Queen já estão todos cadastrados.
 function PesoCelula({ produto }: { produto: ProdutoListItem }) {
-  const peso = pesoDeProduto(produto.pesoGramas, produto.tamanhosPeso)
+  const peso = pesoDeProduto(produto.tamanhosPeso)
   const parcial = peso.min != null && peso.semPeso.length > 0
 
   return (
     <span
       className={cn(
         'tabular-nums',
-        peso.origem === 'produto' ? 'font-medium' : 'text-muted-foreground',
+        peso.min == null ? 'text-muted-foreground' : 'font-medium',
       )}
       title={tituloDoPeso(produto, peso)}
     >
@@ -422,6 +425,10 @@ function PesoCelula({ produto }: { produto: ProdutoListItem }) {
 }
 
 function tituloDoPeso(produto: ProdutoListItem, peso: PesoDeProduto): string {
+  if (produto.tamanhosPeso.length === 0) {
+    return 'Sem tamanho nas variações — peso é por tamanho.'
+  }
+
   const porTamanho = produto.tamanhosPeso
     .map(
       (t) =>
@@ -429,28 +436,15 @@ function tituloDoPeso(produto: ProdutoListItem, peso: PesoDeProduto): string {
     )
     .join(' · ')
 
-  if (peso.origem === 'produto') {
-    return [
-      'Peso cadastrado no próprio produto — vale para todos os tamanhos.',
-      porTamanho && `Tamanhos: ${porTamanho}`,
-    ]
-      .filter(Boolean)
-      .join('\n')
-  }
+  const cabecalho =
+    peso.min == null
+      ? 'Nenhum tamanho deste produto tem peso. O pedido não consegue somar.'
+      : peso.semPeso.length > 0
+        ? `Peso parcial — falta em ${peso.semPeso.join(', ')}.`
+        : 'Peso de todos os tamanhos.'
 
-  if (peso.origem === 'tamanho') {
-    return [
-      'Peso herdado do tamanho (o produto não tem peso próprio).',
-      porTamanho,
-      peso.semPeso.length > 0 && `Ainda sem peso: ${peso.semPeso.join(', ')}.`,
-    ]
-      .filter(Boolean)
-      .join('\n')
-  }
-
-  return produto.tamanhosPeso.length === 0
-    ? 'Sem peso: o produto não tem peso próprio e as variações não têm tamanho.'
-    : `Sem peso: nem o produto nem os tamanhos têm peso cadastrado.\n${porTamanho}`
+  return `${cabecalho}
+${porTamanho}`
 }
 
 function BulkExcluirDialog({

@@ -64,6 +64,25 @@ export const precoTamanhoSchema = z.object({
 
 export type PrecoTamanhoInput = z.input<typeof precoTamanhoSchema>
 
+// Peso do par (produto, tamanho), em gramas inteiras. VAZIO quer dizer
+// "usa o peso do tamanho" — vira null e apaga a linha, nunca zero.
+export const pesoTamanhoSchema = z.object({
+  tamanho: z.string().trim().min(1, 'Tamanho obrigatório').max(40),
+  pesoGramas: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((v) => {
+      if (v == null || v === '') return null
+      const n = typeof v === 'number' ? v : Number(String(v).trim())
+      return Number.isFinite(n) ? n : NaN
+    })
+    .refine(
+      (v) => v === null || (Number.isInteger(v) && v > 0),
+      'Informe um peso inteiro em gramas (> 0)',
+    ),
+})
+
+export type PesoTamanhoInput = z.input<typeof pesoTamanhoSchema>
+
 // -----------------------------------------------------------------
 // Produto
 // -----------------------------------------------------------------
@@ -80,18 +99,6 @@ export const produtoSchema = z.object({
   nome: z.string().min(2, 'Nome obrigatório').max(120, 'Nome muito longo'),
   descricao: stringOpt(500, 'Descrição'),
 
-  // OVERRIDE opcional do peso do tamanho, em gramas inteiras. O normal é
-  // vazio — só se preenche quando este modelo destoa dos outros que dividem
-  // o mesmo tamanho.
-  pesoGramas: z
-    .union([z.string(), z.number(), z.null(), z.undefined()])
-    .transform((v) => (v == null || v === '' ? null : Number(v)))
-    .refine(
-      (v) => v === null || (Number.isInteger(v) && v >= 0),
-      'Informe um número inteiro de gramas (>= 0)',
-    )
-    .optional(),
-
   ativo: z.boolean().default(true),
 
   variacoes: z.array(variacaoSchema).default([]),
@@ -100,6 +107,8 @@ export const produtoSchema = z.object({
   // mostrou: tamanho que saiu das variações não é mencionado aqui e o preço
   // dele fica intacto no banco (ver `salvarPrecosDoProduto`).
   precos: z.array(precoTamanhoSchema).default([]),
+  // Mesma lista de tamanhos do preço — os dois vivem na mesma linha da tela.
+  pesos: z.array(pesoTamanhoSchema).default([]),
 })
 
 export type ProdutoInput = z.input<typeof produtoSchema>

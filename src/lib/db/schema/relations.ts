@@ -6,7 +6,12 @@ import { coresFornecedorFio, lotesFio, movimentacoesFio } from './fios'
 import { kitItens, kits, kitTamanhoPreco } from './kits'
 import { maquinas } from './maquinas'
 import { apontamentosProducao, eventosKanban, ordensProducao } from './ordens'
-import { produtos, produtoTamanhoPreco, variacoesProduto } from './produtos'
+import {
+  produtos,
+  produtoTamanhoPeso,
+  produtoTamanhoPreco,
+  variacoesProduto,
+} from './produtos'
 import { tamanhos } from './tamanhos'
 import { users } from './users'
 
@@ -28,7 +33,22 @@ export const produtosRelations = relations(produtos, ({ many }) => ({
   ordens: many(ordensProducao),
   movimentacoes: many(movimentacoesEstoque),
   precos: many(produtoTamanhoPreco),
+  pesos: many(produtoTamanhoPeso),
 }))
+
+export const produtoTamanhoPesoRelations = relations(
+  produtoTamanhoPeso,
+  ({ one }) => ({
+    produto: one(produtos, {
+      fields: [produtoTamanhoPeso.produtoId],
+      references: [produtos.id],
+    }),
+    tamanho: one(tamanhos, {
+      fields: [produtoTamanhoPeso.tamanhoId],
+      references: [tamanhos.id],
+    }),
+  }),
+)
 
 export const produtoTamanhoPrecoRelations = relations(
   produtoTamanhoPreco,

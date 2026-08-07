@@ -15,10 +15,12 @@
 // Tudo em GRAMAS inteiras: somar inteiro não acumula erro de ponto
 // flutuante, e a conversão pra kg acontece só na exibição.
 
-export type ProdutoPeso = {
-  id: string
-  nome: string
-  pesoGramas: number | null
+// Chave do par, no mesmo formato de `chave()` em src/lib/preco.ts.
+// Duplicada de propósito: peso e preço têm o mesmo eixo mas destinos
+// opostos (este é recalculado na leitura, aquele é snapshot), e um import
+// entre os dois criaria um acoplamento que não existe de verdade.
+export function chavePeso(dono: string, tamanho: string): string {
+  return `${dono.trim().toLowerCase()}|${tamanho.trim().toLowerCase()}`
 }
 
 export type TamanhoPeso = {
@@ -26,9 +28,31 @@ export type TamanhoPeso = {
   pesoGramas: number | null
 }
 
+// Espelha `TabelaDePrecos` (src/lib/preco.ts): o peso vive no par
+// (produto, tamanho), então o índice é por par.
 export type CatalogoPesos = {
-  produtos: ProdutoPeso[]
-  tamanhos: TamanhoPeso[]
+  /** `${produtoId}|${tamanho}` -> gramas. */
+  porId: Record<string, number>
+  /** `${produtoNome}|${tamanho}` -> gramas. Snapshot de kit e linhas legadas. */
+  porNome: Record<string, number>
+  /** `${tamanho}` -> gramas. O padrão, quando o par não tem peso próprio. */
+  porTamanho: Record<string, number>
+  /**
+   * Nomes conhecidos, pro fallback por texto. Do mais LONGO pro mais curto:
+   * "Peseira - Aconchego" tem que ganhar de "Peseira".
+   */
+  nomesProduto: string[]
+  nomesTamanho: string[]
+}
+
+export function catalogoVazio(): CatalogoPesos {
+  return {
+    porId: {},
+    porNome: {},
+    porTamanho: {},
+    nomesProduto: [],
+    nomesTamanho: [],
+  }
 }
 
 // O mínimo que uma linha de pedido precisa ter pra ser pesada. Bate com
@@ -58,49 +82,17 @@ export type ResumoPeso = {
   itensSemPeso: number
 }
 
-// Índices montados uma vez por cálculo. As buscas por nome são
-// case-insensitive porque o texto vem de descrição digitada/gerada, e
-// "45x45" pode aparecer com qualquer caixa.
-type Indices = {
-  porId: Map<string, number | null>
-  produtoPorNome: Map<string, number | null>
-  tamanhoPorNome: Map<string, number | null>
-  // Nomes ordenados do mais LONGO pro mais curto: no fallback por texto,
-  // "Peseira - Aconchego" tem que ganhar de "Peseira", e o tamanho "Manta"
-  // não pode roubar o casamento de um nome de produto que o contenha.
-  nomesProduto: string[]
-  nomesTamanho: string[]
-}
-
-function montarIndices(catalogo: CatalogoPesos): Indices {
-  const porId = new Map<string, number | null>()
-  const produtoPorNome = new Map<string, number | null>()
-  for (const p of catalogo.produtos) {
-    porId.set(p.id, p.pesoGramas)
-    produtoPorNome.set(p.nome.toLowerCase(), p.pesoGramas)
-  }
-
-  const tamanhoPorNome = new Map<string, number | null>()
-  for (const t of catalogo.tamanhos) {
-    tamanhoPorNome.set(t.nome.toLowerCase(), t.pesoGramas)
-  }
-
-  const porTamanho = (a: string, b: string) => b.length - a.length
-  return {
-    porId,
-    produtoPorNome,
-    tamanhoPorNome,
-    nomesProduto: [...produtoPorNome.keys()].sort(porTamanho),
-    nomesTamanho: [...tamanhoPorNome.keys()].sort(porTamanho),
-  }
-}
-
 // Peso unitário de UMA peça. A ordem é a da especificação, com uma regra que
 // vale repetir: cada passo só encerra a busca se der peso NÃO-NULO. Casar o
-// produto e ele não ter override é o caso comum — aí a busca continua pro
+// par e ele não ter peso próprio é o caso comum — aí a busca continua pro
 // tamanho, em vez de devolver "sem peso".
+//
+// SEM TAMANHO NÃO HÁ RESPOSTA. Casar só o produto não basta: "Peseira -
+// ACONCHEGO" pesa 950, 1100 ou 1200 conforme o tamanho, e devolver qualquer
+// um deles seria um número plausível e errado — que some calado na cotação
+// do frete, enquanto o "sem peso" aparece e alguém resolve.
 function pesoUnitario(
-  ix: Indices,
+  catalogo: CatalogoPesos,
   entrada: {
     produtoId?: string | null
     produtoNome?: string | null
@@ -108,45 +100,42 @@ function pesoUnitario(
     descricao?: string | null
   },
 ): number | null {
-  // 1. Vínculo com o produto (linhas novas e componentes de kit novos).
-  if (entrada.produtoId) {
-    const p = ix.porId.get(entrada.produtoId)
-    if (p != null) return p
-  }
+  const tam = entrada.tamanho?.trim().toLowerCase() ?? ''
 
-  // 2. Nome exato do produto — é o que o snapshot de kit guarda, e o que
-  //    sobra nas linhas legadas que só têm texto.
-  if (entrada.produtoNome) {
-    const p = ix.produtoPorNome.get(entrada.produtoNome.trim().toLowerCase())
-    if (p != null) return p
-  }
+  if (tam) {
+    // 1. Par (produtoId, tamanho) — linhas novas e componentes de kit novos.
+    if (entrada.produtoId) {
+      const p = catalogo.porId[chavePeso(entrada.produtoId, tam)]
+      if (p != null) return p
+    }
 
-  // 3. Campo `tamanho` da linha/componente.
-  if (entrada.tamanho) {
-    const t = ix.tamanhoPorNome.get(entrada.tamanho.trim().toLowerCase())
+    // 2. Par (produtoNome, tamanho) — é o que o snapshot de kit guarda, e o
+    //    que sobra nas linhas legadas que só têm texto.
+    if (entrada.produtoNome) {
+      const p = catalogo.porNome[chavePeso(entrada.produtoNome, tam)]
+      if (p != null) return p
+    }
+
+    // 3. Peso do TAMANHO: o padrão, quando o par não tem peso próprio.
+    const t = catalogo.porTamanho[tam]
     if (t != null) return t
   }
 
-  // 4. Fallback por TEXTO da descrição. É o que faz os 371 itens antigos
-  //    funcionarem: eles guardam só "Peseira - Aconchego Casal". Produto
-  //    antes de tamanho, e nome mais longo primeiro.
+  // 4. Fallback por TEXTO da descrição. É o que faz os itens antigos
+  //    funcionarem: eles guardam só "Peseira - Aconchego Casal". Extrai
+  //    produto E tamanho e tenta o par; achando só o tamanho, vale o peso
+  //    dele.
   if (entrada.descricao) {
     const alvo = entrada.descricao.toLowerCase()
-    for (const nome of ix.nomesProduto) {
-      if (alvo.includes(nome)) {
-        const p = ix.produtoPorNome.get(nome)
+    const doTexto = catalogo.nomesTamanho.find((n) => alvo.includes(n))
+    if (doTexto) {
+      const produto = catalogo.nomesProduto.find((n) => alvo.includes(n))
+      if (produto) {
+        const p = catalogo.porNome[chavePeso(produto, doTexto)]
         if (p != null) return p
-        // Casou o produto mas ele não tem override: para de procurar
-        // produto e vai pro tamanho.
-        break
       }
-    }
-    for (const nome of ix.nomesTamanho) {
-      if (alvo.includes(nome)) {
-        const t = ix.tamanhoPorNome.get(nome)
-        if (t != null) return t
-        break
-      }
+      const t = catalogo.porTamanho[doTexto]
+      if (t != null) return t
     }
   }
 
@@ -159,14 +148,17 @@ function pesoUnitario(
 // `kit_componentes` e sem `kit_id` — só o texto.
 //
 // Elas NÃO podem cair no fallback por descrição: ali o texto casaria com o
-// tamanho "45x45" e devolveria 350 g, o peso de UMA capa, quando o kit
+// tamanho "45x45" e devolveria 200 g, o peso de UMA capa, quando o kit
 // inteiro pesa mais de 2 kg. Um peso plausível e errado é pior que peso
 // nenhum — o errado some calado na cotação do frete, o nenhum aparece no
 // aviso e alguém arruma.
 const PREFIXO_KIT = /^\s*kit\b/i
 
 // Peso de UMA unidade da linha (sem multiplicar pela quantidade do item).
-function pesoUnitarioDaLinha(ix: Indices, item: ItemPesavel): number | null {
+function pesoUnitarioDaLinha(
+  catalogo: CatalogoPesos,
+  item: ItemPesavel,
+): number | null {
   const componentes = item.kitComponentes
   if ((!componentes || componentes.length === 0) && PREFIXO_KIT.test(item.descricao)) {
     return null
@@ -174,11 +166,13 @@ function pesoUnitarioDaLinha(ix: Indices, item: ItemPesavel): number | null {
   if (componentes && componentes.length > 0) {
     let soma = 0
     for (const c of componentes) {
-      const unit = pesoUnitario(ix, {
+      const unit = pesoUnitario(catalogo, {
         produtoId: c.produtoId,
         produtoNome: c.produtoNome,
         // Tamanho do COMPONENTE (a capa é 45x45 mesmo num kit Queen), com o
-        // mesmo fallback pro tamanho do item usado na via de separação.
+        // mesmo fallback pro tamanho do item usado na via de separação —
+        // é o que mantém os pedidos antigos funcionando, quando o tamanho
+        // vivia só no nível do kit.
         tamanho: c.tamanho ?? item.tamanho,
         descricao: c.produtoNome,
       })
@@ -191,7 +185,7 @@ function pesoUnitarioDaLinha(ix: Indices, item: ItemPesavel): number | null {
     return soma
   }
 
-  return pesoUnitario(ix, {
+  return pesoUnitario(catalogo, {
     produtoId: item.produtoId,
     tamanho: item.tamanho,
     descricao: item.descricao,
@@ -202,13 +196,12 @@ export function calcularPesos(
   itens: ItemPesavel[],
   catalogo: CatalogoPesos,
 ): ResumoPeso {
-  const ix = montarIndices(catalogo)
   const porItem: Record<string, number | null> = {}
   let totalGramas = 0
   let itensSemPeso = 0
 
   for (const item of itens) {
-    const unit = pesoUnitarioDaLinha(ix, item)
+    const unit = pesoUnitarioDaLinha(catalogo, item)
     if (unit == null) {
       porItem[item.id] = null
       itensSemPeso++
@@ -253,18 +246,18 @@ export function avisoSemPeso(itensSemPeso: number): string | null {
 // Peso na LISTA de produtos (/produtos)
 // -----------------------------------------------------------------
 
-// A coluna "Peso" do cadastro espelha os passos 1 e 3 de `pesoUnitario`: o
-// override do produto vence, e sem ele vale o peso do TAMANHO. Mostrar só o
-// override deixaria a coluna quase toda vazia e faria parecer que não há
-// peso cadastrado, quando o pedido resolve o peso pelo tamanho e soma
-// normalmente.
+// A coluna "Peso" do cadastro mostra o peso EFETIVO de cada tamanho — o do
+// par (produto, tamanho) quando existe, senão o do tamanho. É a mesma cadeia
+// dos passos 1 e 3 de `pesoUnitario`, e por isso o número da tela é o que o
+// pedido vai somar.
 //
 // Não dá pra devolver um número só: um produto pode ter vários tamanhos (a
 // Peseira existe em Casal, King e Queen) e cada um pesa o seu. Daí a faixa.
+// (Era exatamente isso que o antigo `produtos.peso_gramas` não conseguia
+// dizer — ver supabase/sql/40_peso_produto_tamanho.sql.)
 export type TamanhoDoProduto = { tamanho: string; pesoGramas: number | null }
 
 export type PesoDeProduto = {
-  origem: 'produto' | 'tamanho' | 'nenhum'
   // Faixa dos pesos conhecidos; min === max quando só existe um valor.
   min: number | null
   max: number | null
@@ -274,15 +267,8 @@ export type PesoDeProduto = {
 }
 
 export function pesoDeProduto(
-  pesoGramas: number | null,
   tamanhosDoProduto: TamanhoDoProduto[],
 ): PesoDeProduto {
-  // Override do produto: vale pra todos os tamanhos, então não há faixa nem
-  // pendência a apontar.
-  if (pesoGramas != null) {
-    return { origem: 'produto', min: pesoGramas, max: pesoGramas, semPeso: [] }
-  }
-
   const semPeso: string[] = []
   let min: number | null = null
   let max: number | null = null
@@ -295,7 +281,7 @@ export function pesoDeProduto(
     max = max == null ? t.pesoGramas : Math.max(max, t.pesoGramas)
   }
 
-  return { origem: min == null ? 'nenhum' : 'tamanho', min, max, semPeso }
+  return { min, max, semPeso }
 }
 
 export function formatarPesoDeProduto(p: PesoDeProduto): string {
@@ -315,8 +301,8 @@ export function formatarPesoDeProduto(p: PesoDeProduto): string {
 export type ComponenteDeKit = {
   produtoNome: string
   quantidade: number
-  // Override do produto, se houver.
-  pesoGramas: number | null
+  // Peso EFETIVO de cada tamanho do componente (par (produto, tamanho)
+  // quando existe, senao o do tamanho).
   tamanhosPeso: TamanhoDoProduto[]
 }
 
@@ -334,7 +320,7 @@ export function pesoDeKit(componentes: ComponenteDeKit[]): PesoDeKit {
   let max = 0
 
   for (const c of componentes) {
-    const p = pesoDeProduto(c.pesoGramas, c.tamanhosPeso)
+    const p = pesoDeProduto(c.tamanhosPeso)
     // Um componente só conta como resolvido quando TODOS os tamanhos dele
     // têm peso: se a Peseira só foi pesada no Casal, o kit em King fica sem
     // resposta e a faixa mentiria pra baixo.

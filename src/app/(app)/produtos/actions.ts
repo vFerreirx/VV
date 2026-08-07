@@ -19,6 +19,7 @@ import { tamanhosPesoPorProduto } from '@/lib/db/pesos'
 import { precosPorProduto } from '@/lib/db/precos'
 import {
   produtos,
+  produtoTamanhoPeso,
   produtoTamanhoPreco,
   tamanhos,
   variacoesProduto,
@@ -44,9 +45,9 @@ export type ActionResult<T = undefined> =
 
 export type ProdutoListItem = Produto & {
   totalVariacoes: number
-  // Tamanhos distintos das variações, com o peso cadastrado em cada um. É a
-  // origem do peso quando o produto não tem override — ver `pesoDeProduto`
-  // em src/lib/peso.ts.
+  // Tamanhos distintos das variações, com o peso EFETIVO de cada um (o do
+  // par (produto, tamanho) quando existe, senão o do tamanho) — ver
+  // `pesoDeProduto` em src/lib/peso.ts.
   tamanhosPeso: TamanhoDoProduto[]
   // Os MESMOS tamanhos, com o preço de tabela de cada um (em centavos).
   // Mesma lista de propósito: um tamanho que o produto oferece e não tem
@@ -91,7 +92,6 @@ export async function listarProdutos(
       sku: produtos.sku,
       nome: produtos.nome,
       descricao: produtos.descricao,
-      pesoGramas: produtos.pesoGramas,
       mlbId: produtos.mlbId,
       shopeeItemId: produtos.shopeeItemId,
       ativo: produtos.ativo,
@@ -134,6 +134,10 @@ export type ProdutoComVariacoes = Produto & {
   // por id porque é assim que o produto conhece os tamanhos dele: a variação
   // guarda texto (`variacoes_produto.tamanho`), não FK.
   precos: Record<string, string>
+  // Peso do PAR por nome do tamanho ("45x45" -> 225). Só o cadastrado, sem
+  // herdar o do tamanho: na tela o campo vazio quer dizer "usa o peso do
+  // tamanho", e mostrar o herdado preenchido faria parecer o contrário.
+  pesos: Record<string, number>
 }
 
 export async function obterProduto(
@@ -148,7 +152,7 @@ export async function obterProduto(
 
   if (!produto) return null
 
-  const [variacoes, linhasPreco] = await Promise.all([
+  const [variacoes, linhasPreco, linhasPeso] = await Promise.all([
     db
       .select()
       .from(variacoesProduto)
@@ -164,12 +168,22 @@ export async function obterProduto(
       .from(produtoTamanhoPreco)
       .innerJoin(tamanhos, eq(tamanhos.id, produtoTamanhoPreco.tamanhoId))
       .where(eq(produtoTamanhoPreco.produtoId, id)),
+    db
+      .select({
+        tamanho: tamanhos.nome,
+        pesoGramas: produtoTamanhoPeso.pesoGramas,
+      })
+      .from(produtoTamanhoPeso)
+      .innerJoin(tamanhos, eq(tamanhos.id, produtoTamanhoPeso.tamanhoId))
+      .where(eq(produtoTamanhoPeso.produtoId, id)),
   ])
 
   const precos: Record<string, string> = {}
   for (const l of linhasPreco) precos[l.tamanho] = l.preco
+  const pesos: Record<string, number> = {}
+  for (const l of linhasPeso) pesos[l.tamanho] = l.pesoGramas
 
-  return { ...produto, variacoes, precos }
+  return { ...produto, variacoes, precos, pesos }
 }
 
 // -----------------------------------------------------------------
@@ -233,6 +247,53 @@ async function salvarPrecosDoProduto(
   }
 }
 
+// Grava o peso do par, mesma regra do preço logo acima: só mexe no que veio,
+// e campo vazio apaga a linha (= "usa o peso do tamanho") em vez de virar
+// zero, que seria um peso.
+async function salvarPesosDoProduto(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  produtoId: string,
+  entradas: { tamanho: string; pesoGramas: number | null }[],
+) {
+  if (entradas.length === 0) return
+
+  const nomes = [...new Set(entradas.map((e) => e.tamanho.trim().toLowerCase()))]
+  const conhecidos = await tx
+    .select({ id: tamanhos.id, nome: tamanhos.nome })
+    .from(tamanhos)
+    .where(isNull(tamanhos.deletedAt))
+  const porNome = new Map(
+    conhecidos
+      .filter((t) => nomes.includes(t.nome.trim().toLowerCase()))
+      .map((t) => [t.nome.trim().toLowerCase(), t.id]),
+  )
+
+  for (const e of entradas) {
+    const tamanhoId = porNome.get(e.tamanho.trim().toLowerCase())
+    if (!tamanhoId) continue
+
+    if (e.pesoGramas == null) {
+      await tx
+        .delete(produtoTamanhoPeso)
+        .where(
+          and(
+            eq(produtoTamanhoPeso.produtoId, produtoId),
+            eq(produtoTamanhoPeso.tamanhoId, tamanhoId),
+          ),
+        )
+      continue
+    }
+
+    await tx
+      .insert(produtoTamanhoPeso)
+      .values({ produtoId, tamanhoId, pesoGramas: e.pesoGramas })
+      .onConflictDoUpdate({
+        target: [produtoTamanhoPeso.produtoId, produtoTamanhoPeso.tamanhoId],
+        set: { pesoGramas: e.pesoGramas, updatedAt: sql`now()` },
+      })
+  }
+}
+
 // -----------------------------------------------------------------
 // Criar
 // -----------------------------------------------------------------
@@ -268,7 +329,6 @@ export async function criarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
-        pesoGramas: data.pesoGramas ?? null,
         ativo: data.ativo,
       })
       .returning({ id: produtos.id })
@@ -286,6 +346,7 @@ export async function criarProdutoAction(
     }
 
     await salvarPrecosDoProduto(tx, inserted!.id, data.precos)
+    await salvarPesosDoProduto(tx, inserted!.id, data.pesos)
 
     return inserted!.id
   })
@@ -345,7 +406,6 @@ export async function atualizarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
-        pesoGramas: data.pesoGramas ?? null,
         ativo: data.ativo,
       })
       .where(eq(produtos.id, id))
@@ -393,6 +453,7 @@ export async function atualizarProdutoAction(
     }
 
     await salvarPrecosDoProduto(tx, id, data.precos)
+    await salvarPesosDoProduto(tx, id, data.pesos)
   })
 
   revalidatePath('/produtos')
@@ -471,7 +532,6 @@ export async function duplicarProdutoAction(
         sku: novoSku,
         nome: `${orig.nome} (cópia)`,
         descricao: orig.descricao,
-        pesoGramas: orig.pesoGramas,
         ativo: orig.ativo,
       })
       .returning({ id: produtos.id })

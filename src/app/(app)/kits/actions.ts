@@ -40,11 +40,10 @@ export type KitItemDetalhe = {
   produtoId: string
   produtoNome: string
   quantidade: number
-  // Peso do componente: o override do produto, quando existe, e os tamanhos
-  // das variações com o peso de cada um. O kit não guarda tamanho (isso só é
+  // Peso EFETIVO de cada tamanho do componente (par (produto, tamanho)
+  // quando existe, senão o do tamanho). O kit não guarda tamanho (isso só é
   // escolhido ao gerar as OPs), então é daqui que sai a faixa de peso do kit
   // — ver `pesoDeKit` em src/lib/peso.ts.
-  pesoGramas: number | null
   tamanhosPeso: TamanhoDoProduto[]
   // Os MESMOS tamanhos, com o preço de tabela de cada um (em centavos). É o
   // que a tela usa pra somar o preço do kit — ver `precoDeKitNaLista`.
@@ -80,7 +79,6 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
       produtoId: kitItens.produtoId,
       quantidade: kitItens.quantidade,
       produtoNome: produtos.nome,
-      pesoGramas: produtos.pesoGramas,
     })
     .from(kitItens)
     .innerJoin(produtos, eq(produtos.id, kitItens.produtoId))

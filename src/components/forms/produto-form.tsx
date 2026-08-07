@@ -64,7 +64,6 @@ export type ProdutoFormDefaults = {
   sku: string
   nome: string
   descricao: string | null
-  pesoGramas: number | null
   ativo: boolean
   variacoes: Array<{
     id?: string
@@ -76,16 +75,19 @@ export type ProdutoFormDefaults = {
   // Preço de tabela por NOME do tamanho ("Casal" → "50.00"), como vem do
   // banco. Vira máscara BRL só na tela.
   precos?: Record<string, string>
+  // Peso do par por NOME do tamanho ("45x45" → 225). Só o cadastrado: vazio
+  // quer dizer "usa o peso do tamanho".
+  pesos?: Record<string, number>
 }
 
 const VAZIO: ProdutoFormDefaults = {
   sku: '',
   nome: '',
   descricao: null,
-  pesoGramas: null,
   ativo: true,
   variacoes: [],
   precos: {},
+  pesos: {},
 }
 
 // Máscara BRL: dígitos preenchem da direita (centavos). Mesma do builder do
@@ -112,7 +114,6 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
     sku: d.sku ?? '',
     nome: d.nome ?? '',
     descricao: d.descricao ?? '',
-    pesoGramas: d.pesoGramas ?? '',
     ativo: d.ativo ?? true,
     variacoes: d.variacoes.map((v) => ({
       id: v.id,
@@ -122,6 +123,7 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
       tamanho: v.tamanho ?? '',
     })),
     precos: [],
+    pesos: [],
   }
 }
 
@@ -235,6 +237,26 @@ export function ProdutoForm({
     return inicial
   })
 
+  // Peso na MESMA lista: peso e preço vivem no mesmo par (produto, tamanho)
+  // e não faria sentido pedir os dois em seções separadas.
+  const [pesos, setPesos] = useState<Record<string, string>>(() => {
+    const inicial: Record<string, string> = {}
+    for (const [tam, g] of Object.entries(defaults.pesos ?? {})) {
+      inicial[tam] = String(g)
+    }
+    return inicial
+  })
+
+  // Peso do TAMANHO, pro placeholder: é o que vale quando o campo fica
+  // vazio, e mostrá-lo evita que alguém preencha só pra repetir o padrão.
+  const pesoDoTamanho = useMemo(
+    () =>
+      new Map(
+        tamanhos.map((t) => [t.nome.trim().toLowerCase(), t.pesoGramas]),
+      ),
+    [tamanhos],
+  )
+
   // Código de SKU do tamanho selecionado (ex.: King -> "K", Manta -> "MANTA").
   function codigoDoTamanho(nomeTamanho: string): string {
     const t = tamanhos.find((x) => x.nome === nomeTamanho)
@@ -264,7 +286,14 @@ export function ProdutoForm({
     const precosParaSalvar = tamanhosDoProduto
       .filter((t) => ordemTamanho.has(t.toLowerCase()))
       .map((t) => ({ tamanho: t, preco: precos[t] ?? '' }))
-    const payload = { ...values, precos: precosParaSalvar }
+    const pesosParaSalvar = tamanhosDoProduto
+      .filter((t) => ordemTamanho.has(t.toLowerCase()))
+      .map((t) => ({ tamanho: t, pesoGramas: pesos[t] ?? '' }))
+    const payload = {
+      ...values,
+      precos: precosParaSalvar,
+      pesos: pesosParaSalvar,
+    }
 
     startTransition(async () => {
       const result = isEdit
@@ -346,23 +375,6 @@ export function ProdutoForm({
             />
           </Field>
 
-          <Field
-            label="Peso (g)"
-            id="pesoGramas"
-            error={errs.pesoGramas?.message}
-            hint="Deixe VAZIO no caso normal — o peso vem do tamanho. Preencha só quando este modelo destoa dos outros que dividem o mesmo tamanho; aqui ele sobrepõe o peso do tamanho."
-          >
-            <Input
-              id="pesoGramas"
-              type="number"
-              inputMode="numeric"
-              min="0"
-              step="1"
-              placeholder="(usa o peso do tamanho)"
-              disabled={isPending}
-              {...form.register('pesoGramas')}
-            />
-          </Field>
         </CardContent>
       </Card>
 
@@ -668,23 +680,31 @@ export function ProdutoForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Preço por tamanho</CardTitle>
+          <CardTitle>Preço e peso por tamanho</CardTitle>
           <p className="text-muted-foreground mt-1 text-sm">
-            Preço de tabela do catálogo. Preenche sozinho o preço do pedido
-            quando o vendedor puxa este produto — e lá continua editável.
-            Mexer aqui <strong>não</strong> altera pedido já salvo.
+            Os dois vivem no par produto × tamanho. O <strong>preço</strong> é
+            de tabela: preenche sozinho o preço do pedido e lá continua
+            editável, mas mexer aqui <strong>não</strong> altera pedido já
+            salvo. O <strong>peso</strong> é o contrário — serve pra cotar
+            frete e é recalculado em todo pedido, inclusive nos antigos.
+            Deixe o peso vazio no caso normal: vale o do tamanho.
           </p>
         </CardHeader>
         <CardContent>
           {tamanhosDoProduto.length === 0 ? (
             <p className="text-muted-foreground py-6 text-center text-sm">
-              Nenhum tamanho nas variações. O preço é por tamanho — cadastre
-              as variações primeiro.
+              Nenhum tamanho nas variações. Preço e peso são por tamanho —
+              cadastre as variações primeiro.
             </p>
           ) : (
             <div className="space-y-3">
+              <div className="text-muted-foreground flex justify-end gap-3 text-xs">
+                <span className="w-32 text-right">Preço</span>
+                <span className="w-28 text-right">Peso (g)</span>
+              </div>
               {tamanhosDoProduto.map((t) => {
                 const noCadastro = ordemTamanho.has(t.trim().toLowerCase())
+                const padraoDoTamanho = pesoDoTamanho.get(t.trim().toLowerCase())
                 return (
                   <div
                     key={t}
@@ -700,22 +720,46 @@ export function ProdutoForm({
                         </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground text-sm">R$</span>
-                      <Input
-                        id={`preco-${t}`}
-                        inputMode="numeric"
-                        placeholder="(sem preço)"
-                        className="w-32 text-right tabular-nums"
-                        value={precos[t] ?? ''}
-                        onChange={(e) =>
-                          setPrecos((prev) => ({
-                            ...prev,
-                            [t]: mascararMoeda(e.target.value),
-                          }))
-                        }
-                        disabled={isPending || !noCadastro}
-                      />
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-sm">R$</span>
+                        <Input
+                          id={`preco-${t}`}
+                          inputMode="numeric"
+                          placeholder="(sem preço)"
+                          className="w-28 text-right tabular-nums"
+                          value={precos[t] ?? ''}
+                          onChange={(e) =>
+                            setPrecos((prev) => ({
+                              ...prev,
+                              [t]: mascararMoeda(e.target.value),
+                            }))
+                          }
+                          disabled={isPending || !noCadastro}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id={`peso-${t}`}
+                          aria-label={`Peso de ${t} em gramas`}
+                          inputMode="numeric"
+                          placeholder={
+                            padraoDoTamanho == null
+                              ? '(sem peso)'
+                              : `${padraoDoTamanho}`
+                          }
+                          className="w-24 text-right tabular-nums"
+                          value={pesos[t] ?? ''}
+                          onChange={(e) =>
+                            setPesos((prev) => ({
+                              ...prev,
+                              [t]: e.target.value.replace(/\D/g, ''),
+                            }))
+                          }
+                          disabled={isPending || !noCadastro}
+                        />
+                        <span className="text-muted-foreground text-sm">g</span>
+                      </div>
                     </div>
                   </div>
                 )

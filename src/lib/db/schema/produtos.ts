@@ -28,11 +28,13 @@ export const produtos = pgTable(
     // (schema/tamanhos.ts). As colunas comprimento_cm/largura_cm ainda
     // existem no banco por histórico, mas o app não as usa mais.
 
-    // OVERRIDE do peso do tamanho, em gramas inteiras. Só preencher quando
-    // o modelo foge do padrão — hoje 7 modelos de capa dividem o tamanho
-    // "45x45" e nem todos pesam igual. Nulo (o normal) = usa o peso do
-    // tamanho.
-    pesoGramas: integer(),
+    // NOTA: o peso migrou pro par (produto, tamanho) — `produtoTamanhoPeso`
+    // logo abaixo, criada em supabase/sql/40_peso_produto_tamanho.sql. Um
+    // peso por PRODUTO não conseguia dizer a qual tamanho se referia: a
+    // Peseira existe em Casal, King e Queen e cada uma pesa o seu. A coluna
+    // peso_gramas continua no banco por histórico (é de onde a migration
+    // copiou), mas o app não a lê nem escreve mais — mesmo tratamento dado a
+    // largura_cm/comprimento_cm acima.
 
     // Identificadores externos (preenchidos quando integrar com ML/Shopee)
     mlbId: text(),
@@ -116,9 +118,42 @@ export const produtoTamanhoPreco = pgTable(
   ],
 )
 
+// Peso do par (produto, tamanho) — ver supabase/sql/40_peso_produto_tamanho.sql.
+// Espelho exato da `produtoTamanhoPreco` acima, de propósito: peso e preço
+// têm o mesmo eixo e não faria sentido inventar outra forma pra cada um.
+//
+// A diferença é o NOT NULL: "sem peso" é a ausência da linha, não uma linha
+// com null. E o peso continua NÃO sendo congelado no pedido (ver o topo de
+// src/lib/peso.ts) — ao contrário do preço, que é snapshot.
+export const produtoTamanhoPeso = pgTable(
+  'produto_tamanho_peso',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    produtoId: uuid()
+      .notNull()
+      .references(() => produtos.id, { onDelete: 'cascade' }),
+    tamanhoId: uuid()
+      .notNull()
+      .references(() => tamanhos.id),
+    pesoGramas: integer().notNull(),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => sql`now()`),
+  },
+  (table) => [
+    unique('produto_tamanho_peso_uk').on(table.produtoId, table.tamanhoId),
+    index('produto_tamanho_peso_produto_idx').on(table.produtoId),
+  ],
+)
+
 export type Produto = typeof produtos.$inferSelect
 export type NewProduto = typeof produtos.$inferInsert
 export type VariacaoProduto = typeof variacoesProduto.$inferSelect
 export type NewVariacaoProduto = typeof variacoesProduto.$inferInsert
 export type ProdutoTamanhoPreco = typeof produtoTamanhoPreco.$inferSelect
 export type NewProdutoTamanhoPreco = typeof produtoTamanhoPreco.$inferInsert
+export type ProdutoTamanhoPeso = typeof produtoTamanhoPeso.$inferSelect
+export type NewProdutoTamanhoPeso = typeof produtoTamanhoPeso.$inferInsert

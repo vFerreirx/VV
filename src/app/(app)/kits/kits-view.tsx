@@ -316,7 +316,7 @@ function PesoDoKit({ itens }: { itens: KitItemDetalhe[] }) {
 function detalhePorComponente(itens: KitItemDetalhe[]): string {
   return itens
     .map((it) => {
-      const p = pesoDeProduto(it.pesoGramas, it.tamanhosPeso)
+      const p = pesoDeProduto(it.tamanhosPeso)
       const falta =
         p.semPeso.length > 0 ? ` (sem peso: ${p.semPeso.join(', ')})` : ''
       return `${it.quantidade}× ${it.produtoNome}: ${formatarPesoDeProduto(p)}${falta}`
