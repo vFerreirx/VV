@@ -35,7 +35,17 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
-import { tamanhosDoKit } from '@/lib/kit-tamanhos'
+import { tamanhoDoComponente, tamanhosDoKit } from '@/lib/kit-tamanhos'
+import {
+  avisoPrecoDeKit,
+  centavosParaMoeda,
+  chave,
+  decimalParaCentavos,
+  formatarPrecoDeKit,
+  precoDeKit,
+  precoDeKitNaLista,
+  tabelaVazia,
+} from '@/lib/preco'
 import {
   avisoPesoDeKit,
   formatarPesoDeKit,
@@ -129,6 +139,7 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
                   ))}
                 </div>
 
+                <PrecoDoKit kit={kit} />
                 <PesoDoKit itens={kit.itens} />
               </article>
             )
@@ -149,6 +160,102 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
 }
 
 // -----------------------------------------------------------------
+// Preço do kit
+// -----------------------------------------------------------------
+
+// Mostra o que o PEDIDO vai sugerir, não uma conta paralela: monta a mesma
+// tabela de preços que o builder usa e chama a mesma `precoDeKitNaLista`.
+// Se a tela fizesse a própria conta, o número aqui e o do pedido poderiam
+// discordar — e o cadastro perderia a serventia de conferir o preço.
+function tabelaDoKit(kit: KitComItens) {
+  const tabela = tabelaVazia()
+  for (const it of kit.itens) {
+    for (const t of it.tamanhosPreco) {
+      if (t.centavos != null) {
+        tabela.produto[chave(it.produtoId, t.tamanho)] = t.centavos
+      }
+    }
+  }
+  // Preço FECHADO do kit vence a soma — mesma regra do builder.
+  for (const [tam, dec] of Object.entries(kit.precos)) {
+    tabela.kit[chave(kit.id, tam)] = decimalParaCentavos(dec)
+  }
+  return tabela
+}
+
+function tamanhosDoComponente(kit: KitComItens) {
+  return (produtoId: string) =>
+    kit.itens
+      .find((it) => it.produtoId === produtoId)
+      ?.tamanhosPeso.map((t) => t.tamanho) ?? []
+}
+
+function PrecoDoKit({ kit }: { kit: KitComItens }) {
+  const tamanhosDe = tamanhosDoComponente(kit)
+  const preco = precoDeKitNaLista(
+    tabelaDoKit(kit),
+    kit.id,
+    kit.itens,
+    tamanhosDe,
+  )
+  const aviso = avisoPrecoDeKit(preco)
+  const fechado = Object.keys(kit.precos).length > 0
+
+  return (
+    <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t pt-2 text-xs">
+      <span className="text-muted-foreground">Preço do kit</span>
+      <span
+        className="font-medium tabular-nums"
+        title={detalhePreco(kit, tamanhosDe)}
+      >
+        {formatarPrecoDeKit(preco)}
+      </span>
+      {fechado && <span className="text-muted-foreground">(fechado)</span>}
+      {aviso && (
+        <span className="text-amber-600 dark:text-amber-500">{aviso}</span>
+      )}
+    </div>
+  )
+}
+
+// Tooltip com a conta aberta por tamanho do kit. Sem isso, "R$ 80,00–95,00"
+// não diz qual tamanho custa quanto — que é justamente o que o vendedor
+// precisa saber antes de montar o pedido.
+function detalhePreco(
+  kit: KitComItens,
+  tamanhosDe: (produtoId: string) => string[],
+): string {
+  const tabela = tabelaDoKit(kit)
+  const tams = tamanhosDoKit(kit.itens, tamanhosDe)
+  const candidatos: (string | null)[] = tams.length > 0 ? tams : [null]
+
+  const linhas = candidatos.map((t) => {
+    const valor = precoDeKit(
+      tabela,
+      kit.id,
+      t,
+      kit.itens.map((it) => ({
+        produtoId: it.produtoId,
+        quantidade: it.quantidade,
+        tamanho: tamanhoDoComponente(it.produtoId, t, tamanhosDe),
+      })),
+    )
+    const rotulo = t ?? 'tamanho único'
+    const fechado = t != null && kit.precos[t] != null
+    return `${rotulo}: ${
+      valor == null ? '—' : `R$ ${centavosParaMoeda(valor)}`
+    }${fechado ? ' (preço fechado)' : ''}`
+  })
+
+  return [
+    Object.keys(kit.precos).length > 0
+      ? 'Preço fechado cadastrado — vence a soma dos componentes.'
+      : 'Soma dos componentes, cada um no tamanho dele.',
+    ...linhas,
+  ].join('\n')
+}
+
+// -----------------------------------------------------------------
 // Peso do kit
 // -----------------------------------------------------------------
 
@@ -165,8 +272,11 @@ function PesoDoKit({ itens }: { itens: KitItemDetalhe[] }) {
   const peso = pesoDeKit(itens)
   const aviso = avisoPesoDeKit(peso)
 
+  // Sem `mt-auto` aqui: quem empurra o rodapé pro fim do card é o bloco de
+  // preço, que vem logo acima. Com os dois pedindo `mt-auto`, o flex divide
+  // o espaço livre entre eles e abre um buraco no meio.
   return (
-    <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t pt-2 text-xs">
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t pt-2 text-xs">
       <span className="text-muted-foreground">Peso do kit</span>
       <span
         className="font-medium tabular-nums"

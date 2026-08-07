@@ -19,6 +19,12 @@
 // erro (0.1 + 0.2), e o valor final vai pra uma coluna numeric(12,2). A
 // conversão pra "50,00" acontece só na borda.
 
+import {
+  tamanhoDoComponente,
+  tamanhosDoKit,
+  type TamanhosDe,
+} from '@/lib/kit-tamanhos'
+
 /** Preço de um par (produto|tamanho) ou (kit|tamanho), em centavos. */
 export type TabelaDePrecos = {
   // Chave: `${produtoId}|${tamanhoNomeLower}`.
@@ -102,6 +108,76 @@ export function formatarPrecoDeProduto(p: PrecoDeProduto): string {
   if (p.min == null || p.max == null) return '—'
   if (p.min === p.max) return `R$ ${centavosParaMoeda(p.min)}`
   return `R$ ${centavosParaMoeda(p.min)}–${centavosParaMoeda(p.max)}`
+}
+
+// -----------------------------------------------------------------
+// Preço na tela de KITS (/kits)
+// -----------------------------------------------------------------
+
+// O kit não guarda tamanho — ele é escolhido no pedido —, então aqui também
+// é faixa. Mas, ao contrário do peso, a faixa NÃO sai de varrer os tamanhos
+// de cada componente solto: sai de perguntar, pra cada tamanho que o kit
+// pode assumir, quanto o pedido sugeriria. É a mesma `precoDeKit` que o
+// builder chama, com a mesma resolução de tamanho por componente.
+//
+// A diferença importa: o Kit Peseira RELEVO tem preço só no Queen. Varrendo
+// componentes soltos, a peseira apareceria "incompleta" e o kit inteiro
+// viraria "—" — escondendo que em Queen o pedido sugere 90,00 sem hesitar.
+export type PrecoDeKit = {
+  min: number | null
+  max: number | null
+  // Tamanhos do kit em que a conta não fecha (componente sem preço, ou
+  // tamanho de componente que não dá pra decidir).
+  semPreco: string[]
+}
+
+export function precoDeKitNaLista(
+  tabela: TabelaDePrecos,
+  kitId: string,
+  componentes: { produtoId: string; quantidade: number }[],
+  tamanhosDe: TamanhosDe,
+): PrecoDeKit {
+  const tams = tamanhosDoKit(componentes, tamanhosDe)
+  // Kit sem componente de tamanho variável (os de manta) não tem tamanho a
+  // escolher: a conta é uma só.
+  const candidatos: (string | null)[] = tams.length > 0 ? tams : [null]
+
+  const semPreco: string[] = []
+  let min: number | null = null
+  let max: number | null = null
+
+  for (const t of candidatos) {
+    const valor = precoDeKit(
+      tabela,
+      kitId,
+      t,
+      componentes.map((c) => ({
+        ...c,
+        tamanho: tamanhoDoComponente(c.produtoId, t, tamanhosDe),
+      })),
+    )
+    if (valor == null) {
+      if (t) semPreco.push(t)
+      continue
+    }
+    min = min == null ? valor : Math.min(min, valor)
+    max = max == null ? valor : Math.max(max, valor)
+  }
+
+  return { min, max, semPreco }
+}
+
+export function formatarPrecoDeKit(p: PrecoDeKit): string {
+  if (p.min == null || p.max == null) return '—'
+  if (p.min === p.max) return `R$ ${centavosParaMoeda(p.min)}`
+  return `R$ ${centavosParaMoeda(p.min)}–${centavosParaMoeda(p.max)}`
+}
+
+// "sem preço em Casal, King" — diz QUAL tamanho está de fora, senão a faixa
+// parece valer pro kit inteiro.
+export function avisoPrecoDeKit(p: PrecoDeKit): string | null {
+  if (p.semPreco.length === 0) return null
+  return `sem preço em ${p.semPreco.join(', ')}`
 }
 
 // -----------------------------------------------------------------

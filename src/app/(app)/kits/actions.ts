@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { tamanhosPesoPorProduto } from '@/lib/db/pesos'
+import { precosPorProduto } from '@/lib/db/precos'
 import {
   eventosKanban,
   kitItens,
@@ -18,6 +19,7 @@ import {
   type Kit,
 } from '@/lib/db/schema'
 import type { TamanhoDoProduto } from '@/lib/peso'
+import type { TamanhoComPreco } from '@/lib/preco'
 import {
   gerarOpsKitSchema,
   kitSchema,
@@ -44,6 +46,9 @@ export type KitItemDetalhe = {
   // — ver `pesoDeKit` em src/lib/peso.ts.
   pesoGramas: number | null
   tamanhosPeso: TamanhoDoProduto[]
+  // Os MESMOS tamanhos, com o preço de tabela de cada um (em centavos). É o
+  // que a tela usa pra somar o preço do kit — ver `precoDeKitNaLista`.
+  tamanhosPreco: TamanhoComPreco[]
 }
 
 export type KitComItens = Kit & {
@@ -82,8 +87,10 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
     .where(inArray(kitItens.kitId, ids))
     .orderBy(asc(produtos.nome))
 
-  const [tamanhosPorProduto, linhasPreco] = await Promise.all([
-    tamanhosPesoPorProduto([...new Set(itens.map((it) => it.produtoId))]),
+  const produtoIds = [...new Set(itens.map((it) => it.produtoId))]
+  const [tamanhosPorProduto, precosPorProd, linhasPreco] = await Promise.all([
+    tamanhosPesoPorProduto(produtoIds),
+    precosPorProduto(produtoIds),
     db
       .select({
         kitId: kitTamanhoPreco.kitId,
@@ -105,9 +112,15 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
   const porKit = new Map<string, KitItemDetalhe[]>()
   for (const it of itens) {
     const { kitId, ...resto } = it
+    const tamanhosPeso = tamanhosPorProduto.get(it.produtoId) ?? []
+    const precosDele = precosPorProd.get(it.produtoId)
     const detalhe: KitItemDetalhe = {
       ...resto,
-      tamanhosPeso: tamanhosPorProduto.get(it.produtoId) ?? [],
+      tamanhosPeso,
+      tamanhosPreco: tamanhosPeso.map((t) => ({
+        tamanho: t.tamanho,
+        centavos: precosDele?.get(t.tamanho.trim().toLowerCase()) ?? null,
+      })),
     }
     const arr = porKit.get(kitId)
     if (arr) arr.push(detalhe)
