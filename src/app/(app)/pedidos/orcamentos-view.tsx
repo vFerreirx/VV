@@ -59,7 +59,12 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import { cn } from '@/lib/utils'
-import { tamanhoDoComponente as resolverTamanhoComponente, tamanhosDoKit } from '@/lib/kit-tamanhos'
+import {
+  componentesVariaveis,
+  tamanhoDoComponente as resolverTamanhoComponente,
+  tamanhoDoKit,
+  type EscolhasDeTamanho,
+} from '@/lib/kit-tamanhos'
 import {
   centavosParaMoeda,
   precoDeKit,
@@ -793,8 +798,10 @@ function CatalogoBuilder({
   // Kit: cor escolhida POR ITEM do kit (kitItemId -> cor) — cada item pode
   // ter cor própria (ex.: capa numa cor, manta noutra).
   const [coresKit, setCoresKit] = useState<Record<string, string>>({})
-  // Kit: tamanho ÚNICO pro kit inteiro (não é por item).
-  const [tamanhoKit, setTamanhoKit] = useState('')
+  // Kit: tamanho POR COMPONENTE (produtoId -> tamanho). Antes era um só pro
+  // kit inteiro, e o componente que não tivesse aquele tamanho ficava sem
+  // nenhum — ver o topo de src/lib/kit-tamanhos.ts.
+  const [tamanhosKit, setTamanhosKit] = useState<EscolhasDeTamanho>({})
   const [qtd, setQtd] = useState('1')
   const [preco, setPreco] = useState('')
 
@@ -871,15 +878,21 @@ function CatalogoBuilder({
     )
   }
 
-  // Tamanhos oferecidos pro kit inteiro e o tamanho de cada componente vêm
-  // de src/lib/kit-tamanhos.ts — a MESMA regra que a tela de kits usa pra
+  // Quem precisa de seletor e qual tamanho cada componente recebe vêm de
+  // src/lib/kit-tamanhos.ts — a MESMA regra que a tela de kits usa pra
   // decidir em que tamanho cabe um preço fechado. Se divergissem, um preço
   // cadastrado lá viraria preço que o pedido nunca alcança.
-  const tamanhosKit = kit ? tamanhosDoKit(kit.itens, tamanhosDoProduto) : []
+  const variaveis = kit ? componentesVariaveis(kit.itens, tamanhosDoProduto) : []
 
   function tamanhoDoComponente(produtoId: string): string | null {
-    return resolverTamanhoComponente(produtoId, tamanhoKit, tamanhosDoProduto)
+    return resolverTamanhoComponente(produtoId, tamanhosKit, tamanhosDoProduto)
   }
+
+  // Tamanho que representa o kit inteiro — só existe com exatamente um
+  // componente variável. É o que vai pra `orcamento_itens.tamanho`.
+  const tamanhoDoKitAtual = kit
+    ? tamanhoDoKit(kit.itens, tamanhosKit, tamanhosDoProduto)
+    : null
 
   function trocarModelo(m: string) {
     setModeloSel(m)
@@ -887,7 +900,7 @@ function CatalogoBuilder({
     setTamanho('')
     setCoresSel(new Set())
     setCoresKit({})
-    setTamanhoKit('')
+    setTamanhosKit({})
   }
 
   function trocarOrigem(v: string) {
@@ -895,7 +908,7 @@ function CatalogoBuilder({
     setTamanho('')
     setCoresSel(new Set())
     setCoresKit({})
-    setTamanhoKit('')
+    setTamanhosKit({})
   }
 
   function toggleCor(cor: string) {
@@ -914,12 +927,34 @@ function CatalogoBuilder({
     return cor ? `${base} - ${cor}` : base
   }
 
-  // Kit: monta a descrição com o tamanho do kit + a cor de CADA item. Se
+  // Kit: monta a descrição com o(s) tamanho(s) + a cor de CADA item. Se
   // todos os itens têm a mesma cor, resume ("Kit X M - Terracota"); senão,
   // detalha por item.
+  //
+  // A descrição é CHAVE do `listarPrecosRecentes()` e sai nos documentos de
+  // separação e romaneio, então tem que ser determinística: a ordem é sempre
+  // a de `kit.itens` (que vem do banco ordenado por nome do produto), NUNCA a
+  // ordem em que o usuário clicou.
+  //
+  // Com um componente variável só, o formato é o de sempre — "Kit X Queen" —
+  // e as descrições antigas continuam batendo com a memória de preço. Com
+  // dois ou mais não existe "o tamanho do kit", e aí cada um é nomeado:
+  //   Kit Peseira+ 2 Capas de Almofada - ACONCHEGO
+  //     (Capa de Almofada - ACONCHEGO: 50x50 · Peseira - ACONCHEGO: Queen)
   function descricaoKit(): string {
     if (!kit) return ''
-    const base = tamanhoKit ? `${kit.nome} ${tamanhoKit}` : kit.nome
+    const porComponente =
+      variaveis.length > 1
+        ? kit.itens
+            .filter((it) => variaveis.some((v) => v.id === it.id))
+            .map((it) => `${it.produtoNome}: ${tamanhosKit[it.produtoId] ?? '?'}`)
+            .join(' · ')
+        : ''
+    const base = porComponente
+      ? `${kit.nome} (${porComponente})`
+      : tamanhoDoKitAtual
+        ? `${kit.nome} ${tamanhoDoKitAtual}`
+        : kit.nome
     const partes = kit.itens
       .filter((it) => coresDoProduto(it.produtoId).length > 0)
       .map((it) => ({
@@ -961,6 +996,15 @@ function CatalogoBuilder({
         toast.error('Escolha a cor de cada item do kit')
         return
       }
+      // E o tamanho de cada componente que tem mais de um. Sem isso a peça
+      // entra no pedido sem tamanho, e sem tamanho não há peso nem preço.
+      const semTamanho = variaveis.some(
+        (it) => !tamanhoDoComponente(it.produtoId),
+      )
+      if (semTamanho) {
+        toast.error('Escolha o tamanho de cada item do kit')
+        return
+      }
       const descricao = descricaoKit()
       // Snapshot dos componentes (quantidade é POR KIT) — a via de
       // separação multiplica pela quantidade deste item na hora de montar.
@@ -978,7 +1022,7 @@ function CatalogoBuilder({
       const daTabela = precoDeKit(
         tabela,
         kit.id,
-        tamanhoKit || null,
+        tamanhoDoKitAtual,
         kit.itens.map((it) => ({
           produtoId: it.produtoId,
           quantidade: it.quantidade,
@@ -992,7 +1036,10 @@ function CatalogoBuilder({
           quantidade,
           preco: precoSugerido(daTabela, descricao),
           kitId: kit.id,
-          tamanho: tamanhoKit || null,
+          // Null com 2+ componentes variáveis: não existe um tamanho que
+          // descreva o kit. A fonte real de cada peça é o snapshot dos
+          // componentes, que agora sai sempre com tamanho.
+          tamanho: tamanhoDoKitAtual,
           componentes,
         },
       ]
@@ -1097,25 +1144,6 @@ function CatalogoBuilder({
           </Select>
         )}
 
-        {/* Kit: tamanho único pro kit inteiro (vale pra todos os itens) */}
-        {kit && tamanhosKit.length > 0 && (
-          <Select
-            value={tamanhoKit || null}
-            onValueChange={(v) => setTamanhoKit(v ?? '')}
-            disabled={disabled}
-          >
-            <SelectTrigger size="sm" className="w-full">
-              <SelectValue placeholder="Tamanho do kit" />
-            </SelectTrigger>
-            <SelectContent>
-              {tamanhosKit.map((t) => (
-                <SelectItem key={t} value={t}>
-                  {t}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
       </div>
 
       {produto && cores.length > 0 && (
@@ -1142,38 +1170,78 @@ function CatalogoBuilder({
         </div>
       )}
 
-      {/* Kit: cor escolhida item a item (cada item pode ter cor própria) */}
+      {/* Kit: tamanho e cor escolhidos ITEM A ITEM. Os campos ficam na linha
+          do próprio componente de propósito — empilhados no topo, dois
+          dropdowns de tamanho não diriam a quem cada um pertence. */}
       {kit && (
         <div className="space-y-1.5">
           {kit.itens.map((it) => {
-            const opcoes = coresDoProduto(it.produtoId)
-            if (opcoes.length === 0) return null
+            const cores = coresDoProduto(it.produtoId)
+            const tams = tamanhosDoProduto(it.produtoId)
+            // Componente de tamanho único se resolve sozinho e sem cor não
+            // há o que perguntar: linha sem campo nenhum não entra.
+            if (cores.length === 0 && tams.length <= 1) return null
             return (
               <div
                 key={it.id}
-                className="grid grid-cols-[1fr_10rem] items-center gap-2"
+                className="grid grid-cols-[1fr_auto] items-center gap-2"
               >
                 <span className="text-muted-foreground truncate text-xs">
                   {it.quantidade}× {it.produtoNome}
                 </span>
-                <Select
-                  value={coresKit[it.id] || null}
-                  onValueChange={(v) =>
-                    setCoresKit((prev) => ({ ...prev, [it.id]: v ?? '' }))
-                  }
-                  disabled={disabled}
-                >
-                  <SelectTrigger size="sm" className="w-full">
-                    <SelectValue placeholder="Cor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {opcoes.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  {tams.length > 1 && (
+                    <Select
+                      value={tamanhosKit[it.produtoId] || null}
+                      onValueChange={(v) =>
+                        setTamanhosKit((prev) => ({
+                          ...prev,
+                          [it.produtoId]: v ?? '',
+                        }))
+                      }
+                      disabled={disabled}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className="w-28"
+                        aria-label={`Tamanho de ${it.produtoNome}`}
+                      >
+                        <SelectValue placeholder="Tamanho" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tams.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {cores.length > 0 && (
+                    <Select
+                      value={coresKit[it.id] || null}
+                      onValueChange={(v) =>
+                        setCoresKit((prev) => ({ ...prev, [it.id]: v ?? '' }))
+                      }
+                      disabled={disabled}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className="w-40"
+                        aria-label={`Cor de ${it.produtoNome}`}
+                      >
+                        <SelectValue placeholder="Cor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cores.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
               </div>
             )
           })}

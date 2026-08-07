@@ -35,7 +35,13 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
-import { tamanhoDoComponente, tamanhosDoKit } from '@/lib/kit-tamanhos'
+import {
+  combinacoesDeTamanho,
+  componentesVariaveis,
+  tamanhoDoComponente,
+  tamanhoDoKit,
+  tamanhosDoKit,
+} from '@/lib/kit-tamanhos'
 import {
   avisoPrecoDeKit,
   centavosParaMoeda,
@@ -195,7 +201,11 @@ function PrecoDoKit({ kit }: { kit: KitComItens }) {
   const preco = precoDeKitNaLista(
     tabelaDoKit(kit),
     kit.id,
-    kit.itens,
+    kit.itens.map((it) => ({
+      produtoId: it.produtoId,
+      quantidade: it.quantidade,
+      nome: it.produtoNome,
+    })),
     tamanhosDe,
   )
   const aviso = avisoPrecoDeKit(preco)
@@ -218,30 +228,40 @@ function PrecoDoKit({ kit }: { kit: KitComItens }) {
   )
 }
 
-// Tooltip com a conta aberta por tamanho do kit. Sem isso, "R$ 80,00–95,00"
-// não diz qual tamanho custa quanto — que é justamente o que o vendedor
-// precisa saber antes de montar o pedido.
+// Tooltip com a conta aberta por COMBINAÇÃO de tamanhos. Sem isso,
+// "R$ 100,00–140,00" não diz qual combinação custa quanto — que é
+// justamente o que o vendedor precisa saber antes de montar o pedido.
+//
+// O rótulo nomeia o componente quando há mais de um variável: com dois
+// tamanhos na mesma linha, "Queen · 50x50" não diria qual é de quem.
 function detalhePreco(
   kit: KitComItens,
   tamanhosDe: (produtoId: string) => string[],
 ): string {
   const tabela = tabelaDoKit(kit)
-  const tams = tamanhosDoKit(kit.itens, tamanhosDe)
-  const candidatos: (string | null)[] = tams.length > 0 ? tams : [null]
+  const variaveis = componentesVariaveis(kit.itens, tamanhosDe)
 
-  const linhas = candidatos.map((t) => {
+  const linhas = combinacoesDeTamanho(kit.itens, tamanhosDe).map((escolhas) => {
+    const doKit = tamanhoDoKit(kit.itens, escolhas, tamanhosDe)
     const valor = precoDeKit(
       tabela,
       kit.id,
-      t,
+      doKit,
       kit.itens.map((it) => ({
         produtoId: it.produtoId,
         quantidade: it.quantidade,
-        tamanho: tamanhoDoComponente(it.produtoId, t, tamanhosDe),
+        tamanho: tamanhoDoComponente(it.produtoId, escolhas, tamanhosDe),
       })),
     )
-    const rotulo = t ?? 'tamanho único'
-    const fechado = t != null && kit.precos[t] != null
+    const rotulo =
+      variaveis.length === 0
+        ? 'tamanho único'
+        : variaveis.length === 1
+          ? (escolhas[variaveis[0]!.produtoId] ?? '?')
+          : variaveis
+              .map((v) => `${v.produtoNome}: ${escolhas[v.produtoId] ?? '?'}`)
+              .join(' · ')
+    const fechado = doKit != null && kit.precos[doKit] != null
     return `${rotulo}: ${
       valor == null ? '—' : `R$ ${centavosParaMoeda(valor)}`
     }${fechado ? ' (preço fechado)' : ''}`
@@ -385,10 +405,15 @@ function KitDialog({
       ),
     ]
   }
-  const tamanhosKit = tamanhosDoKit(
-    itens.filter((l) => l.produtoId).map((l) => ({ produtoId: l.produtoId })),
-    tamanhosDe,
-  )
+  const componentesDoKit = itens
+    .filter((l) => l.produtoId)
+    .map((l) => ({ produtoId: l.produtoId }))
+  const tamanhosKit = tamanhosDoKit(componentesDoKit, tamanhosDe)
+  // Quantos componentes têm tamanho a escolher: com 0 não há tamanho no
+  // pedido, com 2+ não existe UM tamanho que descreva o kit. Nos dois casos
+  // não há onde pendurar preço fechado — mas o motivo é diferente e a tela
+  // precisa dizer qual é.
+  const qtdVariaveis = componentesVariaveis(componentesDoKit, tamanhosDe).length
 
   function patchItem(idx: number, patch: Partial<LinhaItem>) {
     setItens((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
@@ -538,9 +563,9 @@ function KitDialog({
             </p>
             {tamanhosKit.length === 0 ? (
               <p className="text-muted-foreground py-2 text-sm">
-                Nenhum componente deste kit varia de tamanho, então ele não
-                tem tamanho a escolher no pedido — e não há onde pendurar um
-                preço fechado. Vale a soma dos componentes.
+                {qtdVariaveis === 0
+                  ? 'Nenhum componente deste kit varia de tamanho, então ele não tem tamanho a escolher no pedido — e não há onde pendurar um preço fechado. Vale a soma dos componentes.'
+                  : 'Mais de um componente deste kit varia de tamanho, então não existe um tamanho que descreva o kit inteiro (cada peça escolhe a sua no pedido). Preço fechado precisa de um tamanho só; aqui vale a soma dos componentes.'}
               </p>
             ) : (
               <div className="space-y-2">

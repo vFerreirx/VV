@@ -20,8 +20,9 @@
 // conversão pra "50,00" acontece só na borda.
 
 import {
+  combinacoesDeTamanho,
   tamanhoDoComponente,
-  tamanhosDoKit,
+  tamanhoDoKit,
   type TamanhosDe,
 } from '@/lib/kit-tamanhos'
 
@@ -126,40 +127,47 @@ export function formatarPrecoDeProduto(p: PrecoDeProduto): string {
 export type PrecoDeKit = {
   min: number | null
   max: number | null
-  // Tamanhos do kit em que a conta não fecha (componente sem preço, ou
-  // tamanho de componente que não dá pra decidir).
+  // Pendências que impedem alguma combinação de fechar, já formatadas por
+  // componente ("Peseira - RELEVO: Casal, King"). Por componente e não por
+  // "tamanho do kit" porque desde que cada componente escolhe o seu, é o par
+  // (componente, tamanho) que tem ou não preço.
   semPreco: string[]
 }
 
 export function precoDeKitNaLista(
   tabela: TabelaDePrecos,
   kitId: string,
-  componentes: { produtoId: string; quantidade: number }[],
+  componentes: { produtoId: string; quantidade: number; nome?: string }[],
   tamanhosDe: TamanhosDe,
 ): PrecoDeKit {
-  const tams = tamanhosDoKit(componentes, tamanhosDe)
-  // Kit sem componente de tamanho variável (os de manta) não tem tamanho a
-  // escolher: a conta é uma só.
-  const candidatos: (string | null)[] = tams.length > 0 ? tams : [null]
-
   const semPreco: string[] = []
+  for (const c of componentes) {
+    const faltando = tamanhosDe(c.produtoId).filter(
+      (t) => tabela.produto[chave(c.produtoId, t)] == null,
+    )
+    if (faltando.length > 0) {
+      semPreco.push(`${c.nome ?? 'componente'}: ${faltando.join(', ')}`)
+    }
+  }
+
+  // A faixa sai das combinações que FECHAM — uma escolha de tamanho por
+  // componente variável. Percorrer combinações (e não cada componente
+  // isolado) é o que faz o preço fechado do kit entrar na conta quando ele
+  // existe, e é a mesma pergunta que o builder responde ao montar a linha.
   let min: number | null = null
   let max: number | null = null
 
-  for (const t of candidatos) {
+  for (const escolhas of combinacoesDeTamanho(componentes, tamanhosDe)) {
     const valor = precoDeKit(
       tabela,
       kitId,
-      t,
+      tamanhoDoKit(componentes, escolhas, tamanhosDe),
       componentes.map((c) => ({
         ...c,
-        tamanho: tamanhoDoComponente(c.produtoId, t, tamanhosDe),
+        tamanho: tamanhoDoComponente(c.produtoId, escolhas, tamanhosDe),
       })),
     )
-    if (valor == null) {
-      if (t) semPreco.push(t)
-      continue
-    }
+    if (valor == null) continue
     min = min == null ? valor : Math.min(min, valor)
     max = max == null ? valor : Math.max(max, valor)
   }
