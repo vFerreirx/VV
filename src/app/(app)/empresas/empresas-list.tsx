@@ -183,6 +183,13 @@ function EmpresaDialog({
     empresa?.cnpj ? mascararDocumento(empresa.cnpj) : '',
   )
   const [principal, setPrincipal] = useState(empresa?.principal ?? primeira)
+  const [cep, setCep] = useState(empresa?.cep ?? '')
+  const [logradouro, setLogradouro] = useState(empresa?.logradouro ?? '')
+  const [numero, setNumero] = useState(empresa?.numero ?? '')
+  const [complemento, setComplemento] = useState(empresa?.complemento ?? '')
+  const [bairro, setBairro] = useState(empresa?.bairro ?? '')
+  const [cidade, setCidade] = useState(empresa?.cidade ?? '')
+  const [uf, setUf] = useState(empresa?.uf ?? '')
 
   // Já é a principal: desmarcar não faria nada (a action mantém), então a
   // chave fica travada — trocar de principal é marcar OUTRA empresa.
@@ -198,6 +205,13 @@ function EmpresaDialog({
         razaoSocial,
         nomeFantasia: nomeFantasia || null,
         cnpj: cnpj || null,
+        cep: cep || null,
+        logradouro: logradouro || null,
+        numero: numero || null,
+        complemento: complemento || null,
+        bairro: bairro || null,
+        cidade: cidade || null,
+        uf: uf || null,
         principal,
       }
       const r = empresa
@@ -265,6 +279,96 @@ function EmpresaDialog({
               autoComplete="off"
               inputMode="text"
             />
+          </div>
+
+          {/* Endereço. O CEP da PRINCIPAL é a origem da cotação de frete —
+              sem ele o botão "Cotar frete" do pedido fica desabilitado. */}
+          <div className="space-y-3 rounded-lg border p-3">
+            <div>
+              <div className="text-sm font-medium">Endereço</div>
+              <div className="text-muted-foreground text-xs">
+                O CEP da empresa principal é a origem usada pra cotar frete.
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="empresa-cep">CEP</Label>
+                <Input
+                  id="empresa-cep"
+                  value={cep}
+                  onChange={(e) => setCep(e.target.value)}
+                  placeholder="17500-000"
+                  inputMode="numeric"
+                  disabled={isPending}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="empresa-logradouro">Logradouro</Label>
+                <Input
+                  id="empresa-logradouro"
+                  value={logradouro}
+                  onChange={(e) => setLogradouro(e.target.value)}
+                  disabled={isPending}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="empresa-numero">Número</Label>
+                <Input
+                  id="empresa-numero"
+                  value={numero}
+                  onChange={(e) => setNumero(e.target.value)}
+                  disabled={isPending}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="empresa-complemento">Complemento</Label>
+                <Input
+                  id="empresa-complemento"
+                  value={complemento}
+                  onChange={(e) => setComplemento(e.target.value)}
+                  disabled={isPending}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="empresa-bairro">Bairro</Label>
+                <Input
+                  id="empresa-bairro"
+                  value={bairro}
+                  onChange={(e) => setBairro(e.target.value)}
+                  disabled={isPending}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="empresa-cidade">Cidade</Label>
+                <Input
+                  id="empresa-cidade"
+                  value={cidade}
+                  onChange={(e) => setCidade(e.target.value)}
+                  disabled={isPending}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="empresa-uf">UF</Label>
+                <Input
+                  id="empresa-uf"
+                  value={uf}
+                  onChange={(e) => setUf(e.target.value.toUpperCase())}
+                  maxLength={2}
+                  disabled={isPending}
+                  autoComplete="off"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border p-3">

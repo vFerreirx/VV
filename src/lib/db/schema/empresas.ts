@@ -22,6 +22,17 @@ export const empresas = pgTable(
     cnpj: text(),
     principal: boolean().notNull().default(false),
 
+    // Endereço. Mesmas colunas de `compradores`, de propósito: mesma tela de
+    // busca por CEP e mesma forma. O CEP da empresa PRINCIPAL é a ORIGEM da
+    // cotação de frete (src/lib/frete.ts) — sem ele não há cotação nenhuma.
+    cep: text(),
+    logradouro: text(),
+    numero: text(),
+    complemento: text(),
+    bairro: text(),
+    cidade: text(),
+    uf: text(),
+
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()

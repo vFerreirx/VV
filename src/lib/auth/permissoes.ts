@@ -82,6 +82,7 @@ export type AreaKey =
   | 'cores'
   | 'modelos'
   | 'tamanhos'
+  | 'faixasEmbalagem'
   | 'empresas'
   | 'tarefas'
   | 'usuarios'
@@ -256,6 +257,17 @@ export const AREAS: Area[] = [
     href: '/tamanhos',
     editavel: true,
     nivelPadrao: padrao(verCatalogo),
+  },
+  {
+    key: 'faixasEmbalagem',
+    secao: 'Catálogo',
+    label: 'Faixas de embalagem',
+    descricao: 'Peso do pacote e as medidas dele, pra cotar frete.',
+    href: '/faixas-embalagem',
+    editavel: true,
+    // Quem embala é o estoque, quem cota é vendas — os dois precisam ver, e
+    // remedir o pacote é operação de estoque.
+    nivelPadrao: padrao({ [G]: 'total', [E]: 'total', [V]: 'ver' }),
   },
   {
     key: 'tarefas',

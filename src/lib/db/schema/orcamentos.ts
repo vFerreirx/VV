@@ -56,6 +56,17 @@ export const orcamentos = pgTable(
     observacao: text(),
     status: orcamentoStatusEnum().notNull().default('aguardando'),
 
+    // FRETE ESCOLHIDO — snapshot, do lado do preço e não do peso (ver
+    // AGENTS.md). Recotar depois não pode reescrever sozinho o que já foi
+    // combinado com o cliente. O CEP fica junto porque o comprador pode
+    // mudar de endereço, e aí o valor gravado perderia o contexto.
+    freteCepDestino: text(),
+    freteTransportadora: text(),
+    freteServico: text(),
+    freteValor: numeric({ precision: 12, scale: 2 }),
+    fretePrazoDias: integer(),
+    freteCotadoEm: timestamp({ withTimezone: true }),
+
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()

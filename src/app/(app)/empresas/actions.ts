@@ -43,6 +43,13 @@ export async function listarEmpresas(): Promise<EmpresaComUso[]> {
       razaoSocial: empresas.razaoSocial,
       nomeFantasia: empresas.nomeFantasia,
       cnpj: empresas.cnpj,
+      cep: empresas.cep,
+      logradouro: empresas.logradouro,
+      numero: empresas.numero,
+      complemento: empresas.complemento,
+      bairro: empresas.bairro,
+      cidade: empresas.cidade,
+      uf: empresas.uf,
       principal: empresas.principal,
       createdAt: empresas.createdAt,
       updatedAt: empresas.updatedAt,
@@ -62,6 +69,38 @@ export async function listarEmpresas(): Promise<EmpresaComUso[]> {
     .orderBy(desc(empresas.principal), asc(empresas.razaoSocial))
 
   return rows as EmpresaComUso[]
+}
+
+/**
+ * O endereço da empresa PRINCIPAL — a origem de qualquer cotação de frete.
+ * Devolve `null` quando não há principal ou quando ela ainda não tem CEP,
+ * que é o caso em que a cotação não pode nem começar.
+ */
+export async function obterOrigemFrete(): Promise<{
+  cep: string
+  cidade: string | null
+  uf: string | null
+  nome: string
+} | null> {
+  await requireAuth()
+  const [e] = await db
+    .select({
+      cep: empresas.cep,
+      cidade: empresas.cidade,
+      uf: empresas.uf,
+      razaoSocial: empresas.razaoSocial,
+      nomeFantasia: empresas.nomeFantasia,
+    })
+    .from(empresas)
+    .where(and(eq(empresas.principal, true), isNull(empresas.deletedAt)))
+    .limit(1)
+  if (!e?.cep) return null
+  return {
+    cep: e.cep,
+    cidade: e.cidade,
+    uf: e.uf,
+    nome: e.nomeFantasia ?? e.razaoSocial,
+  }
 }
 
 // Alimenta o seletor de empresa no cadastro de conta de marketplace.
@@ -172,6 +211,13 @@ export async function criarEmpresaAction(
           razaoSocial: data.razaoSocial,
           nomeFantasia: data.nomeFantasia,
           cnpj: data.cnpj,
+          cep: data.cep,
+          logradouro: data.logradouro,
+          numero: data.numero,
+          complemento: data.complemento,
+          bairro: data.bairro,
+          cidade: data.cidade,
+          uf: data.uf,
           principal,
         })
         .returning({ id: empresas.id })
@@ -230,6 +276,13 @@ export async function atualizarEmpresaAction(
           razaoSocial: data.razaoSocial,
           nomeFantasia: data.nomeFantasia,
           cnpj: data.cnpj,
+          cep: data.cep,
+          logradouro: data.logradouro,
+          numero: data.numero,
+          complemento: data.complemento,
+          bairro: data.bairro,
+          cidade: data.cidade,
+          uf: data.uf,
           principal,
         })
         .where(eq(empresas.id, id))
