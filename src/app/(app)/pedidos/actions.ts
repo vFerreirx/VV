@@ -18,6 +18,12 @@ import {
   type Orcamento,
   type OrcamentoItem,
 } from '@/lib/db/schema'
+import {
+  ehStatusPedido,
+  erroDeTransicao,
+  ROTULO_STATUS,
+  type StatusPedido,
+} from '@/lib/pedido-status'
 import { catalogoVazio, chavePeso, type CatalogoPesos } from '@/lib/peso'
 import {
   chave,
@@ -399,11 +405,18 @@ export async function excluirOrcamentoAction(
   return { success: true, message: 'Pedido excluído' }
 }
 
-// Alterna aguardando <-> aprovado (ação rápida na lista).
-export async function alternarStatusOrcamentoAction(
+// Move o pedido UMA casa no fluxo (ação rápida na lista). Quem decide se o
+// passo vale é src/lib/pedido-status.ts — o mesmo módulo que monta o menu na
+// tela, pra que ela nunca ofereça algo que aqui é recusado.
+export async function mudarStatusOrcamentoAction(
   id: string,
+  destino: StatusPedido,
 ): Promise<ActionResult> {
   await requireAreaEscrita('vendas')
+  if (!ehStatusPedido(destino)) {
+    return { success: false, error: 'Status inválido' }
+  }
+
   const [atual] = await db
     .select({ id: orcamentos.id, status: orcamentos.status })
     .from(orcamentos)
@@ -411,15 +424,17 @@ export async function alternarStatusOrcamentoAction(
     .limit(1)
   if (!atual) return { success: false, error: 'Pedido não encontrado' }
 
-  const novoStatus = atual.status === 'aprovado' ? 'aguardando' : 'aprovado'
+  const recusa = erroDeTransicao(atual.status, destino)
+  if (recusa) return { success: false, error: recusa }
+
   await db
     .update(orcamentos)
-    .set({ status: novoStatus })
+    .set({ status: destino })
     .where(eq(orcamentos.id, id))
 
   revalidatePath('/pedidos')
   return {
     success: true,
-    message: novoStatus === 'aprovado' ? 'Marcado como aprovado' : 'Marcado como aguardando',
+    message: `Marcado como ${ROTULO_STATUS[destino].toLowerCase()}`,
   }
 }

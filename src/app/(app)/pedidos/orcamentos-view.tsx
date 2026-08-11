@@ -3,6 +3,7 @@
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
+  ChevronDown,
   ClipboardList,
   Copy,
   FileSignature,
@@ -18,10 +19,10 @@ import { Fragment, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
-  alternarStatusOrcamentoAction,
   atualizarOrcamentoAction,
   criarOrcamentoAction,
   excluirOrcamentoAction,
+  mudarStatusOrcamentoAction,
   obterOrcamento,
   type OrcamentoComItens,
   type OrcamentoListItem,
@@ -38,6 +39,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -65,6 +72,11 @@ import {
   tamanhoDoKit,
   type EscolhasDeTamanho,
 } from '@/lib/kit-tamanhos'
+import {
+  ROTULO_STATUS,
+  statusAlcancaveis,
+  type StatusPedido,
+} from '@/lib/pedido-status'
 import {
   centavosParaMoeda,
   precoDeKit,
@@ -1334,8 +1346,38 @@ function ExcluirDialog({
 }
 
 // -----------------------------------------------------------------
-// Badge de status — clicável, alterna aguardando <-> aprovado
+// Badge de status — dropdown com as etapas vizinhas
 // -----------------------------------------------------------------
+
+// Três etapas em curso, uma encerrada. As em curso são CROMÁTICAS e seguem
+// a temperatura do fluxo (âmbar parado -> esmeralda decidido -> azul pronto
+// pra sair); "Finalizado" é o único NEUTRO, e é essa quebra — cor vs. cinza,
+// não um tom de cor contra outro — que separa de relance o pedido que ainda
+// pede alguma coisa do pedido que acabou.
+//
+// Âmbar/esmeralda são exatamente as que já existiam pra aguardando/aprovado:
+// quem já usa a tela não precisa reaprender nada.
+//
+// O par claro/escuro é o mesmo do kanban de produção (`-700` no claro,
+// `-300` no escuro sobre a tinta a 15%), que já está validado nos dois temas.
+const CLASSE_STATUS: Record<StatusPedido, string> = {
+  aguardando: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+  aprovado: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  separado: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+  finalizado: 'bg-zinc-500/15 text-zinc-700 dark:text-zinc-300',
+}
+
+// Ponto sólido do menu. É `bg-*` de propósito: o item do dropdown reescreve
+// a cor do TEXTO dos filhos no foco, então um rótulo colorido perderia a cor
+// justamente quando o mouse está em cima.
+const PONTO_STATUS: Record<StatusPedido, string> = {
+  aguardando: 'bg-amber-500',
+  aprovado: 'bg-emerald-500',
+  separado: 'bg-sky-500',
+  finalizado: 'bg-zinc-500',
+}
+
+const PILULA = 'rounded-full px-2 py-0.5 text-[11px] font-medium'
 
 function StatusBadge({
   orcamento,
@@ -1345,11 +1387,14 @@ function StatusBadge({
   podeEditar: boolean
 }) {
   const [isPending, startTransition] = useTransition()
-  const aprovado = orcamento.status === 'aprovado'
+  const atual = orcamento.status
+  // Mesma função que a action usa pra validar — a tela nunca oferece um
+  // passo que o servidor vai recusar.
+  const opcoes = statusAlcancaveis(atual)
 
-  function alternar() {
+  function mudarPara(destino: StatusPedido) {
     startTransition(async () => {
-      const result = await alternarStatusOrcamentoAction(orcamento.id)
+      const result = await mudarStatusOrcamentoAction(orcamento.id, destino)
       if (!result.success) {
         toast.error(result.error)
         return
@@ -1358,22 +1403,40 @@ function StatusBadge({
     })
   }
 
+  if (!podeEditar || opcoes.length === 0) {
+    return (
+      <span className={cn(PILULA, 'inline-block', CLASSE_STATUS[atual])}>
+        {ROTULO_STATUS[atual]}
+      </span>
+    )
+  }
+
   return (
-    <button
-      type="button"
-      onClick={podeEditar ? alternar : undefined}
-      disabled={isPending || !podeEditar}
-      title={podeEditar ? 'Clique pra alternar' : undefined}
-      className={cn(
-        'rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors',
-        aprovado
-          ? 'bg-emerald-500/15 text-emerald-600'
-          : 'bg-amber-500/15 text-amber-600',
-        podeEditar && !isPending && 'hover:opacity-70',
-        isPending && 'opacity-60',
-      )}
-    >
-      {aprovado ? 'Aprovado' : 'Aguardando'}
-    </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        disabled={isPending}
+        title="Mudar etapa do pedido"
+        className={cn(
+          PILULA,
+          'inline-flex items-center gap-0.5 transition-colors',
+          CLASSE_STATUS[atual],
+          isPending ? 'opacity-60' : 'hover:opacity-70',
+        )}
+      >
+        {ROTULO_STATUS[atual]}
+        <ChevronDown className="size-3 opacity-60" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-auto">
+        {opcoes.map((s) => (
+          <DropdownMenuItem key={s} onClick={() => mudarPara(s)}>
+            <span
+              className={cn('size-2 rounded-full', PONTO_STATUS[s])}
+              aria-hidden
+            />
+            {ROTULO_STATUS[s]}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

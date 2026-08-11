@@ -57,8 +57,13 @@ export const movimentacaoTipoEnum = pgEnum('movimentacao_tipo', [
   'devolucao',
 ])
 
-// Status do orçamento — só 2 estados, o resto é rascunho de venda.
+// Status do pedido. A ORDEM é o fluxo, e tem que bater com a ordem interna
+// do enum no Postgres (`supabase/sql/41_orcamento_status.sql`) e com
+// `FLUXO_PEDIDO` em src/lib/pedido-status.ts, que é quem decide quais
+// transições valem.
 export const orcamentoStatusEnum = pgEnum('orcamento_status', [
   'aguardando',
   'aprovado',
+  'separado',
+  'finalizado',
 ])
