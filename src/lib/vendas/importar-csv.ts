@@ -110,13 +110,22 @@ function marketplaceDoSufixo(contaCsv: string): Marketplace | null {
 }
 
 type ResolucaoConta =
-  | { conta: ContaKey; motivo?: undefined }
-  | { conta: null; motivo: string }
+  | { conta: ContaKey; alerta: string | null; motivo?: undefined }
+  | { conta: null; motivo: string; alerta?: undefined }
 
-// Acha a chave da conta a partir do marketplace + texto "Conta N - ...".
-// Quando não acha, devolve JUNTO o porquê: "conta não reconhecida" sozinho
-// não diz onde olhar, e o que denuncia o erro mais comum (linha da Shein com
-// "Conta 2 - Shopee") é o sufixo discordar da coluna de marketplace.
+// Acha a chave da conta a partir do marketplace + texto "Conta N - ...", e
+// diz junto o que há de estranho na linha.
+//
+// O que denuncia o erro mais comum — a coluna da conta copiada de uma linha
+// vizinha — é o SUFIXO do nome da conta discordar da coluna de marketplace.
+// Essa discordância cai em dois destinos bem diferentes:
+//
+//  - a conta NÃO resolve ("Shein / Conta 2 - Shopee": a Shein não tem Conta
+//    2) -> vira o motivo da linha ignorada, no lugar de um "conta não
+//    reconhecida" que não diz onde olhar;
+//  - a conta RESOLVE assim mesmo ("Mercado Livre / Conta 1 - Shopee": o ML
+//    tem Conta 1) -> vira ALERTA. A venda entra, e entra numa conta
+//    plausível: sem o aviso, esse é o caso que ninguém percebe.
 function resolverConta(
   marketplaceCsv: string,
   contaCsv: string,
@@ -125,30 +134,36 @@ function resolverConta(
   const generico = `conta não reconhecida: "${marketplaceCsv} / ${contaCsv}"`
   if (!mk) return { conta: null, motivo: generico }
 
+  const doSufixo = marketplaceDoSufixo(contaCsv)
+  const discorda =
+    doSufixo && doSufixo !== mk
+      ? `a conta diz ${MARKETPLACE_LABEL[doSufixo]} mas o marketplace da ` +
+        `linha é ${MARKETPLACE_LABEL[mk]}`
+      : null
+
+  const aceita = (conta: ContaKey): ResolucaoConta => ({
+    conta,
+    alerta: discorda ? `${discorda} — entrou em ${rotuloConta(conta)}` : null,
+  })
+
   const candidatos = CONTAS_MARKETPLACE.filter((c) => c.marketplace === mk)
   // Marketplaces de conta única (tiktok/temu): casa direto.
-  if (candidatos.length === 1) return { conta: candidatos[0].key }
+  if (candidatos.length === 1) return aceita(candidatos[0].key)
   if (candidatos.length > 1) {
     const m = normalizar(contaCsv).match(/conta\s*(\d+)/)
     if (m) {
       const alvo = `conta ${m[1]}`
       const found = candidatos.find((c) => normalizar(c.label) === alvo)
-      if (found) return { conta: found.key }
+      if (found) return aceita(found.key)
     }
   }
 
-  // Não achou. Se o sufixo aponta pra OUTRO marketplace, é quase certo que a
-  // coluna da conta veio de uma linha vizinha — vale dizer na cara.
-  const doSufixo = marketplaceDoSufixo(contaCsv)
-  if (doSufixo && doSufixo !== mk) {
-    return {
-      conta: null,
-      motivo:
-        `a conta diz ${MARKETPLACE_LABEL[doSufixo]} mas o marketplace da ` +
-        `linha é ${MARKETPLACE_LABEL[mk]} ("${marketplaceCsv} / ${contaCsv}")`,
-    }
+  return {
+    conta: null,
+    motivo: discorda
+      ? `${discorda} ("${marketplaceCsv} / ${contaCsv}")`
+      : generico,
   }
-  return { conta: null, motivo: generico }
 }
 
 // Divide uma linha CSV por ';' e tira as aspas.
@@ -193,11 +208,12 @@ export function parseVendasCSV(texto: string): ResultadoImport {
       return
     }
 
-    const { conta, motivo } = resolverConta(mkCsv, contaCsv)
+    const { conta, motivo, alerta } = resolverConta(mkCsv, contaCsv)
     if (!conta) {
       ignoradas.push(`Linha ${numero}: ${motivo}.`)
       return
     }
+    if (alerta) atencoes.push(`Linha ${numero}: ${alerta}.`)
 
     const quantidade = Number(qtdCsv.replace(/\D/g, '')) || 0
     const fatStr = valorBR(valorCsv)
@@ -252,5 +268,8 @@ export function parseVendasCSV(texto: string): ResultadoImport {
 export function rotuloConta(conta: ContaKey): string {
   const c = CONTAS_MARKETPLACE.find((x) => x.key === conta)
   if (!c) return conta
-  return `${MARKETPLACE_LABEL[c.marketplace]} · ${c.label}`
+  const mk = MARKETPLACE_LABEL[c.marketplace]
+  // Marketplace de conta única tem label igual ao do marketplace, e "Temu ·
+  // Temu" não informa nada a mais.
+  return c.label === mk ? mk : `${mk} · ${c.label}`
 }
