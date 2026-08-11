@@ -19,60 +19,27 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  montarLinhasSeparacao,
+  type CatalogoSeparacao,
+} from '@/lib/separacao'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
-
-type LinhaSeparacao = { descricao: string; quantidade: number }
-
-// Explode kit em componentes (quantidade do componente × quantidade do
-// item) e soma linhas de mesmo produto/cor/tamanho vindas de itens
-// diferentes — é o total real que a pessoa vai separar. Itens sem
-// kitComponentes (produto avulso OU orçamento antigo, sem essa coluna)
-// caem pra descrição em texto, sem quebrar.
-function montarLinhas(itens: OrcamentoComItens['itens']): LinhaSeparacao[] {
-  const totais = new Map<string, number>()
-  const ordem: string[] = []
-
-  function somar(descricao: string, quantidade: number) {
-    if (!totais.has(descricao)) {
-      totais.set(descricao, 0)
-      ordem.push(descricao)
-    }
-    totais.set(descricao, totais.get(descricao)! + quantidade)
-  }
-
-  for (const it of itens) {
-    const componentes = it.kitComponentes
-    if (componentes && componentes.length > 0) {
-      for (const c of componentes) {
-        // Tamanho do COMPONENTE (capa é 45x45 mesmo num kit Queen). Cai pro
-        // tamanho do item quando o snapshot é antigo e não tem tamanho.
-        const tam = c.tamanho ?? it.tamanho
-        const descricao = [`${c.produtoNome}${tam ? ` ${tam}` : ''}`, c.cor]
-          .filter(Boolean)
-          .join(' - ')
-        somar(descricao, c.quantidade * it.quantidade)
-      }
-    } else {
-      somar(it.descricao, it.quantidade)
-    }
-  }
-
-  return ordem.map((descricao) => ({
-    descricao,
-    quantidade: totais.get(descricao)!,
-  }))
-}
 
 // Via de separação: SEM preço, kit quebrado em componentes — é a lista que
 // a pessoa usa pra separar de verdade (produto, quantidade e comprador).
+//
+// O que sai em cada linha e em que ordem é decidido por src/lib/separacao.ts,
+// que é puro; aqui só se exibe. O catálogo vem resolvido do server (page.tsx).
 export function SeparacaoDoc({
   orcamento,
   empresa,
+  catalogo,
 }: {
   orcamento: OrcamentoComItens
   empresa: EmpresaDoDocumento | null
+  catalogo: CatalogoSeparacao
 }) {
-  const linhas = montarLinhas(orcamento.itens)
+  const linhas = montarLinhasSeparacao(orcamento.itens, catalogo)
   const totalUnidades = linhas.reduce((s, l) => s + l.quantidade, 0)
 
   return (

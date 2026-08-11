@@ -26,6 +26,10 @@ import {
 } from '@/lib/pedido-status'
 import { catalogoVazio, chavePeso, type CatalogoPesos } from '@/lib/peso'
 import {
+  montarCatalogoSeparacao,
+  type CatalogoSeparacao,
+} from '@/lib/separacao'
+import {
   chave,
   decimalParaCentavos,
   tabelaVazia,
@@ -195,6 +199,24 @@ export async function obterCatalogoDePesos(): Promise<CatalogoPesos> {
   ].sort(porTamanhoDoNome)
 
   return catalogo
+}
+
+// Catálogo da VIA DE SEPARAÇÃO: o que src/lib/separacao.ts precisa pra saber
+// o modelo e o tipo de cada peça, e em que ordem os tamanhos vão.
+//
+// Mesma forma do `obterCatalogoDePesos` logo acima, e pelo mesmo motivo:
+// duas consultas no catálogo inteiro em vez de uma ida ao banco por linha.
+// Também inclui produto/tamanho EXCLUÍDO — um pedido antigo pode apontar pra
+// item que saiu do catálogo, e ele continua tendo que ser agrupado.
+export async function obterCatalogoDeSeparacao(): Promise<CatalogoSeparacao> {
+  await requireArea('vendas')
+
+  const [prods, tams] = await Promise.all([
+    db.select({ id: produtos.id, nome: produtos.nome }).from(produtos),
+    db.select({ nome: tamanhos.nome, ordem: tamanhos.ordem }).from(tamanhos),
+  ])
+
+  return montarCatalogoSeparacao(prods, tams)
 }
 
 // Catálogo de PREÇO DE TABELA, pra sugerir o preço unitário no builder.

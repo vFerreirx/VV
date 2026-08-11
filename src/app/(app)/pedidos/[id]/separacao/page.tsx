@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
 import { obterEmpresaPrincipal } from '../../../empresas/actions'
-import { obterOrcamento } from '../../actions'
+import { obterCatalogoDeSeparacao, obterOrcamento } from '../../actions'
 import { SeparacaoDoc } from './separacao-doc'
 import { requireArea } from '@/lib/auth/require-auth'
 
@@ -16,13 +16,17 @@ export default async function SeparacaoPage({
   await requireArea('vendas')
   const { id } = await params
 
-  // A empresa é carregada AQUI, no server component — o componente de
-  // impressão só recebe o que já veio resolvido.
-  const [orcamento, empresa] = await Promise.all([
+  // A empresa e o catálogo são carregados AQUI, no server component — o
+  // componente de impressão só recebe o que já veio resolvido. O catálogo é
+  // o que permite agrupar por modelo/tipo (src/lib/separacao.ts).
+  const [orcamento, empresa, catalogo] = await Promise.all([
     obterOrcamento(id),
     obterEmpresaPrincipal(),
+    obterCatalogoDeSeparacao(),
   ])
   if (!orcamento) notFound()
 
-  return <SeparacaoDoc orcamento={orcamento} empresa={empresa} />
+  return (
+    <SeparacaoDoc orcamento={orcamento} empresa={empresa} catalogo={catalogo} />
+  )
 }
