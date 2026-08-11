@@ -21,6 +21,72 @@ function formatBRL(n: number): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+// Quantos avisos cabem antes de virar parede de texto. O excedente NÃO some
+// calado: some com o número dele à vista, senão o diálogo esconde justamente
+// o caso em que há mais coisa errada.
+const MAX_AVISOS = 6
+
+function BlocoAvisos({
+  titulo,
+  itens,
+  tom,
+}: {
+  titulo: string
+  itens: string[]
+  tom: 'ignorada' | 'atencao'
+}) {
+  if (itens.length === 0) return null
+  const excedente = itens.length - MAX_AVISOS
+  return (
+    <div
+      className={
+        tom === 'ignorada'
+          ? 'border-destructive/40 bg-destructive/5 text-destructive rounded-lg border p-3 text-xs'
+          : 'rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400'
+      }
+    >
+      <div className="mb-1 font-medium">
+        {itens.length} {titulo}
+      </div>
+      <ul className="list-disc space-y-0.5 pl-4">
+        {itens.slice(0, MAX_AVISOS).map((a, i) => (
+          <li key={i}>{a}</li>
+        ))}
+      </ul>
+      {excedente > 0 && (
+        <div className="mt-1 opacity-80">
+          … e mais {excedente} não exibido{excedente > 1 ? 's' : ''}.
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Avisos({ res }: { res: ResultadoImport }) {
+  return (
+    <>
+      <BlocoAvisos
+        tom="ignorada"
+        titulo={
+          res.ignoradas.length === 1
+            ? 'linha ignorada — o dado não entrou:'
+            : 'linhas ignoradas — o dado não entrou:'
+        }
+        itens={res.ignoradas}
+      />
+      <BlocoAvisos
+        tom="atencao"
+        titulo={
+          res.atencoes.length === 1
+            ? 'aviso de atenção — a linha entrou:'
+            : 'avisos de atenção — as linhas entraram:'
+        }
+        itens={res.atencoes}
+      />
+    </>
+  )
+}
+
 function dataLonga(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('pt-BR', {
@@ -125,19 +191,16 @@ export function ImportarCSVDialog() {
               <p className="text-destructive font-medium">
                 Nenhuma venda válida encontrada no arquivo.
               </p>
-              {res.avisos.length > 0 && (
-                <ul className="text-muted-foreground list-disc space-y-0.5 pl-4 text-xs">
-                  {res.avisos.slice(0, 8).map((a, i) => (
-                    <li key={i}>{a}</li>
-                  ))}
-                </ul>
-              )}
+              <Avisos res={res} />
               <Button variant="outline" onClick={reset}>
                 Escolher outro
               </Button>
             </div>
           ) : (
             <div className="max-h-[50vh] space-y-3 overflow-y-auto">
+              {/* Antes da lista de dias, de propósito: um mês inteiro são 31
+                  cartões, e no fim da rolagem o aviso não é lido por ninguém. */}
+              <Avisos res={res} />
               {res.dias.map((d) => (
                 <div key={d.data} className="rounded-lg border p-3">
                   <div className="flex items-center justify-between gap-2">
@@ -154,19 +217,6 @@ export function ImportarCSVDialog() {
                   </div>
                 </div>
               ))}
-
-              {res.avisos.length > 0 && (
-                <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400">
-                  <div className="mb-1 font-medium">
-                    {res.avisos.length} linha(s) ignorada(s):
-                  </div>
-                  <ul className="list-disc space-y-0.5 pl-4">
-                    {res.avisos.slice(0, 6).map((a, i) => (
-                      <li key={i}>{a}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           )}
 

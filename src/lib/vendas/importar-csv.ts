@@ -25,9 +25,18 @@ export type DiaImport = {
   totalFat: number
 }
 
+// Os avisos vêm em DUAS listas porque significam coisas opostas, e misturá-las
+// faz o diálogo mentir: com uma lista só, o rótulo "linha(s) ignorada(s)"
+// passa a valer pra linha que ENTROU.
+//
+//  - `ignoradas`: a linha não entrou. Dado perdido — o total do arquivo não
+//    bate com o que foi importado.
+//  - `atencoes`: a linha ENTROU, mas tem algo suspeito. O total bate; o que
+//    pode estar errado é a distribuição.
 export type ResultadoImport = {
   dias: DiaImport[]
-  avisos: string[]
+  ignoradas: string[]
+  atencoes: string[]
 }
 
 const MARKETPLACE_ALIAS: Record<string, Marketplace> = {
@@ -75,21 +84,71 @@ function valorBR(s: string): string | null {
   return Number.isFinite(n) ? n.toFixed(2) : null
 }
 
+// "18/06/2026" de volta, pra mensagem falar a mesma língua do arquivo.
+function dataParaBR(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}/${m}/${y}`
+}
+
+function moedaBR(n: number): string {
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+// "linhas 155 e 157" / "linhas 3, 7 e 9"
+function listaDeLinhas(ns: number[]): string {
+  if (ns.length === 1) return `linha ${ns[0]}`
+  return `linhas ${ns.slice(0, -1).join(', ')} e ${ns[ns.length - 1]}`
+}
+
+// O marketplace declarado no SUFIXO do nome da conta ("Conta 2 - Shopee").
+// Devolve null quando não há sufixo ou quando ele não casa com nenhum
+// marketplace conhecido — export sem sufixo é comum e não pode virar ruído.
+function marketplaceDoSufixo(contaCsv: string): Marketplace | null {
+  const m = contaCsv.match(/-([^-]*)$/)
+  if (!m) return null
+  return marketplaceDoTexto(m[1])
+}
+
+type ResolucaoConta =
+  | { conta: ContaKey; motivo?: undefined }
+  | { conta: null; motivo: string }
+
 // Acha a chave da conta a partir do marketplace + texto "Conta N - ...".
-function acharConta(marketplaceCsv: string, contaCsv: string): ContaKey | null {
+// Quando não acha, devolve JUNTO o porquê: "conta não reconhecida" sozinho
+// não diz onde olhar, e o que denuncia o erro mais comum (linha da Shein com
+// "Conta 2 - Shopee") é o sufixo discordar da coluna de marketplace.
+function resolverConta(
+  marketplaceCsv: string,
+  contaCsv: string,
+): ResolucaoConta {
   const mk = marketplaceDoTexto(marketplaceCsv)
-  if (!mk) return null
+  const generico = `conta não reconhecida: "${marketplaceCsv} / ${contaCsv}"`
+  if (!mk) return { conta: null, motivo: generico }
+
   const candidatos = CONTAS_MARKETPLACE.filter((c) => c.marketplace === mk)
-  if (candidatos.length === 0) return null
   // Marketplaces de conta única (tiktok/temu): casa direto.
-  if (candidatos.length === 1) return candidatos[0].key
-  const m = normalizar(contaCsv).match(/conta\s*(\d+)/)
-  if (m) {
-    const alvo = `conta ${m[1]}`
-    const found = candidatos.find((c) => normalizar(c.label) === alvo)
-    if (found) return found.key
+  if (candidatos.length === 1) return { conta: candidatos[0].key }
+  if (candidatos.length > 1) {
+    const m = normalizar(contaCsv).match(/conta\s*(\d+)/)
+    if (m) {
+      const alvo = `conta ${m[1]}`
+      const found = candidatos.find((c) => normalizar(c.label) === alvo)
+      if (found) return { conta: found.key }
+    }
   }
-  return null
+
+  // Não achou. Se o sufixo aponta pra OUTRO marketplace, é quase certo que a
+  // coluna da conta veio de uma linha vizinha — vale dizer na cara.
+  const doSufixo = marketplaceDoSufixo(contaCsv)
+  if (doSufixo && doSufixo !== mk) {
+    return {
+      conta: null,
+      motivo:
+        `a conta diz ${MARKETPLACE_LABEL[doSufixo]} mas o marketplace da ` +
+        `linha é ${MARKETPLACE_LABEL[mk]} ("${marketplaceCsv} / ${contaCsv}")`,
+    }
+  }
+  return { conta: null, motivo: generico }
 }
 
 // Divide uma linha CSV por ';' e tira as aspas.
@@ -98,36 +157,45 @@ function camposDaLinha(linha: string): string[] {
 }
 
 export function parseVendasCSV(texto: string): ResultadoImport {
-  const avisos: string[] = []
-  const linhas = texto
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0)
+  const ignoradas: string[] = []
+  const atencoes: string[] = []
 
-  // mapa: data -> conta -> { q, f }
-  const porDia = new Map<string, Map<ContaKey, { q: number; f: number }>>()
+  // Guarda as LINHAS de origem junto do acumulado — é o que permite dizer
+  // depois onde olhar quando a mesma (data, conta) aparece mais de uma vez.
+  type Acumulado = { q: number; f: number; linhas: number[] }
+  // mapa: data -> conta -> acumulado
+  const porDia = new Map<string, Map<ContaKey, Acumulado>>()
 
-  linhas.forEach((linha, i) => {
+  // Numeração pelo índice FÍSICO do arquivo: filtrar as vazias antes de
+  // numerar deslocaria as mensagens e mandaria o usuário pra linha errada,
+  // que é o oposto do que elas servem.
+  let primeiraComConteudo = true
+
+  texto.split(/\r?\n/).forEach((bruta, idx) => {
+    const linha = bruta.trim()
+    if (!linha) return
+    const numero = idx + 1
+    const ehPrimeira = primeiraComConteudo
+    primeiraComConteudo = false
+
     const campos = camposDaLinha(linha)
     if (campos.length < 5) {
-      avisos.push(`Linha ${i + 1} ignorada (colunas insuficientes).`)
+      ignoradas.push(`Linha ${numero}: colunas insuficientes.`)
       return
     }
     const [dataCsv, mkCsv, contaCsv, qtdCsv, valorCsv] = campos
 
     const data = dataBR(dataCsv)
     if (!data) {
-      // Provável cabeçalho na 1ª linha: ignora em silêncio.
-      if (i === 0) return
-      avisos.push(`Linha ${i + 1} ignorada (data inválida: "${dataCsv}").`)
+      // Provável cabeçalho na 1ª linha com conteúdo: ignora em silêncio.
+      if (ehPrimeira) return
+      ignoradas.push(`Linha ${numero}: data inválida ("${dataCsv}").`)
       return
     }
 
-    const conta = acharConta(mkCsv, contaCsv)
+    const { conta, motivo } = resolverConta(mkCsv, contaCsv)
     if (!conta) {
-      avisos.push(
-        `Linha ${i + 1} ignorada (conta não reconhecida: "${mkCsv} / ${contaCsv}").`,
-      )
+      ignoradas.push(`Linha ${numero}: ${motivo}.`)
       return
     }
 
@@ -137,31 +205,47 @@ export function parseVendasCSV(texto: string): ResultadoImport {
 
     if (!porDia.has(data)) porDia.set(data, new Map())
     const contas = porDia.get(data)!
-    const atual = contas.get(conta) ?? { q: 0, f: 0 }
+    const atual = contas.get(conta) ?? { q: 0, f: 0, linhas: [] }
     atual.q += quantidade
     atual.f += faturamento
+    atual.linhas.push(numero)
     contas.set(conta, atual)
   })
 
-  const dias: DiaImport[] = [...porDia.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([data, contasMap]) => {
-      const contas: ContaImport[] = [...contasMap.entries()].map(
-        ([conta, v]) => ({
-          conta,
-          quantidade: v.q,
-          faturamento: v.f.toFixed(2),
-        }),
-      )
-      return {
-        data,
-        contas,
-        totalQtd: contas.reduce((s, c) => s + c.quantidade, 0),
-        totalFat: contas.reduce((s, c) => s + Number(c.faturamento), 0),
-      }
-    })
+  const ordenados = [...porDia.entries()].sort(([a], [b]) => a.localeCompare(b))
 
-  return { dias, avisos }
+  // Mesma (data, conta) em 2+ linhas. SOMAR é o certo — duas exportações
+  // parciais do mesmo dia são legítimas —, mas somar em silêncio esconde o
+  // erro de digitação na coluna da conta: o total do DIA continua batendo, e
+  // só a distribuição entre contas fica errada. Daí ser ATENÇÃO, não ignorada.
+  for (const [data, contasMap] of ordenados) {
+    for (const [conta, v] of contasMap) {
+      if (v.linhas.length < 2) continue
+      atencoes.push(
+        `${rotuloConta(conta)} aparece ${v.linhas.length}× em ` +
+          `${dataParaBR(data)} (${listaDeLinhas(v.linhas)}): somadas, ` +
+          `${v.q} vendas e ${moedaBR(v.f)}.`,
+      )
+    }
+  }
+
+  const dias: DiaImport[] = ordenados.map(([data, contasMap]) => {
+    const contas: ContaImport[] = [...contasMap.entries()].map(
+      ([conta, v]) => ({
+        conta,
+        quantidade: v.q,
+        faturamento: v.f.toFixed(2),
+      }),
+    )
+    return {
+      data,
+      contas,
+      totalQtd: contas.reduce((s, c) => s + c.quantidade, 0),
+      totalFat: contas.reduce((s, c) => s + Number(c.faturamento), 0),
+    }
+  })
+
+  return { dias, ignoradas, atencoes }
 }
 
 // Label amigável de uma conta (pra preview).
