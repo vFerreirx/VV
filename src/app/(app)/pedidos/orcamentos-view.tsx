@@ -43,6 +43,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -73,6 +74,7 @@ import {
   type EscolhasDeTamanho,
 } from '@/lib/kit-tamanhos'
 import {
+  ehExcecao,
   ROTULO_STATUS,
   statusAlcancaveis,
   type StatusPedido,
@@ -1346,35 +1348,50 @@ function ExcluirDialog({
 }
 
 // -----------------------------------------------------------------
-// Badge de status — dropdown com as etapas vizinhas
+// Badge de status — dropdown com todos os outros status
 // -----------------------------------------------------------------
 
-// Três etapas em curso, uma encerrada. As em curso são CROMÁTICAS e seguem
-// a temperatura do fluxo (âmbar parado -> esmeralda decidido -> azul pronto
-// pra sair); "Finalizado" é o único NEUTRO, e é essa quebra — cor vs. cinza,
-// não um tom de cor contra outro — que separa de relance o pedido que ainda
-// pede alguma coisa do pedido que acabou.
+// Cinco estados, TODOS cromáticos, e a cor conta em que ponto o pedido está:
+// âmbar parado, esmeralda aceito, azul-céu pronto pra sair, violeta encerrado
+// bem, vermelho encerrado mal. Vermelho é o único alarme — e é o único que
+// precisa saltar, porque é o único irreversível na cabeça de quem lê.
 //
-// Âmbar/esmeralda são exatamente as que já existiam pra aguardando/aprovado:
-// quem já usa a tela não precisa reaprender nada.
+// Âmbar/esmeralda/azul são as mesmas de antes: quem já usa a tela não precisa
+// reaprender nada. "Finalizado" era CINZA e virou violeta — o cinza lia como
+// "desativado", quando o que ele diz é o oposto (deu certo e acabou). Violeta
+// se separa bem do azul-céu do separado sem competir com o esmeralda.
+//
+// A pílula e o ponto do menu vivem NO MESMO objeto de propósito: eram dois
+// mapas paralelos, e dois mapas paralelos saem de sincronia. Os nomes de
+// classe ficam literais porque o Tailwind não enxerga classe montada por
+// template string — `bg-${cor}-500` não gera CSS nenhum.
 //
 // O par claro/escuro é o mesmo do kanban de produção (`-700` no claro,
 // `-300` no escuro sobre a tinta a 15%), que já está validado nos dois temas.
-const CLASSE_STATUS: Record<StatusPedido, string> = {
-  aguardando: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
-  aprovado: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
-  separado: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
-  finalizado: 'bg-zinc-500/15 text-zinc-700 dark:text-zinc-300',
-}
-
-// Ponto sólido do menu. É `bg-*` de propósito: o item do dropdown reescreve
-// a cor do TEXTO dos filhos no foco, então um rótulo colorido perderia a cor
+// O ponto é `bg-*` sólido de propósito: o item do dropdown reescreve a cor do
+// TEXTO dos filhos no foco, então um rótulo colorido perderia a cor
 // justamente quando o mouse está em cima.
-const PONTO_STATUS: Record<StatusPedido, string> = {
-  aguardando: 'bg-amber-500',
-  aprovado: 'bg-emerald-500',
-  separado: 'bg-sky-500',
-  finalizado: 'bg-zinc-500',
+const ESTILO_STATUS: Record<StatusPedido, { pilula: string; ponto: string }> = {
+  aguardando: {
+    pilula: 'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+    ponto: 'bg-amber-500',
+  },
+  aprovado: {
+    pilula: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+    ponto: 'bg-emerald-500',
+  },
+  separado: {
+    pilula: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
+    ponto: 'bg-sky-500',
+  },
+  finalizado: {
+    pilula: 'bg-violet-500/15 text-violet-700 dark:text-violet-300',
+    ponto: 'bg-violet-500',
+  },
+  cancelado: {
+    pilula: 'bg-red-500/15 text-red-700 dark:text-red-300',
+    ponto: 'bg-red-500',
+  },
 }
 
 const PILULA = 'rounded-full px-2 py-0.5 text-[11px] font-medium'
@@ -1389,8 +1406,12 @@ function StatusBadge({
   const [isPending, startTransition] = useTransition()
   const atual = orcamento.status
   // Mesma função que a action usa pra validar — a tela nunca oferece um
-  // passo que o servidor vai recusar.
+  // destino que o servidor vai recusar.
   const opcoes = statusAlcancaveis(atual)
+  // Cancelado desce pro fim, atrás de um divisor: não é "mais um passo", e
+  // no meio da lista convida a clique errado.
+  const etapas = opcoes.filter((s) => !ehExcecao(s))
+  const excecoes = opcoes.filter((s) => ehExcecao(s))
 
   function mudarPara(destino: StatusPedido) {
     startTransition(async () => {
@@ -1403,9 +1424,21 @@ function StatusBadge({
     })
   }
 
+  function Item({ s }: { s: StatusPedido }) {
+    return (
+      <DropdownMenuItem onClick={() => mudarPara(s)}>
+        <span
+          className={cn('size-2 rounded-full', ESTILO_STATUS[s].ponto)}
+          aria-hidden
+        />
+        {ROTULO_STATUS[s]}
+      </DropdownMenuItem>
+    )
+  }
+
   if (!podeEditar || opcoes.length === 0) {
     return (
-      <span className={cn(PILULA, 'inline-block', CLASSE_STATUS[atual])}>
+      <span className={cn(PILULA, 'inline-block', ESTILO_STATUS[atual].pilula)}>
         {ROTULO_STATUS[atual]}
       </span>
     )
@@ -1415,11 +1448,11 @@ function StatusBadge({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={isPending}
-        title="Mudar etapa do pedido"
+        title="Mudar status do pedido"
         className={cn(
           PILULA,
           'inline-flex items-center gap-0.5 transition-colors',
-          CLASSE_STATUS[atual],
+          ESTILO_STATUS[atual].pilula,
           isPending ? 'opacity-60' : 'hover:opacity-70',
         )}
       >
@@ -1427,14 +1460,12 @@ function StatusBadge({
         <ChevronDown className="size-3 opacity-60" aria-hidden />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-auto">
-        {opcoes.map((s) => (
-          <DropdownMenuItem key={s} onClick={() => mudarPara(s)}>
-            <span
-              className={cn('size-2 rounded-full', PONTO_STATUS[s])}
-              aria-hidden
-            />
-            {ROTULO_STATUS[s]}
-          </DropdownMenuItem>
+        {etapas.map((s) => (
+          <Item key={s} s={s} />
+        ))}
+        {etapas.length > 0 && excecoes.length > 0 && <DropdownMenuSeparator />}
+        {excecoes.map((s) => (
+          <Item key={s} s={s} />
         ))}
       </DropdownMenuContent>
     </DropdownMenu>

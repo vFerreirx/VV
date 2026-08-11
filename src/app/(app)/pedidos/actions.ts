@@ -405,9 +405,13 @@ export async function excluirOrcamentoAction(
   return { success: true, message: 'Pedido excluído' }
 }
 
-// Move o pedido UMA casa no fluxo (ação rápida na lista). Quem decide se o
-// passo vale é src/lib/pedido-status.ts — o mesmo módulo que monta o menu na
-// tela, pra que ela nunca ofereça algo que aqui é recusado.
+// Troca o status do pedido (ação rápida na lista). A transição é livre, mas
+// quem decide o que vale é src/lib/pedido-status.ts — o mesmo módulo que monta
+// o menu na tela, pra que ela nunca ofereça algo que aqui é recusado.
+//
+// O `ehStatusPedido` daqui não é redundante com o tipo do parâmetro: server
+// action recebe o que o cliente mandar, e `destino: StatusPedido` é promessa
+// de compilação, não do runtime.
 export async function mudarStatusOrcamentoAction(
   id: string,
   destino: StatusPedido,

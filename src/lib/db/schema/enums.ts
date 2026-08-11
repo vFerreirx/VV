@@ -57,13 +57,16 @@ export const movimentacaoTipoEnum = pgEnum('movimentacao_tipo', [
   'devolucao',
 ])
 
-// Status do pedido. A ORDEM é o fluxo, e tem que bater com a ordem interna
-// do enum no Postgres (`supabase/sql/41_orcamento_status.sql`) e com
-// `FLUXO_PEDIDO` em src/lib/pedido-status.ts, que é quem decide quais
-// transições valem.
+// Status do pedido. Qualquer um vira qualquer outro — a ordem aqui NÃO é
+// fluxo, é só a ordem interna do enum no Postgres
+// (`supabase/sql/41_orcamento_status.sql` e `42_orcamento_status_cancelado.sql`),
+// que precisa bater com `STATUS_PEDIDO` em src/lib/pedido-status.ts — lá é
+// também a ordem de exibição, e é lá que mora a regra de transição.
+// `cancelado` fica no fim: é exceção, não etapa.
 export const orcamentoStatusEnum = pgEnum('orcamento_status', [
   'aguardando',
   'aprovado',
   'separado',
   'finalizado',
+  'cancelado',
 ])

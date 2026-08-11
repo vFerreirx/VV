@@ -1,0 +1,28 @@
+-- ============================================================
+-- 42_orcamento_status_cancelado.sql
+-- O pedido ganha 'cancelado', quinto e último valor do enum:
+--   aguardando, aprovado, separado, finalizado, cancelado
+--
+-- NO FIM de propósito. 'cancelado' é estado de EXCEÇÃO, não etapa —
+-- intercalar no meio o faria parecer mais um passo do caminho, e a ordem
+-- interna do enum é a ordem de exibição do dropdown e de qualquer ORDER BY
+-- por status. ADD VALUE sem BEFORE/AFTER já acrescenta no fim, que é o que
+-- queremos: nada de posicionar à mão.
+--
+-- A partir da 41 a transição virou LIVRE (qualquer status vira qualquer
+-- outro), então este valor não precisa de posição nenhuma pra ser
+-- alcançável. Quem decide o que vale continua sendo src/lib/pedido-status.ts.
+--
+-- NENHUM pedido precisa ser migrado: todos estão num dos quatro status
+-- anteriores, que continuam válidos e continuam significando a mesma coisa.
+--
+-- ESTE ARQUIVO SÓ TEM ADD VALUE, pelo mesmo motivo da 41: o Postgres recusa
+-- USAR um valor de enum recém-adicionado na mesma transação em que ele foi
+-- criado, e o scripts/setup-db.ts manda cada .sql de uma vez só (uma
+-- transação implícita por arquivo). Qualquer UPDATE, CHECK ou INSERT que
+-- mencione 'cancelado' tem que ir num arquivo POSTERIOR, nunca aqui.
+--
+-- Idempotente (IF NOT EXISTS). Só aditivo: nada de DROP, DELETE ou UPDATE.
+-- ============================================================
+
+ALTER TYPE public.orcamento_status ADD VALUE IF NOT EXISTS 'cancelado';
