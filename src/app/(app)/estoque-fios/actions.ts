@@ -271,9 +271,9 @@ export async function listarLotesFio(): Promise<LoteFioItem[]> {
   }))
 }
 
-// O saldo por cor NÃO tem action própria: sai do mesmo `listarLotesFio`
-// (uma consulta agregada só) agrupado por `agruparSaldoPorCor`, que a
-// página chama direto — função pura não precisa atravessar a fronteira
+// A grade de estoque NÃO tem action própria: come da mesma `listarLotesFio`
+// (uma consulta agregada só) e ordena/soma com as funções puras de
+// `src/lib/fios/saldo.ts` — função pura não precisa atravessar a fronteira
 // server/client, e uma segunda consulta pro mesmo dado seria desperdício.
 
 export async function criarLoteFioAction(

@@ -384,6 +384,19 @@
       animation-timeline: --app-scroll;
       animation-range: 0 48px;
     }
+
+    /* Mesma sombra, mesmo gesto, outro scroller: o cabeçalho grudado da
+     * grade de fios. Aqui o `scroll()` puro serve — o ancestral rolável
+     * mais próximo do <th> é o próprio container da grade, ao contrário da
+     * topbar, que é IRMÃ do scroller e por isso precisa da timeline
+     * nomeada. Reaproveita `vv-topbar-shadow` de propósito: a mesma
+     * separação entre "o que está fixo" e "o que passa por baixo" deve ler
+     * igual em toda a interface. */
+    [data-grade-fios] thead th {
+      animation: vv-topbar-shadow linear both;
+      animation-timeline: scroll(nearest);
+      animation-range: 0 32px;
+    }
   }
 }
 

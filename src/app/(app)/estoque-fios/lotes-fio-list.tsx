@@ -130,15 +130,20 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
         <div className="overflow-x-auto rounded-lg border">
           <Table>
             <TableHeader>
+              {/* Sem coluna de SALDO, de propósito: o saldo é a pergunta da
+                  aba "Estoque", e repeti-lo aqui faria as duas tabelas
+                  dizerem a mesma coisa. Esta responde o que ENTROU e quanto
+                  custou; lá se vê o que restou. */}
               <TableRow>
+                <TableHead>Entrada</TableHead>
                 <TableHead>Lote</TableHead>
                 <TableHead>Cor</TableHead>
                 <TableHead>Caixas</TableHead>
                 <TableHead>Peso total</TableHead>
-                <TableHead>Saldo</TableHead>
                 <TableHead>Valor total</TableHead>
                 <TableHead>R$/kg</TableHead>
                 <TableHead>Vendedor</TableHead>
+                <TableHead>Nota fiscal</TableHead>
                 <TableHead>Vencimento</TableHead>
                 <TableHead className="w-24" />
               </TableRow>
@@ -153,6 +158,9 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
                     : null
                 return (
                   <TableRow key={l.id}>
+                    <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
+                      {formatarData(l.dataEntrada)}
+                    </TableCell>
                     <TableCell className="font-medium whitespace-nowrap">
                       {l.numeroLote ?? (
                         <span className="text-muted-foreground font-normal italic">
@@ -177,30 +185,30 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>{l.caixas}</TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      {formatarKg(l.pesoTotalKg)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <span>
-                          {l.saldoCaixas} cx · {formatarKg(l.saldoPesoKg)}
-                        </span>
+                    <TableCell className="tabular-nums">
+                      <span className="flex items-center gap-2">
+                        {l.caixas}
                         {l.saldoCaixas <= 0 && (
                           <Badge variant="secondary">Esgotado</Badge>
                         )}
-                      </div>
+                      </span>
                     </TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="whitespace-nowrap tabular-nums">
+                      {formatarKg(l.pesoTotalKg)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap tabular-nums">
                       {formatarReais(l.valorTotal)}
                     </TableCell>
-                    <TableCell className="text-muted-foreground whitespace-nowrap">
+                    <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
                       {rsPorKg == null ? '—' : formatarReais(rsPorKg)}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {l.vendedor ?? '—'}
                     </TableCell>
-                    <TableCell className="text-muted-foreground whitespace-nowrap">
+                    <TableCell className="text-muted-foreground">
+                      {l.notaFiscal ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
                       {formatarData(l.vencimentoPagamento)}
                     </TableCell>
                     <TableCell className="text-right">

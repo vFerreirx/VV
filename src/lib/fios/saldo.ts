@@ -1,15 +1,14 @@
-// Agrupamento do estoque de fios por COR — a pergunta que a fábrica faz
-// todo dia é "tenho Cáqui?", não "o que entrou na terça".
+// O estoque de fios como a fábrica sempre o viu: uma linha por lote, na
+// mesma ordem e com as mesmas contas da planilha que a tela substituiu.
 //
-// Agrupa pela cor do CATÁLOGO, não pelo nome do fornecedor: dois nomes de
-// fornecedor podem apontar pra mesma cor nossa (hoje "Black" → "Preto" já
-// é esse caso), e nesse caso o estoque é um só. O nome do fornecedor
-// continua visível em cada lote, que é onde ele importa — é por ele que se
-// confere a etiqueta da caixa.
+// Nada aqui agrupa por cor. A cor REPETE em toda linha, como no Excel —
+// agrupar economizaria pixels e custaria o reconhecimento, que é o ponto:
+// quem trabalhava na planilha tem que abrir a tela e achar a linha onde
+// espera. (Houve uma versão com cartões agrupados por cor; saiu junto com
+// `agruparSaldoPorCor` quando a grade chegou.)
 //
 // Lógica PURA: o saldo de cada lote já chega calculado do banco (uma
-// consulta agregada pra lista inteira, sem N+1); aqui só se agrupa e
-// ordena.
+// consulta agregada pra lista inteira, sem N+1); aqui só se ordena e soma.
 
 export type LoteComSaldo = {
   id: string
@@ -25,87 +24,75 @@ export type LoteComSaldo = {
   saldoPesoKg: number
 }
 
-export type SaldoDaCor = {
-  corId: string
-  corNome: string
-  corHex: string | null
-  saldoCaixas: number
-  saldoPesoKg: number
-  // Todos os lotes da cor, inclusive os zerados — some com o lote e o
-  // usuário perde o histórico de onde o fio foi parar.
-  lotes: LoteComSaldo[]
-  lotesComSaldo: number
+// Comparação de texto na ordem que o usuário espera ler, com `numeric` pra
+// que a partida 1193 venha antes da 80450 (e não "1193" < "80450" < "BH…"
+// por código de caractere).
+function compararTexto(a: string, b: string): number {
+  return a.localeCompare(b, 'pt-BR', { numeric: true, sensitivity: 'base' })
 }
 
 /**
- * Uma linha por cor do catálogo, em ordem alfabética.
+ * Cor em ordem alfabética e, dentro da cor, por partida.
  *
- * Alfabética de propósito, e não "com saldo primeiro": a lista é usada como
- * índice ("cadê o Cáqui?"), e reordenar por saldo faria a cor mudar de
- * lugar sozinha entre uma visita e outra. Cor zerada continua na lista —
- * "não tenho" é uma resposta tão útil quanto "tenho", e some da lista
- * significaria "essa cor não existe".
+ * DETERMINÍSTICA: o `id` no fim é o desempate que garante que a mesma linha
+ * caia sempre no mesmo lugar. Sem ele, dois lotes com a mesma cor e a mesma
+ * partida — que existem de verdade, o Cáqui 4660 aparece duas vezes na
+ * planilha — trocariam de posição entre uma leitura e outra conforme a
+ * ordem que o banco devolvesse, e a grade pareceria instável sem nada ter
+ * mudado.
+ *
+ * A cor usada é a do FORNECEDOR, não a do catálogo: a grade é o espelho da
+ * planilha dele, e é "Cáqui"/"Black" que estão escritos na etiqueta da
+ * caixa. O de-para para a cor do catálogo continua onde importa, no
+ * cadastro.
  */
-export function agruparSaldoPorCor(lotes: LoteComSaldo[]): SaldoDaCor[] {
-  const porCor = new Map<string, SaldoDaCor>()
-
-  for (const lote of lotes) {
-    let cor = porCor.get(lote.corId)
-    if (!cor) {
-      cor = {
-        corId: lote.corId,
-        corNome: lote.corNome,
-        corHex: lote.corHex,
-        saldoCaixas: 0,
-        saldoPesoKg: 0,
-        lotes: [],
-        lotesComSaldo: 0,
-      }
-      porCor.set(lote.corId, cor)
-    }
-    cor.lotes.push(lote)
-    cor.saldoCaixas += lote.saldoCaixas
-    cor.saldoPesoKg += lote.saldoPesoKg
-    if (lote.saldoCaixas > 0) cor.lotesComSaldo += 1
-  }
-
-  const cores = [...porCor.values()]
-  for (const cor of cores) {
-    // Centavos de kg acumulados na soma de 50 lotes viram dízima — o banco
-    // guarda 2 casas, a soma tem que respeitar as mesmas 2.
-    cor.saldoPesoKg = Math.round(cor.saldoPesoKg * 100) / 100
-    // Dentro da cor: o que dá pra usar primeiro, e entre esses o mais
-    // antigo — é o fio que a fábrica tem que consumir antes (FIFO).
-    // Esgotado vai pro fim, sem sumir.
-    cor.lotes.sort((a, b) => {
-      const vivoA = a.saldoCaixas > 0 ? 0 : 1
-      const vivoB = b.saldoCaixas > 0 ? 0 : 1
-      if (vivoA !== vivoB) return vivoA - vivoB
-      if (a.dataEntrada !== b.dataEntrada)
-        return a.dataEntrada.localeCompare(b.dataEntrada)
-      return (a.numeroLote ?? '').localeCompare(b.numeroLote ?? '', 'pt-BR')
-    })
-  }
-
-  return cores.sort((a, b) => a.corNome.localeCompare(b.corNome, 'pt-BR'))
+export function ordenarParaGrade(lotes: LoteComSaldo[]): LoteComSaldo[] {
+  return [...lotes].sort((a, b) => {
+    const cor = compararTexto(a.corFornecedorNome, b.corFornecedorNome)
+    if (cor !== 0) return cor
+    // Lote sem número vai pro fim da cor: é a linha que ninguém consegue
+    // procurar pelo código, então não pode ficar no meio das que dá.
+    if (!a.numeroLote !== !b.numeroLote) return a.numeroLote ? -1 : 1
+    const partida = compararTexto(a.numeroLote ?? '', b.numeroLote ?? '')
+    if (partida !== 0) return partida
+    return a.id.localeCompare(b.id)
+  })
 }
 
-export type TotalGeralFios = {
-  cores: number
-  coresComSaldo: number
+export type TotalGrade = {
   lotes: number
+  caixas: number
+  retiradaCaixas: number
   saldoCaixas: number
   saldoPesoKg: number
 }
 
-// O rodapé da tela — é com ele que se confere contra a planilha.
-export function totalGeral(cores: SaldoDaCor[]): TotalGeralFios {
-  const saldoPesoKg = cores.reduce((s, c) => s + c.saldoPesoKg, 0)
+/**
+ * A linha de TOTAL do rodapé, somada das MESMAS linhas que a grade mostra.
+ *
+ * Nunca constante: o rodapé é o que se confere contra a planilha, e um
+ * número escrito à mão continuaria "batendo" no dia em que a conta
+ * quebrasse — que é exatamente o dia em que ele precisa denunciar.
+ * Por sair da lista recebida, ele acompanha o filtro de cor, como o
+ * SUBTOTAL de uma planilha filtrada acompanha.
+ */
+export function totalDaGrade(lotes: LoteComSaldo[]): TotalGrade {
+  const caixas = lotes.reduce((s, l) => s + l.caixas, 0)
+  const saldoCaixas = lotes.reduce((s, l) => s + l.saldoCaixas, 0)
+  const saldoPesoKg = lotes.reduce((s, l) => s + l.saldoPesoKg, 0)
   return {
-    cores: cores.length,
-    coresComSaldo: cores.filter((c) => c.saldoCaixas > 0).length,
-    lotes: cores.reduce((s, c) => s + c.lotes.length, 0),
-    saldoCaixas: cores.reduce((s, c) => s + c.saldoCaixas, 0),
+    lotes: lotes.length,
+    caixas,
+    retiradaCaixas: caixas - saldoCaixas,
+    saldoCaixas,
+    // 2 casas: é a precisão da coluna no banco, e somar 51 floats sem
+    // arredondar deixa centavo de kg sobrando no rodapé.
     saldoPesoKg: Math.round(saldoPesoKg * 100) / 100,
   }
+}
+
+// As cores presentes, pro filtro do topo (no espírito do AutoFilter: as
+// opções são os valores que existem na coluna, não um cadastro à parte).
+export function coresDaGrade(lotes: LoteComSaldo[]): string[] {
+  return [...new Set(lotes.map((l) => l.corFornecedorNome))].sort(compararTexto)
 }

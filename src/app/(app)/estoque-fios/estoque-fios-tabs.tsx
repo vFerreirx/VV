@@ -3,31 +3,42 @@
 import { useState, useTransition, ViewTransition } from 'react'
 
 import { CoresFornecedorList } from './cores-fornecedor-list'
+import { GradeFios } from './grade-fios'
 import { LotesFioList } from './lotes-fio-list'
-import { SaldoPorCor } from './saldo-por-cor'
 import type { CorFornecedorItem, LoteFioItem } from './actions'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Cor } from '@/lib/db/schema'
-import type { SaldoDaCor } from '@/lib/fios/saldo'
 
 export function EstoqueFiosTabs({
   tabInicial,
-  saldo,
   lotes,
   coresFornecedor,
   coresAtivas,
   podeEditar,
 }: {
   tabInicial: string
-  saldo: SaldoDaCor[]
   lotes: LoteFioItem[]
   coresFornecedor: CorFornecedorItem[]
   coresAtivas: Cor[]
   podeEditar: boolean
 }) {
+  // As duas primeiras abas listam os mesmos lotes, e é de propósito — o que
+  // muda é a PERGUNTA que cada uma responde, e por isso as colunas não se
+  // repetem:
+  //
+  //  - "Entradas de lote" responde "o que entrou, de quem e por quanto":
+  //    é o caminho de cadastro/edição e o lugar dos dados de compra (valor,
+  //    R$/kg, vendedor, nota, vencimento) que a planilha da fábrica nunca
+  //    teve. Ordenada por data de entrada, como um livro de lançamentos.
+  //  - "Estoque" responde "quanto tem de Cáqui?": é a grade no formato da
+  //    planilha, só leitura, com RETIRADA/TOTAL CAIXA/KG e a linha de TOTAL
+  //    que se confere contra o rodapé dela.
+  //
+  // O saldo aparece só na segunda; a compra, só na primeira. Se um dia uma
+  // das duas ganhar a coluna da outra, elas voltam a dizer a mesma coisa.
   const abas = [
     { value: 'entradas', label: 'Entradas de lote' },
-    { value: 'saldo', label: 'Saldo por cor' },
+    { value: 'saldo', label: 'Estoque' },
     { value: 'cores', label: 'Cores do fornecedor' },
   ]
   const def = abas.some((a) => a.value === tabInicial)
@@ -44,8 +55,8 @@ export function EstoqueFiosTabs({
       <div>
         <h1 className="text-2xl font-semibold">Estoque de fios</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          As entradas de lote, o que tem em estoque por cor e o de-para entre a
-          cor do fornecedor e a cor do catálogo.
+          As entradas de lote, o estoque no formato da planilha e o de-para
+          entre a cor do fornecedor e a cor do catálogo.
         </p>
       </div>
 
@@ -85,7 +96,7 @@ export function EstoqueFiosTabs({
             </TabsContent>
 
             <TabsContent value="saldo" className="mt-2">
-              <SaldoPorCor cores={saldo} />
+              <GradeFios lotes={lotes} />
             </TabsContent>
 
             <TabsContent value="cores" className="mt-2">
