@@ -25,11 +25,9 @@ export function EstoqueFiosTabs({
   coresAtivas: Cor[]
   podeEditar: boolean
 }) {
-  // "Saldo" primeiro: a pergunta de todo dia é "tenho Cáqui?", não "o que
-  // entrou na terça". O livro de entradas continua existindo, em segundo.
   const abas = [
-    { value: 'saldo', label: 'Saldo por cor' },
     { value: 'entradas', label: 'Entradas de lote' },
+    { value: 'saldo', label: 'Saldo por cor' },
     { value: 'cores', label: 'Cores do fornecedor' },
   ]
   const def = abas.some((a) => a.value === tabInicial)
@@ -46,7 +44,7 @@ export function EstoqueFiosTabs({
       <div>
         <h1 className="text-2xl font-semibold">Estoque de fios</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          O que tem em estoque por cor, as entradas de lote e o de-para entre a
+          As entradas de lote, o que tem em estoque por cor e o de-para entre a
           cor do fornecedor e a cor do catálogo.
         </p>
       </div>
@@ -78,16 +76,16 @@ export function EstoqueFiosTabs({
           default="none"
         >
           <div>
-            <TabsContent value="saldo" className="mt-2">
-              <SaldoPorCor cores={saldo} />
-            </TabsContent>
-
             <TabsContent value="entradas" className="mt-2">
               <LotesFioList
                 lotes={lotes}
                 coresFornecedorAtivas={coresFornecedorAtivas}
                 podeEditar={podeEditar}
               />
+            </TabsContent>
+
+            <TabsContent value="saldo" className="mt-2">
+              <SaldoPorCor cores={saldo} />
             </TabsContent>
 
             <TabsContent value="cores" className="mt-2">

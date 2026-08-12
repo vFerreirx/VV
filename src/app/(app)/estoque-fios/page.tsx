@@ -26,7 +26,7 @@ export default async function EstoqueFiosPage({
   ])
 
   const sp = await searchParams
-  const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'saldo'
+  const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'entradas'
 
   // Agrupado AQUI, no server component, a partir da mesma lista que a aba de
   // entradas já usa — o saldo por cor não custa consulta nenhuma a mais.
