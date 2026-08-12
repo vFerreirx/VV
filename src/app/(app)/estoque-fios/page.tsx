@@ -6,6 +6,7 @@ import { EstoqueFiosTabs } from './estoque-fios-tabs'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
+import { agruparSaldoPorCor } from '@/lib/fios/saldo'
 
 export const metadata: Metadata = { title: 'Estoque de fios — Vanvest' }
 
@@ -25,11 +26,16 @@ export default async function EstoqueFiosPage({
   ])
 
   const sp = await searchParams
-  const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'entradas'
+  const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'saldo'
+
+  // Agrupado AQUI, no server component, a partir da mesma lista que a aba de
+  // entradas já usa — o saldo por cor não custa consulta nenhuma a mais.
+  const saldo = agruparSaldoPorCor(lotes)
 
   return (
     <EstoqueFiosTabs
       tabInicial={tabInicial}
+      saldo={saldo}
       lotes={lotes}
       coresFornecedor={coresFornecedor}
       coresAtivas={coresAtivas}

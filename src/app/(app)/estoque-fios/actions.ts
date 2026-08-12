@@ -15,6 +15,13 @@ import {
   type CorFornecedorFio,
 } from '@/lib/db/schema'
 import {
+  calcularTotais,
+  chaveDeLote,
+  parseFiosCSV,
+  type LinhaFio,
+  type TotaisImport,
+} from '@/lib/fios/importar-csv'
+import {
   corFornecedorSchema,
   loteFioSchema,
   saidaFioSchema,
@@ -187,23 +194,26 @@ export async function excluirCorFornecedorAction(
 
 export type LoteFioItem = {
   id: string
-  numeroLote: string
+  // Null quando o lote não tem número — acontece de verdade na planilha da
+  // fábrica. Ver `supabase/sql/44_lotes_fio_opcionais.sql`.
+  numeroLote: string | null
   corFornecedorId: string
   corFornecedorNome: string
+  corId: string
   corNome: string
   corHex: string | null
   caixas: number
   pesoTotalKg: string
-  valorTotal: string
-  vendedor: string
+  valorTotal: string | null
+  vendedor: string | null
   dataEntrada: string
-  vencimentoPagamento: string
+  vencimentoPagamento: string | null
   notaFiscal: string | null
   observacao: string | null
   saidaCaixas: number
   saidaPesoKg: string
   saldoCaixas: number
-  saldoPesoKg: string
+  saldoPesoKg: number
 }
 
 export async function listarLotesFio(): Promise<LoteFioItem[]> {
@@ -231,6 +241,7 @@ export async function listarLotesFio(): Promise<LoteFioItem[]> {
       numeroLote: lotesFio.numeroLote,
       corFornecedorId: lotesFio.corFornecedorId,
       corFornecedorNome: coresFornecedorFio.nomeFornecedor,
+      corId: cores.id,
       corNome: cores.nome,
       corHex: cores.codigoHex,
       caixas: lotesFio.caixas,
@@ -253,9 +264,17 @@ export async function listarLotesFio(): Promise<LoteFioItem[]> {
   return rows.map((r) => ({
     ...r,
     saldoCaixas: r.caixas - r.saidaCaixas,
-    saldoPesoKg: (Number(r.pesoTotalKg) - Number(r.saidaPesoKg)).toFixed(2),
+    // 2 casas: é a precisão da coluna, e somar floats de 50 lotes sem
+    // arredondar faz o rodapé fechar com centavo de kg sobrando.
+    saldoPesoKg:
+      Math.round((Number(r.pesoTotalKg) - Number(r.saidaPesoKg)) * 100) / 100,
   }))
 }
+
+// O saldo por cor NÃO tem action própria: sai do mesmo `listarLotesFio`
+// (uma consulta agregada só) agrupado por `agruparSaldoPorCor`, que a
+// página chama direto — função pura não precisa atravessar a fronteira
+// server/client, e uma segunda consulta pro mesmo dado seria desperdício.
 
 export async function criarLoteFioAction(
   input: LoteFioInput,
@@ -278,6 +297,8 @@ export async function criarLoteFioAction(
       corFornecedorId: data.corFornecedorId,
       caixas: data.caixas,
       pesoTotalKg: data.pesoTotalKg,
+      // Os quatro abaixo aceitam null: campo vazio quer dizer "não tem",
+      // e nunca zero/"" — ver o comentário do schema de `lotesFio`.
       valorTotal: data.valorTotal,
       vendedor: data.vendedor,
       dataEntrada: data.dataEntrada,
@@ -322,6 +343,8 @@ export async function atualizarLoteFioAction(
       corFornecedorId: data.corFornecedorId,
       caixas: data.caixas,
       pesoTotalKg: data.pesoTotalKg,
+      // Os quatro abaixo aceitam null: campo vazio quer dizer "não tem",
+      // e nunca zero/"" — ver o comentário do schema de `lotesFio`.
       valorTotal: data.valorTotal,
       vendedor: data.vendedor,
       dataEntrada: data.dataEntrada,
@@ -465,4 +488,193 @@ export async function registrarSaidaFioAction(
 
   revalidatePath('/estoque-fios')
   return { success: true, data: { id: inserted!.id }, message: 'Saída registrada' }
+}
+
+// -----------------------------------------------------------------
+// Import da planilha de fios (CSV)
+// -----------------------------------------------------------------
+
+// A linha do arquivo mais o que só o banco sabe: se esse lote já está lá.
+export type LinhaAnalisada = LinhaFio & { jaExiste: boolean }
+
+export type AnaliseImportFios = {
+  linhas: LinhaAnalisada[]
+  ignoradas: string[]
+  atencoes: string[]
+  // Mensagens sobre lotes que JÁ EXISTEM no banco. Ficam separadas das
+  // atenções porque têm um botão associado: entram só se o usuário mandar.
+  duplicadas: string[]
+  totais: TotaisImport
+  totaisSemDuplicadas: TotaisImport
+}
+
+const MOTIVO_IMPORT = 'Retirada acumulada na planilha (importação)'
+
+async function coresParaImport() {
+  const rows = await db
+    .select({
+      id: coresFornecedorFio.id,
+      nomeFornecedor: coresFornecedorFio.nomeFornecedor,
+    })
+    .from(coresFornecedorFio)
+    .where(isNull(coresFornecedorFio.deletedAt))
+  return rows
+}
+
+// Lotes que já estão no banco, pela mesma chave (cor + número normalizado)
+// que o parser usa. Só os NÃO excluídos: um lote apagado não é obstáculo
+// pra reimportar, e contá-lo faria a prévia acusar duplicata de fantasma.
+async function chavesJaExistentes(): Promise<Set<string>> {
+  const rows = await db
+    .select({
+      corFornecedorId: lotesFio.corFornecedorId,
+      numeroLote: lotesFio.numeroLote,
+      caixas: lotesFio.caixas,
+      pesoTotalKg: lotesFio.pesoTotalKg,
+    })
+    .from(lotesFio)
+    .where(isNull(lotesFio.deletedAt))
+
+  const chaves = new Set<string>()
+  for (const r of rows) {
+    chaves.add(
+      chaveDeLote(r.corFornecedorId, r.numeroLote, r.caixas, r.pesoTotalKg),
+    )
+  }
+  return chaves
+}
+
+/**
+ * Lê o arquivo e diz o que vai acontecer — sem gravar nada.
+ *
+ * O parsing é puro (`src/lib/fios/importar-csv.ts`); o que se acrescenta
+ * aqui é a única coisa que depende do banco: se o lote já existe.
+ */
+export async function analisarFiosCSVAction(
+  texto: string,
+): Promise<AnaliseImportFios> {
+  await requireAuth()
+
+  // `coresCadastradas`, não `cores`: `cores` aqui é a TABELA do catálogo,
+  // importada no topo.
+  const [coresCadastradas, existentes] = await Promise.all([
+    coresParaImport(),
+    chavesJaExistentes(),
+  ])
+
+  const r = parseFiosCSV(texto, coresCadastradas)
+
+  const linhas: LinhaAnalisada[] = r.linhas.map((l) => ({
+    ...l,
+    jaExiste: existentes.has(
+      chaveDeLote(l.corFornecedorId, l.numeroLote, l.caixas, l.pesoTotalKg),
+    ),
+  }))
+
+  const duplicadas = linhas
+    .filter((l) => l.jaExiste)
+    .map((l) =>
+      l.numeroLote
+        ? `Linha ${l.linha}: o lote ${l.numeroLote} (${l.corFornecedorNome}) ` +
+          `já está cadastrado — ${l.caixas} caixa(s).`
+        : `Linha ${l.linha}: já existe um lote sem número de ` +
+          `${l.corFornecedorNome} com ${l.caixas} caixa(s) e o mesmo peso.`,
+    )
+
+  return {
+    linhas,
+    ignoradas: r.ignoradas,
+    atencoes: r.atencoes,
+    duplicadas,
+    totais: r.totais,
+    totaisSemDuplicadas: calcularTotais(linhas.filter((l) => !l.jaExiste)),
+  }
+}
+
+/**
+ * Grava a planilha. Cada linha vira um lote; linha com RETIRADA vira também
+ * uma movimentação de saída, porque QUANTIDADE (KG) na planilha é o peso do
+ * SALDO — sem a saída, o estoque nasceria com o total de entrada como se
+ * nada tivesse sido consumido.
+ *
+ * `incluirDuplicadas` decide o que fazer com lote que já existe. O padrão é
+ * PULAR: importar agosto duas vezes não pode dobrar o estoque em silêncio.
+ *
+ * Tudo numa transação: meia planilha importada é pior que nenhuma, porque
+ * ninguém sabe onde ela parou.
+ */
+export async function importarFiosCSVAction(input: {
+  texto: string
+  dataReferencia: string
+  incluirDuplicadas: boolean
+}): Promise<
+  ActionResult<{ lotes: number; movimentacoes: number; puladas: number }>
+> {
+  const user = await requireAreaEscrita('estoqueFios')
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dataReferencia)) {
+    return { success: false, error: 'Informe a data de referência da planilha' }
+  }
+
+  const analise = await analisarFiosCSVAction(input.texto)
+  const aImportar = input.incluirDuplicadas
+    ? analise.linhas
+    : analise.linhas.filter((l) => !l.jaExiste)
+  const puladas = analise.linhas.length - aImportar.length
+
+  if (aImportar.length === 0) {
+    return {
+      success: false,
+      error:
+        puladas > 0
+          ? `Todas as ${puladas} linha(s) já estão cadastradas. Marque ` +
+            '"importar mesmo assim" se forem remessas novas.'
+          : 'Nenhuma linha válida no arquivo',
+    }
+  }
+
+  let movimentacoes = 0
+
+  await db.transaction(async (tx) => {
+    for (const l of aImportar) {
+      const [lote] = await tx
+        .insert(lotesFio)
+        .values({
+          numeroLote: l.numeroLote,
+          corFornecedorId: l.corFornecedorId,
+          caixas: l.caixas,
+          pesoTotalKg: l.pesoTotalKg,
+          dataEntrada: input.dataReferencia,
+          // Valor, vendedor e vencimento a planilha não tem. Ficam null —
+          // "não sei", que é a verdade — em vez de zero.
+          valorTotal: null,
+          vendedor: null,
+          vencimentoPagamento: null,
+          observacao: `Importado da planilha de fios (linha ${l.linha}).`,
+        })
+        .returning({ id: lotesFio.id })
+
+      if (l.retiradaCaixas > 0 && l.retiradaPesoKg) {
+        await tx.insert(movimentacoesFio).values({
+          loteId: lote!.id,
+          caixas: l.retiradaCaixas,
+          pesoKg: l.retiradaPesoKg,
+          data: input.dataReferencia,
+          motivo: MOTIVO_IMPORT,
+          usuarioId: user.id,
+        })
+        movimentacoes += 1
+      }
+    }
+  })
+
+  revalidatePath('/estoque-fios')
+  return {
+    success: true,
+    data: { lotes: aImportar.length, movimentacoes, puladas },
+    message:
+      `${aImportar.length} lote(s) importado(s)` +
+      (movimentacoes > 0 ? `, ${movimentacoes} com retirada` : '') +
+      (puladas > 0 ? ` · ${puladas} já cadastrado(s), pulado(s)` : ''),
+  }
 }

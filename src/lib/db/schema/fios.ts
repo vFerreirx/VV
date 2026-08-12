@@ -49,28 +49,38 @@ export type NewCorFornecedorFio = typeof coresFornecedorFio.$inferInsert
 
 // Entrada de lote de fio. Saldo = caixas/pesoTotalKg menos a soma das
 // saídas em `movimentacoesFio`.
+//
+// O QUE É OBRIGATÓRIO: cor, caixas, peso e data de entrada. Só isso.
+// A planilha que a fábrica usa não tem valor, vendedor, vencimento nem
+// (em duas linhas) número de lote — exigir esses quatro obrigava a INVENTAR
+// dado por linha, e foi o que manteve esta tela sem uso enquanto a planilha
+// controlava 51 lotes. Ver `supabase/sql/44_lotes_fio_opcionais.sql`.
+//
+// Null nesses campos quer dizer "não tem", nunca zero: `valorTotal = 0`
+// faria o R$/kg exibir R$ 0,00 como se fosse fio de graça.
 export const lotesFio = pgTable(
   'lotes_fio',
   {
     id: uuid().primaryKey().defaultRandom(),
-    numeroLote: text().notNull(),
+    numeroLote: text(),
     corFornecedorId: uuid()
       .notNull()
       .references(() => coresFornecedorFio.id),
 
     caixas: integer().notNull(),
-    // Peso total real do lote (padrão caixas×32kg calculado na tela, mas
-    // ajustável manualmente quando o lote vem mais leve).
+    // Peso total real do lote. A tela sugere caixas×32kg, mas é só chute
+    // inicial: nos lotes reais o kg por caixa varia (25, 30,91, 31,88…).
     pesoTotalKg: numeric({ precision: 10, scale: 2 }).notNull(),
     // Valor total do lote em R$. R$/kg é derivado (valorTotal ÷ pesoTotalKg)
     // só pra exibição — não armazenado.
-    valorTotal: numeric({ precision: 12, scale: 2 }).notNull(),
+    valorTotal: numeric({ precision: 12, scale: 2 }),
 
-    vendedor: text().notNull(),
+    vendedor: text(),
     // Sem default no banco (mesmo padrão de `vendas.data`/`eventos.data`) —
-    // o formulário já manda a data de hoje por padrão.
+    // o formulário já manda a data de hoje por padrão, e o import aplica uma
+    // data de referência única. Por isso ela continua obrigatória.
     dataEntrada: date().notNull(),
-    vencimentoPagamento: date().notNull(),
+    vencimentoPagamento: date(),
 
     notaFiscal: text(),
     observacao: text(),

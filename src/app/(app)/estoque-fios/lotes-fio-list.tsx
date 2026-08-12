@@ -1,7 +1,7 @@
 'use client'
 
 import { zodResolver } from '@hookform/resolvers/zod'
-import { PackageMinus, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ChevronRight, PackageMinus, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { Controller, useForm, useWatch, type Resolver } from 'react-hook-form'
@@ -14,6 +14,7 @@ import {
   type CorFornecedorItem,
   type LoteFioItem,
 } from './actions'
+import { ImportarFiosCSVDialog } from './importar-fios-csv-dialog'
 import { LoteDetailSheet } from './lote-detail-sheet'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -43,6 +44,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 import {
   PESO_PADRAO_CAIXA_KG,
   loteFioSchema,
@@ -55,6 +57,8 @@ type Props = {
   podeEditar: boolean
 }
 
+// Campo vazio é "não tem", e mostra travessão. Nunca R$ 0,00: zero num
+// campo de dinheiro lê como "fio de graça", não como "não sei quanto foi".
 function formatarReais(v: string | number | null | undefined): string {
   if (v == null || v === '') return '—'
   const n = Number(v)
@@ -69,7 +73,8 @@ function formatarKg(v: string | number | null | undefined): string {
   return `${n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg`
 }
 
-function formatarData(iso: string): string {
+function formatarData(iso: string | null): string {
+  if (!iso) return '—'
   const [ano, mes, dia] = iso.split('-')
   if (!ano || !mes || !dia) return iso
   return `${dia}/${mes}/${ano}`
@@ -90,7 +95,8 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
   return (
     <div className="space-y-4">
       {podeEditar && (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          <ImportarFiosCSVDialog />
           <Button size="sm" onClick={() => setEditing('novo')}>
             <Plus />
             Nova entrada de lote
@@ -139,14 +145,20 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
             </TableHeader>
             <TableBody>
               {lotes.map((l) => {
+                // Sem valor cadastrado não há R$/kg — e `Number(null)` é 0,
+                // que sairia como "R$ 0,00" e leria como fio de graça.
                 const rsPorKg =
-                  Number(l.pesoTotalKg) > 0
+                  l.valorTotal != null && Number(l.pesoTotalKg) > 0
                     ? Number(l.valorTotal) / Number(l.pesoTotalKg)
                     : null
                 return (
                   <TableRow key={l.id}>
                     <TableCell className="font-medium whitespace-nowrap">
-                      {l.numeroLote}
+                      {l.numeroLote ?? (
+                        <span className="text-muted-foreground font-normal italic">
+                          sem lote
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       <div className="flex items-center gap-2">
@@ -185,8 +197,10 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
                     <TableCell className="text-muted-foreground whitespace-nowrap">
                       {rsPorKg == null ? '—' : formatarReais(rsPorKg)}
                     </TableCell>
-                    <TableCell>{l.vendedor}</TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="text-muted-foreground">
+                      {l.vendedor ?? '—'}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap">
                       {formatarData(l.vencimentoPagamento)}
                     </TableCell>
                     <TableCell className="text-right">
@@ -265,24 +279,38 @@ function LoteFioDialog({
   // de lote/reabrir o dialog — ajustado durante a renderização (não em
   // efeito) seguindo o padrão do React de derivar estado a partir de props.
   const loteKey = isEdit ? lote.id : lote === 'novo' ? 'novo' : null
+
+  // "Dados da compra" nasce fechado — quem não usa a parte financeira não
+  // pode ser barrado por ela. Mas se o lote em edição JÁ tem algum desses
+  // campos, abre: esconder o que alguém cadastrou é perder o dado de vista.
+  const temDadosDeCompra = Boolean(
+    isEdit &&
+      (lote.valorTotal ||
+        lote.vendedor ||
+        lote.vencimentoPagamento ||
+        lote.notaFiscal),
+  )
+
   const [pesoTocado, setPesoTocado] = useState(Boolean(isEdit))
+  const [compraAberta, setCompraAberta] = useState(temDadosDeCompra)
   const [loteKeyAnterior, setLoteKeyAnterior] = useState(loteKey)
   if (loteKey !== loteKeyAnterior) {
     setLoteKeyAnterior(loteKey)
     setPesoTocado(Boolean(isEdit))
+    setCompraAberta(temDadosDeCompra)
   }
 
   const form = useForm<LoteFioInput>({
     resolver: zodResolver(loteFioSchema) as unknown as Resolver<LoteFioInput>,
     values: {
-      numeroLote: isEdit ? lote.numeroLote : '',
+      numeroLote: isEdit ? (lote.numeroLote ?? '') : '',
       corFornecedorId: isEdit ? lote.corFornecedorId : '',
       caixas: isEdit ? lote.caixas : '',
       pesoTotalKg: isEdit ? lote.pesoTotalKg : '',
-      valorTotal: isEdit ? lote.valorTotal : '',
-      vendedor: isEdit ? lote.vendedor : '',
+      valorTotal: isEdit ? (lote.valorTotal ?? '') : '',
+      vendedor: isEdit ? (lote.vendedor ?? '') : '',
       dataEntrada: isEdit ? lote.dataEntrada : hojeISO(),
-      vencimentoPagamento: isEdit ? lote.vencimentoPagamento : '',
+      vencimentoPagamento: isEdit ? (lote.vencimentoPagamento ?? '') : '',
       notaFiscal: isEdit ? (lote.notaFiscal ?? '') : '',
       observacao: isEdit ? (lote.observacao ?? '') : '',
     },
@@ -325,6 +353,7 @@ function LoteFioDialog({
       onClose()
       form.reset()
       setPesoTocado(false)
+      setCompraAberta(false)
     })
   })
 
@@ -336,31 +365,15 @@ function LoteFioDialog({
             {isEdit ? 'Editar entrada de lote' : 'Nova entrada de lote'}
           </DialogTitle>
           <DialogDescription>
-            O peso total sugere caixas × {PESO_PADRAO_CAIXA_KG}kg, mas pode
-            ser ajustado se o lote vier diferente.
+            Só cor, caixas e peso são obrigatórios. O peso sugere caixas ×{' '}
+            {PESO_PADRAO_CAIXA_KG}kg — é chute inicial, ajuste se o lote vier
+            diferente.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-3" noValidate>
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="lf-numero">
-                Número/código do lote <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="lf-numero"
-                autoFocus
-                disabled={isPending}
-                {...form.register('numeroLote')}
-              />
-              {errs.numeroLote && (
-                <p className="text-destructive text-xs">
-                  {errs.numeroLote.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="lf-cor">
                 Cor do fornecedor <span className="text-destructive">*</span>
               </Label>
@@ -403,6 +416,7 @@ function LoteFioDialog({
                 min={1}
                 step={1}
                 inputMode="numeric"
+                autoFocus
                 disabled={isPending}
                 {...form.register('caixas')}
               />
@@ -433,62 +447,25 @@ function LoteFioDialog({
               )}
             </div>
 
+            {/* Lote e data ficam sem asterisco: o lote pode não existir na
+                planilha, e a data já vem preenchida com hoje. */}
             <div className="space-y-1.5">
-              <Label htmlFor="lf-valor">
-                Valor total (R$) <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="lf-numero">Número/código do lote</Label>
               <Input
-                id="lf-valor"
-                type="number"
-                min={0}
-                step="0.01"
-                inputMode="decimal"
+                id="lf-numero"
+                placeholder="deixe vazio se não houver"
                 disabled={isPending}
-                {...form.register('valorTotal')}
+                {...form.register('numeroLote')}
               />
-              {errs.valorTotal && (
+              {errs.numeroLote && (
                 <p className="text-destructive text-xs">
-                  {errs.valorTotal.message}
+                  {errs.numeroLote.message}
                 </p>
               )}
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-sm">R$/kg</Label>
-              <p className="text-muted-foreground flex h-9 items-center text-sm">
-                {rsPorKg ?? '—'}
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="lf-vendedor">
-                Vendedor <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="lf-vendedor"
-                disabled={isPending}
-                {...form.register('vendedor')}
-              />
-              {errs.vendedor && (
-                <p className="text-destructive text-xs">
-                  {errs.vendedor.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="lf-nota">Nota fiscal</Label>
-              <Input
-                id="lf-nota"
-                disabled={isPending}
-                {...form.register('notaFiscal')}
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="lf-data-entrada">
-                Data de entrada <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="lf-data-entrada">Data de entrada</Label>
               <Input
                 id="lf-data-entrada"
                 type="date"
@@ -501,24 +478,94 @@ function LoteFioDialog({
                 </p>
               )}
             </div>
+          </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="lf-vencimento">
-                Vencimento do pagamento{' '}
-                <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="lf-vencimento"
-                type="date"
-                disabled={isPending}
-                {...form.register('vencimentoPagamento')}
+          {/* Bloco recolhido: quem não tem nota não é barrado por ela. */}
+          <div className="rounded-lg border">
+            <button
+              type="button"
+              onClick={() => setCompraAberta((v) => !v)}
+              aria-expanded={compraAberta}
+              className="hover:bg-muted/50 flex w-full items-center gap-2 rounded-lg p-2.5 text-left text-sm transition-colors"
+            >
+              <ChevronRight
+                className={cn(
+                  'text-muted-foreground size-4 shrink-0 transition-transform',
+                  compraAberta && 'rotate-90',
+                )}
               />
-              {errs.vencimentoPagamento && (
-                <p className="text-destructive text-xs">
-                  {errs.vencimentoPagamento.message}
-                </p>
-              )}
-            </div>
+              <span className="font-medium">Dados da compra</span>
+              <span className="text-muted-foreground text-xs">
+                opcional — preencha quando houver nota
+              </span>
+            </button>
+
+            {compraAberta && (
+              <div className="grid gap-3 border-t p-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="lf-valor">Valor total (R$)</Label>
+                  <Input
+                    id="lf-valor"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    inputMode="decimal"
+                    disabled={isPending}
+                    {...form.register('valorTotal')}
+                  />
+                  {errs.valorTotal && (
+                    <p className="text-destructive text-xs">
+                      {errs.valorTotal.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-sm">R$/kg</Label>
+                  <p className="text-muted-foreground flex h-9 items-center text-sm">
+                    {rsPorKg ?? '—'}
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="lf-vendedor">Vendedor</Label>
+                  <Input
+                    id="lf-vendedor"
+                    disabled={isPending}
+                    {...form.register('vendedor')}
+                  />
+                  {errs.vendedor && (
+                    <p className="text-destructive text-xs">
+                      {errs.vendedor.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="lf-nota">Nota fiscal</Label>
+                  <Input
+                    id="lf-nota"
+                    disabled={isPending}
+                    {...form.register('notaFiscal')}
+                  />
+                </div>
+
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="lf-vencimento">Vencimento do pagamento</Label>
+                  <Input
+                    id="lf-vencimento"
+                    type="date"
+                    disabled={isPending}
+                    {...form.register('vencimentoPagamento')}
+                  />
+                  {errs.vencimentoPagamento && (
+                    <p className="text-destructive text-xs">
+                      {errs.vencimentoPagamento.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -580,7 +627,8 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir entrada de lote?</DialogTitle>
           <DialogDescription>
-            O lote {lote?.numeroLote} será marcado como excluído.
+            O lote {lote?.numeroLote ?? `sem número (${lote?.corFornecedorNome})`}{' '}
+            será marcado como excluído.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

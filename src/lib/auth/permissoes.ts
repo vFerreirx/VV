@@ -188,7 +188,8 @@ export const AREAS: Area[] = [
     key: 'estoqueFios',
     secao: 'Estoque & Vendas',
     label: 'Estoque de fios',
-    descricao: 'Entradas de lote de fio e cores do fornecedor.',
+    descricao:
+      'Saldo de fio por cor, entradas de lote e cores do fornecedor.',
     href: '/estoque-fios',
     editavel: true,
     nivelPadrao: padrao({ [G]: 'ver', [E]: 'total' }),

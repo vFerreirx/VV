@@ -97,7 +97,11 @@ function DetalheBody({
   return (
     <>
       <SheetHeader>
-        <SheetTitle>{lote.numeroLote}</SheetTitle>
+        {/* Lote sem número existe de verdade (a planilha traz duas linhas
+            assim) — o título cai na cor, que é o que identifica a caixa. */}
+        <SheetTitle>
+          {lote.numeroLote ?? `${lote.corFornecedorNome} · sem lote`}
+        </SheetTitle>
         <SheetDescription>
           {lote.corFornecedorNome} → {lote.corNome}
         </SheetDescription>
