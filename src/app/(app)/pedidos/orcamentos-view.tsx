@@ -1110,6 +1110,17 @@ function CatalogoBuilder({
         {/* 2º passo: produto ou kit daquele modelo */}
         {modeloSel && (
           <Select
+            // O `key` REMONTA o select a cada modelo, e não é enfeite: trocar
+            // de modelo zera `origem` E troca a lista inteira de itens no
+            // MESMO render. O Select guarda uma referência ao item que ele
+            // alinha com o gatilho ao abrir; com esse item desmontado no
+            // mesmo commit, a conta de posição vai pro brejo e o popup abre
+            // ~900px ABAIXO da janela. De fora parece que o campo parou de
+            // abrir — o `aria-expanded` vira "true" e não há erro nenhum no
+            // console. Era por isso que fechar e reabrir o pedido resolvia.
+            // Basta o campo ter sido ABERTO uma vez antes da troca, mesmo sem
+            // ter escolhido nada: aberto sem valor, ele se apega ao 1º item.
+            key={modeloSel}
             value={origem || null}
             onValueChange={(v) => trocarOrigem(v ?? '')}
             disabled={disabled}
@@ -1138,6 +1149,9 @@ function CatalogoBuilder({
 
         {produto && tamanhos.length > 0 && (
           <Select
+            // Mesmo caso do select acima, e verificado igual: trocar de
+            // produto zera `tamanho` e troca a lista de tamanhos junto.
+            key={origem}
             value={tamanho || null}
             onValueChange={(v) => {
               setTamanho(v ?? '')

@@ -259,7 +259,9 @@ export function NovoFull({
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label>Conta</Label>
+                  {/* Idem: trocar o canal zera a conta e troca a lista. */}
                   <Select
+                    key={canal}
                     value={contaId}
                     onValueChange={(v) => setContaId(v ?? null)}
                     disabled={isPending || contasDoCanal.length === 0}
@@ -349,7 +351,16 @@ export function NovoFull({
                       </Button>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
+                      {/* Os `key` remontam o select quando a lista de itens
+                          troca junto com o valor — trocar o produto zera o
+                          tamanho E troca os tamanhos possíveis no MESMO
+                          render, e trocar o tamanho faz o mesmo com a cor.
+                          Sem isso o select fica preso ao item que desmontou e
+                          o popup abre fora da janela: parece que o campo
+                          parou de abrir, sem erro no console. Mesmo caso do
+                          builder do catálogo em pedidos/orcamentos-view.tsx. */}
                       <Select
+                        key={linha.produtoId}
                         value={linha.tamanho || null}
                         onValueChange={(v) =>
                           patchLinha(idx, { tamanho: v ?? '', cor: '' })
@@ -368,6 +379,7 @@ export function NovoFull({
                         </SelectContent>
                       </Select>
                       <Select
+                        key={`${linha.produtoId}|${linha.tamanho}`}
                         value={linha.cor || null}
                         onValueChange={(v) => patchLinha(idx, { cor: v ?? '' })}
                         disabled={isPending || !linha.tamanho}

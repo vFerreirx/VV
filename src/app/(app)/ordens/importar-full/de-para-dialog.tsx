@@ -264,7 +264,14 @@ function Formulario({
                   </SelectContent>
                 </Select>
 
+                {/* O `key` remonta o select quando o produto muda: a troca
+                    zera `variacaoId` e troca a lista de variações no MESMO
+                    render, e aí o select fica preso ao item que desmontou e
+                    abre o popup fora da janela — parece que parou de abrir.
+                    Mesmo caso do builder do catálogo em
+                    pedidos/orcamentos-view.tsx. */}
                 <Select
+                  key={l.produtoId}
                   value={l.variacaoId || null}
                   onValueChange={(v) => patch(idx, { variacaoId: v ?? '' })}
                   disabled={isPending || !prod}
