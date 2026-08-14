@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ClipboardList,
   FileSignature,
+  PackageX,
   Printer,
   TriangleAlert,
 } from 'lucide-react'
@@ -43,10 +44,13 @@ export function OrcamentoDoc({
   orcamento,
   empresa,
   pesos,
+  faltantes,
 }: {
   orcamento: OrcamentoComItens
   empresa: EmpresaDoDocumento | null
   pesos: ResumoPeso
+  /** Peças já marcadas como faltantes — só pro contador do botão. */
+  faltantes: number
 }) {
   const aviso = avisoSemPeso(pesos.itensSemPeso)
 
@@ -76,6 +80,20 @@ export function OrcamentoDoc({
           >
             <FileSignature />
             Romaneio
+          </Button>
+          {/* Terceiro documento, irmão dos dois de cima. O número é o que já
+              foi marcado como faltante na via de separação. */}
+          <Button
+            variant="outline"
+            render={<Link href={`/pedidos/${orcamento.id}/faltantes`} />}
+          >
+            <PackageX />
+            Itens faltantes
+            {faltantes > 0 && (
+              <span className="rounded-full bg-amber-500/15 px-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                {faltantes}
+              </span>
+            )}
           </Button>
           <Button onClick={() => window.print()}>
             <Printer />

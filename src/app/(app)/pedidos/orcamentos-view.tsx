@@ -8,6 +8,7 @@ import {
   Copy,
   FileSignature,
   FileText,
+  PackageX,
   Pencil,
   Plus,
   Printer,
@@ -286,6 +287,20 @@ export function OrcamentosView({
                           >
                             {o.cliente}
                           </Link>
+                          {/* Indicador DISCRETO de item faltante. Sem ele,
+                              descobrir o que está esperando produção exige
+                              abrir pedido por pedido. Só o aviso: filtrar por
+                              isso ficou de fora desta rodada. */}
+                          {o.faltantes > 0 && (
+                            <Link
+                              href={`/pedidos/${o.id}/faltantes`}
+                              title={`${o.faltantes} peça(s) faltando — ver a via de faltantes`}
+                              className="ml-2 inline-flex translate-y-0.5 items-center gap-1 align-baseline text-xs font-normal text-amber-700 hover:underline dark:text-amber-400"
+                            >
+                              <PackageX className="size-3.5" />
+                              {o.faltantes}
+                            </Link>
+                          )}
                         </TableCell>
                         <TableCell className="tabular-nums">
                           {format(new Date(o.createdAt), 'dd/MM/yyyy', {

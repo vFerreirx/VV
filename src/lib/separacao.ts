@@ -79,7 +79,86 @@ export type ItemSeparavel = {
     | null
 }
 
-export type LinhaSeparacao = { descricao: string; quantidade: number }
+export type LinhaSeparacao = {
+  /** Identidade estável da linha — ver "A CHAVE DA LINHA" abaixo. */
+  chave: string
+  descricao: string
+  quantidade: number
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// A CHAVE DA LINHA
+// ─────────────────────────────────────────────────────────────────────────
+// A marcação de FALTANTE (quantas peças desta linha não foram achadas) é
+// gravada no banco, e precisa reencontrar a linha depois. Guardar a DESCRIÇÃO
+// como chave seria frágil: ela é texto de exibição, muda de formato quando o
+// documento muda, e aí a marcação some sem ninguém perceber — o pior tipo de
+// bug, porque a tela continua abrindo e só o número está errado.
+//
+// A chave é o TRIO que DEFINE a peça — produto, tamanho e cor — normalizado
+// (sem espaço sobrando, sem diferença de caixa). Ele sobrevive a mudança de
+// formato do texto: trocar " - " por " · " na descrição não mexe na chave.
+//
+// QUANDO O TRIO VALE: só quando a descrição pode ser RECONSTRUÍDA a partir
+// dele. Isso é verdade por construção no componente de kit (a descrição é
+// montada dos três) e verificável no item avulso (o produto vem do
+// `produto_id` e o tamanho da coluna; a cor é o que sobra do texto). Quando a
+// reconstrução não bate — item antigo sem `produto_id`, descrição escrita à
+// mão — não existe trio confiável, e a chave cai na descrição normalizada com
+// o prefixo `?|`. Nesse caso ela é tão frágil quanto o texto, mas é o melhor
+// que existe pra aquela linha, e o prefixo deixa isso VISÍVEL no banco em vez
+// de fingir estrutura que não há.
+//
+// UNICIDADE dentro do pedido: duas linhas são duas descrições diferentes (é a
+// descrição que agrupa). Se as duas têm trio confiável, descrições diferentes
+// ⇒ trios diferentes, porque a descrição é função do trio. Se as duas caem no
+// fallback, as chaves são as descrições. E uma de cada nunca colide, porque só
+// o fallback usa o prefixo `?|`.
+
+const normalizar = (s: string | null | undefined): string =>
+  (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+
+/** A descrição impressa de uma peça — a MESMA montagem nos dois caminhos. */
+function descricaoDaPeca(
+  produto: string,
+  tamanho: string | null | undefined,
+  cor: string | null | undefined,
+): string {
+  const base = `${produto}${tamanho ? ` ${tamanho}` : ''}`
+  return cor ? `${base} - ${cor}` : base
+}
+
+/** Chave do trio confiável. */
+export function chaveDaPeca(t: {
+  produto: string
+  tamanho: string | null | undefined
+  cor: string | null | undefined
+}): string {
+  return `${normalizar(t.produto)}|${normalizar(t.tamanho)}|${normalizar(t.cor)}`
+}
+
+/** Chave de quem não tem trio: a própria descrição, e o `?|` avisa. */
+export function chaveDeTextoLivre(descricao: string): string {
+  return `?|${normalizar(descricao)}`
+}
+
+/**
+ * A cor de um item AVULSO, por subtração: a descrição é
+ * "<produto> <tamanho> - <cor>", então tirando o começo conhecido sobra a
+ * cor. `''` quando o item não tem cor e `null` quando o começo não bate — aí
+ * não dá pra afirmar nada sobre aquele texto.
+ */
+function corDoAvulso(
+  descricao: string,
+  produto: string | null,
+  tamanho: string | null | undefined,
+): string | null {
+  if (!produto) return null
+  const base = `${produto}${tamanho ? ` ${tamanho}` : ''}`
+  if (descricao === base) return ''
+  if (descricao.startsWith(`${base} - `)) return descricao.slice(base.length + 3)
+  return null
+}
 
 // Linha de pedido que É um kit mas não tem os componentes gravados — só o
 // texto. Não pode cair no fallback por nome: a descrição de um kit CITA os
@@ -141,6 +220,7 @@ function nomeDoProduto(
 }
 
 type LinhaInterna = {
+  chave: string
   descricao: string
   quantidade: number
   // null nos dois = não classificou; vai pro fim, em ordem de aparição.
@@ -180,6 +260,22 @@ export function montarLinhasSeparacao(
     })
   }
 
+  /**
+   * A chave da linha. Só aceita o trio quando ele RECONSTRÓI a descrição —
+   * sem isso a chave apontaria pra uma peça que não é a desta linha.
+   */
+  function chaveDaLinha(
+    descricao: string,
+    produto: string | null,
+    tamanho: string | null | undefined,
+    cor: string | null | undefined,
+  ): string {
+    if (produto && descricaoDaPeca(produto, tamanho, cor) === descricao) {
+      return chaveDaPeca({ produto, tamanho, cor })
+    }
+    return chaveDeTextoLivre(descricao)
+  }
+
   function classificacao(
     produtoNome: string | null,
     tamanho: string | null | undefined,
@@ -204,38 +300,46 @@ export function montarLinhasSeparacao(
         // Tamanho do COMPONENTE (a capa é 45x45 mesmo num kit Queen). Cai pro
         // tamanho do item quando o snapshot é antigo e não tem tamanho.
         const tam = c.tamanho ?? it.tamanho
-        const descricao = [`${c.produtoNome}${tam ? ` ${tam}` : ''}`, c.cor]
-          .filter(Boolean)
-          .join(' - ')
-        somar(
-          descricao,
-          c.quantidade * it.quantidade,
-          classificacao(
+        // Aqui o trio SEMPRE reconstrói a descrição: ela é montada dele.
+        const descricao = descricaoDaPeca(c.produtoNome, tam, c.cor)
+        somar(descricao, c.quantidade * it.quantidade, {
+          chave: chaveDaLinha(descricao, c.produtoNome, tam, c.cor),
+          ...classificacao(
             nomeDoProduto(catalogo, { produtoNome: c.produtoNome }),
             tam,
             c.cor,
           ),
-        )
+        })
       }
       continue
     }
 
     // Produto avulso entra na MESMA lista e soma com componente de kit do
     // mesmo produto/tamanho/cor: quem separa não quer saber de onde veio.
-    somar(
-      it.descricao,
-      it.quantidade,
-      classificacao(
-        nomeDoProduto(catalogo, {
-          produtoId: it.produtoId,
-          descricao: it.descricao,
-        }),
+    const produto = nomeDoProduto(catalogo, {
+      produtoId: it.produtoId,
+      descricao: it.descricao,
+    })
+    somar(it.descricao, it.quantidade, {
+      // A cor do avulso não tem coluna: ela vive no fim da descrição. Dá pra
+      // recuperá-la por SUBTRAÇÃO — tira o "<produto> <tamanho> - " do começo
+      // e o que sobra é a cor. Quando a subtração não bate (item antigo sem
+      // `produto_id`, texto escrito à mão), `chaveDaLinha` percebe sozinho e
+      // cai no fallback: é ele quem confere a reconstrução, não este cálculo.
+      chave: chaveDaLinha(
+        it.descricao,
+        produto,
         it.tamanho,
-        // A cor do avulso vive dentro do texto e não dá pra separar dele com
-        // segurança; a própria descrição desempata, e ela termina na cor.
+        corDoAvulso(it.descricao, produto, it.tamanho),
+      ),
+      ...classificacao(
+        produto,
+        it.tamanho,
+        // Pra ORDENAR, a cor continua saindo da própria descrição, que
+        // termina nela — este campo é desempate de ordenação, não identidade.
         null,
       ),
-    )
+    })
   }
 
   const linhas = [...porDescricao.values()]
@@ -257,5 +361,9 @@ export function montarLinhasSeparacao(
     return emPortugues(a.descricao, b.descricao)
   })
 
-  return linhas.map((l) => ({ descricao: l.descricao, quantidade: l.quantidade }))
+  return linhas.map((l) => ({
+    chave: l.chave,
+    descricao: l.descricao,
+    quantidade: l.quantidade,
+  }))
 }

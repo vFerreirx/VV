@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 
 import { obterEmpresaPrincipal } from '../../empresas/actions'
 import { obterCatalogoDePesos, obterOrcamento } from '../actions'
+import { listarFaltantes } from '../faltantes-actions'
 import { obterSituacaoFrete } from '../frete-actions'
 import { FretePainel } from './frete-painel'
 import { OrcamentoDoc } from './orcamento-doc'
@@ -26,12 +27,14 @@ export default async function OrcamentoPage({
 
   // A empresa é carregada AQUI, no server component — o componente de
   // impressão só recebe o que já veio resolvido.
-  const [orcamento, empresa, catalogo, situacaoFrete] = await Promise.all([
-    obterOrcamento(id),
-    obterEmpresaPrincipal(),
-    obterCatalogoDePesos(),
-    obterSituacaoFrete(),
-  ])
+  const [orcamento, empresa, catalogo, situacaoFrete, faltantes] =
+    await Promise.all([
+      obterOrcamento(id),
+      obterEmpresaPrincipal(),
+      obterCatalogoDePesos(),
+      obterSituacaoFrete(),
+      listarFaltantes(id),
+    ])
   if (!orcamento) notFound()
 
   // O peso é calculado AQUI, a cada leitura, a partir do catálogo de agora —
@@ -63,7 +66,12 @@ export default async function OrcamentoPage({
 
   return (
     <div className="space-y-6">
-      <OrcamentoDoc orcamento={orcamento} empresa={empresa} pesos={pesos} />
+      <OrcamentoDoc
+        orcamento={orcamento}
+        empresa={empresa}
+        pesos={pesos}
+        faltantes={faltantes.reduce((s, f) => s + f.quantidade, 0)}
+      />
       <FretePainel
         orcamentoId={orcamento.id}
         situacao={situacaoFrete}

@@ -8,6 +8,7 @@ import { db } from '@/lib/db'
 import {
   compradores,
   kitTamanhoPreco,
+  orcamentoFaltantes,
   orcamentoItens,
   orcamentos,
   produtos,
@@ -51,6 +52,8 @@ export type ActionResult<T = undefined> =
 export type OrcamentoListItem = Orcamento & {
   itensCount: number
   total: number
+  /** Peças marcadas como faltantes na via de separação (0 = nenhuma). */
+  faltantes: number
 }
 
 export type OrcamentoComItens = Orcamento & {
@@ -69,21 +72,38 @@ export async function listarOrcamentos(): Promise<OrcamentoListItem[]> {
   if (rows.length === 0) return []
 
   const ids = rows.map((o) => o.id)
-  const agg = await db
-    .select({
-      orcamentoId: orcamentoItens.orcamentoId,
-      itens: sql<number>`count(*)::int`,
-      total: sql<string>`coalesce(sum(${orcamentoItens.quantidade} * ${orcamentoItens.precoUnitario}), 0)`,
-    })
-    .from(orcamentoItens)
-    .where(inArray(orcamentoItens.orcamentoId, ids))
-    .groupBy(orcamentoItens.orcamentoId)
+  // Duas agregações pra lista INTEIRA, em paralelo — nada de perguntar pedido
+  // a pedido.
+  const [agg, faltantes] = await Promise.all([
+    db
+      .select({
+        orcamentoId: orcamentoItens.orcamentoId,
+        itens: sql<number>`count(*)::int`,
+        total: sql<string>`coalesce(sum(${orcamentoItens.quantidade} * ${orcamentoItens.precoUnitario}), 0)`,
+      })
+      .from(orcamentoItens)
+      .where(inArray(orcamentoItens.orcamentoId, ids))
+      .groupBy(orcamentoItens.orcamentoId),
+    // A contagem mora AQUI e não em faltantes-actions.ts: aquele módulo já
+    // importa deste (precisa da via de separação pra conferir as chaves), e
+    // importar de volta fecharia um ciclo entre dois 'use server'.
+    db
+      .select({
+        orcamentoId: orcamentoFaltantes.orcamentoId,
+        total: sql<number>`sum(${orcamentoFaltantes.quantidade})::int`,
+      })
+      .from(orcamentoFaltantes)
+      .where(inArray(orcamentoFaltantes.orcamentoId, ids))
+      .groupBy(orcamentoFaltantes.orcamentoId),
+  ])
   const m = new Map(agg.map((a) => [a.orcamentoId, a]))
+  const f = new Map(faltantes.map((x) => [x.orcamentoId, x.total]))
 
   return rows.map((o) => ({
     ...o,
     itensCount: m.get(o.id)?.itens ?? 0,
     total: Number(m.get(o.id)?.total ?? 0),
+    faltantes: f.get(o.id) ?? 0,
   }))
 }
 

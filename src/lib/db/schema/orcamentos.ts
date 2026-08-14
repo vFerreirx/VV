@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
 
@@ -112,7 +113,53 @@ export const orcamentoItens = pgTable(
   ],
 )
 
+// ITENS FALTANTES — o que a separação não achou e precisa ser produzido.
+//
+// A marcação é MANUAL. O sistema não sabe o que tem em estoque
+// (`movimentacoes_estoque` está vazia), e inferir daria número errado com cara
+// de certo. Quem separa percorre a via e digita o que não achou.
+//
+// A linha é a da VIA DE SEPARAÇÃO, não o item do pedido: o que falta é uma
+// capa específica de dentro do kit, não o kit inteiro. Por isso a FK é só com
+// `orcamentos` e a peça é identificada por `chave` — o trio
+// produto|tamanho|cor normalizado, montado por src/lib/separacao.ts, que é
+// quem explode o kit e soma as linhas iguais. Leia o bloco "A CHAVE DA LINHA"
+// lá antes de mexer aqui: guardar a descrição como chave é o que este desenho
+// existe pra evitar.
+//
+// `descricao` NÃO é chave — é snapshot do texto que estava na tela quando
+// alguém marcou. Serve pra dar nome à marcação órfã (item que saiu do pedido
+// depois), que sem isso seria uma quantidade sem dono.
+export const orcamentoFaltantes = pgTable(
+  'orcamento_faltantes',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    orcamentoId: uuid()
+      .notNull()
+      .references(() => orcamentos.id, { onDelete: 'cascade' }),
+    chave: text().notNull(),
+    descricao: text().notNull(),
+    // Sempre > 0: "não falta nada" é a AUSÊNCIA da linha, não um zero
+    // guardado. Assim a existência da linha já é a resposta.
+    quantidade: integer().notNull(),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => sql`now()`),
+  },
+  (table) => [
+    uniqueIndex('orcamento_faltantes_linha_uidx').on(
+      table.orcamentoId,
+      table.chave,
+    ),
+  ],
+)
+
 export type Orcamento = typeof orcamentos.$inferSelect
 export type NewOrcamento = typeof orcamentos.$inferInsert
 export type OrcamentoItem = typeof orcamentoItens.$inferSelect
 export type NewOrcamentoItem = typeof orcamentoItens.$inferInsert
+export type OrcamentoFaltante = typeof orcamentoFaltantes.$inferSelect
+export type NewOrcamentoFaltante = typeof orcamentoFaltantes.$inferInsert
