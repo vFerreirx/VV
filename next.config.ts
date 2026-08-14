@@ -23,6 +23,13 @@ const nextConfig: NextConfig = {
         destination: '/pedidos/:path*',
         permanent: false,
       },
+      // Mesma história com "comprador" → "cliente": só a tela e a rota
+      // mudaram, o banco continua `compradores`.
+      {
+        source: '/compradores/:path*',
+        destination: '/clientes/:path*',
+        permanent: false,
+      },
     ]
   },
 

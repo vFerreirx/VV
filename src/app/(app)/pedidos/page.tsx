@@ -8,7 +8,7 @@ import {
   obterCatalogoDePrecos,
 } from './actions'
 import { OrcamentosView } from './orcamentos-view'
-import { listarCompradoresParaSelecao } from '../compradores/actions'
+import { listarCompradoresParaSelecao } from '../clientes/actions'
 import { listarKitsComItens } from '../kits/actions'
 import { listarProdutosParaOrdem } from '../ordens/actions'
 import { podeEscrever } from '@/lib/auth/permissoes'

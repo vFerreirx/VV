@@ -94,9 +94,10 @@ export const NAV_GROUPS: NavGroup[] = [
         area: 'vendas',
       },
       {
-        href: '/compradores',
-        label: 'Compradores',
+        href: '/clientes',
+        label: 'Clientes',
         icon: BookUser,
+        // A chave da área continua 'compradores' (ver permissoes.ts).
         area: 'compradores',
       },
       {

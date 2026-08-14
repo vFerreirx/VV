@@ -100,12 +100,12 @@ export async function criarCompradorAction(
     throw err
   }
 
-  revalidatePath('/compradores')
+  revalidatePath('/clientes')
   revalidatePath('/pedidos')
   return {
     success: true,
     data: { id: inserted!.id },
-    message: 'Comprador cadastrado',
+    message: 'Cliente cadastrado',
   }
 }
 
@@ -133,7 +133,7 @@ export async function atualizarCompradorAction(
     .from(compradores)
     .where(and(eq(compradores.id, id), isNull(compradores.deletedAt)))
     .limit(1)
-  if (!atual) return { success: false, error: 'Comprador não encontrado' }
+  if (!atual) return { success: false, error: 'Cliente não encontrado' }
 
   // Documento único entre OUTROS compradores ativos.
   if (data.documento) {
@@ -168,9 +168,9 @@ export async function atualizarCompradorAction(
     throw err
   }
 
-  revalidatePath('/compradores')
+  revalidatePath('/clientes')
   revalidatePath('/pedidos')
-  return { success: true, message: 'Comprador atualizado' }
+  return { success: true, message: 'Cliente atualizado' }
 }
 
 // -----------------------------------------------------------------
@@ -187,7 +187,7 @@ export async function excluirCompradorAction(
     .from(compradores)
     .where(and(eq(compradores.id, id), isNull(compradores.deletedAt)))
     .limit(1)
-  if (!atual) return { success: false, error: 'Comprador não encontrado' }
+  if (!atual) return { success: false, error: 'Cliente não encontrado' }
 
   // Soft delete. Os orçamentos que apontavam pra ele continuam abrindo: o
   // nome impresso vive em `orcamentos.cliente` (texto) e o compradorId só
@@ -197,9 +197,9 @@ export async function excluirCompradorAction(
     .set({ deletedAt: new Date() })
     .where(eq(compradores.id, id))
 
-  revalidatePath('/compradores')
+  revalidatePath('/clientes')
   revalidatePath('/pedidos')
-  return { success: true, message: 'Comprador excluído' }
+  return { success: true, message: 'Cliente excluído' }
 }
 
 // -----------------------------------------------------------------

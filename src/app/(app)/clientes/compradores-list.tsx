@@ -89,16 +89,16 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Compradores</h1>
+          <h1 className="text-2xl font-semibold">Clientes</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Cadastro dos clientes. Só o nome é obrigatório — o resto pode ser
+            Quem compra de você. Só o nome é obrigatório — o resto pode ser
             completado depois.
           </p>
         </div>
         {podeEditar && (
           <Button onClick={() => setEditando('novo')}>
             <Plus />
-            Novo comprador
+            Novo cliente
           </Button>
         )}
       </div>
@@ -106,8 +106,8 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
       {compradores.length === 0 ? (
         <EmptyState
           icon={BookUser}
-          title="Nenhum comprador"
-          description="Clique em “Novo comprador” pra cadastrar o primeiro."
+          title="Nenhum cliente"
+          description="Clique em “Novo cliente” pra cadastrar o primeiro."
         />
       ) : (
         <>
@@ -118,7 +118,7 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
               onChange={(e) => setBusca(e.target.value)}
               placeholder="Buscar por nome, CPF/CNPJ ou telefone"
               className="pl-8"
-              aria-label="Buscar comprador"
+              aria-label="Buscar cliente"
             />
           </div>
 
@@ -140,7 +140,7 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
                       colSpan={podeEditar ? 5 : 4}
                       className="text-muted-foreground py-8 text-center text-sm"
                     >
-                      Nenhum comprador encontrado para “{busca}”.
+                      Nenhum cliente encontrado para “{busca}”.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -288,7 +288,7 @@ function CompradorDialog({
       <DialogContent className="max-h-[92vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="border-b p-6">
           <DialogTitle>
-            {isEdit ? 'Editar comprador' : 'Novo comprador'}
+            {isEdit ? 'Editar cliente' : 'Novo cliente'}
           </DialogTitle>
           <DialogDescription>
             Só o nome é obrigatório. Documento e endereço podem ficar pra
@@ -306,7 +306,7 @@ function CompradorDialog({
                 id="cp-nome"
                 autoFocus
                 disabled={isPending}
-                placeholder="Nome do comprador / empresa"
+                placeholder="Nome do cliente / empresa"
                 {...form.register('nome')}
               />
               {errs.nome && (
@@ -576,7 +576,7 @@ function ExcluirDialog({
     <Dialog open={comprador !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Excluir comprador?</DialogTitle>
+          <DialogTitle>Excluir cliente?</DialogTitle>
           <DialogDescription>
             {comprador?.nome} será marcado como excluído. Os pedidos dele
             continuam abrindo normalmente — o nome do cliente fica gravado no

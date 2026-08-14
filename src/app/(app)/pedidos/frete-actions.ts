@@ -174,7 +174,7 @@ export async function cotarFreteAction(
   if (cepDestino.length !== 8) {
     return {
       success: false,
-      error: 'Informe o CEP de destino (8 dígitos) — o comprador deste pedido não tem CEP cadastrado.',
+      error: 'Informe o CEP de destino (8 dígitos) — o cliente deste pedido não tem CEP cadastrado.',
     }
   }
 

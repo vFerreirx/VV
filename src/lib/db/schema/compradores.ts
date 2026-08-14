@@ -8,9 +8,16 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
-// Cadastro de comprador (cliente). Só `nome` é obrigatório — o cliente às
-// vezes só manda o nome no WhatsApp, então o cadastro precisa aceitar isso e
-// ser completado depois.
+// VOCABULÁRIO: na tela isso se chama CLIENTE (a rota é /clientes). No banco e
+// no código continua `compradores` — tabela, coluna `orcamentos.comprador_id`,
+// FK, índices e a chave da área em permissoes.ts. Renomear tudo isso num
+// sistema em produção só pra acompanhar o nome da tela é risco sem retorno.
+// Se estranhar a diferença ao ler o código, é isso: é deliberado. Mesma
+// decisão de schema/orcamentos.ts, que na tela é "pedido".
+//
+// Cadastro do cliente. Só `nome` é obrigatório — o cliente às vezes só manda
+// o nome no WhatsApp, então o cadastro precisa aceitar isso e ser completado
+// depois.
 export const compradores = pgTable(
   'compradores',
   {

@@ -116,8 +116,8 @@ export function RomaneioDoc({
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 print:hidden dark:text-amber-400">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
           <div>
-            Esse pedido não tem comprador cadastrado — o romaneio sai só com
-            o nome, sem documento nem endereço. Vincule um comprador no
+            Esse pedido não tem cliente do cadastro vinculado — o romaneio sai
+            só com o nome, sem documento nem endereço. Vincule um cliente no
             pedido para ele sair completo.
           </div>
         </div>
@@ -139,7 +139,7 @@ export function RomaneioDoc({
       {/* Dados de quem recebe */}
       <div className="break-inside-avoid rounded-lg border p-4 print:border-foreground/20">
         <div className="text-muted-foreground text-xs tracking-wide uppercase">
-          Comprador
+          Cliente
         </div>
         <div className="mt-0.5 text-base font-medium">{nome}</div>
 

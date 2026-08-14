@@ -82,10 +82,10 @@ export function SeparacaoDoc({
         </div>
       </div>
 
-      {/* Comprador */}
+      {/* Cliente */}
       <div>
         <div className="text-muted-foreground text-xs tracking-wide uppercase">
-          Comprador
+          Cliente
         </div>
         <div className="mt-0.5 text-base font-medium">{orcamento.cliente}</div>
       </div>

@@ -191,7 +191,7 @@ export function FretePainel({
             </Button>
             {!cepDoComprador && (
               <p className="text-muted-foreground pb-2 text-xs">
-                Este pedido não tem comprador com CEP cadastrado.
+                Este pedido não tem cliente com CEP cadastrado.
               </p>
             )}
           </div>

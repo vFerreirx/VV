@@ -27,7 +27,7 @@ import {
   type OrcamentoComItens,
   type OrcamentoListItem,
 } from './actions'
-import type { CompradorOpcao } from '../compradores/actions'
+import type { CompradorOpcao } from '../clientes/actions'
 import type { KitComItens } from '../kits/actions'
 import type { ProdutoComVariacoesParaForm } from '../ordens/actions'
 import { Button } from '@/components/ui/button'
@@ -579,12 +579,18 @@ function OrcamentoDialog({
         </DialogHeader>
 
         <div className="max-h-[68vh] space-y-4 overflow-y-auto p-6">
-          {/* Comprador do cadastro: opcional. Escolher preenche o nome
-              abaixo e grava o vínculo; digitar livre continua valendo. */}
+          {/* Cliente do cadastro: opcional. Escolher preenche o nome abaixo e
+              grava o vínculo; digitar livre continua valendo.
+
+              OS DOIS RÓTULOS SÃO IRMÃOS E PRECISAM SE DIFERENCIAR: este aqui
+              ESCOLHE do cadastro (traz documento e endereço pro romaneio), e o
+              de baixo é o NOME QUE SAI NO DOCUMENTO. Chamar os dois de
+              "cliente" deixaria "Cliente cadastrado" logo acima de "Cliente",
+              que é justamente a confusão que se quer evitar. */}
           {compradores.length > 0 && (
             <div className="space-y-1.5">
               <Label htmlFor="orc-comprador">
-                Comprador cadastrado{' '}
+                Cliente do cadastro{' '}
                 <span className="text-muted-foreground font-normal">
                   (opcional)
                 </span>
@@ -621,7 +627,7 @@ function OrcamentoDialog({
                     size="icon"
                     onClick={() => setCompradorId(null)}
                     disabled={isPending}
-                    aria-label="Desvincular comprador"
+                    aria-label="Desvincular cliente do cadastro"
                     title="Desvincular (mantém o nome digitado)"
                   >
                     <X />
@@ -632,7 +638,7 @@ function OrcamentoDialog({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="orc-cliente">Cliente</Label>
+            <Label htmlFor="orc-cliente">Nome no pedido</Label>
             <Input
               id="orc-cliente"
               value={cliente}
@@ -652,6 +658,13 @@ function OrcamentoDialog({
                 <option key={c} value={c} />
               ))}
             </datalist>
+            {/* A segunda frase só faz sentido com o select acima na tela —
+                quem não tem acesso à área de clientes não o enxerga. */}
+            <p className="text-muted-foreground text-xs">
+              É esse nome que sai no documento.
+              {compradores.length > 0 &&
+                ' Escolher do cadastro preenche este campo; editar à mão desfaz o vínculo.'}
+            </p>
           </div>
 
           {/* Builder: produto/kit + tamanho + VÁRIAS cores de uma vez */}

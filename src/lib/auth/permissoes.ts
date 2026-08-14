@@ -204,11 +204,14 @@ export const AREAS: Area[] = [
     nivelPadrao: padrao({ [G]: 'total', [V]: 'total' }),
   },
   {
+    // A CHAVE continua 'compradores' de propósito: ela é usada em todo
+    // requireArea/requireAreaEscrita e fica GRAVADA em `permissoes_acesso`.
+    // Trocar a chave só criaria override órfã. Só o rótulo mudou.
     key: 'compradores',
     secao: 'Estoque & Vendas',
-    label: 'Compradores',
+    label: 'Clientes',
     descricao: 'Cadastro dos clientes (documento, telefone e endereço).',
-    href: '/compradores',
+    href: '/clientes',
     editavel: true,
     // Mais fechado que as outras áreas de propósito: guarda dado pessoal
     // (CPF/CNPJ, endereço, telefone), então não abre pro chão de fábrica.
