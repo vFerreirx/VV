@@ -13,6 +13,7 @@ import {
   formatarMedidas,
   montarCotacao,
   soDigitosCep,
+  valorDeclaradoCentavos,
   type Pacote,
 } from '@/lib/frete'
 import {
@@ -202,7 +203,9 @@ export async function cotarFreteAction(
       comErro: resultado.comErro,
       pacotes: paraTela(montagem.pacotes, montagem.corpo.volumes),
       cepDestino,
-      valorDeclaradoCentavos: totalCentavos,
+      // O que foi DECLARADO, que é uma fração do total do pedido — a tela
+      // mostra este número, não o total.
+      valorDeclaradoCentavos: valorDeclaradoCentavos(totalCentavos),
       sandbox: ehSandbox(config),
     },
   }

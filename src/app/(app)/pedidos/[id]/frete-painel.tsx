@@ -14,7 +14,11 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { formatarKgFrete } from '@/lib/frete'
+import {
+  FRACAO_VALOR_DECLARADO,
+  formatarKgFrete,
+  valorDeclaradoCentavos,
+} from '@/lib/frete'
 import { cn } from '@/lib/utils'
 
 const reais = (centavos: number) =>
@@ -22,6 +26,11 @@ const reais = (centavos: number) =>
     style: 'currency',
     currency: 'BRL',
   })
+
+// 0.4 → "40%". Sai da constante em vez de ser digitado, senão mudar a fração
+// deixaria a tela mentindo.
+const pct = (fracao: number) =>
+  `${(fracao * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
 
 const mascaraCep = (v: string) => {
   const d = v.replace(/\D/g, '').slice(0, 8)
@@ -128,10 +137,15 @@ export function FretePainel({
                 </span>
               )}
             </div>
+            {/* O valor declarado NÃO é o total do pedido, e a frase diz isso
+                com os dois números na frente — quem cota precisa saber o que
+                está declarando antes de mandar. */}
             <p className="text-muted-foreground mt-1 text-xs">
               {formatarKgFrete(pesoGramas)} · valor declarado{' '}
-              <strong>{reais(totalCentavos)}</strong> — o valor declarado é o
-              total do pedido e influencia o preço do frete.
+              <strong>{reais(valorDeclaradoCentavos(totalCentavos))}</strong> —{' '}
+              {pct(FRACAO_VALOR_DECLARADO)} do total do pedido, que é{' '}
+              {reais(totalCentavos)}. É o declarado que influencia o preço do
+              frete e o que o seguro cobre.
               {situacao.origem && (
                 <>
                   {' '}

@@ -209,37 +209,61 @@ export function dividirEmPacotes(
 // ─────────────────────────────────────────────────────────────────────────
 
 /**
- * Rateia o total do pedido entre os volumes, proporcional ao peso de cada um.
+ * Fração do total do pedido que vai DECLARADA no envio.
  *
- * REPETIR o total em cada volume declararia o valor várias vezes e encareceria
- * o seguro — no modo VOLUMES o valor é POR VOLUME, diferente do modo
- * `products`, onde é por unidade. A soma fecha exatamente o total: os
- * primeiros vão pelo piso e a sobra de arredondamento cai no último, que por
- * isso nunca fica a menos.
+ * É DECISÃO COMERCIAL DA CASA, não regra de transportadora nem dos Correios —
+ * nada na API exige isso, e a API aceitaria o total cheio sem reclamar. O que
+ * este número controla é o quanto a casa aceita perder: o seguro indeniza
+ * sobre o DECLARADO, então declarar 40% é aceitar receber 40% se o volume
+ * sumir, em troca de um frete mais barato. Mudar o número é mudar esse trato,
+ * não afinar um cálculo.
+ */
+export const FRACAO_VALOR_DECLARADO = 0.4
+
+/**
+ * Quanto vai declarado neste pedido — o número que a soma dos volumes tem que
+ * fechar. O arredondamento pra centavo inteiro acontece UMA vez, aqui, ANTES
+ * do rateio: assim `ratearValorDeclarado` continua sendo só rateio, e a soma
+ * das partes bate exatamente com o que a tela mostra.
+ */
+export function valorDeclaradoCentavos(totalCentavos: number): number {
+  return Math.round(totalCentavos * FRACAO_VALOR_DECLARADO)
+}
+
+/**
+ * Rateia o VALOR DECLARADO entre os volumes, proporcional ao peso de cada um.
+ * Recebe o valor já decidido (ver `valorDeclaradoCentavos`), não o total do
+ * pedido — aqui só se divide.
+ *
+ * REPETIR o valor em cada volume declararia várias vezes e encareceria o
+ * seguro — no modo VOLUMES o valor é POR VOLUME, diferente do modo
+ * `products`, onde é por unidade. A soma fecha exatamente o valor recebido:
+ * os primeiros vão pelo piso e a sobra de arredondamento cai no último, que
+ * por isso nunca fica a menos.
  *
  * Tudo em CENTAVOS inteiros; a conversão pra reais é na borda.
  */
 export function ratearValorDeclarado(
-  totalCentavos: number,
+  valorCentavos: number,
   pacotes: Pacote[],
 ): number[] {
   if (pacotes.length === 0) return []
-  if (pacotes.length === 1) return [totalCentavos]
+  if (pacotes.length === 1) return [valorCentavos]
 
   const somaPeso = pacotes.reduce((s, p) => s + p.pesoGramas, 0)
   if (somaPeso <= 0) {
     // Sem peso não há proporção: divide igual e a sobra vai pro último.
-    const base = Math.floor(totalCentavos / pacotes.length)
+    const base = Math.floor(valorCentavos / pacotes.length)
     const partes = pacotes.map(() => base)
-    partes[partes.length - 1] = totalCentavos - base * (pacotes.length - 1)
+    partes[partes.length - 1] = valorCentavos - base * (pacotes.length - 1)
     return partes
   }
 
   const partes = pacotes.map((p) =>
-    Math.floor((totalCentavos * p.pesoGramas) / somaPeso),
+    Math.floor((valorCentavos * p.pesoGramas) / somaPeso),
   )
   const distribuido = partes.slice(0, -1).reduce((s, v) => s + v, 0)
-  partes[partes.length - 1] = totalCentavos - distribuido
+  partes[partes.length - 1] = valorCentavos - distribuido
   return partes
 }
 
@@ -292,7 +316,12 @@ export function montarVolumes(
   pacotes: Pacote[],
   totalCentavos: number,
 ): VolumeApi[] {
-  const valores = ratearValorDeclarado(totalCentavos, pacotes)
+  // Recebe o TOTAL do pedido e declara a fração dela — a redução vem ANTES do
+  // rateio, pra soma dos volumes fechar exatamente o declarado.
+  const valores = ratearValorDeclarado(
+    valorDeclaradoCentavos(totalCentavos),
+    pacotes,
+  )
   return pacotes.map((p, i) => {
     const valor = centavosParaReais(valores[i] ?? 0)
     return {
