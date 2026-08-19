@@ -32,6 +32,7 @@ import {
   formatarKg,
   type ResumoPeso,
 } from '@/lib/peso'
+import { temFrete } from '@/lib/total-pedido'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 function reais(v: number): string {
@@ -53,6 +54,7 @@ export function OrcamentoDoc({
   faltantes: number
 }) {
   const aviso = avisoSemPeso(pesos.itensSemPeso)
+  const comFrete = temFrete(orcamento.freteValor)
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 print:space-y-4">
@@ -190,9 +192,18 @@ export function OrcamentoDoc({
               </TableRow>
             ))}
           </TableBody>
+          {/* FORMATO DE NOTA quando há frete: subtotal dos produtos, frete e
+              total. É o papel que vai pro cliente — um total maior que a soma
+              dos itens, sem a linha que explica, gera ligação.
+
+              SEM FRETE INFORMADO A LINHA NÃO SAI, e o rodapé volta a ser o de
+              sempre (uma linha "Total"). "Frete R$ 0,00" seria uma afirmação
+              — leria como "por nossa conta" —, e ninguém disse isso. */}
           <TableFooter>
             <TableRow>
-              <TableCell className="font-semibold">Total</TableCell>
+              <TableCell className={comFrete ? 'font-medium' : 'font-semibold'}>
+                {comFrete ? 'Subtotal produtos' : 'Total'}
+              </TableCell>
               <TableCell className="text-right font-semibold tabular-nums">
                 {orcamento.itens
                   .reduce((s, it) => s + it.quantidade, 0)
@@ -202,10 +213,38 @@ export function OrcamentoDoc({
                 {formatarKg(pesos.totalGramas)}
               </TableCell>
               <TableCell />
-              <TableCell className="text-right text-base font-semibold tabular-nums">
+              <TableCell
+                className={
+                  comFrete
+                    ? 'text-right tabular-nums'
+                    : 'text-right text-base font-semibold tabular-nums'
+                }
+              >
                 {reais(orcamento.total)}
               </TableCell>
             </TableRow>
+            {comFrete && (
+              <>
+                <TableRow>
+                  <TableCell className="font-medium">Frete</TableCell>
+                  <TableCell />
+                  <TableCell className="print:hidden" />
+                  <TableCell />
+                  <TableCell className="text-right tabular-nums">
+                    {reais(Number(orcamento.freteValor))}
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-semibold">Total</TableCell>
+                  <TableCell />
+                  <TableCell className="print:hidden" />
+                  <TableCell />
+                  <TableCell className="text-right text-base font-semibold tabular-nums">
+                    {reais(orcamento.totalComFrete)}
+                  </TableCell>
+                </TableRow>
+              </>
+            )}
           </TableFooter>
         </Table>
       </div>

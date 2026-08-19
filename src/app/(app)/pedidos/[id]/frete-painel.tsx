@@ -19,6 +19,7 @@ import {
   formatarKgFrete,
   valorDeclaradoCentavos,
 } from '@/lib/frete'
+import { freteEmCentavos, temFrete } from '@/lib/total-pedido'
 import { cn } from '@/lib/utils'
 
 const reais = (centavos: number) =>
@@ -175,6 +176,21 @@ export function FretePainel({
               {salvo.cotadoEm &&
                 `, cotado em ${new Date(salvo.cotadoEm).toLocaleDateString('pt-BR')}`}
               . Recotar não altera este valor — só escolher outro altera.
+            </div>
+          </div>
+        )}
+
+        {/* Frete DIGITADO: tem valor e não tem procedência. A distinção não é
+            decoração — sem ela ninguém sabe se aquele número é estimativa ou
+            combinado com a transportadora. */}
+        {!salvo.transportadora && temFrete(salvo.valor) && (
+          <div className="mt-3 rounded-md border p-3 text-xs">
+            <div className="font-medium">
+              Frete informado à mão: {reais(freteEmCentavos(salvo.valor))}
+            </div>
+            <div className="text-muted-foreground mt-0.5">
+              Digitado no pedido, sem cotação por trás. Escolher uma cotação
+              abaixo substitui este valor; editar o pedido também.
             </div>
           </div>
         )}

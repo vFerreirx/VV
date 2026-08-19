@@ -179,6 +179,15 @@ export async function cotarFreteAction(
     }
   }
 
+  // A MERCADORIA, somada dos itens — NUNCA `orcamento.totalComFrete`.
+  //
+  // Daqui sai o valor declarado (40% disto, em src/lib/frete.ts). Declarar o
+  // frete dentro do seguro da própria carga não faz sentido — o que se
+  // segura é o que está dentro do pacote — e ainda encarece a cotação, que
+  // por sua vez aumentaria o frete: a conta se persegue.
+  //
+  // Somar por item em vez de ler `orcamento.total` é de propósito: aqui tudo
+  // é centavo inteiro, e o `total` já vem convertido pra reais.
   const totalCentavos = orcamento.itens.reduce(
     (s, it) => s + Math.round(it.quantidade * Number(it.precoUnitario) * 100),
     0,

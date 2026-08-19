@@ -65,6 +65,20 @@ export const orcamentoSchema = z.object({
     .union([z.string(), z.null(), z.undefined()])
     .transform((v) => (v == null || v.trim() === '' ? undefined : v.trim()))
     .optional(),
+  // FRETE DIGITADO no pedido. Opcional: a maioria dos pedidos não cota nada,
+  // e exigir cotação pra informar frete travaria o caso comum. Vazio vira
+  // `null` — "não informado" —, que é o que faz a linha de frete não sair no
+  // documento. Ver src/lib/total-pedido.ts.
+  freteValor: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((v) =>
+      v == null || String(v).trim() === '' ? null : String(v).replace(',', '.'),
+    )
+    .refine(
+      (v) => v === null || (!Number.isNaN(Number(v)) && Number(v) >= 0),
+      'Valor de frete inválido',
+    )
+    .optional(),
   itens: z.array(orcamentoItemSchema).min(1, 'Adicione ao menos um item'),
 })
 

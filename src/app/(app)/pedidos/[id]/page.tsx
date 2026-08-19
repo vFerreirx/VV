@@ -59,6 +59,9 @@ export default async function OrcamentoPage({
     cepDoComprador = c?.cep ?? null
   }
 
+  // A MERCADORIA — é dela que sai o valor declarado da cotação (40% em
+  // src/lib/frete.ts). Nada de `orcamento.totalComFrete` aqui: segurar o
+  // frete dentro da carga que ele transporta encarece a própria cotação.
   const totalCentavos = orcamento.itens.reduce(
     (s, it) => s + Math.round(it.quantidade * Number(it.precoUnitario) * 100),
     0,

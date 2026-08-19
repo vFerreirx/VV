@@ -30,6 +30,7 @@ import {
   montarCatalogoSeparacao,
   type CatalogoSeparacao,
 } from '@/lib/separacao'
+import { freteEmCentavos, totalComFrete } from '@/lib/total-pedido'
 import {
   chave,
   decimalParaCentavos,
@@ -49,9 +50,16 @@ export type ActionResult<T = undefined> =
 // Leitura
 // -----------------------------------------------------------------
 
+// `total` é A MERCADORIA — soma de quantidade × preço dos itens, e só. Não
+// mude o sentido dele: é o que a cotação de frete usa pro valor declarado e o
+// que o romaneio imprime. Quem quer o valor que o cliente paga usa
+// `totalComFrete`, que é DERIVADO na leitura (não tem coluna no banco).
+// A regra inteira vive em src/lib/total-pedido.ts.
+
 export type OrcamentoListItem = Orcamento & {
   itensCount: number
   total: number
+  totalComFrete: number
   /** Peças marcadas como faltantes na via de separação (0 = nenhuma). */
   faltantes: number
 }
@@ -59,6 +67,7 @@ export type OrcamentoListItem = Orcamento & {
 export type OrcamentoComItens = Orcamento & {
   itens: OrcamentoItem[]
   total: number
+  totalComFrete: number
 }
 
 export async function listarOrcamentos(): Promise<OrcamentoListItem[]> {
@@ -99,12 +108,16 @@ export async function listarOrcamentos(): Promise<OrcamentoListItem[]> {
   const m = new Map(agg.map((a) => [a.orcamentoId, a]))
   const f = new Map(faltantes.map((x) => [x.orcamentoId, x.total]))
 
-  return rows.map((o) => ({
-    ...o,
-    itensCount: m.get(o.id)?.itens ?? 0,
-    total: Number(m.get(o.id)?.total ?? 0),
-    faltantes: f.get(o.id) ?? 0,
-  }))
+  return rows.map((o) => {
+    const total = Number(m.get(o.id)?.total ?? 0)
+    return {
+      ...o,
+      itensCount: m.get(o.id)?.itens ?? 0,
+      total,
+      totalComFrete: totalComFrete(total, o.freteValor),
+      faltantes: f.get(o.id) ?? 0,
+    }
+  })
 }
 
 export async function obterOrcamento(
@@ -128,7 +141,7 @@ export async function obterOrcamento(
     (s, it) => s + it.quantidade * Number(it.precoUnitario),
     0,
   )
-  return { ...o, itens, total }
+  return { ...o, itens, total, totalComFrete: totalComFrete(total, o.freteValor) }
 }
 
 export type OrcamentoParaRomaneio = OrcamentoComItens & {
@@ -353,6 +366,10 @@ export async function criarOrcamentoAction(
         cliente: data.cliente,
         compradorId: data.compradorId ?? null,
         observacao: data.observacao ?? null,
+        // Frete DIGITADO: entra sem procedência nenhuma (sem transportadora,
+        // sem prazo, sem `cotadoEm`). É essa ausência que a tela lê pra dizer
+        // "informado à mão" em vez de "cotado" — ver `procedenciaLimpa`.
+        freteValor: data.freteValor ?? null,
       })
       .returning({ id: orcamentos.id })
 
@@ -390,11 +407,32 @@ export async function atualizarOrcamentoAction(
   const data = parsed.data
 
   const [atual] = await db
-    .select({ id: orcamentos.id })
+    .select({ id: orcamentos.id, freteValor: orcamentos.freteValor })
     .from(orcamentos)
     .where(and(eq(orcamentos.id, id), isNull(orcamentos.deletedAt)))
     .limit(1)
   if (!atual) return { success: false, error: 'Pedido não encontrado' }
+
+  // MUDOU O VALOR DO FRETE À MÃO ⇒ A PROCEDÊNCIA MORRE JUNTO.
+  //
+  // Transportadora, serviço, prazo e data da cotação descrevem UM valor: o
+  // que a cotação devolveu. Mantê-los ao lado de um número digitado faria a
+  // tela dizer "Correios PAC · 5 dias — R$ 80" pra um frete de R$ 80 que
+  // ninguém cotou. É a diferença entre estimativa e combinado, que é
+  // exatamente o que precisa ficar claro.
+  //
+  // Salvar o pedido sem mexer no frete não limpa nada: o diálogo devolve o
+  // mesmo valor que carregou, e a comparação é em centavos justamente porque
+  // "50.00" e "50" são o mesmo dinheiro escrito de dois jeitos.
+  const trocouOFrete =
+    freteEmCentavos(data.freteValor) !== freteEmCentavos(atual.freteValor)
+  const procedenciaLimpa = {
+    freteTransportadora: null,
+    freteServico: null,
+    fretePrazoDias: null,
+    freteCotadoEm: null,
+    freteCepDestino: null,
+  }
 
   await db.transaction(async (tx) => {
     await tx
@@ -403,6 +441,8 @@ export async function atualizarOrcamentoAction(
         cliente: data.cliente,
         compradorId: data.compradorId ?? null,
         observacao: data.observacao ?? null,
+        freteValor: data.freteValor ?? null,
+        ...(trocouOFrete ? procedenciaLimpa : {}),
       })
       .where(eq(orcamentos.id, id))
 

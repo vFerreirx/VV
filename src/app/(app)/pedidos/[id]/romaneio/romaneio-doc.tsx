@@ -218,6 +218,15 @@ export function RomaneioDoc({
               </TableRow>
             ))}
           </TableBody>
+          {/* AQUI É `orcamento.total` (A MERCADORIA), E ISSO NÃO É
+              ESQUECIMENTO. O documento do pedido discrimina frete e soma no
+              total; o romaneio NÃO. Ele é documento de CARGA, não comercial:
+              a coluna "Subtotal" está impressa linha a linha, e quem confere
+              soma na mão. Um total que incluísse frete não fecharia com a
+              coluna, e incluir o valor SEM mostrar a linha é justamente o
+              jeito de fazer a conta não bater no papel. Quem quiser o valor
+              com frete usa `orcamento.totalComFrete` — ver
+              src/lib/total-pedido.ts. */}
           <TableFooter>
             <TableRow>
               <TableCell className="font-semibold">Total</TableCell>

@@ -31,6 +31,11 @@ import {
 import type { CompradorOpcao } from '../clientes/actions'
 import type { KitComItens } from '../kits/actions'
 import type { ProdutoComVariacoesParaForm } from '../ordens/actions'
+import {
+  freteEmCentavos,
+  temFrete,
+  totalComFrete,
+} from '@/lib/total-pedido'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -313,8 +318,11 @@ export function OrcamentosView({
                         <TableCell className="text-right tabular-nums">
                           {o.itensCount}
                         </TableCell>
+                        {/* COM frete, e sem coluna separada pra ele — foi
+                            decidido assim. `o.total` (mercadoria) continua
+                            existindo pra quem precisa dele. */}
                         <TableCell className="text-right font-medium tabular-nums">
-                          {reais(o.total)}
+                          {reais(o.totalComFrete)}
                         </TableCell>
                         <TableCell>
                           <div className="flex justify-end gap-1">
@@ -486,6 +494,12 @@ function OrcamentoDialog({
     dados?.compradorId ?? null,
   )
   const [observacao, setObservacao] = useState(dados?.observacao ?? '')
+  // FRETE DIGITADO: campo comum, editável sempre. Cotar pelo Melhor Envio
+  // (na tela do pedido) é ATALHO — a cotação escolhida preenche esta mesma
+  // coluna, e digitar por cima é o caso normal, não uma exceção.
+  const [frete, setFrete] = useState(
+    dados?.freteValor ? decimalParaMoeda(dados.freteValor) : '',
+  )
   const [itens, setItens] = useState<LinhaItem[]>(() =>
     dados
       ? dados.itens.map((it) => ({
@@ -531,6 +545,19 @@ function OrcamentoDialog({
     (s, l) => s + (l.descricao.trim() ? Number(l.quantidade) || 0 : 0),
     0,
   )
+  // `total` continua sendo A MERCADORIA; o que o cliente paga é derivado.
+  // Mesma regra do servidor — src/lib/total-pedido.ts.
+  const freteDecimal = moedaParaDecimal(frete)
+  const totalGeral = totalComFrete(total, freteDecimal)
+
+  // O valor gravado veio de uma cotação enquanto a procedência estiver lá E o
+  // campo ainda mostrar aquele mesmo número. Editou, virou digitado — e a
+  // action limpa a procedência ao salvar.
+  const cotacaoDeOrigem =
+    dados?.freteTransportadora &&
+    freteEmCentavos(freteDecimal) === freteEmCentavos(dados.freteValor)
+      ? `${dados.freteTransportadora}${dados.freteServico ? ` · ${dados.freteServico}` : ''}`
+      : null
 
   function salvar() {
     const itensLimpos = itens
@@ -554,6 +581,9 @@ function OrcamentoDialog({
         cliente,
         compradorId,
         observacao: observacao || undefined,
+        // Campo vazio vira null — "sem frete informado", que é o que faz a
+        // linha não sair no documento do cliente. Nunca zero.
+        freteValor: freteDecimal || null,
         itens: itensLimpos,
       }
       const result = isEdit
@@ -788,14 +818,61 @@ function OrcamentoDialog({
           </div>
         </div>
 
-        <DialogFooter className="flex-row items-center justify-between border-t p-6 sm:justify-between">
-          <div className="text-sm">
-            <span className="text-muted-foreground">Total: </span>
-            <span className="font-semibold tabular-nums">
-              {totalUnidades.toLocaleString('pt-BR')} un
-            </span>
-            <span className="text-muted-foreground"> · </span>
-            <span className="font-semibold tabular-nums">{reais(total)}</span>
+        <DialogFooter className="flex-col items-stretch gap-3 border-t p-6 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-wrap items-end gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="orc-frete" className="text-xs">
+                Frete{' '}
+                <span className="text-muted-foreground font-normal">
+                  (opcional)
+                </span>
+              </Label>
+              <div className="relative">
+                <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
+                  R$
+                </span>
+                <Input
+                  id="orc-frete"
+                  inputMode="decimal"
+                  placeholder="0,00"
+                  value={frete}
+                  onChange={(e) => setFrete(mascararMoeda(e.target.value))}
+                  disabled={isPending}
+                  className="h-9 w-32 pl-7 text-right tabular-nums"
+                />
+              </div>
+            </div>
+            {/* Discriminado: um total maior que a soma dos itens sem
+                explicação vira ligação do cliente. */}
+            <div className="pb-1 text-sm leading-tight">
+              <div className="text-muted-foreground text-xs">
+                {totalUnidades.toLocaleString('pt-BR')} un · produtos{' '}
+                <span className="tabular-nums">{reais(total)}</span>
+                {temFrete(freteDecimal) && (
+                  <>
+                    {' · frete '}
+                    <span className="tabular-nums">
+                      {reais(Number(freteDecimal))}
+                    </span>
+                  </>
+                )}
+              </div>
+              <div>
+                <span className="text-muted-foreground">Total: </span>
+                <span className="font-semibold tabular-nums">
+                  {reais(totalGeral)}
+                </span>
+              </div>
+              {/* De onde veio o número — sem isso ninguém sabe se é
+                  estimativa ou combinado. */}
+              {temFrete(freteDecimal) && (
+                <div className="text-muted-foreground text-xs">
+                  {cotacaoDeOrigem
+                    ? `Frete cotado: ${cotacaoDeOrigem}`
+                    : 'Frete informado à mão'}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} disabled={isPending}>
