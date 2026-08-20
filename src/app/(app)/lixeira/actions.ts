@@ -28,9 +28,7 @@ import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
 // Lixeira: tudo no sistema é soft-delete (deleted_at). Aqui o admin vê o
 // que foi excluído, restaura, ou apaga DE VEZ (DELETE mesmo, sem volta).
 
-export type ActionResult =
-  | { success: true; message?: string }
-  | { success: false; error: string }
+export type ActionResult = { success: true; message?: string } | { success: false; error: string }
 
 export type TipoLixeira =
   | 'produto'
@@ -54,8 +52,7 @@ export type ItemLixeira = {
 
 const LIMITE_POR_TIPO = 50
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // Tabela de cada tipo. Todas têm `id` e `deleted_at` — é o que a lixeira
 // precisa pra listar, restaurar e apagar.
@@ -108,94 +105,193 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
     remessas,
     tarefasRows,
   ] = await emSerie(
-      () => db
+    () =>
+      db
         .select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku, em: produtos.deletedAt })
         .from(produtos)
         .where(isNotNull(produtos.deletedAt))
         .orderBy(desc(produtos.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      () => db
-        .select({ id: ordensProducao.id, numero: ordensProducao.numero, em: ordensProducao.deletedAt, produtoNome: produtos.nome })
+    () =>
+      db
+        .select({
+          id: ordensProducao.id,
+          numero: ordensProducao.numero,
+          em: ordensProducao.deletedAt,
+          produtoNome: produtos.nome,
+        })
         .from(ordensProducao)
         .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
         .where(isNotNull(ordensProducao.deletedAt))
         .orderBy(desc(ordensProducao.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      () => db
+    () =>
+      db
         .select({ id: kits.id, nome: kits.nome, sku: kits.sku, em: kits.deletedAt })
         .from(kits)
         .where(isNotNull(kits.deletedAt))
         .orderBy(desc(kits.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      () => db
+    () =>
+      db
         .select({ id: cores.id, nome: cores.nome, em: cores.deletedAt })
         .from(cores)
         .where(isNotNull(cores.deletedAt))
         .orderBy(desc(cores.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      () => db
+    () =>
+      db
         .select({ id: modelos.id, nome: modelos.nome, em: modelos.deletedAt })
         .from(modelos)
         .where(isNotNull(modelos.deletedAt))
         .orderBy(desc(modelos.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      () => db
+    () =>
+      db
         .select({ id: tamanhos.id, nome: tamanhos.nome, em: tamanhos.deletedAt })
         .from(tamanhos)
         .where(isNotNull(tamanhos.deletedAt))
         .orderBy(desc(tamanhos.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      () => db
-        .select({ id: maquinas.id, nome: maquinas.nome, codigo: maquinas.codigo, em: maquinas.deletedAt })
+    () =>
+      db
+        .select({
+          id: maquinas.id,
+          nome: maquinas.nome,
+          codigo: maquinas.codigo,
+          em: maquinas.deletedAt,
+        })
         .from(maquinas)
         .where(isNotNull(maquinas.deletedAt))
         .orderBy(desc(maquinas.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      () => db
+    () =>
+      db
         .select({ id: estacoes.id, nome: estacoes.nome, em: estacoes.deletedAt })
         .from(estacoes)
         .where(isNotNull(estacoes.deletedAt))
         .orderBy(desc(estacoes.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      () => db
-        .select({ id: remessasFull.id, canal: remessasFull.canal, dataEnvio: remessasFull.dataEnvio, envioId: remessasFull.envioId, em: remessasFull.deletedAt })
+    () =>
+      db
+        .select({
+          id: remessasFull.id,
+          canal: remessasFull.canal,
+          dataEnvio: remessasFull.dataEnvio,
+          envioId: remessasFull.envioId,
+          em: remessasFull.deletedAt,
+        })
         .from(remessasFull)
         .where(isNotNull(remessasFull.deletedAt))
         .orderBy(desc(remessasFull.deletedAt))
         .limit(LIMITE_POR_TIPO),
-      () => db
-        .select({ id: tarefas.id, titulo: tarefas.titulo, concluidaEm: tarefas.concluidaEm, em: tarefas.deletedAt })
+    () =>
+      db
+        .select({
+          id: tarefas.id,
+          titulo: tarefas.titulo,
+          concluidaEm: tarefas.concluidaEm,
+          em: tarefas.deletedAt,
+        })
         .from(tarefas)
         .where(isNotNull(tarefas.deletedAt))
         .orderBy(desc(tarefas.deletedAt))
         .limit(LIMITE_POR_TIPO),
-    )
+  )
 
   const itens: ItemLixeira[] = [
-    ...prods.map((p): ItemLixeira => ({ tipo: 'produto', id: p.id, titulo: p.nome, subtitulo: p.sku, excluidoEm: p.em! })),
-    ...ops.map((o): ItemLixeira => ({ tipo: 'op', id: o.id, titulo: `${o.numero} — ${o.produtoNome}`, subtitulo: 'volta como cancelada', excluidoEm: o.em! })),
-    ...kitsRows.map((k): ItemLixeira => ({ tipo: 'kit', id: k.id, titulo: k.nome, subtitulo: k.sku, excluidoEm: k.em! })),
-    ...coresRows.map((c): ItemLixeira => ({ tipo: 'cor', id: c.id, titulo: c.nome, subtitulo: 'Cor', excluidoEm: c.em! })),
-    ...modelosRows.map((m): ItemLixeira => ({ tipo: 'modelo', id: m.id, titulo: m.nome, subtitulo: 'Modelo', excluidoEm: m.em! })),
-    ...tamanhosRows.map((t): ItemLixeira => ({ tipo: 'tamanho', id: t.id, titulo: t.nome, subtitulo: 'Tamanho', excluidoEm: t.em! })),
-    ...maqs.map((m): ItemLixeira => ({ tipo: 'maquina', id: m.id, titulo: m.nome, subtitulo: m.codigo, excluidoEm: m.em! })),
-    ...ests.map((e): ItemLixeira => ({ tipo: 'estacao', id: e.id, titulo: e.nome, subtitulo: 'máquinas precisam ser revinculadas', excluidoEm: e.em! })),
-    ...remessas.map((r): ItemLixeira => ({
-      tipo: 'remessa',
-      id: r.id,
-      titulo: `${CANAL_LABEL_CURTO[r.canal]} · envio de ${r.dataEnvio.split('-').reverse().join('/')}`,
-      subtitulo: r.envioId ? `envio ${r.envioId}` : 'sem identificador de envio',
-      excluidoEm: r.em!,
-    })),
-    ...tarefasRows.map((t): ItemLixeira => ({
-      tipo: 'tarefa',
-      id: t.id,
-      titulo: t.titulo,
-      // Restaurar devolve a tarefa no estado em que ela foi excluída, então
-      // vale dizer em qual estado ela vai voltar.
-      subtitulo: t.concluidaEm ? 'volta como concluída' : 'volta como pendente',
-      excluidoEm: t.em!,
-    })),
+    ...prods.map(
+      (p): ItemLixeira => ({
+        tipo: 'produto',
+        id: p.id,
+        titulo: p.nome,
+        subtitulo: p.sku,
+        excluidoEm: p.em!,
+      }),
+    ),
+    ...ops.map(
+      (o): ItemLixeira => ({
+        tipo: 'op',
+        id: o.id,
+        titulo: `${o.numero} — ${o.produtoNome}`,
+        subtitulo: 'volta como cancelada',
+        excluidoEm: o.em!,
+      }),
+    ),
+    ...kitsRows.map(
+      (k): ItemLixeira => ({
+        tipo: 'kit',
+        id: k.id,
+        titulo: k.nome,
+        subtitulo: k.sku,
+        excluidoEm: k.em!,
+      }),
+    ),
+    ...coresRows.map(
+      (c): ItemLixeira => ({
+        tipo: 'cor',
+        id: c.id,
+        titulo: c.nome,
+        subtitulo: 'Cor',
+        excluidoEm: c.em!,
+      }),
+    ),
+    ...modelosRows.map(
+      (m): ItemLixeira => ({
+        tipo: 'modelo',
+        id: m.id,
+        titulo: m.nome,
+        subtitulo: 'Modelo',
+        excluidoEm: m.em!,
+      }),
+    ),
+    ...tamanhosRows.map(
+      (t): ItemLixeira => ({
+        tipo: 'tamanho',
+        id: t.id,
+        titulo: t.nome,
+        subtitulo: 'Tamanho',
+        excluidoEm: t.em!,
+      }),
+    ),
+    ...maqs.map(
+      (m): ItemLixeira => ({
+        tipo: 'maquina',
+        id: m.id,
+        titulo: m.nome,
+        subtitulo: m.codigo,
+        excluidoEm: m.em!,
+      }),
+    ),
+    ...ests.map(
+      (e): ItemLixeira => ({
+        tipo: 'estacao',
+        id: e.id,
+        titulo: e.nome,
+        subtitulo: 'máquinas precisam ser revinculadas',
+        excluidoEm: e.em!,
+      }),
+    ),
+    ...remessas.map(
+      (r): ItemLixeira => ({
+        tipo: 'remessa',
+        id: r.id,
+        titulo: `${CANAL_LABEL_CURTO[r.canal]} · envio de ${r.dataEnvio.split('-').reverse().join('/')}`,
+        subtitulo: r.envioId ? `envio ${r.envioId}` : 'sem identificador de envio',
+        excluidoEm: r.em!,
+      }),
+    ),
+    ...tarefasRows.map(
+      (t): ItemLixeira => ({
+        tipo: 'tarefa',
+        id: t.id,
+        titulo: t.titulo,
+        // Restaurar devolve a tarefa no estado em que ela foi excluída, então
+        // vale dizer em qual estado ela vai voltar.
+        subtitulo: t.concluidaEm ? 'volta como concluída' : 'volta como pendente',
+        excluidoEm: t.em!,
+      }),
+    ),
   ]
 
   // Mais recentes primeiro, tipos misturados.
@@ -211,8 +307,7 @@ export async function contarExcluidos(): Promise<number> {
   await requireRole(['admin'])
 
   const partes = Object.values(TABELA).map(
-    (tabela) =>
-      sql`(SELECT count(*) FROM ${tabela} WHERE ${tabela.deletedAt} IS NOT NULL)`,
+    (tabela) => sql`(SELECT count(*) FROM ${tabela} WHERE ${tabela.deletedAt} IS NOT NULL)`,
   )
   const [linha] = await db
     .select({ total: sql<number>`(${sql.join(partes, sql` + `)})::int` })
@@ -220,10 +315,7 @@ export async function contarExcluidos(): Promise<number> {
   return linha?.total ?? 0
 }
 
-export async function restaurarAction(
-  tipo: TipoLixeira,
-  id: string,
-): Promise<ActionResult> {
+export async function restaurarAction(tipo: TipoLixeira, id: string): Promise<ActionResult> {
   await requireRole(['admin'])
 
   if (!UUID_RE.test(id)) return { success: false, error: 'ID inválido' }
@@ -232,10 +324,7 @@ export async function restaurarAction(
     switch (tipo) {
       case 'produto':
         await db.transaction(async (tx) => {
-          await tx
-            .update(produtos)
-            .set({ deletedAt: null, ativo: true })
-            .where(eq(produtos.id, id))
+          await tx.update(produtos).set({ deletedAt: null, ativo: true }).where(eq(produtos.id, id))
           // Restaura as variações junto (o soft delete do produto derruba
           // todas; restaurar tudo é o comportamento menos surpreendente).
           await tx
@@ -247,61 +336,34 @@ export async function restaurarAction(
       case 'op':
         // Volta com o status que tinha ao ser excluída (cancelado, na
         // prática) — o usuário reativa pelo fluxo normal.
-        await db
-          .update(ordensProducao)
-          .set({ deletedAt: null })
-          .where(eq(ordensProducao.id, id))
+        await db.update(ordensProducao).set({ deletedAt: null }).where(eq(ordensProducao.id, id))
         break
       case 'kit':
-        await db
-          .update(kits)
-          .set({ deletedAt: null, ativo: true })
-          .where(eq(kits.id, id))
+        await db.update(kits).set({ deletedAt: null, ativo: true }).where(eq(kits.id, id))
         break
       case 'cor':
-        await db
-          .update(cores)
-          .set({ deletedAt: null, ativo: true })
-          .where(eq(cores.id, id))
+        await db.update(cores).set({ deletedAt: null, ativo: true }).where(eq(cores.id, id))
         break
       case 'modelo':
-        await db
-          .update(modelos)
-          .set({ deletedAt: null, ativo: true })
-          .where(eq(modelos.id, id))
+        await db.update(modelos).set({ deletedAt: null, ativo: true }).where(eq(modelos.id, id))
         break
       case 'tamanho':
-        await db
-          .update(tamanhos)
-          .set({ deletedAt: null, ativo: true })
-          .where(eq(tamanhos.id, id))
+        await db.update(tamanhos).set({ deletedAt: null, ativo: true }).where(eq(tamanhos.id, id))
         break
       case 'maquina':
-        await db
-          .update(maquinas)
-          .set({ deletedAt: null })
-          .where(eq(maquinas.id, id))
+        await db.update(maquinas).set({ deletedAt: null }).where(eq(maquinas.id, id))
         break
       case 'estacao':
-        await db
-          .update(estacoes)
-          .set({ deletedAt: null, ativo: true })
-          .where(eq(estacoes.id, id))
+        await db.update(estacoes).set({ deletedAt: null, ativo: true }).where(eq(estacoes.id, id))
         break
       case 'remessa':
         // As OPs da remessa NÃO voltam junto: elas têm lixeira própria e
         // cada uma pode ter sido excluída por um motivo diferente.
-        await db
-          .update(remessasFull)
-          .set({ deletedAt: null })
-          .where(eq(remessasFull.id, id))
+        await db.update(remessasFull).set({ deletedAt: null }).where(eq(remessasFull.id, id))
         break
       case 'tarefa':
         // Volta como estava: se foi excluída já concluída, volta concluída.
-        await db
-          .update(tarefas)
-          .set({ deletedAt: null })
-          .where(eq(tarefas.id, id))
+        await db.update(tarefas).set({ deletedAt: null }).where(eq(tarefas.id, id))
         break
       default:
         return { success: false, error: 'Tipo desconhecido' }
@@ -313,8 +375,7 @@ export async function restaurarAction(
     if (msg.includes('duplicate key') || msg.includes('unique')) {
       return {
         success: false,
-        error:
-          'Não dá pra restaurar: o SKU/nome/código já está em uso por outro item ativo.',
+        error: 'Não dá pra restaurar: o SKU/nome/código já está em uso por outro item ativo.',
       }
     }
     throw e
@@ -356,12 +417,16 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
     {
       curto: 'usado por OPs',
       frase: (n) => `é usado por ${n} OP${n > 1 ? 's' : ''} (contando as que estão na lixeira)`,
-      contagem: conta(sql`SELECT count(*) FROM ${ordensProducao} o WHERE o.produto_id = ${produtos.id}`),
+      contagem: conta(
+        sql`SELECT count(*) FROM ${ordensProducao} o WHERE o.produto_id = ${produtos.id}`,
+      ),
     },
     {
       curto: 'tem movimentação de estoque',
       frase: (n) => `tem ${n} movimentação${n > 1 ? 'ões' : ''} de estoque`,
-      contagem: conta(sql`SELECT count(*) FROM ${movimentacoesEstoque} m WHERE m.produto_id = ${produtos.id}`),
+      contagem: conta(
+        sql`SELECT count(*) FROM ${movimentacoesEstoque} m WHERE m.produto_id = ${produtos.id}`,
+      ),
     },
     {
       curto: 'compõe kits',
@@ -373,7 +438,8 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
       // Full aponta pra VARIAÇÃO com FK que bloqueia — sem esta checagem o
       // DELETE falharia direto no banco.
       curto: 'variações usadas no de-para do Full',
-      frase: (n) => `tem ${n} variação${n > 1 ? 'ões' : ''} usada${n > 1 ? 's' : ''} no de-para do Full`,
+      frase: (n) =>
+        `tem ${n} variação${n > 1 ? 'ões' : ''} usada${n > 1 ? 's' : ''} no de-para do Full`,
       contagem: conta(sql`SELECT count(*) FROM ${deParaFullComponentes} c
         JOIN ${variacoesProduto} v ON v.id = c.variacao_id
         WHERE v.produto_id = ${produtos.id}`),
@@ -382,8 +448,11 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
   op: [
     {
       curto: 'tem apontamento de produção',
-      frase: (n) => `tem ${n} apontamento${n > 1 ? 's' : ''} de produção — o registro do que foi produzido seria perdido`,
-      contagem: conta(sql`SELECT count(*) FROM ${apontamentosProducao} a WHERE a.ordem_id = ${ordensProducao.id}`),
+      frase: (n) =>
+        `tem ${n} apontamento${n > 1 ? 's' : ''} de produção — o registro do que foi produzido seria perdido`,
+      contagem: conta(
+        sql`SELECT count(*) FROM ${apontamentosProducao} a WHERE a.ordem_id = ${ordensProducao.id}`,
+      ),
     },
     {
       // `movimentacoes_estoque.referencia_id` aponta pra OP mas NÃO é chave
@@ -392,7 +461,8 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
       // Bloqueamos em vez de limpar a referência: a movimentação é um fato
       // de estoque, e é a OP que explica de onde ele veio.
       curto: 'deu entrada no estoque',
-      frase: (n) => `gerou ${n} entrada${n > 1 ? 's' : ''} no estoque — apagar deixaria a movimentação sem origem`,
+      frase: (n) =>
+        `gerou ${n} entrada${n > 1 ? 's' : ''} no estoque — apagar deixaria a movimentação sem origem`,
       contagem: conta(sql`SELECT count(*) FROM ${movimentacoesEstoque} m
         WHERE m.referencia_tipo = 'ordem' AND m.referencia_id = ${ordensProducao.id}`),
     },
@@ -404,7 +474,9 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
     {
       curto: 'usada no de-para de fios',
       frase: (n) => `está ligada a ${n} cor${n > 1 ? 'es' : ''} de fornecedor de fio`,
-      contagem: conta(sql`SELECT count(*) FROM ${coresFornecedorFio} f WHERE f.cor_id = ${cores.id}`),
+      contagem: conta(
+        sql`SELECT count(*) FROM ${coresFornecedorFio} f WHERE f.cor_id = ${cores.id}`,
+      ),
     },
   ],
   // Ninguém referencia modelo/tamanho por chave — a variação guarda o TEXTO.
@@ -414,12 +486,16 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
     {
       curto: 'usada por OPs',
       frase: (n) => `está em ${n} OP${n > 1 ? 's' : ''} (contando as que estão na lixeira)`,
-      contagem: conta(sql`SELECT count(*) FROM ${ordensProducao} o WHERE o.maquina_id = ${maquinas.id}`),
+      contagem: conta(
+        sql`SELECT count(*) FROM ${ordensProducao} o WHERE o.maquina_id = ${maquinas.id}`,
+      ),
     },
     {
       curto: 'tem apontamento de produção',
       frase: (n) => `tem ${n} apontamento${n > 1 ? 's' : ''} de produção`,
-      contagem: conta(sql`SELECT count(*) FROM ${apontamentosProducao} a WHERE a.maquina_id = ${maquinas.id}`),
+      contagem: conta(
+        sql`SELECT count(*) FROM ${apontamentosProducao} a WHERE a.maquina_id = ${maquinas.id}`,
+      ),
     },
   ],
   // maquinas.estacao_id tem FK com SET NULL: as máquinas da estação ficam
@@ -428,8 +504,11 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
   remessa: [
     {
       curto: 'tem OPs vinculadas',
-      frase: (n) => `tem ${n} OP${n > 1 ? 's' : ''} vinculada${n > 1 ? 's' : ''} (contando as que estão na lixeira) — apague as OPs primeiro`,
-      contagem: conta(sql`SELECT count(*) FROM ${ordensProducao} o WHERE o.remessa_full_id = ${remessasFull.id}`),
+      frase: (n) =>
+        `tem ${n} OP${n > 1 ? 's' : ''} vinculada${n > 1 ? 's' : ''} (contando as que estão na lixeira) — apague as OPs primeiro`,
+      contagem: conta(
+        sql`SELECT count(*) FROM ${ordensProducao} o WHERE o.remessa_full_id = ${remessasFull.id}`,
+      ),
     },
   ],
   // Ninguém referencia tarefa: ela é folha do grafo. Apagar de vez só
@@ -482,9 +561,7 @@ async function bloqueiosDe(
 async function apagar(tipo: TipoLixeira, ids: string[]): Promise<void> {
   const tabela = TABELA[tipo]
   await db.transaction(async (tx) => {
-    await tx
-      .delete(tabela)
-      .where(and(inArray(tabela.id, ids), isNotNull(tabela.deletedAt)))
+    await tx.delete(tabela).where(and(inArray(tabela.id, ids), isNotNull(tabela.deletedAt)))
   })
 }
 
@@ -518,8 +595,7 @@ export async function excluirDefinitivamenteAction(
     if (ehViolacaoDeVinculo(e)) {
       return {
         success: false,
-        error:
-          'Não dá pra apagar: ainda existe outro registro no banco ligado a este item.',
+        error: 'Não dá pra apagar: ainda existe outro registro no banco ligado a este item.',
       }
     }
     throw e

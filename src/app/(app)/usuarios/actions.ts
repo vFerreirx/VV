@@ -27,11 +27,7 @@ export type ActionResult<T = undefined> =
 
 export async function listarUsuarios(): Promise<User[]> {
   await requireRole(['admin'])
-  return db
-    .select()
-    .from(users)
-    .where(isNull(users.deletedAt))
-    .orderBy(asc(users.nome))
+  return db.select().from(users).where(isNull(users.deletedAt)).orderBy(asc(users.nome))
 }
 
 // -----------------------------------------------------------------
@@ -92,10 +88,7 @@ export async function criarUsuarioAction(
   // O trigger handle_new_user já populou public.users. Apenas garante
   // que telefone foi setado (o trigger faz COALESCE conservador).
   if (data.telefone) {
-    await db
-      .update(users)
-      .set({ telefone: data.telefone })
-      .where(eq(users.id, created.user.id))
+    await db.update(users).set({ telefone: data.telefone }).where(eq(users.id, created.user.id))
   }
 
   revalidatePath('/usuarios')
@@ -157,13 +150,7 @@ export async function atualizarUsuarioAction(
     const [{ total }] = await db
       .select({ total: sql<number>`count(*)::int` })
       .from(users)
-      .where(
-        and(
-          isNull(users.deletedAt),
-          eq(users.role, 'admin'),
-          eq(users.ativo, true),
-        ),
-      )
+      .where(and(isNull(users.deletedAt), eq(users.role, 'admin'), eq(users.ativo, true)))
     if ((total ?? 0) <= 1) {
       return {
         success: false,
@@ -190,10 +177,7 @@ export async function atualizarUsuarioAction(
 // Reset de senha (admin)
 // -----------------------------------------------------------------
 
-export async function resetSenhaAction(
-  id: string,
-  input: ResetSenhaInput,
-): Promise<ActionResult> {
+export async function resetSenhaAction(id: string, input: ResetSenhaInput): Promise<ActionResult> {
   await requireRole(['admin'])
 
   const parsed = resetSenhaSchema.safeParse(input)
@@ -219,9 +203,7 @@ export async function resetSenhaAction(
 // Excluir (soft delete + bloqueio no auth)
 // -----------------------------------------------------------------
 
-export async function excluirUsuarioAction(
-  id: string,
-): Promise<ActionResult> {
+export async function excluirUsuarioAction(id: string): Promise<ActionResult> {
   const adminUser = await requireRole(['admin'])
 
   if (id === adminUser.id) {
@@ -242,13 +224,7 @@ export async function excluirUsuarioAction(
     const [{ total }] = await db
       .select({ total: sql<number>`count(*)::int` })
       .from(users)
-      .where(
-        and(
-          isNull(users.deletedAt),
-          eq(users.role, 'admin'),
-          eq(users.ativo, true),
-        ),
-      )
+      .where(and(isNull(users.deletedAt), eq(users.role, 'admin'), eq(users.ativo, true)))
     if ((total ?? 0) <= 1) {
       return {
         success: false,
@@ -258,10 +234,7 @@ export async function excluirUsuarioAction(
   }
 
   // Soft delete em public.users + bloqueia no auth (banido).
-  await db
-    .update(users)
-    .set({ deletedAt: new Date(), ativo: false })
-    .where(eq(users.id, id))
+  await db.update(users).set({ deletedAt: new Date(), ativo: false }).where(eq(users.id, id))
 
   // Bloqueia login por 100 anos (efetivamente permanente).
   const supaAdmin = createAdminClient()

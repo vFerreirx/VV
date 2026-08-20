@@ -16,11 +16,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-import {
-  excluirMultiplasOrdensAction,
-  excluirOrdemAction,
-  type OrdemListItem,
-} from './actions'
+import { excluirMultiplasOrdensAction, excluirOrdemAction, type OrdemListItem } from './actions'
 import type { RemessaFullOpcao } from './remessas-actions'
 import { Badge } from '@/components/ui/badge'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
@@ -121,10 +117,7 @@ export function OrdensList({
   }
   const allChecked = ordens.length > 0 && selecionados.size === ordens.length
   const someChecked = selecionados.size > 0 && !allChecked
-  const idsSelecionados = useMemo(
-    () => Array.from(selecionados),
-    [selecionados],
-  )
+  const idsSelecionados = useMemo(() => Array.from(selecionados), [selecionados])
 
   function aplicarFiltro(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -171,9 +164,7 @@ export function OrdensList({
               disabled={isPending}
               className={cn(
                 'rounded-full border px-3 py-1 text-xs transition-colors',
-                ativo
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'hover:bg-accent',
+                ativo ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-accent',
               )}
             >
               {chip.label}
@@ -236,9 +227,7 @@ export function OrdensList({
 
           <Select
             value={filtrosIniciais.prioridade ?? 'todas'}
-            onValueChange={(v) =>
-              aplicarFiltro({ prioridade: v ?? undefined })
-            }
+            onValueChange={(v) => aplicarFiltro({ prioridade: v ?? undefined })}
           >
             <SelectTrigger size="sm" className="min-w-[8rem]">
               <SelectValue placeholder="Prioridade" />
@@ -327,10 +316,7 @@ export function OrdensList({
               </TableHeader>
               <TableBody>
                 {ordens.map((o) => (
-                  <TableRow
-                    key={o.id}
-                    data-state={selecionados.has(o.id) ? 'selected' : undefined}
-                  >
+                  <TableRow key={o.id} data-state={selecionados.has(o.id) ? 'selected' : undefined}>
                     {podeEditar && (
                       <TableCell>
                         <Checkbox
@@ -341,19 +327,15 @@ export function OrdensList({
                       </TableCell>
                     )}
                     <TableCell className="font-mono text-xs">
-                      <Link
-                        href={`/ordens/${o.id}`}
-                        className="hover:underline"
-                      >
+                      <Link href={`/ordens/${o.id}`} className="hover:underline">
                         {o.numero}
                       </Link>
                     </TableCell>
                     <TableCell>
                       <div className="font-medium">{o.produtoNome}</div>
                       <div className="text-muted-foreground text-xs">
-                        {[o.variacaoCor, o.variacaoTamanho]
-                          .filter(Boolean)
-                          .join(' / ') || o.produtoSku}
+                        {[o.variacaoCor, o.variacaoTamanho].filter(Boolean).join(' / ') ||
+                          o.produtoSku}
                       </div>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
@@ -361,17 +343,12 @@ export function OrdensList({
                     </TableCell>
                     <TableCell>{o.maquinaNome ?? '—'}</TableCell>
                     <TableCell>
-                      {o.responsavelNome ?? (
-                        <span className="text-muted-foreground">Na fila</span>
-                      )}
+                      {o.responsavelNome ?? <span className="text-muted-foreground">Na fila</span>}
                     </TableCell>
                     <TableCell>
                       {CANAL_LABEL_CURTO[o.canalDestino]}
                       {o.remessaData && (
-                        <span className="text-muted-foreground">
-                          {' '}
-                          · {o.remessaData}
-                        </span>
+                        <span className="text-muted-foreground"> · {o.remessaData}</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -385,10 +362,7 @@ export function OrdensList({
                       </Badge>
                     </TableCell>
                     <TableCell
-                      className={cn(
-                        'tabular-nums',
-                        o.atrasada && 'text-destructive font-medium',
-                      )}
+                      className={cn('tabular-nums', o.atrasada && 'text-destructive font-medium')}
                     >
                       <span className="inline-flex items-center gap-1">
                         {o.atrasada && <CircleAlert className="size-3.5" />}
@@ -430,10 +404,7 @@ export function OrdensList({
           {/* Mobile / tablet retrato */}
           <div className="vv-reveal space-y-3 md:hidden">
             {ordens.map((o) => (
-              <div
-                key={o.id}
-                className="rounded-lg border p-4"
-              >
+              <div key={o.id} className="rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-start gap-2">
                     {podeEditar && (
@@ -444,22 +415,16 @@ export function OrdensList({
                         className="mt-1"
                       />
                     )}
-                    <Link
-                      href={`/ordens/${o.id}`}
-                      className="min-w-0 flex-1 hover:underline"
-                    >
+                    <Link href={`/ordens/${o.id}`} className="min-w-0 flex-1 hover:underline">
                       <div className="font-mono text-xs">{o.numero}</div>
                       <div className="truncate font-medium">{o.produtoNome}</div>
                       <div className="text-muted-foreground text-xs">
-                        {[o.variacaoCor, o.variacaoTamanho]
-                          .filter(Boolean)
-                          .join(' / ') || o.produtoSku}
+                        {[o.variacaoCor, o.variacaoTamanho].filter(Boolean).join(' / ') ||
+                          o.produtoSku}
                       </div>
                     </Link>
                   </div>
-                  <Badge className={STATUS_BADGE[o.status]}>
-                    {STATUS_LABEL_CURTO[o.status]}
-                  </Badge>
+                  <Badge className={STATUS_BADGE[o.status]}>{STATUS_LABEL_CURTO[o.status]}</Badge>
                 </div>
                 <div className="text-muted-foreground mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                   <div>Quantidade</div>
@@ -467,13 +432,9 @@ export function OrdensList({
                     {o.quantidade.toLocaleString('pt-BR')} un
                   </div>
                   <div>Máquina</div>
-                  <div className="text-foreground text-right">
-                    {o.maquinaNome ?? '—'}
-                  </div>
+                  <div className="text-foreground text-right">{o.maquinaNome ?? '—'}</div>
                   <div>Responsável</div>
-                  <div className="text-foreground text-right">
-                    {o.responsavelNome ?? 'Na fila'}
-                  </div>
+                  <div className="text-foreground text-right">{o.responsavelNome ?? 'Na fila'}</div>
                   <div>Canal</div>
                   <div className="text-foreground text-right">
                     {CANAL_LABEL_CURTO[o.canalDestino]}
@@ -584,8 +545,8 @@ function BulkExcluirDialog({
             Excluir {ids.length} OP{ids.length === 1 ? '' : 's'}?
           </DialogTitle>
           <DialogDescription>
-            As OPs selecionadas serão marcadas como canceladas e removidas do
-            kanban. Apontamentos e movimentações ficam preservados.
+            As OPs selecionadas serão marcadas como canceladas e removidas do kanban. Apontamentos e
+            movimentações ficam preservados.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -605,13 +566,7 @@ function BulkExcluirDialog({
 // Dialog de exclusão
 // -----------------------------------------------------------------
 
-function ExcluirDialog({
-  ordem,
-  onClose,
-}: {
-  ordem: OrdemListItem | null
-  onClose: () => void
-}) {
+function ExcluirDialog({ ordem, onClose }: { ordem: OrdemListItem | null; onClose: () => void }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -635,19 +590,15 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir OP?</DialogTitle>
           <DialogDescription>
-            {ordem?.numero} ({ordem?.produtoNome}) será marcada como cancelada
-            e removida do kanban. Apontamentos e movimentações ficam preservados.
+            {ordem?.numero} ({ordem?.produtoNome}) será marcada como cancelada e removida do kanban.
+            Apontamentos e movimentações ficam preservados.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button loading={isPending}
-            variant="destructive"
-            onClick={excluir}
-            disabled={isPending}
-          >
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
             {'Excluir'}
           </Button>
         </DialogFooter>

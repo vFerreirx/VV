@@ -16,22 +16,11 @@ import type { User } from '@/lib/db/schema'
 
 export type Role = User['role']
 
-export const ROLES: Role[] = [
-  'admin',
-  'gerente_producao',
-  'operador',
-  'estoquista',
-  'vendas',
-]
+export const ROLES: Role[] = ['admin', 'gerente_producao', 'operador', 'estoquista', 'vendas']
 
 // Cargos cujo acesso o admin pode editar. (O admin nunca é editável: tem
 // sempre acesso total a tudo.)
-export const ROLES_EDITAVEIS: Role[] = [
-  'gerente_producao',
-  'operador',
-  'estoquista',
-  'vendas',
-]
+export const ROLES_EDITAVEIS: Role[] = ['gerente_producao', 'operador', 'estoquista', 'vendas']
 
 export const ROLE_INFO: Record<Role, { label: string; resumo: string }> = {
   admin: {
@@ -40,8 +29,7 @@ export const ROLE_INFO: Record<Role, { label: string; resumo: string }> = {
   },
   gerente_producao: {
     label: 'Gerente de produção',
-    resumo:
-      'Controle total da produção e dos cadastros. Não gerencia usuários.',
+    resumo: 'Controle total da produção e dos cadastros. Não gerencia usuários.',
   },
   operador: {
     label: 'Operador',
@@ -79,6 +67,7 @@ export type AreaKey =
   | 'compradores'
   | 'contasMarketplace'
   | 'produtos'
+  | 'precosMarketplace'
   | 'cores'
   | 'modelos'
   | 'tamanhos'
@@ -188,8 +177,7 @@ export const AREAS: Area[] = [
     key: 'estoqueFios',
     secao: 'Estoque & Vendas',
     label: 'Estoque de fios',
-    descricao:
-      'Entradas de lote de fio, saldo por cor e cores do fornecedor.',
+    descricao: 'Entradas de lote de fio, saldo por cor e cores do fornecedor.',
     href: '/estoque-fios',
     editavel: true,
     nivelPadrao: padrao({ [G]: 'ver', [E]: 'total' }),
@@ -234,6 +222,19 @@ export const AREAS: Area[] = [
     href: '/produtos',
     editavel: true,
     nivelPadrao: padrao(verCatalogo),
+  },
+  {
+    key: 'precosMarketplace',
+    secao: 'Catálogo',
+    label: 'Preços de marketplace',
+    descricao:
+      'Preço de ANÚNCIO por canal (ML, Shopee, Shein). Não é o preço do pedido — o pedido usa o de atacado, em Produtos.',
+    href: '/precos-marketplace',
+    editavel: true,
+    // Vendas entra só como LEITURA de propósito: quem monta pedido não pode
+    // achar que edita preço de pedido aqui. Ver o topo de
+    // src/lib/preco-marketplace.ts.
+    nivelPadrao: padrao({ [G]: 'total', [V]: 'ver' }),
   },
   {
     key: 'cores',
@@ -367,11 +368,7 @@ export function podeEscrever(n: Nivel): boolean {
   return n === 'total' || n === 'proprio'
 }
 
-export function nivelEfetivo(
-  role: Role,
-  areaKey: AreaKey,
-  overrides: OverridesAcesso,
-): Nivel {
+export function nivelEfetivo(role: Role, areaKey: AreaKey, overrides: OverridesAcesso): Nivel {
   const area = AREA_MAP[areaKey]
   if (!area) return 'nenhum'
   // Admin é sempre travado em acesso total.
@@ -386,11 +383,6 @@ export function nivelEfetivo(
 }
 
 // Áreas que o cargo NÃO acessa (nível nenhum) — pra esconder do menu.
-export function areasBloqueadasDoRole(
-  role: Role,
-  overrides: OverridesAcesso,
-): AreaKey[] {
-  return AREAS.filter(
-    (a) => nivelEfetivo(role, a.key, overrides) === 'nenhum',
-  ).map((a) => a.key)
+export function areasBloqueadasDoRole(role: Role, overrides: OverridesAcesso): AreaKey[] {
+  return AREAS.filter((a) => nivelEfetivo(role, a.key, overrides) === 'nenhum').map((a) => a.key)
 }

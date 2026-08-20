@@ -53,9 +53,7 @@ function linhasEndereco(c: Comprador): string[] {
 function Campo({ rotulo, children }: { rotulo: string; children: ReactNode }) {
   return (
     <div>
-      <div className="text-muted-foreground text-xs tracking-wide uppercase">
-        {rotulo}
-      </div>
+      <div className="text-muted-foreground text-xs tracking-wide uppercase">{rotulo}</div>
       <div className="mt-0.5 text-sm font-medium">{children}</div>
     </div>
   )
@@ -65,7 +63,7 @@ function Campo({ rotulo, children }: { rotulo: string; children: ReactNode }) {
 function Assinatura({ rotulo }: { rotulo: string }) {
   return (
     <div>
-      <div className="h-12 border-b print:border-foreground/40" />
+      <div className="print:border-foreground/40 h-12 border-b" />
       <div className="text-muted-foreground mt-1 text-xs">{rotulo}</div>
     </div>
   )
@@ -113,18 +111,17 @@ export function RomaneioDoc({
       {/* Orçamento antigo, sem comprador vinculado: o romaneio sai, só que
           sem endereço e sem documento. O aviso não vai pro papel. */}
       {!comprador && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 print:hidden dark:text-amber-400">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400 print:hidden">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
           <div>
-            Esse pedido não tem cliente do cadastro vinculado — o romaneio sai
-            só com o nome, sem documento nem endereço. Vincule um cliente no
-            pedido para ele sair completo.
+            Esse pedido não tem cliente do cadastro vinculado — o romaneio sai só com o nome, sem
+            documento nem endereço. Vincule um cliente no pedido para ele sair completo.
           </div>
         </div>
       )}
 
       {/* Cabeçalho do documento */}
-      <div className="flex items-start justify-between gap-4 border-b pb-4 print:border-foreground/20">
+      <div className="print:border-foreground/20 flex items-start justify-between gap-4 border-b pb-4">
         <div className="flex items-center gap-3">
           <Logo variant="mark" className="size-10" />
           <div>
@@ -137,22 +134,16 @@ export function RomaneioDoc({
       </div>
 
       {/* Dados de quem recebe */}
-      <div className="break-inside-avoid rounded-lg border p-4 print:border-foreground/20">
-        <div className="text-muted-foreground text-xs tracking-wide uppercase">
-          Cliente
-        </div>
+      <div className="print:border-foreground/20 break-inside-avoid rounded-lg border p-4">
+        <div className="text-muted-foreground text-xs tracking-wide uppercase">Cliente</div>
         <div className="mt-0.5 text-base font-medium">{nome}</div>
 
         {comprador && (
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {comprador.documento && (
-              <Campo rotulo="CPF / CNPJ">
-                {formatarDocumento(comprador.documento)}
-              </Campo>
+              <Campo rotulo="CPF / CNPJ">{formatarDocumento(comprador.documento)}</Campo>
             )}
-            {comprador.telefone && (
-              <Campo rotulo="Telefone">{comprador.telefone}</Campo>
-            )}
+            {comprador.telefone && <Campo rotulo="Telefone">{comprador.telefone}</Campo>}
             {endereco.length > 0 && (
               <Campo rotulo="Endereço">
                 {endereco.map((l) => (
@@ -160,15 +151,13 @@ export function RomaneioDoc({
                 ))}
               </Campo>
             )}
-            {comprador.cep && (
-              <Campo rotulo="CEP">{formatarCep(comprador.cep)}</Campo>
-            )}
+            {comprador.cep && <Campo rotulo="CEP">{formatarCep(comprador.cep)}</Campo>}
           </div>
         )}
       </div>
 
       {/* Itens — aqui os valores APARECEM */}
-      <div className="rounded-lg border print:border-foreground/20">
+      <div className="print:border-foreground/20 rounded-lg border">
         <Table className="table-fixed">
           {/* As larguras vivem aqui, e não na primeira linha: `table-fixed`
               tira as colunas da primeira linha do <thead>, que na impressão
@@ -246,29 +235,25 @@ export function RomaneioDoc({
           documento que acompanha a mercadoria e o número que a
           transportadora cobra. O aviso de peso incompleto sai junto, senão
           o total pareceria fechado quando não é. */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm break-inside-avoid print:border-foreground/20">
-        <span className="text-muted-foreground text-xs tracking-wide uppercase">
-          Peso total
-        </span>
+      <div className="print:border-foreground/20 flex break-inside-avoid flex-wrap items-center justify-between gap-2 rounded-lg border p-3 text-sm">
+        <span className="text-muted-foreground text-xs tracking-wide uppercase">Peso total</span>
         <span className="text-base font-semibold tabular-nums">
           {formatarKg(pesos.totalGramas)}
         </span>
         {avisoDePeso && (
           <span className="text-destructive inline-flex w-full items-center gap-1.5 text-xs">
             <TriangleAlert className="size-3.5 shrink-0" />
-            {avisoDePeso} — o total acima não inclui {
-              pesos.itensSemPeso === 1 ? 'esse item' : 'esses itens'
-            }.
+            {avisoDePeso} — o total acima não inclui{' '}
+            {pesos.itensSemPeso === 1 ? 'esse item' : 'esses itens'}.
           </span>
         )}
       </div>
 
       {/* Assinatura — `break-inside-avoid` pra não partir entre duas
           páginas quando a lista de itens for longa. */}
-      <div className="space-y-6 break-inside-avoid border-t pt-5 print:border-foreground/20">
+      <div className="print:border-foreground/20 break-inside-avoid space-y-6 border-t pt-5">
         <p className="text-sm">
-          Declaro que recebi os produtos relacionados acima, conferidos em
-          quantidade e estado.
+          Declaro que recebi os produtos relacionados acima, conferidos em quantidade e estado.
         </p>
 
         <div className="grid gap-6 sm:grid-cols-[1fr_10rem]">
@@ -282,9 +267,8 @@ export function RomaneioDoc({
         </div>
       </div>
 
-      <p className="text-muted-foreground border-t pt-3 text-xs print:border-foreground/20">
-        Documento gerado em{' '}
-        {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}.
+      <p className="text-muted-foreground print:border-foreground/20 border-t pt-3 text-xs">
+        Documento gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}.
       </p>
     </div>
   )

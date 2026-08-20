@@ -1,11 +1,4 @@
-import {
-  endOfMonth,
-  endOfWeek,
-  format,
-  parse,
-  startOfMonth,
-  startOfWeek,
-} from 'date-fns'
+import { endOfMonth, endOfWeek, format, parse, startOfMonth, startOfWeek } from 'date-fns'
 import type { Metadata } from 'next'
 
 import { listarEventosFull, listarOpsComPrazo } from './actions'
@@ -27,9 +20,7 @@ export default async function CalendarioPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const user = await requireArea('calendario')
-  const podeEditar = podeEscrever(
-    await nivelDaAreaPara(user.role, 'calendario'),
-  )
+  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'calendario'))
 
   const sp = await searchParams
   const mesParam = typeof sp.mes === 'string' ? sp.mes : undefined
@@ -48,12 +39,5 @@ export default async function CalendarioPage({
     listarOpsComPrazo(inicio, fim),
   ])
 
-  return (
-    <CalendarioView
-      mes={mes}
-      eventos={eventos}
-      ops={ops}
-      podeEditar={podeEditar}
-    />
-  )
+  return <CalendarioView mes={mes} eventos={eventos} ops={ops} podeEditar={podeEditar} />
 }

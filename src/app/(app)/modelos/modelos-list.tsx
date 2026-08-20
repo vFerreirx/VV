@@ -72,10 +72,7 @@ export function ModelosList({ modelos, podeEditar }: Props) {
   }
   const allChecked = modelos.length > 0 && selecionados.size === modelos.length
   const someChecked = selecionados.size > 0 && !allChecked
-  const idsSelecionados = useMemo(
-    () => Array.from(selecionados),
-    [selecionados],
-  )
+  const idsSelecionados = useMemo(() => Array.from(selecionados), [selecionados])
 
   return (
     <div className="space-y-4">
@@ -98,15 +95,9 @@ export function ModelosList({ modelos, podeEditar }: Props) {
 
       {modelos.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">
-            Nenhum modelo cadastrado.
-          </p>
+          <p className="text-muted-foreground text-sm">Nenhum modelo cadastrado.</p>
           {podeEditar && (
-            <Button
-              size="sm"
-              className="mt-3"
-              onClick={() => setEditando('novo')}
-            >
+            <Button size="sm" className="mt-3" onClick={() => setEditando('novo')}>
               Cadastrar primeiro modelo
             </Button>
           )}
@@ -136,10 +127,7 @@ export function ModelosList({ modelos, podeEditar }: Props) {
               </TableHeader>
               <TableBody ref={corpoTabela}>
                 {modelos.map((m) => (
-                  <TableRow
-                    key={m.id}
-                    data-state={selecionados.has(m.id) ? 'selected' : undefined}
-                  >
+                  <TableRow key={m.id} data-state={selecionados.has(m.id) ? 'selected' : undefined}>
                     {podeEditar && (
                       <TableCell>
                         <Checkbox
@@ -189,10 +177,7 @@ export function ModelosList({ modelos, podeEditar }: Props) {
           {/* Mobile */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:hidden">
             {modelos.map((m) => (
-              <div
-                key={m.id}
-                className="flex items-center justify-between rounded-lg border p-3"
-              >
+              <div key={m.id} className="flex items-center justify-between rounded-lg border p-3">
                 <div className="flex min-w-0 items-center gap-3">
                   {podeEditar && (
                     <Checkbox
@@ -204,9 +189,7 @@ export function ModelosList({ modelos, podeEditar }: Props) {
                   <div className="min-w-0">
                     <div className="truncate font-medium">{m.nome}</div>
                     {m.descricao && (
-                      <div className="text-muted-foreground truncate text-xs">
-                        {m.descricao}
-                      </div>
+                      <div className="text-muted-foreground truncate text-xs">{m.descricao}</div>
                     )}
                   </div>
                 </div>
@@ -241,14 +224,8 @@ export function ModelosList({ modelos, podeEditar }: Props) {
         </>
       )}
 
-      <ModeloDialog
-        modelo={editando}
-        onClose={() => setEditando(null)}
-      />
-      <ExcluirDialog
-        modelo={excluindo}
-        onClose={() => setExcluindo(null)}
-      />
+      <ModeloDialog modelo={editando} onClose={() => setEditando(null)} />
+      <ExcluirDialog modelo={excluindo} onClose={() => setExcluindo(null)} />
       <BulkExcluirDialog
         open={bulkExcluindo}
         ids={idsSelecionados}
@@ -298,8 +275,8 @@ function BulkExcluirDialog({
             Excluir {ids.length} modelo{ids.length === 1 ? '' : 's'}?
           </DialogTitle>
           <DialogDescription>
-            Os modelos selecionados serão marcados como excluídos. As variações
-            que já os usam permanecem inalteradas.
+            Os modelos selecionados serão marcados como excluídos. As variações que já os usam
+            permanecem inalteradas.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -367,9 +344,7 @@ function ModeloDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{isEdit ? 'Editar modelo' : 'Novo modelo'}</DialogTitle>
-          <DialogDescription>
-            Ex: Padrão Floral, Listrado Marinho, Cubos.
-          </DialogDescription>
+          <DialogDescription>Ex: Padrão Floral, Listrado Marinho, Cubos.</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-3" noValidate>
@@ -377,15 +352,8 @@ function ModeloDialog({
             <Label htmlFor="modelo-nome">
               Nome <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="modelo-nome"
-              autoFocus
-              disabled={isPending}
-              {...form.register('nome')}
-            />
-            {errs.nome && (
-              <p className="text-destructive text-xs">{errs.nome.message}</p>
-            )}
+            <Input id="modelo-nome" autoFocus disabled={isPending} {...form.register('nome')} />
+            {errs.nome && <p className="text-destructive text-xs">{errs.nome.message}</p>}
           </div>
 
           <div className="space-y-1.5">
@@ -396,11 +364,7 @@ function ModeloDialog({
               disabled={isPending}
               {...form.register('descricao')}
             />
-            {errs.descricao && (
-              <p className="text-destructive text-xs">
-                {errs.descricao.message}
-              </p>
-            )}
+            {errs.descricao && <p className="text-destructive text-xs">{errs.descricao.message}</p>}
           </div>
 
           <div className="flex items-center justify-between">
@@ -410,20 +374,13 @@ function ModeloDialog({
             <Switch
               id="modelo-ativo"
               checked={ativo}
-              onCheckedChange={(v) =>
-                form.setValue('ativo', v, { shouldDirty: true })
-              }
+              onCheckedChange={(v) => form.setValue('ativo', v, { shouldDirty: true })}
               disabled={isPending}
             />
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={isPending}
-            >
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
               Cancelar
             </Button>
             <Button loading={isPending} type="submit" disabled={isPending}>
@@ -436,13 +393,7 @@ function ModeloDialog({
   )
 }
 
-function ExcluirDialog({
-  modelo,
-  onClose,
-}: {
-  modelo: Modelo | null
-  onClose: () => void
-}) {
+function ExcluirDialog({ modelo, onClose }: { modelo: Modelo | null; onClose: () => void }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -466,19 +417,15 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir modelo?</DialogTitle>
           <DialogDescription>
-            {modelo?.nome} será marcado como excluído. As variações que já o
-            usam permanecem inalteradas.
+            {modelo?.nome} será marcado como excluído. As variações que já o usam permanecem
+            inalteradas.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button loading={isPending}
-            variant="destructive"
-            onClick={excluir}
-            disabled={isPending}
-          >
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
             {'Excluir'}
           </Button>
         </DialogFooter>

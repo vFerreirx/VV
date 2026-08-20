@@ -45,11 +45,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import {
-  PESO_PADRAO_CAIXA_KG,
-  loteFioSchema,
-  type LoteFioInput,
-} from '@/lib/validators/fios'
+import { PESO_PADRAO_CAIXA_KG, loteFioSchema, type LoteFioInput } from '@/lib/validators/fios'
 
 type Props = {
   lotes: LoteFioItem[]
@@ -106,9 +102,7 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
 
       {lotes.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">
-            Nenhuma entrada de lote cadastrada.
-          </p>
+          <p className="text-muted-foreground text-sm">Nenhuma entrada de lote cadastrada.</p>
           {podeEditar && (
             <Button
               size="sm"
@@ -121,8 +115,7 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
           )}
           {podeEditar && coresFornecedorAtivas.length === 0 && (
             <p className="text-muted-foreground mt-2 text-xs">
-              Cadastre antes uma cor de fornecedor na aba &quot;Cores do
-              fornecedor&quot;.
+              Cadastre antes uma cor de fornecedor na aba &quot;Cores do fornecedor&quot;.
             </p>
           )}
         </div>
@@ -163,34 +156,27 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
                     </TableCell>
                     <TableCell className="font-medium whitespace-nowrap">
                       {l.numeroLote ?? (
-                        <span className="text-muted-foreground font-normal italic">
-                          sem lote
-                        </span>
+                        <span className="text-muted-foreground font-normal italic">sem lote</span>
                       )}
                     </TableCell>
                     <TableCell className="whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         {l.corHex && (
                           <span
-                            className="size-3.5 shrink-0 rounded border ring-1 ring-foreground/10"
+                            className="ring-foreground/10 size-3.5 shrink-0 rounded border ring-1"
                             style={{ backgroundColor: l.corHex }}
                           />
                         )}
                         <span>
                           {l.corFornecedorNome}
-                          <span className="text-muted-foreground">
-                            {' '}
-                            → {l.corNome}
-                          </span>
+                          <span className="text-muted-foreground"> → {l.corNome}</span>
                         </span>
                       </div>
                     </TableCell>
                     <TableCell className="tabular-nums">
                       <span className="flex items-center gap-2">
                         {l.caixas}
-                        {l.saldoCaixas <= 0 && (
-                          <Badge variant="secondary">Esgotado</Badge>
-                        )}
+                        {l.saldoCaixas <= 0 && <Badge variant="secondary">Esgotado</Badge>}
                       </span>
                     </TableCell>
                     <TableCell className="whitespace-nowrap tabular-nums">
@@ -202,12 +188,8 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
                     <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
                       {rsPorKg == null ? '—' : formatarReais(rsPorKg)}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {l.vendedor ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {l.notaFiscal ?? '—'}
-                    </TableCell>
+                    <TableCell className="text-muted-foreground">{l.vendedor ?? '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{l.notaFiscal ?? '—'}</TableCell>
                     <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
                       {formatarData(l.vencimentoPagamento)}
                     </TableCell>
@@ -259,11 +241,7 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
 
       <ExcluirDialog lote={excluindo} onClose={() => setExcluindo(null)} />
 
-      <LoteDetailSheet
-        lote={verLote}
-        podeEditar={podeEditar}
-        onClose={() => setVerLote(null)}
-      />
+      <LoteDetailSheet lote={verLote} podeEditar={podeEditar} onClose={() => setVerLote(null)} />
     </div>
   )
 }
@@ -292,11 +270,7 @@ function LoteFioDialog({
   // pode ser barrado por ela. Mas se o lote em edição JÁ tem algum desses
   // campos, abre: esconder o que alguém cadastrou é perder o dado de vista.
   const temDadosDeCompra = Boolean(
-    isEdit &&
-      (lote.valorTotal ||
-        lote.vendedor ||
-        lote.vencimentoPagamento ||
-        lote.notaFiscal),
+    isEdit && (lote.valorTotal || lote.vendedor || lote.vencimentoPagamento || lote.notaFiscal),
   )
 
   const [pesoTocado, setPesoTocado] = useState(Boolean(isEdit))
@@ -369,13 +343,10 @@ function LoteFioDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            {isEdit ? 'Editar entrada de lote' : 'Nova entrada de lote'}
-          </DialogTitle>
+          <DialogTitle>{isEdit ? 'Editar entrada de lote' : 'Nova entrada de lote'}</DialogTitle>
           <DialogDescription>
-            Só cor, caixas e peso são obrigatórios. O peso sugere caixas ×{' '}
-            {PESO_PADRAO_CAIXA_KG}kg — é chute inicial, ajuste se o lote vier
-            diferente.
+            Só cor, caixas e peso são obrigatórios. O peso sugere caixas × {PESO_PADRAO_CAIXA_KG}kg
+            — é chute inicial, ajuste se o lote vier diferente.
           </DialogDescription>
         </DialogHeader>
 
@@ -408,9 +379,7 @@ function LoteFioDialog({
                 )}
               />
               {errs.corFornecedorId && (
-                <p className="text-destructive text-xs">
-                  {errs.corFornecedorId.message}
-                </p>
+                <p className="text-destructive text-xs">{errs.corFornecedorId.message}</p>
               )}
             </div>
 
@@ -428,9 +397,7 @@ function LoteFioDialog({
                 disabled={isPending}
                 {...form.register('caixas')}
               />
-              {errs.caixas && (
-                <p className="text-destructive text-xs">{errs.caixas.message}</p>
-              )}
+              {errs.caixas && <p className="text-destructive text-xs">{errs.caixas.message}</p>}
             </div>
 
             <div className="space-y-1.5">
@@ -449,9 +416,7 @@ function LoteFioDialog({
                 })}
               />
               {errs.pesoTotalKg && (
-                <p className="text-destructive text-xs">
-                  {errs.pesoTotalKg.message}
-                </p>
+                <p className="text-destructive text-xs">{errs.pesoTotalKg.message}</p>
               )}
             </div>
 
@@ -466,9 +431,7 @@ function LoteFioDialog({
                 {...form.register('numeroLote')}
               />
               {errs.numeroLote && (
-                <p className="text-destructive text-xs">
-                  {errs.numeroLote.message}
-                </p>
+                <p className="text-destructive text-xs">{errs.numeroLote.message}</p>
               )}
             </div>
 
@@ -481,9 +444,7 @@ function LoteFioDialog({
                 {...form.register('dataEntrada')}
               />
               {errs.dataEntrada && (
-                <p className="text-destructive text-xs">
-                  {errs.dataEntrada.message}
-                </p>
+                <p className="text-destructive text-xs">{errs.dataEntrada.message}</p>
               )}
             </div>
           </div>
@@ -522,9 +483,7 @@ function LoteFioDialog({
                     {...form.register('valorTotal')}
                   />
                   {errs.valorTotal && (
-                    <p className="text-destructive text-xs">
-                      {errs.valorTotal.message}
-                    </p>
+                    <p className="text-destructive text-xs">{errs.valorTotal.message}</p>
                   )}
                 </div>
 
@@ -537,25 +496,15 @@ function LoteFioDialog({
 
                 <div className="space-y-1.5">
                   <Label htmlFor="lf-vendedor">Vendedor</Label>
-                  <Input
-                    id="lf-vendedor"
-                    disabled={isPending}
-                    {...form.register('vendedor')}
-                  />
+                  <Input id="lf-vendedor" disabled={isPending} {...form.register('vendedor')} />
                   {errs.vendedor && (
-                    <p className="text-destructive text-xs">
-                      {errs.vendedor.message}
-                    </p>
+                    <p className="text-destructive text-xs">{errs.vendedor.message}</p>
                   )}
                 </div>
 
                 <div className="space-y-1.5">
                   <Label htmlFor="lf-nota">Nota fiscal</Label>
-                  <Input
-                    id="lf-nota"
-                    disabled={isPending}
-                    {...form.register('notaFiscal')}
-                  />
+                  <Input id="lf-nota" disabled={isPending} {...form.register('notaFiscal')} />
                 </div>
 
                 <div className="space-y-1.5 sm:col-span-2">
@@ -567,9 +516,7 @@ function LoteFioDialog({
                     {...form.register('vencimentoPagamento')}
                   />
                   {errs.vencimentoPagamento && (
-                    <p className="text-destructive text-xs">
-                      {errs.vencimentoPagamento.message}
-                    </p>
+                    <p className="text-destructive text-xs">{errs.vencimentoPagamento.message}</p>
                   )}
                 </div>
               </div>
@@ -578,21 +525,11 @@ function LoteFioDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="lf-obs">Observação</Label>
-            <Textarea
-              id="lf-obs"
-              rows={2}
-              disabled={isPending}
-              {...form.register('observacao')}
-            />
+            <Textarea id="lf-obs" rows={2} disabled={isPending} {...form.register('observacao')} />
           </div>
 
           <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={isPending}
-            >
+            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
               Cancelar
             </Button>
             <Button loading={isPending} type="submit" disabled={isPending}>
@@ -605,13 +542,7 @@ function LoteFioDialog({
   )
 }
 
-function ExcluirDialog({
-  lote,
-  onClose,
-}: {
-  lote: LoteFioItem | null
-  onClose: () => void
-}) {
+function ExcluirDialog({ lote, onClose }: { lote: LoteFioItem | null; onClose: () => void }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -635,19 +566,15 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir entrada de lote?</DialogTitle>
           <DialogDescription>
-            O lote {lote?.numeroLote ?? `sem número (${lote?.corFornecedorNome})`}{' '}
-            será marcado como excluído.
+            O lote {lote?.numeroLote ?? `sem número (${lote?.corFornecedorNome})`} será marcado como
+            excluído.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button loading={isPending}
-            variant="destructive"
-            onClick={excluir}
-            disabled={isPending}
-          >
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
             {'Excluir'}
           </Button>
         </DialogFooter>

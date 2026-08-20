@@ -1,7 +1,6 @@
 import { z } from 'zod'
 
-const uuidRe =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // String opcional à prova de chave ausente (Server Action descarta undefined).
 const stringOpt = (max: number, label = 'Texto') =>

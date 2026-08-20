@@ -8,10 +8,7 @@ import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { faixasEmbalagem, type FaixaEmbalagem } from '@/lib/db/schema'
 import type { FaixaDeEmbalagem } from '@/lib/frete'
-import {
-  faixaEmbalagemSchema,
-  type FaixaEmbalagemInput,
-} from '@/lib/validators/faixas-embalagem'
+import { faixaEmbalagemSchema, type FaixaEmbalagemInput } from '@/lib/validators/faixas-embalagem'
 
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
@@ -121,9 +118,7 @@ export async function atualizarFaixaEmbalagemAction(
   return { success: true, message: 'Faixa atualizada' }
 }
 
-export async function excluirFaixaEmbalagemAction(
-  id: string,
-): Promise<ActionResult> {
+export async function excluirFaixaEmbalagemAction(id: string): Promise<ActionResult> {
   await requireAreaEscrita('faixasEmbalagem')
 
   const [atual] = await db
@@ -133,10 +128,7 @@ export async function excluirFaixaEmbalagemAction(
     .limit(1)
   if (!atual) return { success: false, error: 'Faixa não encontrada' }
 
-  await db
-    .update(faixasEmbalagem)
-    .set({ deletedAt: new Date() })
-    .where(eq(faixasEmbalagem.id, id))
+  await db.update(faixasEmbalagem).set({ deletedAt: new Date() }).where(eq(faixasEmbalagem.id, id))
 
   revalidatePath('/faixas-embalagem')
   return { success: true, message: 'Faixa excluída' }

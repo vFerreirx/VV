@@ -1,12 +1,6 @@
 'use client'
 
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  Printer,
-} from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Download, Printer } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Fragment, useRef, useState, useTransition } from 'react'
 
@@ -25,11 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
-import {
-  CONTAS_MARKETPLACE,
-  MARKETPLACE_LABEL,
-  type Marketplace,
-} from '@/lib/validators/vendas'
+import { CONTAS_MARKETPLACE, MARKETPLACE_LABEL, type Marketplace } from '@/lib/validators/vendas'
 
 function hojeISO(): string {
   const d = new Date()
@@ -64,10 +54,7 @@ function labelMes(mes: string): string {
 function rangeDoMes(mes: string): [string, string] {
   const [y, m] = mes.split('-').map(Number)
   const inicio = `${mes}-01`
-  const fim =
-    mes === mesAtualYYYYMM()
-      ? hojeISO()
-      : isoDe(new Date(y, m, 0))
+  const fim = mes === mesAtualYYYYMM() ? hojeISO() : isoDe(new Date(y, m, 0))
   return [inicio, fim]
 }
 
@@ -182,11 +169,7 @@ function baixarCSV(r: RelatorioMensal) {
   for (const g of agruparPorMarketplace(r.porConta)) {
     linhas.push([mkLabel(g.marketplace), String(g.subUn), dec(g.subFat)])
     for (const c of g.contas) {
-      linhas.push([
-        `  ${LABEL_CONTA[c.conta] ?? c.conta}`,
-        String(c.unidades),
-        dec(c.faturamento),
-      ])
+      linhas.push([`  ${LABEL_CONTA[c.conta] ?? c.conta}`, String(c.unidades), dec(c.faturamento)])
     }
   }
   linhas.push([])
@@ -196,9 +179,7 @@ function baixarCSV(r: RelatorioMensal) {
   }
 
   const csv = linhas
-    .map((cols) =>
-      cols.map((c) => (/[;"\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(';'),
-    )
+    .map((cols) => cols.map((c) => (/[;"\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(';'))
     .join('\r\n')
 
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -287,8 +268,7 @@ export function RelatorioView({
     setCdeLocal(compInicio)
     setCateLocal(compFim)
   }
-  const compPendente =
-    cdeLocal !== compInicio || cateLocal !== compFim
+  const compPendente = cdeLocal !== compInicio || cateLocal !== compFim
 
   function aplicarComparacao(de: string, ate: string) {
     if (!de || !ate) return
@@ -342,9 +322,7 @@ export function RelatorioView({
   const comp = comparacao ?? null
   const deltaDe = (atual: number, anterior: number): number | null =>
     anterior > 0 ? ((atual - anterior) / anterior) * 100 : null
-  const compLabel = comp
-    ? `vs ${dataCurta(comp.inicio)}–${dataCurta(comp.fim)}`
-    : ''
+  const compLabel = comp ? `vs ${dataCurta(comp.inicio)}–${dataCurta(comp.fim)}` : ''
 
   const kpis: {
     label: string
@@ -406,7 +384,7 @@ export function RelatorioView({
       </div>
 
       {/* Filtro de período */}
-      <div className="space-y-2 rounded-lg border bg-muted/30 p-3 print:hidden">
+      <div className="bg-muted/30 space-y-2 rounded-lg border p-3 print:hidden">
         {/* Navegação de mês + atalhos rápidos */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <div className="flex items-center gap-1">
@@ -561,7 +539,7 @@ export function RelatorioView({
 
       {/* Cabeçalho do documento (só na impressão / PDF) */}
       <div className="hidden print:mb-3 print:block">
-        <div className="flex items-end justify-between border-b border-foreground/20 pb-3">
+        <div className="border-foreground/20 flex items-end justify-between border-b pb-3">
           <div className="flex items-center gap-2.5">
             <Logo variant="mark" className="text-primary size-9" />
             <div className="leading-tight">
@@ -579,9 +557,7 @@ export function RelatorioView({
               Período: {periodoLabel(inicio, fim)}
             </div>
             {geradoEm && (
-              <div className="text-muted-foreground text-[0.65rem]">
-                Gerado em {geradoEm}
-              </div>
+              <div className="text-muted-foreground text-[0.65rem]">Gerado em {geradoEm}</div>
             )}
           </div>
         </div>
@@ -592,14 +568,10 @@ export function RelatorioView({
         {kpis.map((k) => (
           <div
             key={k.label}
-            className="vv-lift rounded-xl border p-4 print:rounded-md print:border-foreground/20 print:p-2.5"
+            className="vv-lift print:border-foreground/20 rounded-xl border p-4 print:rounded-md print:p-2.5"
           >
-            <div className="text-muted-foreground text-xs tracking-wide uppercase">
-              {k.label}
-            </div>
-            <div className="mt-1 text-xl font-semibold tabular-nums print:text-base">
-              {k.valor}
-            </div>
+            <div className="text-muted-foreground text-xs tracking-wide uppercase">{k.label}</div>
+            <div className="mt-1 text-xl font-semibold tabular-nums print:text-base">{k.valor}</div>
             {k.sub && (
               <div className="text-muted-foreground mt-1 text-[11px] tabular-nums print:text-[9px]">
                 {k.sub}
@@ -628,9 +600,7 @@ export function RelatorioView({
       {/* Top contas do período (pódio por faturamento, sem unificar mk) */}
       {topContas.length > 0 && (
         <div className="print:hidden">
-          <h2 className="mb-2 text-sm font-semibold">
-            Contas com mais vendas
-          </h2>
+          <h2 className="mb-2 text-sm font-semibold">Contas com mais vendas</h2>
           <div className="vv-stagger grid grid-cols-1 gap-3 sm:grid-cols-3">
             {topContas.map((c, i) => {
               const contaLabel = LABEL_CONTA[c.conta] ?? c.conta
@@ -648,15 +618,11 @@ export function RelatorioView({
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{nome}</div>
-                    <div className="text-lg font-semibold tabular-nums">
-                      {reais(c.faturamento)}
-                    </div>
+                    <div className="text-lg font-semibold tabular-nums">{reais(c.faturamento)}</div>
                     <div className="text-muted-foreground text-xs tabular-nums">
                       {c.unidades.toLocaleString('pt-BR')} vendas ·{' '}
-                      {v.faturamento > 0
-                        ? Math.round((c.faturamento / v.faturamento) * 100)
-                        : 0}
-                      % do faturamento
+                      {v.faturamento > 0 ? Math.round((c.faturamento / v.faturamento) * 100) : 0}%
+                      do faturamento
                     </div>
                   </div>
                 </div>
@@ -672,10 +638,7 @@ export function RelatorioView({
           <h2 className="mb-2 text-sm font-semibold">Melhores dias</h2>
           <div className="vv-stagger grid grid-cols-1 gap-3 sm:grid-cols-3">
             {topDias.map((d, i) => (
-              <div
-                key={d.data}
-                className="vv-lift flex items-center gap-3 rounded-xl border p-4"
-              >
+              <div key={d.data} className="vv-lift flex items-center gap-3 rounded-xl border p-4">
                 <span className="text-2xl" aria-hidden>
                   {['🥇', '🥈', '🥉'][i]}
                 </span>
@@ -705,9 +668,7 @@ export function RelatorioView({
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">Vendas por marketplace</h2>
         {relatorio.porConta.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Sem vendas registradas no período.
-          </p>
+          <p className="text-muted-foreground text-sm">Sem vendas registradas no período.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
             <Table>
@@ -722,9 +683,7 @@ export function RelatorioView({
                 {agruparPorMarketplace(relatorio.porConta).map((g) => (
                   <Fragment key={g.marketplace}>
                     <TableRow className="bg-muted/40 hover:bg-muted/40">
-                      <TableCell className="font-semibold">
-                        {mkLabel(g.marketplace)}
-                      </TableCell>
+                      <TableCell className="font-semibold">{mkLabel(g.marketplace)}</TableCell>
                       <TableCell className="text-right font-semibold tabular-nums">
                         {g.subUn}
                       </TableCell>
@@ -737,9 +696,7 @@ export function RelatorioView({
                         <TableCell className="text-muted-foreground pl-6">
                           {LABEL_CONTA[c.conta] ?? c.conta}
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {c.unidades}
-                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{c.unidades}</TableCell>
                         <TableCell className="text-right tabular-nums">
                           {reais(c.faturamento)}
                         </TableCell>
@@ -768,9 +725,7 @@ export function RelatorioView({
       <section className="space-y-2">
         <h2 className="text-sm font-semibold">Vendas por dia</h2>
         {relatorio.porDia.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Sem vendas registradas no período.
-          </p>
+          <p className="text-muted-foreground text-sm">Sem vendas registradas no período.</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border">
             <Table>
@@ -784,12 +739,8 @@ export function RelatorioView({
               <TableBody>
                 {relatorio.porDia.map((d) => (
                   <TableRow key={d.data}>
-                    <TableCell className="tabular-nums">
-                      {dataCurta(d.data)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {d.unidades}
-                    </TableCell>
+                    <TableCell className="tabular-nums">{dataCurta(d.data)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{d.unidades}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {reais(d.faturamento)}
                     </TableCell>

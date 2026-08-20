@@ -9,11 +9,7 @@ import { requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Itens faltantes — Vanvest' }
 
-export default async function FaltantesPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function FaltantesPage({ params }: { params: Promise<{ id: string }> }) {
   await requireArea('vendas')
   const { id } = await params
 

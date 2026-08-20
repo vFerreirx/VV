@@ -28,9 +28,7 @@ const dateOpt = z
   })
   .refine(
     (v) =>
-      v === null ||
-      v instanceof Date ||
-      (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)),
+      v === null || v instanceof Date || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)),
     'Data inválida (use YYYY-MM-DD)',
   )
   .transform((v) => {
@@ -41,8 +39,7 @@ const dateOpt = z
   // pode chegar AUSENTE — sem optional o Zod 4 falha com "expected nonoptional".
   .optional()
 
-const uuidRegex =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const uuidOpt = z
   .union([z.string(), z.null(), z.undefined()])
@@ -54,22 +51,14 @@ const stringOpt = (max: number, label = 'Texto') =>
   z
     .union([z.string(), z.null(), z.undefined()])
     .transform((v) => (v == null || v === '' ? undefined : v))
-    .refine(
-      (v) => v === undefined || v.length <= max,
-      `${label} muito longo`,
-    )
+    .refine((v) => v === undefined || v.length <= max, `${label} muito longo`)
     .optional()
 
 // -----------------------------------------------------------------
 // Enums (espelham os enums do banco)
 // -----------------------------------------------------------------
 
-export const canalValues = [
-  'full_ml',
-  'full_shopee',
-  'venda_direta',
-  'estoque',
-] as const
+export const canalValues = ['full_ml', 'full_shopee', 'venda_direta', 'estoque'] as const
 
 // Os quatro níveis vivem em src/lib/prioridade.ts, junto do rótulo e da cor
 // — a tarefa usa exatamente os mesmos e nada aqui pode divergir de lá.
@@ -95,10 +84,7 @@ export const ordemSchema = z.object({
     .string()
     .min(1, 'Selecione um produto')
     .refine(
-      (v) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          v,
-        ),
+      (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
       'Produto inválido',
     ),
   variacaoId: uuidOpt,
@@ -126,9 +112,7 @@ export type OrdemOutput = z.output<typeof ordemSchema>
 // -----------------------------------------------------------------
 
 export const ordemRapidaSchema = z.object({
-  produtoId: z
-    .string()
-    .refine((v) => uuidRegex.test(v), 'Selecione um produto'),
+  produtoId: z.string().refine((v) => uuidRegex.test(v), 'Selecione um produto'),
   variacaoId: uuidOpt,
   quantidade: quantidadeReq,
   canalDestino: z.enum(canalValues),
@@ -155,10 +139,7 @@ export type MudarStatusOrdemInput = z.input<typeof mudarStatusOrdemSchema>
 const intNaoNeg = z
   .union([z.string(), z.number()])
   .transform((v) => (v === '' ? 0 : Number(v)))
-  .refine(
-    (v) => Number.isInteger(v) && v >= 0,
-    'Informe um inteiro >= 0',
-  )
+  .refine((v) => Number.isInteger(v) && v >= 0, 'Informe um inteiro >= 0')
 
 export const apontamentoSchema = z
   .object({
@@ -180,9 +161,7 @@ export const ordensFiltrosSchema = z.object({
   q: z.string().trim().optional(),
   status: z.union([z.enum(statusValues), z.literal('todos')]).optional(),
   canal: z.union([z.enum(canalValues), z.literal('todos')]).optional(),
-  prioridade: z
-    .union([z.enum(prioridadeValues), z.literal('todas')])
-    .optional(),
+  prioridade: z.union([z.enum(prioridadeValues), z.literal('todas')]).optional(),
   maquinaId: z.string().trim().optional(),
   remessaId: z.string().trim().optional(),
   // Página da listagem (1-based).
@@ -223,10 +202,7 @@ export const STATUS_LABEL: Record<(typeof statusValues)[number], string> = {
   cancelado: 'Cancelado',
 }
 
-export const STATUS_LABEL_CURTO: Record<
-  (typeof statusValues)[number],
-  string
-> = {
+export const STATUS_LABEL_CURTO: Record<(typeof statusValues)[number], string> = {
   aguardando_materia_prima: 'Aguardando MP',
   programado: 'Programado',
   em_producao: 'Em produção',

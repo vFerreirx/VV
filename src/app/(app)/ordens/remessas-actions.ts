@@ -13,10 +13,7 @@ import {
   variacoesProduto,
 } from '@/lib/db/schema'
 import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
-import {
-  criarOpsFullSchema,
-  type CriarOpsFullInput,
-} from '@/lib/validators/remessas'
+import { criarOpsFullSchema, type CriarOpsFullInput } from '@/lib/validators/remessas'
 
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
@@ -32,8 +29,7 @@ export type RemessaFullOpcao = {
 // "Full ML · 15/07" — rótulo padrão da remessa.
 function labelRemessa(canal: string, dataEnvio: string): string {
   const [, m, d] = dataEnvio.split('-')
-  const canalLabel =
-    CANAL_LABEL_CURTO[canal as keyof typeof CANAL_LABEL_CURTO] ?? canal
+  const canalLabel = CANAL_LABEL_CURTO[canal as keyof typeof CANAL_LABEL_CURTO] ?? canal
   return `${canalLabel} · ${d}/${m}`
 }
 
@@ -96,91 +92,91 @@ export async function criarOpsFullAction(
     }
   }
 
-  const criadas = await db.transaction(async (tx) => {
-    // Full existente ou novo.
-    let remessa: { id: string; canal: string; dataEnvio: string }
-    if (data.remessaId) {
-      const [r] = await tx
-        .select({
-          id: remessasFull.id,
-          canal: remessasFull.canal,
-          dataEnvio: remessasFull.dataEnvio,
-        })
-        .from(remessasFull)
-        .where(
-          and(eq(remessasFull.id, data.remessaId), isNull(remessasFull.deletedAt)),
-        )
-        .limit(1)
-      if (!r) throw new Error('FULL_NAO_ENCONTRADO')
-      remessa = r
-    } else {
-      // A conta tem que ser do MESMO canal do Full e estar ativa — a trava
-      // da tela (o seletor já vem filtrado) não é garantia de nada.
-      const [conta] = await tx
-        .select({ id: contasMarketplace.id })
-        .from(contasMarketplace)
-        .where(
-          and(
-            eq(contasMarketplace.id, data.contaId!),
-            eq(contasMarketplace.canal, data.canal!),
-            eq(contasMarketplace.ativo, true),
-            isNull(contasMarketplace.deletedAt),
-          ),
-        )
-        .limit(1)
-      if (!conta) throw new Error('CONTA_INVALIDA')
+  const criadas = await db
+    .transaction(async (tx) => {
+      // Full existente ou novo.
+      let remessa: { id: string; canal: string; dataEnvio: string }
+      if (data.remessaId) {
+        const [r] = await tx
+          .select({
+            id: remessasFull.id,
+            canal: remessasFull.canal,
+            dataEnvio: remessasFull.dataEnvio,
+          })
+          .from(remessasFull)
+          .where(and(eq(remessasFull.id, data.remessaId), isNull(remessasFull.deletedAt)))
+          .limit(1)
+        if (!r) throw new Error('FULL_NAO_ENCONTRADO')
+        remessa = r
+      } else {
+        // A conta tem que ser do MESMO canal do Full e estar ativa — a trava
+        // da tela (o seletor já vem filtrado) não é garantia de nada.
+        const [conta] = await tx
+          .select({ id: contasMarketplace.id })
+          .from(contasMarketplace)
+          .where(
+            and(
+              eq(contasMarketplace.id, data.contaId!),
+              eq(contasMarketplace.canal, data.canal!),
+              eq(contasMarketplace.ativo, true),
+              isNull(contasMarketplace.deletedAt),
+            ),
+          )
+          .limit(1)
+        if (!conta) throw new Error('CONTA_INVALIDA')
 
-      const [r] = await tx
-        .insert(remessasFull)
-        .values({
-          canal: data.canal!,
-          dataEnvio: data.dataEnvio!,
-          contaId: conta.id,
-        })
-        .returning({
-          id: remessasFull.id,
-          canal: remessasFull.canal,
-          dataEnvio: remessasFull.dataEnvio,
-        })
-      remessa = r!
-    }
+        const [r] = await tx
+          .insert(remessasFull)
+          .values({
+            canal: data.canal!,
+            dataEnvio: data.dataEnvio!,
+            contaId: conta.id,
+          })
+          .returning({
+            id: remessasFull.id,
+            canal: remessasFull.canal,
+            dataEnvio: remessasFull.dataEnvio,
+          })
+        remessa = r!
+      }
 
-    // Data de envio vira o prazo (fim do dia, horário do Brasil).
-    const prazo = new Date(`${remessa.dataEnvio}T23:59:59-03:00`)
-    const rotulo = labelRemessa(remessa.canal, remessa.dataEnvio)
+      // Data de envio vira o prazo (fim do dia, horário do Brasil).
+      const prazo = new Date(`${remessa.dataEnvio}T23:59:59-03:00`)
+      const rotulo = labelRemessa(remessa.canal, remessa.dataEnvio)
 
-    for (const it of data.itens) {
-      const [op] = await tx
-        .insert(ordensProducao)
-        .values({
-          numero: '',
-          produtoId: produtoDaVariacao.get(it.variacaoId)!,
-          variacaoId: it.variacaoId,
-          quantidade: it.quantidade,
-          canalDestino: remessa.canal as 'full_ml' | 'full_shopee',
-          prioridade: data.prioridade,
-          status: 'programado',
-          dataPrevistaFim: prazo,
-          remessaFullId: remessa.id,
-          criadoPor: user.id,
-          observacoes: `Remessa ${rotulo}`,
+      for (const it of data.itens) {
+        const [op] = await tx
+          .insert(ordensProducao)
+          .values({
+            numero: '',
+            produtoId: produtoDaVariacao.get(it.variacaoId)!,
+            variacaoId: it.variacaoId,
+            quantidade: it.quantidade,
+            canalDestino: remessa.canal as 'full_ml' | 'full_shopee',
+            prioridade: data.prioridade,
+            status: 'programado',
+            dataPrevistaFim: prazo,
+            remessaFullId: remessa.id,
+            criadoPor: user.id,
+            observacoes: `Remessa ${rotulo}`,
+          })
+          .returning({ id: ordensProducao.id })
+
+        await tx.insert(eventosKanban).values({
+          ordemId: op!.id,
+          statusAnterior: null,
+          statusNovo: 'programado',
+          usuarioId: user.id,
+          observacao: `OP criada no Full ${rotulo}`,
         })
-        .returning({ id: ordensProducao.id })
-
-      await tx.insert(eventosKanban).values({
-        ordemId: op!.id,
-        statusAnterior: null,
-        statusNovo: 'programado',
-        usuarioId: user.id,
-        observacao: `OP criada no Full ${rotulo}`,
-      })
-    }
-    return data.itens.length
-  }).catch((e) => {
-    if (e instanceof Error && e.message === 'FULL_NAO_ENCONTRADO') return -1
-    if (e instanceof Error && e.message === 'CONTA_INVALIDA') return -2
-    throw e
-  })
+      }
+      return data.itens.length
+    })
+    .catch((e) => {
+      if (e instanceof Error && e.message === 'FULL_NAO_ENCONTRADO') return -1
+      if (e instanceof Error && e.message === 'CONTA_INVALIDA') return -2
+      throw e
+    })
 
   if (criadas === -1) return { success: false, error: 'Full não encontrado' }
   if (criadas === -2) {

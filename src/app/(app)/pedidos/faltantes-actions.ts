@@ -32,9 +32,7 @@ export type Faltante = {
   quantidade: number
 }
 
-export async function listarFaltantes(
-  orcamentoId: string,
-): Promise<Faltante[]> {
+export async function listarFaltantes(orcamentoId: string): Promise<Faltante[]> {
   await requireArea('vendas')
   return db
     .select({
@@ -82,23 +80,16 @@ export async function salvarFaltantesAction(
   for (const m of marcacoes) {
     const linha = porChave.get(m.chave)
     if (!linha) continue
-    const qtd = Math.min(
-      Math.max(0, Math.floor(Number(m.quantidade) || 0)),
-      linha.quantidade,
-    )
+    const qtd = Math.min(Math.max(0, Math.floor(Number(m.quantidade) || 0)), linha.quantidade)
     if (qtd > 0) {
       validas.push({ chave: m.chave, descricao: linha.descricao, quantidade: qtd })
     }
   }
 
   await db.transaction(async (tx) => {
-    await tx
-      .delete(orcamentoFaltantes)
-      .where(eq(orcamentoFaltantes.orcamentoId, orcamentoId))
+    await tx.delete(orcamentoFaltantes).where(eq(orcamentoFaltantes.orcamentoId, orcamentoId))
     if (validas.length > 0) {
-      await tx
-        .insert(orcamentoFaltantes)
-        .values(validas.map((v) => ({ ...v, orcamentoId })))
+      await tx.insert(orcamentoFaltantes).values(validas.map((v) => ({ ...v, orcamentoId })))
     }
   })
 
@@ -111,8 +102,6 @@ export async function salvarFaltantesAction(
   return {
     success: true,
     message:
-      total === 0
-        ? 'Nada faltando neste pedido'
-        : `${total} peça(s) marcada(s) como faltante`,
+      total === 0 ? 'Nada faltando neste pedido' : `${total} peça(s) marcada(s) como faltante`,
   }
 }

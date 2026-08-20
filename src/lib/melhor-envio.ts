@@ -37,8 +37,7 @@ export function configMelhorEnvio(): ConfigMelhorEnvio | null {
   ).replace(/\/+$/, '')
   // A doc pede nome da aplicação e e-mail técnico no User-Agent, pra eles
   // conseguirem falar com quem está chamando quando algo sai do lugar.
-  const userAgent =
-    process.env.MELHOR_ENVIO_USER_AGENT?.trim() || 'Vanvest ERP (sem-contato)'
+  const userAgent = process.env.MELHOR_ENVIO_USER_AGENT?.trim() || 'Vanvest ERP (sem-contato)'
   return { token, baseUrl, userAgent }
 }
 
@@ -112,8 +111,7 @@ function interpretar(json: unknown): ResultadoCotacao {
     // `custom_price`/`custom_delivery_time` refletem as customizações da
     // conta (markup ou desconto negociado) e é o que a doc manda usar em
     // produção; os campos base ficam de reserva.
-    const precoCentavos =
-      paraCentavos(s.custom_price) ?? paraCentavos(s.price) ?? null
+    const precoCentavos = paraCentavos(s.custom_price) ?? paraCentavos(s.price) ?? null
     if (precoCentavos == null) {
       comErro.push({ servico, transportadora, erro: 'Veio sem preço.' })
       continue
@@ -124,8 +122,7 @@ function interpretar(json: unknown): ResultadoCotacao {
       servico,
       transportadora,
       precoCentavos,
-      prazoDias:
-        paraInteiro(s.custom_delivery_time) ?? paraInteiro(s.delivery_time),
+      prazoDias: paraInteiro(s.custom_delivery_time) ?? paraInteiro(s.delivery_time),
     })
   }
 

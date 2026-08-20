@@ -84,13 +84,7 @@ const CASCATA: Partial<Record<TipoLixeira, string>> = {
 // tornaria limpar a lixeira um castigo.
 const PALAVRA_CONFIRMACAO = 'APAGAR'
 
-export function LixeiraList({
-  itens,
-  total,
-}: {
-  itens: ItemLixeira[]
-  total: number
-}) {
+export function LixeiraList({ itens, total }: { itens: ItemLixeira[]; total: number }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null)
@@ -143,15 +137,10 @@ export function LixeiraList({
         {itens.map((item) => {
           const Icone = ICONE[item.tipo]
           return (
-            <div
-              key={`${item.tipo}-${item.id}`}
-              className="flex items-center gap-3 px-4 py-2.5"
-            >
+            <div key={`${item.tipo}-${item.id}`} className="flex items-center gap-3 px-4 py-2.5">
               <Icone className="text-muted-foreground size-4 shrink-0" />
               <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium">
-                  {item.titulo}
-                </div>
+                <div className="truncate text-sm font-medium">{item.titulo}</div>
                 <div className="text-muted-foreground truncate text-xs">
                   {item.subtitulo} · excluído em{' '}
                   {format(new Date(item.excluidoEm), "dd/MM/yyyy 'às' HH:mm", {
@@ -238,13 +227,11 @@ function ApagarDialog({
     <Dialog open={item !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-destructive">
-            Apagar de vez?
-          </DialogTitle>
+          <DialogTitle className="text-destructive">Apagar de vez?</DialogTitle>
           <DialogDescription>
-            <span className="text-foreground font-medium">{item?.titulo}</span>{' '}
-            será removido do banco. Isso <strong>não tem desfazer</strong> — não
-            é a lixeira, é a exclusão definitiva.
+            <span className="text-foreground font-medium">{item?.titulo}</span> será removido do
+            banco. Isso <strong>não tem desfazer</strong> — não é a lixeira, é a exclusão
+            definitiva.
             {cascata && ` ${cascata}`}
           </DialogDescription>
         </DialogHeader>
@@ -252,12 +239,7 @@ function ApagarDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button
-            variant="destructive"
-            onClick={apagar}
-            loading={isPending}
-            disabled={isPending}
-          >
+          <Button variant="destructive" onClick={apagar} loading={isPending} disabled={isPending}>
             {/* O spinner entra no LUGAR do ícone: mesma largura, rótulo
                 parado, botão não pula. */}
             {!isPending && <Trash2 />}
@@ -302,8 +284,7 @@ function EsvaziarDialog({
     })
   }
 
-  const totalPulado =
-    relatorio?.pulados.reduce((s, p) => s + p.quantidade, 0) ?? 0
+  const totalPulado = relatorio?.pulados.reduce((s, p) => s + p.quantidade, 0) ?? 0
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && fechar()}>
@@ -326,10 +307,7 @@ function EsvaziarDialog({
             {relatorio.pulados.length > 0 && (
               <ul className="max-h-64 space-y-1.5 overflow-y-auto text-sm">
                 {relatorio.pulados.map((p) => (
-                  <li
-                    key={`${p.tipo}-${p.motivo}`}
-                    className="flex items-start gap-2"
-                  >
+                  <li key={`${p.tipo}-${p.motivo}`} className="flex items-start gap-2">
                     <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
                     <span>
                       <span className="font-medium">
@@ -349,14 +327,11 @@ function EsvaziarDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle className="text-destructive">
-                Esvaziar a lixeira?
-              </DialogTitle>
+              <DialogTitle className="text-destructive">Esvaziar a lixeira?</DialogTitle>
               <DialogDescription>
-                Vou apagar do banco tudo que puder, dos {total} itens da
-                lixeira. O que estiver em uso por outro registro é pulado e
-                continua aqui — no fim eu mostro o que ficou e por quê.{' '}
-                <strong>Não tem desfazer.</strong>
+                Vou apagar do banco tudo que puder, dos {total} itens da lixeira. O que estiver em
+                uso por outro registro é pulado e continua aqui — no fim eu mostro o que ficou e por
+                quê. <strong>Não tem desfazer.</strong>
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-1.5">

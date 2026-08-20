@@ -6,12 +6,7 @@ import { coresFornecedorFio, lotesFio, movimentacoesFio } from './fios'
 import { kitItens, kits, kitTamanhoPreco } from './kits'
 import { maquinas } from './maquinas'
 import { apontamentosProducao, eventosKanban, ordensProducao } from './ordens'
-import {
-  produtos,
-  produtoTamanhoPeso,
-  produtoTamanhoPreco,
-  variacoesProduto,
-} from './produtos'
+import { produtos, produtoTamanhoPeso, produtoTamanhoPreco, variacoesProduto } from './produtos'
 import { tamanhos } from './tamanhos'
 import { users } from './users'
 
@@ -36,33 +31,27 @@ export const produtosRelations = relations(produtos, ({ many }) => ({
   pesos: many(produtoTamanhoPeso),
 }))
 
-export const produtoTamanhoPesoRelations = relations(
-  produtoTamanhoPeso,
-  ({ one }) => ({
-    produto: one(produtos, {
-      fields: [produtoTamanhoPeso.produtoId],
-      references: [produtos.id],
-    }),
-    tamanho: one(tamanhos, {
-      fields: [produtoTamanhoPeso.tamanhoId],
-      references: [tamanhos.id],
-    }),
+export const produtoTamanhoPesoRelations = relations(produtoTamanhoPeso, ({ one }) => ({
+  produto: one(produtos, {
+    fields: [produtoTamanhoPeso.produtoId],
+    references: [produtos.id],
   }),
-)
+  tamanho: one(tamanhos, {
+    fields: [produtoTamanhoPeso.tamanhoId],
+    references: [tamanhos.id],
+  }),
+}))
 
-export const produtoTamanhoPrecoRelations = relations(
-  produtoTamanhoPreco,
-  ({ one }) => ({
-    produto: one(produtos, {
-      fields: [produtoTamanhoPreco.produtoId],
-      references: [produtos.id],
-    }),
-    tamanho: one(tamanhos, {
-      fields: [produtoTamanhoPreco.tamanhoId],
-      references: [tamanhos.id],
-    }),
+export const produtoTamanhoPrecoRelations = relations(produtoTamanhoPreco, ({ one }) => ({
+  produto: one(produtos, {
+    fields: [produtoTamanhoPreco.produtoId],
+    references: [produtos.id],
   }),
-)
+  tamanho: one(tamanhos, {
+    fields: [produtoTamanhoPreco.tamanhoId],
+    references: [tamanhos.id],
+  }),
+}))
 
 export const kitsRelations = relations(kits, ({ many }) => ({
   itens: many(kitItens),
@@ -80,14 +69,13 @@ export const kitItensRelations = relations(kitItens, ({ one }) => ({
   }),
 }))
 
+// Sem relação com `tamanhos`: a chave do preço de kit é a COMBINAÇÃO de
+// tamanhos dos componentes (texto canônico), não um tamanho só. Ver
+// `chaveDeTamanhos` em src/lib/kit-tamanhos.ts.
 export const kitTamanhoPrecoRelations = relations(kitTamanhoPreco, ({ one }) => ({
   kit: one(kits, {
     fields: [kitTamanhoPreco.kitId],
     references: [kits.id],
-  }),
-  tamanho: one(tamanhos, {
-    fields: [kitTamanhoPreco.tamanhoId],
-    references: [tamanhos.id],
   }),
 }))
 
@@ -153,16 +141,13 @@ export const eventosKanbanRelations = relations(eventosKanban, ({ one }) => ({
   }),
 }))
 
-export const coresFornecedorFioRelations = relations(
-  coresFornecedorFio,
-  ({ one, many }) => ({
-    cor: one(cores, {
-      fields: [coresFornecedorFio.corId],
-      references: [cores.id],
-    }),
-    lotes: many(lotesFio),
+export const coresFornecedorFioRelations = relations(coresFornecedorFio, ({ one, many }) => ({
+  cor: one(cores, {
+    fields: [coresFornecedorFio.corId],
+    references: [cores.id],
   }),
-)
+  lotes: many(lotesFio),
+}))
 
 export const lotesFioRelations = relations(lotesFio, ({ one, many }) => ({
   corFornecedor: one(coresFornecedorFio, {

@@ -5,10 +5,7 @@ import { z } from 'zod'
 const preco = z
   .union([z.string(), z.number()])
   .transform((v) => String(v).replace(',', '.'))
-  .refine(
-    (v) => v !== '' && !Number.isNaN(Number(v)) && Number(v) >= 0,
-    'Preço inválido',
-  )
+  .refine((v) => v !== '' && !Number.isNaN(Number(v)) && Number(v) >= 0, 'Preço inválido')
 
 // Snapshot de um componente do kit no momento do orçamento. `quantidade` é
 // POR KIT (igual a kit_itens.quantidade) — a via de separação multiplica
@@ -25,11 +22,7 @@ const kitComponenteSchema = z.object({
 })
 
 export const orcamentoItemSchema = z.object({
-  descricao: z
-    .string()
-    .trim()
-    .min(2, 'Descrição muito curta')
-    .max(200, 'Descrição muito longa'),
+  descricao: z.string().trim().min(2, 'Descrição muito curta').max(200, 'Descrição muito longa'),
   quantidade: z.coerce
     .number()
     .int('Quantidade inválida')
@@ -49,11 +42,7 @@ export const orcamentoItemSchema = z.object({
 })
 
 export const orcamentoSchema = z.object({
-  cliente: z
-    .string()
-    .trim()
-    .min(2, 'Informe o cliente')
-    .max(120, 'Nome muito longo'),
+  cliente: z.string().trim().min(2, 'Informe o cliente').max(120, 'Nome muito longo'),
   // Vínculo OPCIONAL com o cadastro de compradores. `cliente` (texto acima)
   // continua sendo a fonte do nome impresso — orçamento sem comprador
   // cadastrado funciona igual a antes.
@@ -71,9 +60,7 @@ export const orcamentoSchema = z.object({
   // documento. Ver src/lib/total-pedido.ts.
   freteValor: z
     .union([z.string(), z.number(), z.null(), z.undefined()])
-    .transform((v) =>
-      v == null || String(v).trim() === '' ? null : String(v).replace(',', '.'),
-    )
+    .transform((v) => (v == null || String(v).trim() === '' ? null : String(v).replace(',', '.')))
     .refine(
       (v) => v === null || (!Number.isNaN(Number(v)) && Number(v) >= 0),
       'Valor de frete inválido',

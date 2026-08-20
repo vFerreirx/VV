@@ -6,10 +6,7 @@ import { useTransition } from 'react'
 import { Controller, useForm, type Resolver } from 'react-hook-form'
 import { toast } from 'sonner'
 
-import {
-  atualizarMaquinaAction,
-  criarMaquinaAction,
-} from '@/app/(app)/maquinas/actions'
+import { atualizarMaquinaAction, criarMaquinaAction } from '@/app/(app)/maquinas/actions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -245,9 +242,7 @@ function Field({
         {required && <span className="text-destructive ml-0.5">*</span>}
       </Label>
       {children}
-      {hint && !error && (
-        <p className="text-muted-foreground text-xs">{hint}</p>
-      )}
+      {hint && !error && <p className="text-muted-foreground text-xs">{hint}</p>}
       {error && <p className="text-destructive text-xs">{error}</p>}
     </div>
   )

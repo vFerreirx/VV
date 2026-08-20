@@ -5,11 +5,7 @@ import { cookies } from 'next/headers'
 import { Suspense } from 'react'
 
 import { Sidebar } from '@/components/layout/sidebar'
-import {
-  larguraDoCookie,
-  LARGURAS,
-  SIDEBAR_COOKIE,
-} from '@/components/layout/sidebar-cookie'
+import { larguraDoCookie, LARGURAS, SIDEBAR_COOKIE } from '@/components/layout/sidebar-cookie'
 import { SidebarProvider } from '@/components/layout/sidebar-estado'
 import { Topbar } from '@/components/layout/topbar'
 import { TopbarFallback } from '@/components/layout/topbar-fallback'
@@ -33,21 +29,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const biscoitos = await cookies()
   const sidebarOculta = biscoitos.get(SIDEBAR_COOKIE)?.value === '1'
   const largurasIniciais = {
-    sidebar: larguraDoCookie(
-      'sidebar',
-      biscoitos.get(LARGURAS.sidebar.cookie)?.value,
-    ),
-    gaveta: larguraDoCookie(
-      'gaveta',
-      biscoitos.get(LARGURAS.gaveta.cookie)?.value,
-    ),
+    sidebar: larguraDoCookie('sidebar', biscoitos.get(LARGURAS.sidebar.cookie)?.value),
+    gaveta: larguraDoCookie('gaveta', biscoitos.get(LARGURAS.gaveta.cookie)?.value),
   }
 
   return (
-    <SidebarProvider
-      ocultaInicial={sidebarOculta}
-      largurasIniciais={largurasIniciais}
-    >
+    <SidebarProvider ocultaInicial={sidebarOculta} largurasIniciais={largurasIniciais}>
       <div className="flex h-screen w-full overflow-hidden print:block print:h-auto print:overflow-visible">
         <Sidebar bloqueadas={bloqueadas} alertaTarefas={alertaTarefas} />
         {/* data-app-shell / data-app-scroll: âncoras da sombra scroll-driven
@@ -55,14 +42,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             irmã dele — a timeline precisa ser nomeada lá e exposta aqui, no
             ancestral comum dos dois. */}
         <div data-app-shell className="flex min-w-0 flex-1 flex-col">
-          <Suspense fallback={<TopbarFallback
-                user={user}
-                bloqueadas={bloqueadas}
-                alertaTarefas={alertaTarefas}
-              />}>
+          <Suspense
+            fallback={
+              <TopbarFallback user={user} bloqueadas={bloqueadas} alertaTarefas={alertaTarefas} />
+            }
+          >
             <Topbar user={user} bloqueadas={bloqueadas} alertaTarefas={alertaTarefas} />
           </Suspense>
-          <main data-app-scroll className="flex-1 overflow-y-auto pt-4 pb-[max(1rem,var(--sa-bottom,env(safe-area-inset-bottom)))] pl-[max(1rem,var(--sa-left,env(safe-area-inset-left)))] pr-[max(1rem,var(--sa-right,env(safe-area-inset-right)))] md:pt-6 md:pb-[max(1.5rem,var(--sa-bottom,env(safe-area-inset-bottom)))] md:pl-[max(1.5rem,var(--sa-left,env(safe-area-inset-left)))] md:pr-[max(1.5rem,var(--sa-right,env(safe-area-inset-right)))] print:overflow-visible print:p-[10mm]">
+          <main
+            data-app-scroll
+            className="flex-1 overflow-y-auto pt-4 pr-[max(1rem,var(--sa-right,env(safe-area-inset-right)))] pb-[max(1rem,var(--sa-bottom,env(safe-area-inset-bottom)))] pl-[max(1rem,var(--sa-left,env(safe-area-inset-left)))] md:pt-6 md:pr-[max(1.5rem,var(--sa-right,env(safe-area-inset-right)))] md:pb-[max(1.5rem,var(--sa-bottom,env(safe-area-inset-bottom)))] md:pl-[max(1.5rem,var(--sa-left,env(safe-area-inset-left)))] print:overflow-visible print:p-[10mm]"
+          >
             {children}
           </main>
         </div>

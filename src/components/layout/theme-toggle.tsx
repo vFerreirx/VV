@@ -27,13 +27,7 @@ function ThemeToggleInner() {
 export const ThemeToggle = dynamic(() => Promise.resolve(ThemeToggleInner), {
   ssr: false,
   loading: () => (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label="Tema"
-      className="opacity-0"
-      disabled
-    >
+    <Button variant="ghost" size="icon-sm" aria-label="Tema" className="opacity-0" disabled>
       <Moon />
     </Button>
   ),

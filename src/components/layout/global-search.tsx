@@ -4,21 +4,11 @@
 // ícone ou Ctrl/Cmd+K, mostra resultados conforme digita e navega pro
 // item selecionado.
 
-import {
-  Combine,
-  ListChecks,
-  Package,
-  Palette,
-  Search,
-  type LucideIcon,
-} from 'lucide-react'
+import { Combine, ListChecks, Package, Palette, Search, type LucideIcon } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState, useTransition } from 'react'
 
-import {
-  buscarGlobal,
-  type ResultadoBusca,
-} from '@/app/(app)/busca/actions'
+import { buscarGlobal, type ResultadoBusca } from '@/app/(app)/busca/actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -126,9 +116,7 @@ export function GlobalSearch() {
                 Digite pra buscar produtos, OPs, kits e cores.
               </p>
             ) : isPending && resultados.length === 0 ? (
-              <p className="text-muted-foreground px-3 py-6 text-center text-sm">
-                Buscando…
-              </p>
+              <p className="text-muted-foreground px-3 py-6 text-center text-sm">Buscando…</p>
             ) : resultados.length === 0 ? (
               <p className="text-muted-foreground px-3 py-6 text-center text-sm">
                 Nada encontrado.
@@ -146,17 +134,12 @@ export function GlobalSearch() {
                       >
                         <Icone className="text-muted-foreground size-4 shrink-0" />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium">
-                            {r.titulo}
-                          </span>
+                          <span className="block truncate text-sm font-medium">{r.titulo}</span>
                           <span className="text-muted-foreground block truncate text-xs">
                             {r.subtitulo}
                           </span>
                         </span>
-                        <Badge
-                          variant="secondary"
-                          className="shrink-0 text-[10px]"
-                        >
+                        <Badge variant="secondary" className="shrink-0 text-[10px]">
                           {TIPO_LABEL[r.tipo]}
                         </Badge>
                         {r.inativo && (

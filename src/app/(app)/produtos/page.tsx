@@ -8,10 +8,7 @@ import { Button } from '@/components/ui/button'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
-import {
-  produtosFiltrosSchema,
-  type ProdutosFiltros,
-} from '@/lib/validators/produtos'
+import { produtosFiltrosSchema, type ProdutosFiltros } from '@/lib/validators/produtos'
 
 export const metadata: Metadata = { title: 'Produtos — Vanvest' }
 
@@ -48,16 +45,10 @@ export default async function ProdutosPage({
               {produtos.length === 1 ? '' : 's'}
             </p>
           </div>
-          {podeEditar && (
-            <Button render={<Link href="/produtos/novo" />}>Novo produto</Button>
-          )}
+          {podeEditar && <Button render={<Link href="/produtos/novo" />}>Novo produto</Button>}
         </div>
 
-        <ProdutosList
-          produtos={produtos}
-          podeEditar={podeEditar}
-          filtrosIniciais={filtros}
-        />
+        <ProdutosList produtos={produtos} podeEditar={podeEditar} filtrosIniciais={filtros} />
       </div>
     </ViewTransition>
   )

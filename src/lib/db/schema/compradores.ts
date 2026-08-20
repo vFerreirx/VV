@@ -1,12 +1,5 @@
 import { sql } from 'drizzle-orm'
-import {
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from 'drizzle-orm/pg-core'
+import { index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 // VOCABULÁRIO: na tela isso se chama CLIENTE (a rota é /clientes). No banco e
 // no código continua `compradores` — tabela, coluna `orcamentos.comprador_id`,
@@ -52,9 +45,7 @@ export const compradores = pgTable(
     // impede vários compradores ainda sem documento.
     uniqueIndex('compradores_documento_uidx')
       .on(table.documento)
-      .where(
-        sql`${table.documento} IS NOT NULL AND ${table.deletedAt} IS NULL`,
-      ),
+      .where(sql`${table.documento} IS NOT NULL AND ${table.deletedAt} IS NULL`),
   ],
 )
 

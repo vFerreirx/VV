@@ -5,10 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-import {
-  movimentarEstoqueAction,
-  type EstoqueItem,
-} from './actions'
+import { movimentarEstoqueAction, type EstoqueItem } from './actions'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -39,9 +36,7 @@ type Props = {
 }
 
 function variacaoLabel(i: EstoqueItem): string {
-  return (
-    [i.cor, i.modelo, i.tamanho].filter(Boolean).join(' / ') || i.skuVariacao
-  )
+  return [i.cor, i.modelo, i.tamanho].filter(Boolean).join(' / ') || i.skuVariacao
 }
 
 function saldoClasse(saldo: number): string {
@@ -127,11 +122,7 @@ export function EstoqueList({ itens, podeMovimentar, buscaInicial }: Props) {
                     </TableCell>
                     {podeMovimentar && (
                       <TableCell className="text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setMovimentar(i)}
-                        >
+                        <Button size="sm" variant="ghost" onClick={() => setMovimentar(i)}>
                           <ArrowDownUp />
                           Mover
                         </Button>
@@ -150,29 +141,16 @@ export function EstoqueList({ itens, podeMovimentar, buscaInicial }: Props) {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-medium">{i.produtoNome}</div>
-                    <div className="text-muted-foreground text-sm">
-                      {variacaoLabel(i)}
-                    </div>
-                    <div className="text-muted-foreground font-mono text-xs">
-                      {i.skuVariacao}
-                    </div>
+                    <div className="text-muted-foreground text-sm">{variacaoLabel(i)}</div>
+                    <div className="text-muted-foreground font-mono text-xs">{i.skuVariacao}</div>
                   </div>
-                  <div
-                    className={cn(
-                      'text-xl font-semibold tabular-nums',
-                      saldoClasse(i.saldo),
-                    )}
-                  >
+                  <div className={cn('text-xl font-semibold tabular-nums', saldoClasse(i.saldo))}>
                     {i.saldo}
                   </div>
                 </div>
                 {podeMovimentar && (
                   <div className="mt-3 flex justify-end">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setMovimentar(i)}
-                    >
+                    <Button size="sm" variant="outline" onClick={() => setMovimentar(i)}>
                       <ArrowDownUp />
                       Movimentar
                     </Button>
@@ -193,13 +171,7 @@ export function EstoqueList({ itens, podeMovimentar, buscaInicial }: Props) {
 // Dialog: movimentar (entrada/saída)
 // -----------------------------------------------------------------
 
-function MovimentarDialog({
-  item,
-  onClose,
-}: {
-  item: EstoqueItem | null
-  onClose: () => void
-}) {
+function MovimentarDialog({ item, onClose }: { item: EstoqueItem | null; onClose: () => void }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [sentido, setSentido] = useState<(typeof sentidoValues)[number]>('entrada')
@@ -289,7 +261,7 @@ function MovimentarDialog({
             />
           </div>
           {sentido === 'saida' && item && Number(quantidade) > item.saldo && (
-            <p className="text-amber-600 text-xs dark:text-amber-400">
+            <p className="text-xs text-amber-600 dark:text-amber-400">
               Atenção: a saída deixa o saldo negativo ({item.saldo - Number(quantidade)}).
             </p>
           )}
@@ -299,7 +271,8 @@ function MovimentarDialog({
           <Button variant="outline" onClick={fechar} disabled={isPending}>
             Cancelar
           </Button>
-          <Button loading={isPending}
+          <Button
+            loading={isPending}
             onClick={salvar}
             disabled={isPending || !(Number(quantidade) > 0)}
           >

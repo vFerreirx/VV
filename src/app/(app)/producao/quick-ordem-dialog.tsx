@@ -48,19 +48,11 @@ export function QuickOrdemDialog({
   const [produtoId, setProdutoId] = useState('')
   const [variacaoId, setVariacaoId] = useState('nenhuma')
   const [quantidade, setQuantidade] = useState('')
-  const [canal, setCanal] =
-    useState<(typeof canalValues)[number]>('estoque')
-  const [prioridade, setPrioridade] =
-    useState<(typeof prioridadeValues)[number]>('normal')
+  const [canal, setCanal] = useState<(typeof canalValues)[number]>('estoque')
+  const [prioridade, setPrioridade] = useState<(typeof prioridadeValues)[number]>('normal')
 
-  const produtoSel = useMemo(
-    () => produtos.find((p) => p.id === produtoId),
-    [produtos, produtoId],
-  )
-  const variacoes = useMemo(
-    () => produtoSel?.variacoes ?? [],
-    [produtoSel],
-  )
+  const produtoSel = useMemo(() => produtos.find((p) => p.id === produtoId), [produtos, produtoId])
+  const variacoes = useMemo(() => produtoSel?.variacoes ?? [], [produtoSel])
 
   const produtosItems = useMemo(
     () => produtos.map((p) => ({ value: p.id, label: `${p.sku} — ${p.nome}` })),
@@ -71,9 +63,7 @@ export function QuickOrdemDialog({
       { value: 'nenhuma', label: 'Sem variação' },
       ...variacoes.map((v) => ({
         value: v.id,
-        label:
-          [v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') ||
-          v.skuVariacao,
+        label: [v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') || v.skuVariacao,
       })),
     ],
     [variacoes],
@@ -115,8 +105,8 @@ export function QuickOrdemDialog({
         <DialogHeader>
           <DialogTitle>Nova OP rápida</DialogTitle>
           <DialogDescription>
-            Pra botar algo pra rodar na hora (ex: sobrou fio). Entra no kanban
-            na coluna &ldquo;Programado&rdquo;.
+            Pra botar algo pra rodar na hora (ex: sobrou fio). Entra no kanban na coluna
+            &ldquo;Programado&rdquo;.
           </DialogDescription>
         </DialogHeader>
 
@@ -160,8 +150,7 @@ export function QuickOrdemDialog({
                 <SelectItem value="nenhuma">Sem variação</SelectItem>
                 {variacoes.map((v) => (
                   <SelectItem key={v.id} value={v.id}>
-                    {[v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') ||
-                      v.skuVariacao}
+                    {[v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') || v.skuVariacao}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -188,9 +177,7 @@ export function QuickOrdemDialog({
               <Select
                 items={CANAL_LABEL}
                 value={canal}
-                onValueChange={(v) =>
-                  v && setCanal(v as (typeof canalValues)[number])
-                }
+                onValueChange={(v) => v && setCanal(v as (typeof canalValues)[number])}
                 disabled={isPending}
               >
                 <SelectTrigger id="qo-canal" className="w-full">
@@ -210,9 +197,7 @@ export function QuickOrdemDialog({
               <Select
                 items={PRIORIDADE_LABEL}
                 value={prioridade}
-                onValueChange={(v) =>
-                  v && setPrioridade(v as (typeof prioridadeValues)[number])
-                }
+                onValueChange={(v) => v && setPrioridade(v as (typeof prioridadeValues)[number])}
                 disabled={isPending}
               >
                 <SelectTrigger id="qo-prio" className="w-full">

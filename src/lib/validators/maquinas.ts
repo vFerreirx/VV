@@ -16,9 +16,7 @@ const uuidOpt = z
   .union([z.string(), z.null(), z.undefined()])
   .transform((v) => (v == null || v === '' ? null : v))
   .refine(
-    (v) =>
-      v === null ||
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
+    (v) => v === null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
     'ID inválido',
   )
   .optional()
@@ -69,9 +67,7 @@ export type TrocarStatusMaquinaInput = z.input<typeof trocarStatusMaquinaSchema>
 // -----------------------------------------------------------------
 
 export const maquinasFiltrosSchema = z.object({
-  status: z
-    .union([z.enum(maquinaStatusValues), z.literal('todos')])
-    .optional(),
+  status: z.union([z.enum(maquinaStatusValues), z.literal('todos')]).optional(),
 })
 
 export type MaquinasFiltros = z.infer<typeof maquinasFiltrosSchema>
@@ -80,10 +76,7 @@ export type MaquinasFiltros = z.infer<typeof maquinasFiltrosSchema>
 // Labels (UI)
 // -----------------------------------------------------------------
 
-export const STATUS_LABEL: Record<
-  (typeof maquinaStatusValues)[number],
-  string
-> = {
+export const STATUS_LABEL: Record<(typeof maquinaStatusValues)[number], string> = {
   operando: 'Operando',
   parada: 'Parada',
   manutencao: 'Manutenção',

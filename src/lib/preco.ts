@@ -20,17 +20,19 @@
 // conversão pra "50,00" acontece só na borda.
 
 import {
+  chaveDeTamanhos,
   combinacoesDeTamanho,
   tamanhoDoComponente,
-  tamanhoDoKit,
   type TamanhosDe,
 } from '@/lib/kit-tamanhos'
 
-/** Preço de um par (produto|tamanho) ou (kit|tamanho), em centavos. */
+/** Preço de um par (produto|tamanho) ou (kit|combinação), em centavos. */
 export type TabelaDePrecos = {
   // Chave: `${produtoId}|${tamanhoNomeLower}`.
   produto: Record<string, number>
-  // Chave: `${kitId}|${tamanhoNomeLower}`.
+  // Chave: `${kitId}|${combinacao}` — a combinação de tamanhos de TODOS os
+  // componentes variáveis, montada por `chaveDeTamanhos`. NÃO é um tamanho
+  // só: o Kit ACONCHEGO muda de preço com o tamanho da capa E o da peseira.
   kit: Record<string, number>
 }
 
@@ -38,6 +40,19 @@ export const tabelaVazia = (): TabelaDePrecos => ({ produto: {}, kit: {} })
 
 export function chave(donoId: string, tamanho: string | null | undefined) {
   return `${donoId}|${(tamanho ?? '').trim().toLowerCase()}`
+}
+
+/**
+ * Chave do preço FECHADO do kit. A `combinacao` já vem canônica de
+ * `chaveDeTamanhos` (src/lib/kit-tamanhos.ts) e NÃO leva mais tratamento
+ * aqui — ela já está ordenada e em minúscula, e mexer de novo criaria uma
+ * segunda normalização pra divergir da primeira.
+ *
+ * `''` é combinação válida (kit sem componente variável). `null` significa
+ * "não há combinação" e nunca vira chave — quem chama trata como sem preço.
+ */
+export function chaveKit(kitId: string, combinacao: string) {
+  return `${kitId}|${combinacao}`
 }
 
 /** numeric(12,2) do banco ("50.00") → centavos. */
@@ -86,9 +101,7 @@ export type PrecoDeProduto = {
   semPreco: string[]
 }
 
-export function precoDeProdutoNaLista(
-  tamanhosDoProduto: TamanhoComPreco[],
-): PrecoDeProduto {
+export function precoDeProdutoNaLista(tamanhosDoProduto: TamanhoComPreco[]): PrecoDeProduto {
   const semPreco: string[] = []
   let min: number | null = null
   let max: number | null = null
@@ -161,7 +174,7 @@ export function precoDeKitNaLista(
     const valor = precoDeKit(
       tabela,
       kitId,
-      tamanhoDoKit(componentes, escolhas, tamanhosDe),
+      chaveDeTamanhos(componentes, escolhas, tamanhosDe),
       componentes.map((c) => ({
         ...c,
         tamanho: tamanhoDoComponente(c.produtoId, escolhas, tamanhosDe),
@@ -204,7 +217,7 @@ export function precoDeProduto(
 
 /**
  * Preço de um kit, na ordem da regra:
- *   1. preço FECHADO do kit naquele tamanho, se houver — ele vence a soma
+ *   1. preço FECHADO do kit naquela COMBINAÇÃO de tamanhos, se houver — vence a soma
  *      de propósito: quem cadastra um preço de kit está dizendo que o combo
  *      não custa a soma das partes (desconto, brinde embutido).
  *   2. SOMA dos componentes, cada um no tamanho dele.
@@ -217,12 +230,16 @@ export function precoDeProduto(
 export function precoDeKit(
   tabela: TabelaDePrecos,
   kitId: string | null | undefined,
-  tamanhoKit: string | null | undefined,
+  // Vem de `chaveDeTamanhos`. `null` = falta escolher tamanho de algum
+  // componente variável, então não existe combinação e não há preço fechado
+  // a procurar — mas a SOMA ainda pode fechar, se cada componente tiver o
+  // tamanho dele resolvido. Por isso `null` não devolve cedo.
+  combinacao: string | null | undefined,
   componentes: ComponentePrecificavel[],
 ): number | null {
   if (!kitId) return null
 
-  const fechado = tabela.kit[chave(kitId, tamanhoKit)]
+  const fechado = combinacao == null ? undefined : tabela.kit[chaveKit(kitId, combinacao)]
   if (fechado != null) return fechado
 
   if (componentes.length === 0) return null

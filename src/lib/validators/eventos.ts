@@ -12,27 +12,19 @@ const stringOpt = (max: number, label = 'Texto') =>
 export const eventoFullCanalValues = ['full_ml', 'full_shopee'] as const
 
 export const eventoFullSchema = z.object({
-  data: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida (use YYYY-MM-DD)'),
+  data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida (use YYYY-MM-DD)'),
   canal: z.enum(eventoFullCanalValues),
   observacao: stringOpt(300, 'Observação'),
 })
 
 export type EventoFullInput = z.input<typeof eventoFullSchema>
 
-export const EVENTO_FULL_CANAL_LABEL: Record<
-  (typeof eventoFullCanalValues)[number],
-  string
-> = {
+export const EVENTO_FULL_CANAL_LABEL: Record<(typeof eventoFullCanalValues)[number], string> = {
   full_ml: 'Full Mercado Livre',
   full_shopee: 'Full Shopee',
 }
 
-export const EVENTO_FULL_CANAL_CURTO: Record<
-  (typeof eventoFullCanalValues)[number],
-  string
-> = {
+export const EVENTO_FULL_CANAL_CURTO: Record<(typeof eventoFullCanalValues)[number], string> = {
   full_ml: 'Full ML',
   full_shopee: 'Full Shopee',
 }

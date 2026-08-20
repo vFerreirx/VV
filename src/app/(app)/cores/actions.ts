@@ -19,11 +19,7 @@ export type ActionResult<T = undefined> =
 
 export async function listarCores(): Promise<Cor[]> {
   await requireAuth()
-  return db
-    .select()
-    .from(cores)
-    .where(isNull(cores.deletedAt))
-    .orderBy(asc(cores.nome))
+  return db.select().from(cores).where(isNull(cores.deletedAt)).orderBy(asc(cores.nome))
 }
 
 // Listagem só de cores ativas — usado em selects de cadastro de produto.
@@ -40,9 +36,7 @@ export async function listarCoresAtivas(): Promise<Cor[]> {
 // Criar
 // -----------------------------------------------------------------
 
-export async function criarCorAction(
-  input: CorInput,
-): Promise<ActionResult<{ id: string }>> {
+export async function criarCorAction(input: CorInput): Promise<ActionResult<{ id: string }>> {
   await requireAreaEscrita('cores')
 
   const parsed = corSchema.safeParse(input)
@@ -95,10 +89,7 @@ export async function criarCorAction(
 // Atualizar
 // -----------------------------------------------------------------
 
-export async function atualizarCorAction(
-  id: string,
-  input: CorInput,
-): Promise<ActionResult> {
+export async function atualizarCorAction(id: string, input: CorInput): Promise<ActionResult> {
   await requireAreaEscrita('cores')
 
   const parsed = corSchema.safeParse(input)
@@ -166,10 +157,7 @@ export async function excluirCorAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Cor não encontrada' }
   }
 
-  await db
-    .update(cores)
-    .set({ deletedAt: new Date(), ativo: false })
-    .where(eq(cores.id, id))
+  await db.update(cores).set({ deletedAt: new Date(), ativo: false }).where(eq(cores.id, id))
 
   revalidatePath('/variacoes')
   return { success: true, message: 'Cor excluída' }
@@ -179,8 +167,7 @@ export async function excluirCorAction(id: string): Promise<ActionResult> {
 // Excluir múltiplas (bulk delete)
 // -----------------------------------------------------------------
 
-const uuidRegex =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function excluirMultiplasCoresAction(
   ids: string[],
@@ -207,9 +194,6 @@ export async function excluirMultiplasCoresAction(
   return {
     success: true,
     data: { excluidas: result.length },
-    message:
-      result.length === 1
-        ? '1 cor excluída'
-        : `${result.length} cores excluídas`,
+    message: result.length === 1 ? '1 cor excluída' : `${result.length} cores excluídas`,
   }
 }

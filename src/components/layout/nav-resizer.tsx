@@ -13,11 +13,7 @@
 
 import { useCallback, useRef } from 'react'
 
-import {
-  LARGURAS,
-  naFaixa,
-  type AlvoLargura,
-} from '@/components/layout/sidebar-cookie'
+import { LARGURAS, naFaixa, type AlvoLargura } from '@/components/layout/sidebar-cookie'
 import { useSidebar } from '@/components/layout/sidebar-estado'
 import { cn } from '@/lib/utils'
 
@@ -41,10 +37,7 @@ export function NavResizer({
   const vivo = useRef(largura)
 
   const teto = useCallback(
-    () =>
-      fracaoDaTela
-        ? Math.min(max, Math.round(window.innerWidth * fracaoDaTela))
-        : max,
+    () => (fracaoDaTela ? Math.min(max, Math.round(window.innerWidth * fracaoDaTela)) : max),
     [fracaoDaTela, max],
   )
 

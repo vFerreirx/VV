@@ -1,12 +1,5 @@
 import { sql } from 'drizzle-orm'
-import {
-  integer,
-  numeric,
-  pgTable,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from 'drizzle-orm/pg-core'
+import { integer, numeric, pgTable, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 // Faixas de embalagem: peso ATÉ -> medidas do pacote.
 //

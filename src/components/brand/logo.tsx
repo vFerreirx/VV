@@ -32,13 +32,7 @@ export function Logo({
   'aria-label': ariaLabel = 'Vanvest',
 }: Props) {
   if (variant === 'word')
-    return (
-      <Wordmark
-        className={className}
-        showTagline={showTagline}
-        ariaLabel={ariaLabel}
-      />
-    )
+    return <Wordmark className={className} showTagline={showTagline} ariaLabel={ariaLabel} />
   if (variant === 'full') return <Full className={className} ariaLabel={ariaLabel} />
   return <Mark className={className} ariaLabel={ariaLabel} />
 }
@@ -47,13 +41,7 @@ export function Logo({
 // Mark — monograma VV duplo, dourado. ViewBox 100x100.
 // -----------------------------------------------------------------
 
-function Mark({
-  className,
-  ariaLabel,
-}: {
-  className?: string
-  ariaLabel: string
-}) {
+function Mark({ className, ariaLabel }: { className?: string; ariaLabel: string }) {
   return (
     <svg
       viewBox="0 0 100 100"
@@ -106,11 +94,11 @@ function Wordmark({
     >
       {/* pl compensa o espaço extra que o letter-spacing adiciona à direita,
           centralizando os glifos de fato (senão a linha fica deslocada). */}
-      <span className="font-heading text-current font-medium tracking-[0.22em] pl-[0.22em] uppercase">
+      <span className="font-heading pl-[0.22em] font-medium tracking-[0.22em] text-current uppercase">
         Vanvest
       </span>
       {showTagline && (
-        <span className="text-muted-foreground mt-0.5 text-[0.55em] tracking-[0.32em] pl-[0.32em] uppercase">
+        <span className="text-muted-foreground mt-0.5 pl-[0.32em] text-[0.55em] tracking-[0.32em] uppercase">
           Home Decor
         </span>
       )}
@@ -122,13 +110,7 @@ function Wordmark({
 // Full — composição usada no login (mark grande + wordmark embaixo).
 // -----------------------------------------------------------------
 
-function Full({
-  className,
-  ariaLabel,
-}: {
-  className?: string
-  ariaLabel: string
-}) {
+function Full({ className, ariaLabel }: { className?: string; ariaLabel: string }) {
   return (
     <div
       role="img"
@@ -136,11 +118,7 @@ function Full({
       className={cn('flex flex-col items-center gap-3', className)}
     >
       <Mark className="text-foreground size-20" ariaLabel="" />
-      <Wordmark
-        showTagline
-        className="text-foreground text-2xl"
-        ariaLabel=""
-      />
+      <Wordmark showTagline className="text-foreground text-2xl" ariaLabel="" />
     </div>
   )
 }

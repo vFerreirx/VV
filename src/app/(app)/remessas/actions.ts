@@ -23,10 +23,7 @@ const RISCO_DIAS = 2
 // STATUS_KANBAN é tipado como (typeof statusValues)[number][] (perde a
 // literal narrowing pro TS), mas em runtime só tem essas 6 etapas — cast
 // local pra type-check nas contagens por etapa.
-export type EtapaKanban = Exclude<
-  (typeof statusValues)[number],
-  'enviado' | 'cancelado'
->
+export type EtapaKanban = Exclude<(typeof statusValues)[number], 'enviado' | 'cancelado'>
 const ETAPAS_KANBAN = STATUS_KANBAN as EtapaKanban[]
 
 export type EtapaContagem = {
@@ -34,16 +31,11 @@ export type EtapaContagem = {
   count: number
 }
 
-export type ActionResult =
-  | { success: true; message?: string }
-  | { success: false; error: string }
+export type ActionResult = { success: true; message?: string } | { success: false; error: string }
 
 // OP ATIVA = não excluída e não cancelada. Mesma definição usada pra montar
 // a lista de remessas abertas e pra decidir se uma remessa pode ser excluída.
-const opAtiva = and(
-  isNull(ordensProducao.deletedAt),
-  ne(ordensProducao.status, 'cancelado'),
-)
+const opAtiva = and(isNull(ordensProducao.deletedAt), ne(ordensProducao.status, 'cancelado'))
 
 export type RemessaAberta = {
   id: string
@@ -73,8 +65,7 @@ function hojeISO(): string {
 function diasAte(dataEnvio: string): number {
   const hoje = hojeISO()
   return Math.round(
-    (Date.parse(`${dataEnvio}T12:00:00Z`) - Date.parse(`${hoje}T12:00:00Z`)) /
-      86_400_000,
+    (Date.parse(`${dataEnvio}T12:00:00Z`) - Date.parse(`${hoje}T12:00:00Z`)) / 86_400_000,
   )
 }
 
@@ -131,26 +122,12 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
       )::int`,
     })
     .from(remessasFull)
-    .innerJoin(
-      ordensProducao,
-      and(
-        eq(ordensProducao.remessaFullId, remessasFull.id),
-        opAtiva,
-      ),
-    )
+    .innerJoin(ordensProducao, and(eq(ordensProducao.remessaFullId, remessasFull.id), opAtiva))
     // leftJoin, não innerJoin: remessa sem conta (as antigas) tem que
     // continuar aparecendo.
-    .leftJoin(
-      contasMarketplace,
-      eq(contasMarketplace.id, remessasFull.contaId),
-    )
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .where(isNull(remessasFull.deletedAt))
-    .groupBy(
-      remessasFull.id,
-      remessasFull.canal,
-      remessasFull.dataEnvio,
-      contasMarketplace.nome,
-    )
+    .groupBy(remessasFull.id, remessasFull.canal, remessasFull.dataEnvio, contasMarketplace.nome)
     .orderBy(asc(remessasFull.dataEnvio))
 
   const contagemPorEtapa = {
@@ -170,9 +147,7 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
         count: r[contagemPorEtapa[status] as keyof typeof r] as number,
       }))
       const pronta = r.ops === r.opsProntas
-      const gargalo = pronta
-        ? null
-        : (etapas.find((e) => e.count > 0)?.status ?? null)
+      const gargalo = pronta ? null : (etapas.find((e) => e.count > 0)?.status ?? null)
       const diasRestantes = diasAte(r.dataEnvio)
       const risco: RemessaAberta['risco'] = pronta
         ? 'no_prazo'
@@ -218,9 +193,7 @@ export type OpDaRemessa = {
 
 // OPs de um conjunto de remessas, numa query só (evita N+1 ao expandir cada
 // card no client).
-export async function listarOpsDasRemessas(
-  remessaIds: string[],
-): Promise<OpDaRemessa[]> {
+export async function listarOpsDasRemessas(remessaIds: string[]): Promise<OpDaRemessa[]> {
   await requireArea('remessas')
   if (remessaIds.length === 0) return []
 
@@ -246,17 +219,9 @@ export async function listarOpsDasRemessas(
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
-    .leftJoin(
-      variacoesProduto,
-      eq(variacoesProduto.id, ordensProducao.variacaoId),
-    )
+    .leftJoin(variacoesProduto, eq(variacoesProduto.id, ordensProducao.variacaoId))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
-    .where(
-      and(
-        inArray(ordensProducao.remessaFullId, remessaIds),
-        opAtiva,
-      ),
-    )
+    .where(and(inArray(ordensProducao.remessaFullId, remessaIds), opAtiva))
     .orderBy(asc(ordensProducao.status), asc(ordensProducao.numero))
 
   const now = Date.now()
@@ -326,10 +291,7 @@ export async function listarRemessasSemOp(): Promise<RemessaSemOp[]> {
       )::int`,
     })
     .from(remessasFull)
-    .leftJoin(
-      contasMarketplace,
-      eq(contasMarketplace.id, remessasFull.contaId),
-    )
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .where(isNull(remessasFull.deletedAt))
     .orderBy(desc(remessasFull.dataEnvio))
 
@@ -351,8 +313,7 @@ export async function listarRemessasSemOp(): Promise<RemessaSemOp[]> {
 export async function excluirRemessaAction(id: string): Promise<ActionResult> {
   await requireAreaEscrita('remessas')
 
-  const uuidRe =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
 
   const [alvo] = await db

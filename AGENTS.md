@@ -39,10 +39,45 @@ Não existe peso nem preço "do produto". A Peseira ACONCHEGO pesa 950 g no
 Casal e 1200 g no King, e custa 50 no Casal e 70 no King; no 45x45 a capa
 ACONCHEGO custa 25 e a LINKS custa 20. **Só o par resolve.**
 
+### ⚠️ SÃO DUAS TABELAS DE PREÇO. O PEDIDO SÓ CONHECE UMA.
+
+**Preço de marketplace NÃO é preço de atacado, e o PEDIDO SEMPRE PUXA O DE
+ATACADO.** Em nenhuma tela, em nenhuma action, o preço de marketplace pode
+preencher um item de pedido.
+
+| | tabelas | quem lê |
+|---|---|---|
+| **ATACADO** | `produto_tamanho_preco`, `kit_tamanho_preco` (38/47) | `src/lib/preco.ts`, `obterCatalogoDePrecos` → **o pedido** |
+| **MARKETPLACE** | `produto_tamanho_preco_marketplace`, `kit_tamanho_preco_marketplace` (47) | `src/lib/preco-marketplace.ts` → só a tela `/precos-marketplace` |
+
+As duas parecem gêmeas — mesmas colunas, mesmos tipos, nomes quase iguais, as
+duas em centavos por (dono, tamanho). Um dia alguém vai precisar de "o preço"
+numa tela nova, vai achar o módulo de marketplace primeiro porque o nome é
+mais específico, e vai ligar o errado. **Por que não pode:** o preço de
+marketplace já embute comissão da plataforma, frete grátis e imposto do
+varejo. A Peseira ACONCHEGO Casal é 50,00 no atacado e 79,99 no ML — colocar
+79,99 num pedido cobraria 60% a mais do lojista, e o campo é editável, então
+um número "quase plausível" passa na conferência.
+
+Na prática isso proíbe três coisas. Se alguma acontecer, o errado já foi ligado:
+
+- nada em `src/app/(app)/pedidos/` importa de `src/lib/preco-marketplace.ts`;
+- `obterCatalogoDePrecos` não ganha parâmetro de marketplace;
+- `TabelaDePrecos` não ganha um terceiro mapa.
+
+Os tipos ajudam de propósito: `TabelaMarketplace` é um tipo DISTINTO de
+`TabelaDePrecos` mesmo tendo a mesma forma, pra `precoDeKit(tabelaDeMarketplace, …)`
+não compilar. O eixo do marketplace é o **CANAL** (chaves de
+`MARKETPLACE_LABEL`), nunca `contas_marketplace`, que é por conta e serve às
+remessas Full.
+
+### Onde mora cada preço
+
 - `produto_tamanho_preco` (`supabase/sql/38_precos.sql`) — preço de tabela.
 - `produto_tamanho_peso` (`supabase/sql/40_peso_produto_tamanho.sql`) —
   peso. Espelha a de preço de propósito: mesmo eixo, mesma forma.
-- `kit_tamanho_preco` (38) — preço FECHADO do kit. Opcional; ver kits abaixo.
+- `kit_tamanho_preco` (38, rechaveada na 47) — preço FECHADO do kit, por
+  COMBINAÇÃO de tamanhos. Opcional; ver kits abaixo.
 - `tamanhos.peso_gramas` continua sendo o **padrão** por tamanho. O par
   vence quando existe; sem ele, vale o do tamanho.
 - ⚠️ `produtos.peso_gramas` é **legado**. Não leia nem escreva — está no
@@ -68,9 +103,15 @@ isso e se referenciam. Ao mexer num, mantenha o outro coerente.
 ### Onde está o quê
 
 - Lógica pura (sem banco): `src/lib/peso.ts`, `src/lib/preco.ts`,
-  `src/lib/kit-tamanhos.ts`.
-- Consultas: `src/lib/db/pesos.ts` e `src/lib/db/precos.ts` — uma consulta
-  pra lista inteira, nada de N+1.
+  `src/lib/preco-marketplace.ts`, `src/lib/kit-tamanhos.ts`.
+- Consultas: `src/lib/db/pesos.ts`, `src/lib/db/precos.ts` e
+  `src/lib/db/precos-marketplace.ts` — uma consulta pra lista inteira, nada
+  de N+1.
+- Carga do marketplace: `supabase/sql/48_preco_marketplace_carga.sql`, GERADO
+  por `scripts/analise/gerar-carga-marketplace.ts` a partir das planilhas do
+  cliente. Não edite o SQL à mão — corrija a planilha ou o script e rode de
+  novo. `scripts/analise/conferir-carga-marketplace.ts` confere que toda
+  chave gravada é alcançável por `chaveDeTamanhos`.
 - Catálogos do pedido: `obterCatalogoDePesos` / `obterCatalogoDePrecos` em
   `src/app/(app)/pedidos/actions.ts`, chaveados por `${donoId}|${tamanho}`.
 - Cadastro: a tela do produto tem UMA lista por tamanho com preço e peso na
@@ -89,8 +130,22 @@ sem ninguém perceber.** Está escrito no topo do arquivo; leia antes de mexer.
 - `orcamento_itens.tamanho` só guarda algo quando há EXATAMENTE um
   componente variável. Com zero ou 2+ vai null — a fonte real de cada peça é
   o snapshot `kit_componentes[].tamanho`, sempre preenchido.
-- `kit_tamanho_preco` idem: só faz sentido com um tamanho único. Kit sem
-  preço fechado cai na SOMA dos componentes, cada um no tamanho dele.
+- **O PREÇO DO KIT NÃO USA ESSE TAMANHO.** A chave dele é `combinacao`: os
+  tamanhos de TODOS os componentes variáveis, num texto canônico
+  `<produtoId>=<tamanho>|…` ordenado por produtoId, montado por
+  `chaveDeTamanhos`. Um tamanho só não bastava — o Kit Peseira+2 Capas
+  ACONCHEGO custa 149,99/159,99/169,99 conforme a **capa**, no mesmo tamanho
+  de peseira, e os três preços disputariam a mesma linha.
+  - `''` é chave VÁLIDA: kit sem componente variável tem um preço só.
+  - `null` significa "falta escolher tamanho" e nunca vira chave.
+  - ⚠️ `tamanhoDoKit` e `chaveDeTamanhos` são os dois `string | null`, então
+    trocar um pelo outro **compila em silêncio** e deixa o preço
+    inalcançável. `tamanhoDoKit` é só pra `orcamento_itens.tamanho`.
+  - A regra vale IGUAL nas duas tabelas, atacado e marketplace. Se
+    divergirem, um preço cadastrado vira inalcançável sem ninguém perceber.
+- Kit sem preço fechado cai na SOMA dos componentes, cada um no tamanho dele.
+  O de marketplace **não** soma: anúncio de kit é preço próprio, e somar os
+  anúncios das peças daria um número que ninguém nunca cobrou.
 
 ## Permissões — REGRAS FIXAS
 

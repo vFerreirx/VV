@@ -21,19 +21,13 @@ export function nomeDestaque(empresa: EmpresaDoDocumento | null): string {
 // Bloco do cabeçalho: nome grande, razão social e CNPJ miúdos embaixo. O
 // romaneio é assinado, então precisa identificar quem entrega — não só a
 // marca.
-export function IdentidadeEmpresa({
-  empresa,
-}: {
-  empresa: EmpresaDoDocumento | null
-}) {
+export function IdentidadeEmpresa({ empresa }: { empresa: EmpresaDoDocumento | null }) {
   return (
     <>
       <div className="text-lg font-semibold">{nomeDestaque(empresa)}</div>
       {/* A razão social só repete embaixo quando o destaque é o fantasia. */}
       {empresa?.nomeFantasia && (
-        <div className="text-muted-foreground text-xs">
-          {empresa.razaoSocial}
-        </div>
+        <div className="text-muted-foreground text-xs">{empresa.razaoSocial}</div>
       )}
       {empresa?.cnpj && (
         <div className="text-muted-foreground text-xs tabular-nums">

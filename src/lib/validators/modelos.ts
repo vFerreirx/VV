@@ -8,11 +8,7 @@ const stringOpt = (max: number, label = 'Texto') =>
     .or(z.literal('').transform(() => undefined))
 
 export const modeloSchema = z.object({
-  nome: z
-    .string()
-    .trim()
-    .min(2, 'Nome muito curto')
-    .max(80, 'Nome muito longo'),
+  nome: z.string().trim().min(2, 'Nome muito curto').max(80, 'Nome muito longo'),
   descricao: stringOpt(300, 'Descrição'),
   ativo: z.boolean().default(true),
 })

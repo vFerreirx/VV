@@ -67,10 +67,7 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
   const router = useRouter()
   const [novoDia, setNovoDia] = useState<string | null>(null)
 
-  const refDate = useMemo(
-    () => parse(`${mes}-01`, 'yyyy-MM-dd', new Date()),
-    [mes],
-  )
+  const refDate = useMemo(() => parse(`${mes}-01`, 'yyyy-MM-dd', new Date()), [mes])
 
   const dias = useMemo(() => {
     const gridStart = startOfWeek(startOfMonth(refDate), { weekStartsOn: 0 })
@@ -142,11 +139,11 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
       {/* Legenda */}
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         <span className="flex items-center gap-1.5">
-          <span className="bg-amber-400/60 inline-block size-2.5 rounded-sm" />
+          <span className="inline-block size-2.5 rounded-sm bg-amber-400/60" />
           Full ML
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="bg-orange-500/60 inline-block size-2.5 rounded-sm" />
+          <span className="inline-block size-2.5 rounded-sm bg-orange-500/60" />
           Full Shopee
         </span>
         <span className="flex items-center gap-1.5">
@@ -232,10 +229,7 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
         </div>
       </div>
 
-      <NovoEventoDialog
-        dia={novoDia}
-        onClose={() => setNovoDia(null)}
-      />
+      <NovoEventoDialog dia={novoDia} onClose={() => setNovoDia(null)} />
     </div>
   )
 }
@@ -244,13 +238,7 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
 // Chip de evento Full (com excluir)
 // -----------------------------------------------------------------
 
-function EventoChip({
-  evento,
-  podeEditar,
-}: {
-  evento: EventoFullItem
-  podeEditar: boolean
-}) {
+function EventoChip({ evento, podeEditar }: { evento: EventoFullItem; podeEditar: boolean }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -316,17 +304,10 @@ function EventoChip({
 // Dialog: novo evento Full
 // -----------------------------------------------------------------
 
-function NovoEventoDialog({
-  dia,
-  onClose,
-}: {
-  dia: string | null
-  onClose: () => void
-}) {
+function NovoEventoDialog({ dia, onClose }: { dia: string | null; onClose: () => void }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [canal, setCanal] =
-    useState<(typeof eventoFullCanalValues)[number]>('full_ml')
+  const [canal, setCanal] = useState<(typeof eventoFullCanalValues)[number]>('full_ml')
   const [observacao, setObservacao] = useState('')
 
   function salvar() {
@@ -368,9 +349,7 @@ function NovoEventoDialog({
             <Select
               items={EVENTO_FULL_CANAL_LABEL}
               value={canal}
-              onValueChange={(v) =>
-                v && setCanal(v as (typeof eventoFullCanalValues)[number])
-              }
+              onValueChange={(v) => v && setCanal(v as (typeof eventoFullCanalValues)[number])}
             >
               <SelectTrigger id="canal-full" className="w-full">
                 <SelectValue />

@@ -30,10 +30,7 @@ export const users = pgTable(
       .$onUpdate(() => sql`now()`),
     deletedAt: timestamp({ withTimezone: true }),
   },
-  (table) => [
-    index('users_role_idx').on(table.role),
-    index('users_ativo_idx').on(table.ativo),
-  ],
+  (table) => [index('users_role_idx').on(table.role), index('users_ativo_idx').on(table.ativo)],
 )
 
 export type User = typeof users.$inferSelect

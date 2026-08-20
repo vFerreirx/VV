@@ -14,28 +14,18 @@ test.describe('Navegação — páginas principais', () => {
 
   test('kanban de produção renderiza', async ({ page }) => {
     await page.goto('/producao')
-    await expect(
-      page.getByRole('heading', { name: /produção \(kanban\)/i }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: /produção \(kanban\)/i })).toBeVisible()
   })
 
   test('ordens: lista + filtros', async ({ page }) => {
     await page.goto('/ordens')
-    await expect(
-      page.getByRole('heading', { name: /ordens de produção/i }),
-    ).toBeVisible()
-    await expect(
-      page.getByPlaceholder(/buscar por número, sku ou produto/i),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: /ordens de produção/i })).toBeVisible()
+    await expect(page.getByPlaceholder(/buscar por número, sku ou produto/i)).toBeVisible()
   })
 
-  test('variações: abas Cores/Modelos/Tamanhos + redirect das rotas antigas', async ({
-    page,
-  }) => {
+  test('variações: abas Cores/Modelos/Tamanhos + redirect das rotas antigas', async ({ page }) => {
     await page.goto('/variacoes')
-    await expect(
-      page.getByRole('heading', { name: /variações/i }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: /variações/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /cores/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /modelos/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /tamanhos/i })).toBeVisible()
@@ -45,9 +35,7 @@ test.describe('Navegação — páginas principais', () => {
     await page.waitForURL(/\/variacoes\?tab=cores/)
   })
 
-  test('fábrica: abas Máquinas/Estações + redirect das rotas antigas', async ({
-    page,
-  }) => {
+  test('fábrica: abas Máquinas/Estações + redirect das rotas antigas', async ({ page }) => {
     await page.goto('/fabrica')
     await expect(page.getByRole('heading', { name: /fábrica/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /máquinas/i })).toBeVisible()
@@ -58,14 +46,10 @@ test.describe('Navegação — páginas principais', () => {
 
   test('produtos: lista + form de novo produto renderiza', async ({ page }) => {
     await page.goto('/produtos')
-    await expect(
-      page.getByRole('heading', { name: /^produtos$/i }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^produtos$/i })).toBeVisible()
 
     await page.goto('/produtos/novo')
-    await expect(
-      page.getByRole('heading', { name: /novo produto/i }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: /novo produto/i })).toBeVisible()
     await expect(page.getByLabel(/sku/i).first()).toBeVisible()
     await expect(page.getByLabel(/^nome\s*\*?$/i).first()).toBeVisible()
   })
@@ -77,16 +61,12 @@ test.describe('Navegação — páginas principais', () => {
 
   test('estoque renderiza', async ({ page }) => {
     await page.goto('/estoque')
-    await expect(
-      page.getByRole('heading', { name: /estoque/i }).first(),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: /estoque/i }).first()).toBeVisible()
   })
 
   test('vendas: abas Diário/Mensal', async ({ page }) => {
     await page.goto('/vendas')
-    await expect(
-      page.getByRole('heading', { name: /^vendas$/i }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^vendas$/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /diário/i })).toBeVisible()
     await expect(page.getByRole('tab', { name: /mensal/i })).toBeVisible()
 

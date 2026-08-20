@@ -65,9 +65,8 @@ export function ContasList({ contas, empresas, podeEditar }: Props) {
         <div>
           <h1 className="text-2xl font-semibold">Contas de marketplace</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            As contas do Mercado Livre e da Shopee por onde saem os envios
-            Full. O PDF do envio não diz de qual conta veio — por isso ela é
-            escolhida na hora de criar a remessa.
+            As contas do Mercado Livre e da Shopee por onde saem os envios Full. O PDF do envio não
+            diz de qual conta veio — por isso ela é escolhida na hora de criar a remessa.
           </p>
         </div>
         {podeEditar && (
@@ -102,25 +101,17 @@ export function ContasList({ contas, empresas, podeEditar }: Props) {
                 <TableRow key={c.id}>
                   <TableCell className="font-medium">{c.nome}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">
-                      {CANAL_LABEL_CURTO[c.canal]}
-                    </Badge>
+                    <Badge variant="secondary">{CANAL_LABEL_CURTO[c.canal]}</Badge>
                   </TableCell>
                   <TableCell className="truncate">
-                    {c.empresaNome ?? (
-                      <span className="text-muted-foreground">sem empresa</span>
-                    )}
+                    {c.empresaNome ?? <span className="text-muted-foreground">sem empresa</span>}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {c.remessas}
-                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{c.remessas}</TableCell>
                   <TableCell>
                     {c.ativo ? (
                       <span className="text-sm text-emerald-600">Ativa</span>
                     ) : (
-                      <span className="text-muted-foreground text-sm">
-                        Desligada
-                      </span>
+                      <span className="text-muted-foreground text-sm">Desligada</span>
                     )}
                   </TableCell>
                   {podeEditar && (
@@ -155,11 +146,7 @@ export function ContasList({ contas, empresas, podeEditar }: Props) {
       {/* Renderizados só quando abertos: o formulário lê o estado inicial
           das props, então precisa nascer de novo a cada abertura. */}
       {criando && (
-        <ContaDialog
-          conta={null}
-          empresas={empresas}
-          onClose={() => setCriando(false)}
-        />
+        <ContaDialog conta={null} empresas={empresas} onClose={() => setCriando(false)} />
       )}
       {editando && (
         <ContaDialog
@@ -190,9 +177,7 @@ function ContaDialog({
   // null (e não undefined) mantém o Select controlado desde o primeiro
   // render — com undefined o Base UI reclama de trocar de não-controlado
   // pra controlado ao escolher a primeira opção.
-  const [empresaId, setEmpresaId] = useState<string | null>(
-    conta?.empresaId ?? null,
-  )
+  const [empresaId, setEmpresaId] = useState<string | null>(conta?.empresaId ?? null)
   const [ativo, setAtivo] = useState(conta?.ativo ?? true)
 
   const semEmpresas = empresas.length === 0
@@ -227,8 +212,8 @@ function ContaDialog({
         <DialogHeader>
           <DialogTitle>{conta ? 'Editar conta' : 'Nova conta'}</DialogTitle>
           <DialogDescription>
-            O nome é livre — use o que você chama no dia a dia, tipo &ldquo;ML
-            Principal&rdquo; ou &ldquo;Shopee Outlet&rdquo;.
+            O nome é livre — use o que você chama no dia a dia, tipo &ldquo;ML Principal&rdquo; ou
+            &ldquo;Shopee Outlet&rdquo;.
           </DialogDescription>
         </DialogHeader>
 
@@ -299,15 +284,10 @@ function ContaDialog({
             <div>
               <div className="text-sm font-medium">Conta ativa</div>
               <div className="text-muted-foreground text-xs">
-                Desligar para de oferecê-la ao criar remessa, sem mexer no que
-                já saiu por ela.
+                Desligar para de oferecê-la ao criar remessa, sem mexer no que já saiu por ela.
               </div>
             </div>
-            <Switch
-              checked={ativo}
-              onCheckedChange={setAtivo}
-              disabled={isPending}
-            />
+            <Switch checked={ativo} onCheckedChange={setAtivo} disabled={isPending} />
           </div>
         </div>
 
@@ -324,13 +304,7 @@ function ContaDialog({
   )
 }
 
-function ExcluirDialog({
-  conta,
-  onClose,
-}: {
-  conta: ContaComUso | null
-  onClose: () => void
-}) {
+function ExcluirDialog({ conta, onClose }: { conta: ContaComUso | null; onClose: () => void }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -354,9 +328,8 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir conta?</DialogTitle>
           <DialogDescription>
-            A conta{' '}
-            <span className="text-foreground font-medium">{conta?.nome}</span>{' '}
-            vai pra lixeira e deixa de ser oferecida ao criar remessa.
+            A conta <span className="text-foreground font-medium">{conta?.nome}</span> vai pra
+            lixeira e deixa de ser oferecida ao criar remessa.
             {conta && conta.remessas > 0
               ? ` As ${conta.remessas} remessa${conta.remessas > 1 ? 's' : ''} que já saíram por ela continuam mostrando o nome normalmente.`
               : ''}

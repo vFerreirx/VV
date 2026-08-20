@@ -178,9 +178,7 @@ const PREFIXO_KIT = /^\s*kit\b/i
  * segundo é a cor: "Capa de Almofada - ACONCHEGO 45x45 - Âmbar Dourado"
  * daria modelo "ACONCHEGO 45X45" e perderia o agrupamento.
  */
-function classificar(
-  produtoNome: string,
-): { tipo: string; modelo: string } | null {
+function classificar(produtoNome: string): { tipo: string; modelo: string } | null {
   const i = produtoNome.indexOf(' - ')
   if (i < 0) return null
   const tipo = produtoNome.slice(0, i).trim()
@@ -304,11 +302,7 @@ export function montarLinhasSeparacao(
         const descricao = descricaoDaPeca(c.produtoNome, tam, c.cor)
         somar(descricao, c.quantidade * it.quantidade, {
           chave: chaveDaLinha(descricao, c.produtoNome, tam, c.cor),
-          ...classificacao(
-            nomeDoProduto(catalogo, { produtoNome: c.produtoNome }),
-            tam,
-            c.cor,
-          ),
+          ...classificacao(nomeDoProduto(catalogo, { produtoNome: c.produtoNome }), tam, c.cor),
         })
       }
       continue

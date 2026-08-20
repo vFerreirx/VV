@@ -78,16 +78,14 @@ export function TarefasView({ pendentes, concluidas, contas }: Props) {
       <div>
         <h1 className="text-2xl font-semibold">Tarefas</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Pendências da administração — promoções, anúncios e o que mais
-          precisar de alguém. A lista é dos admins: quem fizer, marca.
+          Pendências da administração — promoções, anúncios e o que mais precisar de alguém. A lista
+          é dos admins: quem fizer, marca.
         </p>
         <p className="text-muted-foreground mt-1 text-sm">
-          Tarefa com prazo chegando <strong className="font-medium">sobe de
-          nível sozinha</strong> — até 7 dias vira Alta, até 2 dias (ou
-          vencida) vira Urgente. O selo com{' '}
-          <CalendarClock className="inline size-3.5 align-[-0.15em]" /> é o
-          que subiu pelo prazo. Marcar à mão continua valendo e nunca é
-          rebaixado.
+          Tarefa com prazo chegando <strong className="font-medium">sobe de nível sozinha</strong> —
+          até 7 dias vira Alta, até 2 dias (ou vencida) vira Urgente. O selo com{' '}
+          <CalendarClock className="inline size-3.5 align-[-0.15em]" /> é o que subiu pelo prazo.
+          Marcar à mão continua valendo e nunca é rebaixado.
         </p>
       </div>
 
@@ -121,10 +119,7 @@ export function TarefasView({ pendentes, concluidas, contas }: Props) {
             className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-sm"
           >
             <ChevronDown
-              className={cn(
-                'size-4 transition-transform',
-                mostrarConcluidas && 'rotate-180',
-              )}
+              className={cn('size-4 transition-transform', mostrarConcluidas && 'rotate-180')}
             />
             {concluidas.length} concluída{concluidas.length > 1 ? 's' : ''}
           </button>
@@ -233,9 +228,7 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
         onClick={() => setAberto((v) => !v)}
         className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 text-xs"
       >
-        <ChevronDown
-          className={cn('size-3.5 transition-transform', aberto && 'rotate-180')}
-        />
+        <ChevronDown className={cn('size-3.5 transition-transform', aberto && 'rotate-180')} />
         {aberto ? 'Menos opções' : 'Prazo e conta (opcional)'}
       </button>
 
@@ -365,9 +358,7 @@ function LinhaTarefa({
 
   function alternar() {
     startTransition(async () => {
-      const r = concluida
-        ? await reabrirTarefaAction(t.id)
-        : await concluirTarefaAction(t.id)
+      const r = concluida ? await reabrirTarefaAction(t.id) : await concluirTarefaAction(t.id)
       if (!r.success) {
         toast.error(r.error)
         return
@@ -378,12 +369,7 @@ function LinhaTarefa({
   }
 
   return (
-    <div
-      className={cn(
-        'flex items-start gap-3 px-4 py-3',
-        vencida && 'bg-destructive/5',
-      )}
-    >
+    <div className={cn('flex items-start gap-3 px-4 py-3', vencida && 'bg-destructive/5')}>
       <Checkbox
         checked={concluida}
         onCheckedChange={alternar}
@@ -394,10 +380,7 @@ function LinhaTarefa({
 
       <div className="min-w-0 flex-1">
         <div
-          className={cn(
-            'text-sm font-medium',
-            concluida && 'text-muted-foreground line-through',
-          )}
+          className={cn('text-sm font-medium', concluida && 'text-muted-foreground line-through')}
         >
           {t.titulo}
           {ehDestaque(t.prioridadeEfetiva) && (
@@ -415,9 +398,7 @@ function LinhaTarefa({
                 PRIORIDADE_BADGE[t.prioridadeEfetiva],
                 // Pulso só enquanto a tarefa está de pé: em concluída ele
                 // seria um chamado pra algo que já foi feito.
-                t.prioridadeEfetiva === 'urgente' &&
-                  !concluida &&
-                  'pulse-urgente',
+                t.prioridadeEfetiva === 'urgente' && !concluida && 'pulse-urgente',
               )}
             >
               {/* O relógio é a diferença VISÍVEL entre "marcaram" e "o prazo
@@ -434,9 +415,7 @@ function LinhaTarefa({
         </div>
 
         {t.descricao && (
-          <p className="text-muted-foreground mt-0.5 text-xs whitespace-pre-line">
-            {t.descricao}
-          </p>
+          <p className="text-muted-foreground mt-0.5 text-xs whitespace-pre-line">{t.descricao}</p>
         )}
 
         <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
@@ -468,12 +447,7 @@ function LinhaTarefa({
       </div>
 
       <div className="flex shrink-0 gap-1">
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          onClick={onEditar}
-          aria-label={`Editar ${t.titulo}`}
-        >
+        <Button size="icon-sm" variant="ghost" onClick={onEditar} aria-label={`Editar ${t.titulo}`}>
           <Pencil />
         </Button>
         <Button
@@ -506,9 +480,7 @@ function TarefaDialog({
   const [isPending, startTransition] = useTransition()
   const [titulo, setTitulo] = useState(tarefa.titulo)
   const [descricao, setDescricao] = useState(tarefa.descricao ?? '')
-  const [prioridade, setPrioridade] = useState<PrioridadeNivel>(
-    tarefa.prioridade,
-  )
+  const [prioridade, setPrioridade] = useState<PrioridadeNivel>(tarefa.prioridade)
   const [prazo, setPrazo] = useState(tarefa.prazo ?? '')
   const [contaId, setContaId] = useState<string | null>(tarefa.contaId)
 
@@ -541,8 +513,8 @@ function TarefaDialog({
         <DialogHeader>
           <DialogTitle>Editar tarefa</DialogTitle>
           <DialogDescription>
-            Prazo e conta continuam opcionais — deixe em branco se a tarefa
-            não tiver data ou for geral.
+            Prazo e conta continuam opcionais — deixe em branco se a tarefa não tiver data ou for
+            geral.
           </DialogDescription>
         </DialogHeader>
 
@@ -646,10 +618,8 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir tarefa?</DialogTitle>
           <DialogDescription>
-            <span className="text-foreground font-medium">
-              {tarefa?.titulo}
-            </span>{' '}
-            vai pra lixeira, de onde dá pra restaurar.
+            <span className="text-foreground font-medium">{tarefa?.titulo}</span> vai pra lixeira,
+            de onde dá pra restaurar.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

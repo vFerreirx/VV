@@ -13,7 +13,6 @@ import {
 } from 'drizzle-orm/pg-core'
 
 import { produtos } from './produtos'
-import { tamanhos } from './tamanhos'
 
 // Kit = combo de venda (ex.: 1 peseira + 2 capas). Vendido junto, mas
 // para a produção é explodido em itens unitários (uma OP por componente).
@@ -64,11 +63,21 @@ export const kitItens = pgTable(
   (table) => [index('kit_itens_kit_idx').on(table.kitId)],
 )
 
-// Preço FECHADO do kit por tamanho — ver supabase/sql/38_precos.sql.
-// Opcional e hoje vazia: kit sem linha aqui cai na soma dos componentes, que
-// é o caso normal. A linha só existe pra kit cujo preço DIFERE da soma
-// (combo com desconto, por exemplo); repetir a soma aqui seria dado inerte
-// com aparência de regra.
+// Preço FECHADO do kit de ATACADO, por COMBINAÇÃO de tamanhos — ver
+// supabase/sql/47_preco_marketplace.sql.
+//
+// ⚠️ Não confunda com `kitTamanhoPrecoMarketplace` (schema/precos-marketplace.ts):
+// as duas são irmãs, e só ESTA alimenta o pedido.
+//
+// A chave é `combinacao`, e não um `tamanho_id`: o preço depende do tamanho
+// de TODOS os componentes variáveis ao mesmo tempo (o Kit ACONCHEGO muda de
+// preço com o tamanho da capa E o da peseira). Quem monta a string é
+// `chaveDeTamanhos` em src/lib/kit-tamanhos.ts — nunca à mão. '' é chave
+// válida: kit sem componente variável tem um preço só.
+//
+// Opcional: kit sem linha aqui cai na soma dos componentes, que é o caso
+// normal. A linha só existe pra kit cujo preço DIFERE da soma (combo com
+// desconto); repetir a soma seria dado inerte com aparência de regra.
 export const kitTamanhoPreco = pgTable(
   'kit_tamanho_preco',
   {
@@ -76,9 +85,7 @@ export const kitTamanhoPreco = pgTable(
     kitId: uuid()
       .notNull()
       .references(() => kits.id, { onDelete: 'cascade' }),
-    tamanhoId: uuid()
-      .notNull()
-      .references(() => tamanhos.id),
+    combinacao: text().notNull(),
     preco: numeric({ precision: 12, scale: 2 }).notNull(),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -88,7 +95,7 @@ export const kitTamanhoPreco = pgTable(
       .$onUpdate(() => sql`now()`),
   },
   (table) => [
-    unique('kit_tamanho_preco_uk').on(table.kitId, table.tamanhoId),
+    unique('kit_tamanho_preco_uk').on(table.kitId, table.combinacao),
     index('kit_tamanho_preco_kit_idx').on(table.kitId),
   ],
 )

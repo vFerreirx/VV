@@ -57,14 +57,19 @@ export function tamanhoDoComponente(
 }
 
 /**
- * Tamanhos que o KIT INTEIRO pode assumir — o que dá sentido a um preço
- * fechado em `kit_tamanho_preco`, que é chaveado por um tamanho só.
+ * Tamanhos que o KIT INTEIRO pode assumir — os valores possíveis de
+ * `orcamento_itens.tamanho`.
+ *
+ * ⚠️ NÃO É MAIS A CHAVE DE PREÇO. Era, quando `kit_tamanho_preco` guardava um
+ * `tamanho_id` só; hoje a chave é `chaveDeTamanhos` (logo abaixo), que cobre
+ * todos os componentes variáveis. Usar esta função pra procurar preço deixa o
+ * Kit ACONCHEGO sem preço nenhum, porque ela devolve `[]` quando dois
+ * componentes variam.
  *
  * Só existe quando EXATAMENTE UM componente varia de tamanho: aí "o tamanho
  * do kit" é o tamanho dele e não há ambiguidade. Com zero (kits de manta)
  * não há tamanho a escolher; com dois ou mais não existe um tamanho que
- * descreva o kit — "Queen" não diz nada sobre a capa. Nos dois casos a
- * lista é vazia e o preço vem da soma dos componentes.
+ * descreva o kit — "Queen" não diz nada sobre a capa.
  */
 export function tamanhosDoKit(
   componentes: { produtoId: string }[],
@@ -90,6 +95,77 @@ export function tamanhoDoKit(
   const variaveis = componentesVariaveis(componentes, tamanhosDe)
   if (variaveis.length !== 1) return null
   return tamanhoDoComponente(variaveis[0]!.produtoId, escolhas, tamanhosDe)
+}
+
+/**
+ * A CHAVE DE PREÇO DO KIT: a combinação dos tamanhos de TODOS os componentes
+ * variáveis, num texto canônico.
+ *
+ * Por que a combinação e não "o tamanho do kit": porque o preço depende de
+ * todos eles. O Kit ACONCHEGO custa 149,99 com capa 45, 159,99 com capa 50 e
+ * 169,99 com capa 60 — no MESMO tamanho de peseira. Um tamanho só (que é o
+ * que `tamanhoDoKit` devolve, e o que `kit_tamanho_preco` guardava antes) não
+ * consegue dizer isso: existiriam três preços disputando a mesma linha.
+ *
+ * FORMATO — pares `<produtoId>=<tamanho em minúscula>`, ordenados por
+ * produtoId, unidos por `|`:
+ *
+ *     "3f2a…=50x50|9c81…=queen"
+ *
+ * A ordenação por produtoId é o que faz a chave ser CANÔNICA: a mesma
+ * combinação escrita em qualquer ordem de componentes dá o mesmo texto. Sem
+ * isso, o preço cadastrado ficaria inalcançável dependendo da ordem em que a
+ * tela montou a lista — o defeito silencioso que este módulo existe pra
+ * evitar. O tamanho vai em minúscula pela mesma razão que `chave()` em
+ * src/lib/preco.ts: a variação guarda o tamanho como TEXTO livre.
+ *
+ * SÓ COMPONENTE VARIÁVEL ENTRA. Componente de tamanho único seria idêntico em
+ * toda linha do kit — não distingue nada e só engordaria a chave.
+ *
+ * OS DOIS RETORNOS ESPECIAIS, que não são a mesma coisa:
+ *   - `""` (vazio): o kit NÃO TEM componente variável, então ele tem um preço
+ *     só e essa é a chave dele. É o caso do Kit Manta + 2 Capas SIENA (capa
+ *     só em 45x45, manta só em Manta). Chave válida, grava e lê normalmente.
+ *   - `null`: FALTA escolher o tamanho de algum componente variável. Não há
+ *     combinação, logo não há o que precificar — quem chama tem que tratar
+ *     como "sem preço", nunca como chave vazia.
+ */
+export function chaveDeTamanhos(
+  componentes: { produtoId: string }[],
+  escolhas: EscolhasDeTamanho | null | undefined,
+  tamanhosDe: TamanhosDe,
+): string | null {
+  const variaveis = componentesVariaveis(componentes, tamanhosDe)
+  const pares: string[] = []
+  for (const c of variaveis) {
+    const t = tamanhoDoComponente(c.produtoId, escolhas, tamanhosDe)
+    if (t === null) return null
+    pares.push(`${c.produtoId}=${t.trim().toLowerCase()}`)
+  }
+  return pares.sort().join('|')
+}
+
+/**
+ * A mesma chave, em texto pra gente ler ("Casal + 50x50"). Só apresentação:
+ * NUNCA use isto como chave de nada — o nome do componente não é estável e
+ * dois componentes podem ter o mesmo tamanho.
+ */
+export function descreverCombinacao(
+  componentes: { produtoId: string; nome?: string }[],
+  escolhas: EscolhasDeTamanho | null | undefined,
+  tamanhosDe: TamanhosDe,
+): string {
+  const variaveis = componentesVariaveis(componentes, tamanhosDe)
+  const tam = (produtoId: string) => tamanhoDoComponente(produtoId, escolhas, tamanhosDe) ?? '?'
+
+  // Kit sem componente variável tem um preço só — dizer "tamanho único" é
+  // mais honesto que deixar vazio, que leria como "faltou preencher".
+  if (variaveis.length === 0) return 'tamanho único'
+  // Com um componente variável o tamanho já identifica sozinho.
+  if (variaveis.length === 1) return tam(variaveis[0]!.produtoId)
+  // Com dois ou mais é obrigatório nomear: "Queen · 50x50" não diz qual
+  // tamanho é de qual peça, e é justamente aí que o preço muda.
+  return variaveis.map((c) => `${c.nome ?? 'componente'}: ${tam(c.produtoId)}`).join(' · ')
 }
 
 /**

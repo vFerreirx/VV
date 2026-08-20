@@ -7,10 +7,7 @@ import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { compradores, type Comprador } from '@/lib/db/schema'
-import {
-  compradorSchema,
-  type CompradorInput,
-} from '@/lib/validators/compradores'
+import { compradorSchema, type CompradorInput } from '@/lib/validators/compradores'
 import { formatarDocumento, soDigitos } from '@/lib/validators/documento'
 
 export type ActionResult<T = undefined> =
@@ -34,9 +31,7 @@ export async function listarCompradores(): Promise<Comprador[]> {
 // pra tela de orçamento, que não precisa deles.
 export type CompradorOpcao = { id: string; nome: string }
 
-export async function listarCompradoresParaSelecao(): Promise<
-  CompradorOpcao[]
-> {
+export async function listarCompradoresParaSelecao(): Promise<CompradorOpcao[]> {
   await requireArea('compradores')
   return db
     .select({ id: compradores.id, nome: compradores.nome })
@@ -67,12 +62,7 @@ export async function criarCompradorAction(
     const existing = await db
       .select({ id: compradores.id, nome: compradores.nome })
       .from(compradores)
-      .where(
-        and(
-          eq(compradores.documento, data.documento),
-          isNull(compradores.deletedAt),
-        ),
-      )
+      .where(and(eq(compradores.documento, data.documento), isNull(compradores.deletedAt)))
       .limit(1)
     if (existing.length > 0) {
       return {
@@ -84,10 +74,7 @@ export async function criarCompradorAction(
 
   let inserted: { id: string } | undefined
   try {
-    ;[inserted] = await db
-      .insert(compradores)
-      .values(data)
-      .returning({ id: compradores.id })
+    ;[inserted] = await db.insert(compradores).values(data).returning({ id: compradores.id })
   } catch (err) {
     // Corrida entre a checagem acima e o INSERT (duplo-clique/reenvio) bate
     // no índice único parcial do documento. Vira erro amigável, não 500.
@@ -177,9 +164,7 @@ export async function atualizarCompradorAction(
 // Soft delete
 // -----------------------------------------------------------------
 
-export async function excluirCompradorAction(
-  id: string,
-): Promise<ActionResult> {
+export async function excluirCompradorAction(id: string): Promise<ActionResult> {
   await requireAreaEscrita('compradores')
 
   const [atual] = await db
@@ -192,10 +177,7 @@ export async function excluirCompradorAction(
   // Soft delete. Os orçamentos que apontavam pra ele continuam abrindo: o
   // nome impresso vive em `orcamentos.cliente` (texto) e o compradorId só
   // deixa de resolver.
-  await db
-    .update(compradores)
-    .set({ deletedAt: new Date() })
-    .where(eq(compradores.id, id))
+  await db.update(compradores).set({ deletedAt: new Date() }).where(eq(compradores.id, id))
 
   revalidatePath('/clientes')
   revalidatePath('/pedidos')
@@ -220,9 +202,7 @@ export type EnderecoCep = {
 //
 // Nada aqui é obrigatório: em qualquer falha a tela segue com digitação
 // manual do endereço.
-export async function buscarCepAction(
-  cepBruto: string,
-): Promise<ActionResult<EnderecoCep>> {
+export async function buscarCepAction(cepBruto: string): Promise<ActionResult<EnderecoCep>> {
   await requireArea('compradores')
 
   const cep = soDigitos(cepBruto)

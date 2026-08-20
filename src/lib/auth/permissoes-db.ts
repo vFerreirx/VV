@@ -27,17 +27,13 @@ export const carregarOverrides = cache(async (): Promise<OverridesAcesso> => {
 
   const overrides: OverridesAcesso = {}
   for (const l of linhas) {
-    overrides[chaveOverride(l.role as Role, l.area as AreaKey)] =
-      l.nivel as Nivel
+    overrides[chaveOverride(l.role as Role, l.area as AreaKey)] = l.nivel as Nivel
   }
   return overrides
 })
 
 // Nível efetivo de um cargo numa área (já considerando as overrides).
-export async function nivelDaAreaPara(
-  role: Role,
-  area: AreaKey,
-): Promise<Nivel> {
+export async function nivelDaAreaPara(role: Role, area: AreaKey): Promise<Nivel> {
   const overrides = await carregarOverrides()
   return nivelEfetivo(role, area, overrides)
 }

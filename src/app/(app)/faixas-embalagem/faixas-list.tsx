@@ -48,16 +48,9 @@ export type FaixaNaTela = {
   comprimentoCm: number
 }
 
-const kg = (g: number) =>
-  `${(g / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg`
+const kg = (g: number) => `${(g / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg`
 
-export function FaixasList({
-  faixas,
-  podeEditar,
-}: {
-  faixas: FaixaNaTela[]
-  podeEditar: boolean
-}) {
+export function FaixasList({ faixas, podeEditar }: { faixas: FaixaNaTela[]; podeEditar: boolean }) {
   const [criando, setCriando] = useState(false)
   const [editando, setEditando] = useState<FaixaNaTela | null>(null)
   const [excluindo, setExcluindo] = useState<FaixaNaTela | null>(null)
@@ -71,8 +64,8 @@ export function FaixasList({
           <h1 className="text-2xl font-semibold">Faixas de embalagem</h1>
           <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
             Cada faixa diz: até este peso, o pacote sai com estas medidas. A{' '}
-            <strong>maior faixa é a capacidade de um pacote</strong> — pedido
-            acima disso é cotado em mais de um volume.
+            <strong>maior faixa é a capacidade de um pacote</strong> — pedido acima disso é cotado
+            em mais de um volume.
           </p>
         </div>
         {podeEditar && (
@@ -112,14 +105,10 @@ export function FaixasList({
                       <TableCell className="font-medium tabular-nums">
                         {kg(f.pesoAteGramas)}
                         {f.pesoAteGramas === capacidade && (
-                          <span className="text-muted-foreground ml-1 text-xs">
-                            (capacidade)
-                          </span>
+                          <span className="text-muted-foreground ml-1 text-xs">(capacidade)</span>
                         )}
                       </TableCell>
-                      <TableCell className="tabular-nums">
-                        {formatarMedidas(f)}
-                      </TableCell>
+                      <TableCell className="tabular-nums">{formatarMedidas(f)}</TableCell>
                       <TableCell className="text-right tabular-nums">
                         {soma.toLocaleString('pt-BR', {
                           maximumFractionDigits: 2,
@@ -173,45 +162,30 @@ export function FaixasList({
           </div>
 
           <p className="text-muted-foreground text-xs">
-            Limites dos Correios (PAC/SEDEX): soma das três medidas até{' '}
-            {LIMITE_SOMA_CM} cm, nenhum lado acima de {LIMITE_LADO_CM} cm e peso
-            cubado (C × L × A ÷ 6000) até {LIMITE_CUBADO_KG} kg. Acima de{' '}
-            {LADO_TAXA_EXTRA_CM} cm em qualquer lado há taxa extra — encarece,
-            mas não impede.
+            Limites dos Correios (PAC/SEDEX): soma das três medidas até {LIMITE_SOMA_CM} cm, nenhum
+            lado acima de {LIMITE_LADO_CM} cm e peso cubado (C × L × A ÷ 6000) até{' '}
+            {LIMITE_CUBADO_KG} kg. Acima de {LADO_TAXA_EXTRA_CM} cm em qualquer lado há taxa extra —
+            encarece, mas não impede.
           </p>
         </>
       )}
 
       {criando && <FaixaDialog faixa={null} onClose={() => setCriando(false)} />}
       {editando && (
-        <FaixaDialog
-          key={editando.id}
-          faixa={editando}
-          onClose={() => setEditando(null)}
-        />
+        <FaixaDialog key={editando.id} faixa={editando} onClose={() => setEditando(null)} />
       )}
       <ExcluirDialog faixa={excluindo} onClose={() => setExcluindo(null)} />
     </div>
   )
 }
 
-function FaixaDialog({
-  faixa,
-  onClose,
-}: {
-  faixa: FaixaNaTela | null
-  onClose: () => void
-}) {
+function FaixaDialog({ faixa, onClose }: { faixa: FaixaNaTela | null; onClose: () => void }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [pesoAte, setPesoAte] = useState(
-    faixa ? String(faixa.pesoAteGramas) : '',
-  )
+  const [pesoAte, setPesoAte] = useState(faixa ? String(faixa.pesoAteGramas) : '')
   const [altura, setAltura] = useState(faixa ? String(faixa.alturaCm) : '')
   const [largura, setLargura] = useState(faixa ? String(faixa.larguraCm) : '')
-  const [comprimento, setComprimento] = useState(
-    faixa ? String(faixa.comprimentoCm) : '',
-  )
+  const [comprimento, setComprimento] = useState(faixa ? String(faixa.comprimentoCm) : '')
 
   // Avaliação AO VIVO, com a mesma função que a action usa pra recusar. O
   // usuário vê o problema enquanto digita, e não depois de salvar.
@@ -257,8 +231,8 @@ function FaixaDialog({
         <DialogHeader>
           <DialogTitle>{faixa ? 'Editar faixa' : 'Nova faixa'}</DialogTitle>
           <DialogDescription>
-            Meça um pacote real já fechado. Use o MAIOR pacote observado dentro
-            da faixa — assim a cotação erra pra cima, e não pra baixo.
+            Meça um pacote real já fechado. Use o MAIOR pacote observado dentro da faixa — assim a
+            cotação erra pra cima, e não pra baixo.
           </DialogDescription>
         </DialogHeader>
 
@@ -355,11 +329,7 @@ function FaixaDialog({
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button
-            loading={isPending}
-            onClick={salvar}
-            disabled={isPending || bloqueado}
-          >
+          <Button loading={isPending} onClick={salvar} disabled={isPending || bloqueado}>
             {'Salvar'}
           </Button>
         </DialogFooter>
@@ -368,13 +338,7 @@ function FaixaDialog({
   )
 }
 
-function ExcluirDialog({
-  faixa,
-  onClose,
-}: {
-  faixa: FaixaNaTela | null
-  onClose: () => void
-}) {
+function ExcluirDialog({ faixa, onClose }: { faixa: FaixaNaTela | null; onClose: () => void }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -399,24 +363,16 @@ function ExcluirDialog({
           <DialogTitle>Excluir faixa?</DialogTitle>
           <DialogDescription>
             A faixa de até{' '}
-            <span className="text-foreground font-medium">
-              {faixa && kg(faixa.pesoAteGramas)}
-            </span>{' '}
-            sai da tabela. Pedidos nessa faixa passam a usar a próxima faixa
-            maior — e, se esta era a capacidade, a capacidade de um pacote
-            diminui.
+            <span className="text-foreground font-medium">{faixa && kg(faixa.pesoAteGramas)}</span>{' '}
+            sai da tabela. Pedidos nessa faixa passam a usar a próxima faixa maior — e, se esta era
+            a capacidade, a capacidade de um pacote diminui.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button
-            loading={isPending}
-            variant="destructive"
-            onClick={excluir}
-            disabled={isPending}
-          >
+          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
             {'Excluir'}
           </Button>
         </DialogFooter>

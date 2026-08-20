@@ -48,9 +48,7 @@ export async function obterSituacaoFrete(): Promise<SituacaoFrete> {
 
   const config = configMelhorEnvio()
   if (!config) {
-    impedimentos.push(
-      'O token do Melhor Envio não está configurado (MELHOR_ENVIO_TOKEN).',
-    )
+    impedimentos.push('O token do Melhor Envio não está configurado (MELHOR_ENVIO_TOKEN).')
   }
 
   const origem = await obterOrigemFrete()
@@ -72,10 +70,7 @@ export async function obterSituacaoFrete(): Promise<SituacaoFrete> {
     impedimentos,
     sandbox: config ? ehSandbox(config) : false,
     origem,
-    capacidadeGramas: faixas.reduce(
-      (m, f) => Math.max(m, f.pesoAteGramas),
-      0,
-    ),
+    capacidadeGramas: faixas.reduce((m, f) => Math.max(m, f.pesoAteGramas), 0),
   }
 }
 
@@ -94,10 +89,7 @@ export type CotacaoFeita = {
   sandbox: boolean
 }
 
-function paraTela(
-  pacotes: Pacote[],
-  volumes: { insurance_value: number }[],
-): PacoteNaTela[] {
+function paraTela(pacotes: Pacote[], volumes: { insurance_value: number }[]): PacoteNaTela[] {
   return pacotes.map((p, i) => ({
     pesoGramas: p.pesoGramas,
     medidas: formatarMedidas(p),
@@ -148,8 +140,7 @@ export async function cotarFreteAction(
       .filter((it) => pesos.porItem[it.id] == null)
       .map((it) => it.descricao)
     const lista = semPeso.slice(0, 5).join('; ')
-    const resto =
-      semPeso.length > 5 ? ` … e mais ${semPeso.length - 5}` : ''
+    const resto = semPeso.length > 5 ? ` … e mais ${semPeso.length - 5}` : ''
     return {
       success: false,
       error: `Não dá pra cotar: ${semPeso.length} item(ns) sem peso cadastrado — ${lista}${resto}.`,
@@ -163,19 +154,15 @@ export async function cotarFreteAction(
     const [c] = await db
       .select({ cep: compradores.cep })
       .from(compradores)
-      .where(
-        and(
-          eq(compradores.id, orcamento.compradorId),
-          isNull(compradores.deletedAt),
-        ),
-      )
+      .where(and(eq(compradores.id, orcamento.compradorId), isNull(compradores.deletedAt)))
       .limit(1)
     cepDestino = soDigitosCep(c?.cep ?? '')
   }
   if (cepDestino.length !== 8) {
     return {
       success: false,
-      error: 'Informe o CEP de destino (8 dígitos) — o cliente deste pedido não tem CEP cadastrado.',
+      error:
+        'Informe o CEP de destino (8 dígitos) — o cliente deste pedido não tem CEP cadastrado.',
     }
   }
 

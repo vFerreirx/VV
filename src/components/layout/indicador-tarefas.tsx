@@ -34,16 +34,12 @@ export function IndicadorTarefas({
         aria-hidden
         className={cn(
           'size-2.5 rounded-full',
-          urgente
-            ? 'bg-destructive pulse-urgente'
-            : 'border-2 border-orange-500 bg-transparent',
+          urgente ? 'bg-destructive pulse-urgente' : 'border-2 border-orange-500 bg-transparent',
         )}
       />
       {/* O leitor de tela não enxerga forma nenhuma: o estado vai em texto. */}
       <span className="sr-only">
-        {urgente
-          ? 'Há tarefa urgente em aberto'
-          : 'Há tarefa de prioridade alta em aberto'}
+        {urgente ? 'Há tarefa urgente em aberto' : 'Há tarefa de prioridade alta em aberto'}
       </span>
     </span>
   )

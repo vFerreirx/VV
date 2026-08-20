@@ -26,21 +26,10 @@ import {
   type StatusPedido,
 } from '@/lib/pedido-status'
 import { catalogoVazio, chavePeso, type CatalogoPesos } from '@/lib/peso'
-import {
-  montarCatalogoSeparacao,
-  type CatalogoSeparacao,
-} from '@/lib/separacao'
+import { montarCatalogoSeparacao, type CatalogoSeparacao } from '@/lib/separacao'
 import { freteEmCentavos, totalComFrete } from '@/lib/total-pedido'
-import {
-  chave,
-  decimalParaCentavos,
-  tabelaVazia,
-  type TabelaDePrecos,
-} from '@/lib/preco'
-import {
-  orcamentoSchema,
-  type OrcamentoInput,
-} from '@/lib/validators/orcamentos'
+import { chave, chaveKit, decimalParaCentavos, tabelaVazia, type TabelaDePrecos } from '@/lib/preco'
+import { orcamentoSchema, type OrcamentoInput } from '@/lib/validators/orcamentos'
 
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
@@ -120,9 +109,7 @@ export async function listarOrcamentos(): Promise<OrcamentoListItem[]> {
   })
 }
 
-export async function obterOrcamento(
-  id: string,
-): Promise<OrcamentoComItens | null> {
+export async function obterOrcamento(id: string): Promise<OrcamentoComItens | null> {
   await requireArea('vendas')
   const [o] = await db
     .select()
@@ -137,10 +124,7 @@ export async function obterOrcamento(
     .where(eq(orcamentoItens.orcamentoId, id))
     .orderBy(asc(orcamentoItens.createdAt))
 
-  const total = itens.reduce(
-    (s, it) => s + it.quantidade * Number(it.precoUnitario),
-    0,
-  )
+  const total = itens.reduce((s, it) => s + it.quantidade * Number(it.precoUnitario), 0)
   return { ...o, itens, total, totalComFrete: totalComFrete(total, o.freteValor) }
 }
 
@@ -167,12 +151,7 @@ export async function obterOrcamentoParaRomaneio(
   const [comprador] = await db
     .select()
     .from(compradores)
-    .where(
-      and(
-        eq(compradores.id, orcamento.compradorId),
-        isNull(compradores.deletedAt),
-      ),
-    )
+    .where(and(eq(compradores.id, orcamento.compradorId), isNull(compradores.deletedAt)))
     .limit(1)
 
   return { ...orcamento, comprador: comprador ?? null }
@@ -205,9 +184,7 @@ export async function obterCatalogoDePesos(): Promise<CatalogoPesos> {
       .innerJoin(produtos, eq(produtos.id, produtoTamanhoPeso.produtoId))
       .innerJoin(tamanhos, eq(tamanhos.id, produtoTamanhoPeso.tamanhoId)),
     db.select({ nome: produtos.nome }).from(produtos),
-    db
-      .select({ nome: tamanhos.nome, pesoGramas: tamanhos.pesoGramas })
-      .from(tamanhos),
+    db.select({ nome: tamanhos.nome, pesoGramas: tamanhos.pesoGramas }).from(tamanhos),
   ])
 
   const catalogo = catalogoVazio()
@@ -224,12 +201,12 @@ export async function obterCatalogoDePesos(): Promise<CatalogoPesos> {
   // Do mais LONGO pro mais curto: no fallback por texto, "Peseira -
   // Aconchego" tem que ganhar de "Peseira".
   const porTamanhoDoNome = (a: string, b: string) => b.length - a.length
-  catalogo.nomesProduto = [
-    ...new Set(prods.map((p) => p.nome.trim().toLowerCase())),
-  ].sort(porTamanhoDoNome)
-  catalogo.nomesTamanho = [
-    ...new Set(tams.map((t) => t.nome.trim().toLowerCase())),
-  ].sort(porTamanhoDoNome)
+  catalogo.nomesProduto = [...new Set(prods.map((p) => p.nome.trim().toLowerCase()))].sort(
+    porTamanhoDoNome,
+  )
+  catalogo.nomesTamanho = [...new Set(tams.map((t) => t.nome.trim().toLowerCase()))].sort(
+    porTamanhoDoNome,
+  )
 
   return catalogo
 }
@@ -262,6 +239,13 @@ export async function obterCatalogoDeSeparacao(): Promise<CatalogoSeparacao> {
 // ATENÇÃO: isto é SUGESTÃO, não o preço do pedido. Ver o topo de
 // src/lib/preco.ts — `orcamento_itens.preco_unitario` é snapshot e não muda
 // quando o preço de tabela muda.
+//
+// ⚠️ E é o preço de ATACADO, o único que o pedido conhece. Existe uma tabela
+// IRMÃ de preço de MARKETPLACE (src/lib/preco-marketplace.ts, migration 47),
+// com as mesmas colunas e nome quase igual. Ela NÃO pode entrar aqui: preço
+// de anúncio de Shopee não é o que se cobra num pedido de atacado. Se um dia
+// esta função passar a aceitar um marketplace, é porque alguém ligou a
+// tabela errada.
 export async function obterCatalogoDePrecos(): Promise<TabelaDePrecos> {
   await requireArea('vendas')
 
@@ -274,14 +258,16 @@ export async function obterCatalogoDePrecos(): Promise<TabelaDePrecos> {
       })
       .from(produtoTamanhoPreco)
       .innerJoin(tamanhos, eq(tamanhos.id, produtoTamanhoPreco.tamanhoId)),
+    // Sem join com `tamanhos`: a chave do preço de kit é a COMBINAÇÃO de
+    // tamanhos dos componentes, já gravada canônica pela
+    // `chaveDeTamanhos` (src/lib/kit-tamanhos.ts).
     db
       .select({
         donoId: kitTamanhoPreco.kitId,
-        tamanho: tamanhos.nome,
+        combinacao: kitTamanhoPreco.combinacao,
         preco: kitTamanhoPreco.preco,
       })
-      .from(kitTamanhoPreco)
-      .innerJoin(tamanhos, eq(tamanhos.id, kitTamanhoPreco.tamanhoId)),
+      .from(kitTamanhoPreco),
   ])
 
   const tabela = tabelaVazia()
@@ -289,7 +275,7 @@ export async function obterCatalogoDePrecos(): Promise<TabelaDePrecos> {
     tabela.produto[chave(l.donoId, l.tamanho)] = decimalParaCentavos(l.preco)
   }
   for (const l of deKit) {
-    tabela.kit[chave(l.donoId, l.tamanho)] = decimalParaCentavos(l.preco)
+    tabela.kit[chaveKit(l.donoId, l.combinacao)] = decimalParaCentavos(l.preco)
   }
   return tabela
 }
@@ -319,9 +305,7 @@ export async function listarClientesOrcamentos(): Promise<string[]> {
 
 // Último preço usado por descrição (em qualquer orçamento não excluído).
 // Serve pra pré-preencher o preço ao puxar produto/kit do catálogo.
-export async function listarPrecosRecentes(): Promise<
-  Record<string, string>
-> {
+export async function listarPrecosRecentes(): Promise<Record<string, string>> {
   await requireArea('vendas')
   const rows = await db
     .select({
@@ -424,8 +408,7 @@ export async function atualizarOrcamentoAction(
   // Salvar o pedido sem mexer no frete não limpa nada: o diálogo devolve o
   // mesmo valor que carregou, e a comparação é em centavos justamente porque
   // "50.00" e "50" são o mesmo dinheiro escrito de dois jeitos.
-  const trocouOFrete =
-    freteEmCentavos(data.freteValor) !== freteEmCentavos(atual.freteValor)
+  const trocouOFrete = freteEmCentavos(data.freteValor) !== freteEmCentavos(atual.freteValor)
   const procedenciaLimpa = {
     freteTransportadora: null,
     freteServico: null,
@@ -467,9 +450,7 @@ export async function atualizarOrcamentoAction(
   return { success: true, message: 'Pedido atualizado' }
 }
 
-export async function excluirOrcamentoAction(
-  id: string,
-): Promise<ActionResult> {
+export async function excluirOrcamentoAction(id: string): Promise<ActionResult> {
   await requireAreaEscrita('vendas')
   const [atual] = await db
     .select({ id: orcamentos.id })
@@ -478,10 +459,7 @@ export async function excluirOrcamentoAction(
     .limit(1)
   if (!atual) return { success: false, error: 'Pedido não encontrado' }
 
-  await db
-    .update(orcamentos)
-    .set({ deletedAt: new Date() })
-    .where(eq(orcamentos.id, id))
+  await db.update(orcamentos).set({ deletedAt: new Date() }).where(eq(orcamentos.id, id))
 
   revalidatePath('/pedidos')
   return { success: true, message: 'Pedido excluído' }
@@ -513,10 +491,7 @@ export async function mudarStatusOrcamentoAction(
   const recusa = erroDeTransicao(atual.status, destino)
   if (recusa) return { success: false, error: recusa }
 
-  await db
-    .update(orcamentos)
-    .set({ status: destino })
-    .where(eq(orcamentos.id, id))
+  await db.update(orcamentos).set({ status: destino }).where(eq(orcamentos.id, id))
 
   revalidatePath('/pedidos')
   return {

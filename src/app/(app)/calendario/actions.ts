@@ -5,16 +5,8 @@ import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import {
-  eventosFull,
-  ordensProducao,
-  produtos,
-  remessasFull,
-} from '@/lib/db/schema'
-import {
-  eventoFullSchema,
-  type EventoFullInput,
-} from '@/lib/validators/eventos'
+import { eventosFull, ordensProducao, produtos, remessasFull } from '@/lib/db/schema'
+import { eventoFullSchema, type EventoFullInput } from '@/lib/validators/eventos'
 import { type prioridadeValues, type statusValues } from '@/lib/validators/ordens'
 
 export type ActionResult<T = undefined> =
@@ -49,10 +41,7 @@ export type OpAgendaItem = {
 // Leitura do mês (recebe range YYYY-MM-DD inclusivo)
 // -----------------------------------------------------------------
 
-export async function listarEventosFull(
-  inicio: string,
-  fim: string,
-): Promise<EventoFullItem[]> {
+export async function listarEventosFull(inicio: string, fim: string): Promise<EventoFullItem[]> {
   await requireAuth()
   const rows = await db
     .select({
@@ -63,11 +52,7 @@ export async function listarEventosFull(
     })
     .from(eventosFull)
     .where(
-      and(
-        isNull(eventosFull.deletedAt),
-        gte(eventosFull.data, inicio),
-        lte(eventosFull.data, fim),
-      ),
+      and(isNull(eventosFull.deletedAt), gte(eventosFull.data, inicio), lte(eventosFull.data, fim)),
     )
     .orderBy(asc(eventosFull.data))
 
@@ -110,9 +95,7 @@ export async function listarEventosFull(
       (r): EventoFullItem => ({
         id: r.id,
         data: r.data,
-        canal: (r.canal === 'full_shopee' ? 'full_shopee' : 'full_ml') as
-          | 'full_ml'
-          | 'full_shopee',
+        canal: (r.canal === 'full_shopee' ? 'full_shopee' : 'full_ml') as 'full_ml' | 'full_shopee',
         observacao: r.observacao ?? null,
       }),
     ),
@@ -131,10 +114,7 @@ export async function listarEventosFull(
   return itens
 }
 
-export async function listarOpsComPrazo(
-  inicio: string,
-  fim: string,
-): Promise<OpAgendaItem[]> {
+export async function listarOpsComPrazo(inicio: string, fim: string): Promise<OpAgendaItem[]> {
   await requireAuth()
   const rows = await db
     .select({
@@ -159,9 +139,7 @@ export async function listarOpsComPrazo(
 
   const now = Date.now()
   return rows
-    .filter((r): r is typeof r & { dataPrevistaFim: Date } =>
-      Boolean(r.dataPrevistaFim),
-    )
+    .filter((r): r is typeof r & { dataPrevistaFim: Date } => Boolean(r.dataPrevistaFim))
     .map((r) => {
       const d = new Date(r.dataPrevistaFim)
       const ymd = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
@@ -208,13 +186,10 @@ export async function criarEventoFullAction(
   return { success: true, data: { id: inserted!.id }, message: 'Envio agendado' }
 }
 
-export async function excluirEventoFullAction(
-  id: string,
-): Promise<ActionResult> {
+export async function excluirEventoFullAction(id: string): Promise<ActionResult> {
   await requireAreaEscrita('calendario')
 
-  const uuidRegex =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!uuidRegex.test(id)) {
     return { success: false, error: 'ID inválido' }
   }

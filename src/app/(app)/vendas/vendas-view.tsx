@@ -1,12 +1,6 @@
 'use client'
 
-import {
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  Pencil,
-  Plus,
-} from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, Pencil, Plus } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Fragment, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -135,9 +129,7 @@ function agruparContasDoDia(venda: VendaDia | null) {
   return ORDEM_MK.map((mk) => {
     const contas = linhas
       .filter((c) => c.marketplace === mk)
-      .sort(
-        (a, b) => (ORDEM_CONTA[a.conta] ?? 99) - (ORDEM_CONTA[b.conta] ?? 99),
-      )
+      .sort((a, b) => (ORDEM_CONTA[a.conta] ?? 99) - (ORDEM_CONTA[b.conta] ?? 99))
     return {
       marketplace: mk,
       contas,
@@ -166,8 +158,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
   // "Registrar venda" (topo) sempre lança um dia NOVO: o dia seguinte ao
   // último dia com venda lançada (recentes vem ordenado por data desc).
   // Sem nenhuma venda ainda, cai pra hoje.
-  const proximoDiaSemDados =
-    recentes.length > 0 ? addDias(recentes[0]!.data, 1) : hoje
+  const proximoDiaSemDados = recentes.length > 0 ? addDias(recentes[0]!.data, 1) : hoje
 
   const seletorDiaRef = useRef<HTMLInputElement>(null)
 
@@ -195,9 +186,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
       {podeEditar && (
         <div className="flex justify-end gap-2">
           <Button
-            onClick={() =>
-              setRegistro({ data: proximoDiaSemDados, venda: null })
-            }
+            onClick={() => setRegistro({ data: proximoDiaSemDados, venda: null })}
             disabled={isPending}
           >
             <Plus />
@@ -220,9 +209,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
         </Button>
 
         <div className="flex flex-col items-center gap-1">
-          <div className="text-sm font-medium capitalize">
-            {formatarData(data)}
-          </div>
+          <div className="text-sm font-medium capitalize">{formatarData(data)}</div>
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -281,9 +268,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
             </div>
           </div>
           <div>
-            <div className="text-muted-foreground text-xs tracking-wide uppercase">
-              Faturamento
-            </div>
+            <div className="text-muted-foreground text-xs tracking-wide uppercase">Faturamento</div>
             <div className="mt-1 text-3xl font-semibold tabular-nums">
               {formatarReais(vendaDoDia?.faturamento ?? null)}
             </div>
@@ -323,9 +308,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
                           <TableCell className="text-muted-foreground pl-6">
                             {LABEL_CONTA[c.conta] ?? c.conta}
                           </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {c.quantidade}
-                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{c.quantidade}</TableCell>
                           <TableCell className="text-right tabular-nums">
                             {formatarReais(c.faturamento || null)}
                           </TableCell>
@@ -351,17 +334,12 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
         )}
 
         {vendaDoDia?.observacao && (
-          <p className="text-muted-foreground mt-4 text-sm">
-            {vendaDoDia.observacao}
-          </p>
+          <p className="text-muted-foreground mt-4 text-sm">{vendaDoDia.observacao}</p>
         )}
 
         {podeEditar && (
           <div className="mt-6">
-            <Button
-              onClick={() => setRegistro({ data, venda: vendaDoDia })}
-              disabled={isPending}
-            >
+            <Button onClick={() => setRegistro({ data, venda: vendaDoDia })} disabled={isPending}>
               {vendaDoDia ? (
                 <>
                   <Pencil />
@@ -381,9 +359,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
       {/* Dias recentes */}
       {recentes.length > 0 && (
         <div>
-          <h2 className="text-muted-foreground mb-2 text-sm font-medium">
-            Dias recentes
-          </h2>
+          <h2 className="text-muted-foreground mb-2 text-sm font-medium">Dias recentes</h2>
           <div className="divide-y rounded-lg border">
             {recentes.map((v) => (
               <button
@@ -393,14 +369,10 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
                 disabled={isPending}
                 className="hover:bg-muted/50 flex w-full items-center justify-between gap-4 px-4 py-2.5 text-left text-sm"
               >
-                <span className="font-medium tabular-nums">
-                  {formatarDataCurta(v.data)}
-                </span>
+                <span className="font-medium tabular-nums">{formatarDataCurta(v.data)}</span>
                 <span className="text-muted-foreground flex items-center gap-4 tabular-nums">
                   <span>{v.quantidade} vendas</span>
-                  <span className="w-24 text-right">
-                    {formatarReais(v.faturamento)}
-                  </span>
+                  <span className="w-24 text-right">{formatarReais(v.faturamento)}</span>
                 </span>
               </button>
             ))}
@@ -466,10 +438,7 @@ function EditarDialog({
     })
   }
 
-  const totalQtd = Object.values(valores).reduce(
-    (s, v) => s + (Number(v.q) || 0),
-    0,
-  )
+  const totalQtd = Object.values(valores).reduce((s, v) => s + (Number(v.q) || 0), 0)
   const totalFat = Object.values(valores).reduce(
     (s, v) => s + Number(moedaParaDecimal(v.f) ?? 0),
     0,
@@ -513,9 +482,7 @@ function EditarDialog({
       <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-lg">
         <DialogHeader className="border-b p-6">
           <DialogTitle>Venda do dia</DialogTitle>
-          <DialogDescription className="capitalize">
-            {formatarData(dataEdit)}
-          </DialogDescription>
+          <DialogDescription className="capitalize">{formatarData(dataEdit)}</DialogDescription>
         </DialogHeader>
 
         <div className="max-h-[55vh] space-y-5 overflow-y-auto p-6">
@@ -554,9 +521,7 @@ function EditarDialog({
                         inputMode="numeric"
                         placeholder="qtd"
                         value={v.q}
-                        onChange={(e) =>
-                          set(conta.key, 'q', e.target.value.replace(/\D/g, ''))
-                        }
+                        onChange={(e) => set(conta.key, 'q', e.target.value.replace(/\D/g, ''))}
                         disabled={isPending}
                         className="h-9"
                       />
@@ -599,9 +564,7 @@ function EditarDialog({
             <span className="text-muted-foreground">Total: </span>
             <span className="font-semibold tabular-nums">{totalQtd} vendas</span>
             <span className="text-muted-foreground"> · </span>
-            <span className="font-semibold tabular-nums">
-              {formatarReais(totalFat || null)}
-            </span>
+            <span className="font-semibold tabular-nums">{formatarReais(totalFat || null)}</span>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} disabled={isPending}>

@@ -3,14 +3,7 @@
 import { LogOut } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useTransition,
-} from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useTransition } from 'react'
 
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
@@ -60,10 +53,7 @@ export function Sidebar({
   // `anima` já teria ligado — o resultado era a pílula dando um fade a cada
   // carregamento com grupo fechado.
   const grupoDoAtivo = grupos.find((grupo) =>
-    grupo.items.some(
-      (item) =>
-        pathname === item.href || pathname.startsWith(`${item.href}/`),
-    ),
+    grupo.items.some((item) => pathname === item.href || pathname.startsWith(`${item.href}/`)),
   )
   const pilulaVisivel = grupoDoAtivo != null && !collapsed[grupoDoAtivo.titulo]
   // Enquanto os grupos abrem/fecham a pílula é remedida a cada quadro; se
@@ -83,9 +73,7 @@ export function Sidebar({
     const top = ativo.offsetTop
     const height = ativo.offsetHeight
     setIndicator((prev) =>
-      prev && prev.top === top && prev.height === height
-        ? prev
-        : { top, height },
+      prev && prev.top === top && prev.height === height ? prev : { top, height },
     )
   }, [])
 
@@ -133,7 +121,7 @@ export function Sidebar({
         } as React.CSSProperties
       }
       className={cn(
-        'bg-sidebar hidden w-[var(--vv-sidebar-w)] shrink-0 overflow-hidden transition-[width] duration-200 ease-out md:flex data-arrastando:transition-none motion-reduce:transition-none print:hidden',
+        'bg-sidebar hidden w-[var(--vv-sidebar-w)] shrink-0 overflow-hidden transition-[width] duration-200 ease-out data-arrastando:transition-none motion-reduce:transition-none md:flex print:hidden',
         oculta && 'w-0',
       )}
     >
@@ -187,9 +175,7 @@ export function Sidebar({
                 triggerClassName="text-sidebar-foreground/45 hover:text-sidebar-foreground/70 px-2.5"
               >
                 {grupo.items.map((item) => {
-                  const active =
-                    pathname === item.href ||
-                    pathname.startsWith(`${item.href}/`)
+                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
                   return (
                     <Link
                       key={item.href}
@@ -206,9 +192,7 @@ export function Sidebar({
                     >
                       <item.icon className="size-4 transition-transform duration-200 group-hover/nav:translate-x-0.5" />
                       {item.label}
-                      {item.alerta === 'tarefas' && (
-                        <IndicadorTarefas prioridade={alertaTarefas} />
-                      )}
+                      {item.alerta === 'tarefas' && <IndicadorTarefas prioridade={alertaTarefas} />}
                       <NavLinkHint className="ml-auto" />
                     </Link>
                   )

@@ -4,10 +4,7 @@ import { z } from 'zod'
 const hexSchema = z
   .string()
   .trim()
-  .regex(
-    /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/,
-    'Use formato hex válido (ex: #FF5500 ou FF5)',
-  )
+  .regex(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Use formato hex válido (ex: #FF5500 ou FF5)')
   .transform((v) => {
     const cleaned = v.startsWith('#') ? v.slice(1) : v
     const expanded =
@@ -21,11 +18,7 @@ const hexSchema = z
   })
 
 export const corSchema = z.object({
-  nome: z
-    .string()
-    .trim()
-    .min(2, 'Nome muito curto')
-    .max(60, 'Nome muito longo'),
+  nome: z.string().trim().min(2, 'Nome muito curto').max(60, 'Nome muito longo'),
   // Aceita hex válido, '' , null ou ausente (o cliente transforma vazio em
   // null antes de mandar pro servidor — sem z.null() o servidor rejeitava).
   codigoHex: z

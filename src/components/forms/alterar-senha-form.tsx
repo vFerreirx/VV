@@ -9,10 +9,7 @@ import { alterarSenhaAction } from '@/app/(app)/configuracoes/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  alterarSenhaSchema,
-  type AlterarSenhaInput,
-} from '@/lib/validators/auth'
+import { alterarSenhaSchema, type AlterarSenhaInput } from '@/lib/validators/auth'
 
 export function AlterarSenhaForm() {
   const [isPending, startTransition] = useTransition()
@@ -46,9 +43,7 @@ export function AlterarSenhaForm() {
           {...form.register('senhaAtual')}
         />
         {form.formState.errors.senhaAtual && (
-          <p className="text-destructive text-sm">
-            {form.formState.errors.senhaAtual.message}
-          </p>
+          <p className="text-destructive text-sm">{form.formState.errors.senhaAtual.message}</p>
         )}
       </div>
 
@@ -62,9 +57,7 @@ export function AlterarSenhaForm() {
           {...form.register('novaSenha')}
         />
         {form.formState.errors.novaSenha && (
-          <p className="text-destructive text-sm">
-            {form.formState.errors.novaSenha.message}
-          </p>
+          <p className="text-destructive text-sm">{form.formState.errors.novaSenha.message}</p>
         )}
       </div>
 
@@ -78,9 +71,7 @@ export function AlterarSenhaForm() {
           {...form.register('confirmacao')}
         />
         {form.formState.errors.confirmacao && (
-          <p className="text-destructive text-sm">
-            {form.formState.errors.confirmacao.message}
-          </p>
+          <p className="text-destructive text-sm">{form.formState.errors.confirmacao.message}</p>
         )}
       </div>
 

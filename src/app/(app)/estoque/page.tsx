@@ -14,9 +14,7 @@ export default async function EstoquePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const user = await requireArea('estoque')
-  const podeMovimentar = podeEscrever(
-    await nivelDaAreaPara(user.role, 'estoque'),
-  )
+  const podeMovimentar = podeEscrever(await nivelDaAreaPara(user.role, 'estoque'))
 
   const sp = await searchParams
   const q = typeof sp.q === 'string' ? sp.q : undefined
@@ -28,15 +26,11 @@ export default async function EstoquePage({
       <div>
         <h1 className="text-2xl font-semibold">Estoque</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Saldo de cada variação. Produção concluída pro canal &ldquo;Estoque&rdquo;
-          entra automaticamente; vendas dão baixa.
+          Saldo de cada variação. Produção concluída pro canal &ldquo;Estoque&rdquo; entra
+          automaticamente; vendas dão baixa.
         </p>
       </div>
-      <EstoqueList
-        itens={itens}
-        podeMovimentar={podeMovimentar}
-        buscaInicial={q ?? ''}
-      />
+      <EstoqueList itens={itens} podeMovimentar={podeMovimentar} buscaInicial={q ?? ''} />
     </div>
   )
 }

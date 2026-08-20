@@ -16,19 +16,14 @@ const textoLivreOpt = z
   .transform((v) => (v == null || v.trim() === '' ? undefined : v.trim()))
   .optional()
 
-const dataSchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
+const dataSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
 
 // Valor monetário/peso obrigatório (> 0). Guardado como string (numeric).
 const decimalPositivoObrigatorio = (mensagem: string) =>
   z
     .union([z.string(), z.number()])
     .transform((v) => String(v).replace(',', '.'))
-    .refine(
-      (v) => v !== '' && !Number.isNaN(Number(v)) && Number(v) > 0,
-      mensagem,
-    )
+    .refine((v) => v !== '' && !Number.isNaN(Number(v)) && Number(v) > 0, mensagem)
 
 // Decimal OPCIONAL: vazio vira `null`, que quer dizer "não tem". Nunca 0 —
 // zero é um valor, e num campo de dinheiro mente (R$ 0,00/kg lê como fio de
@@ -36,13 +31,8 @@ const decimalPositivoObrigatorio = (mensagem: string) =>
 const decimalOpcional = (mensagem: string) =>
   z
     .union([z.string(), z.number(), z.null(), z.undefined()])
-    .transform((v) =>
-      v == null || String(v).trim() === '' ? null : String(v).replace(',', '.'),
-    )
-    .refine(
-      (v) => v === null || (!Number.isNaN(Number(v)) && Number(v) > 0),
-      mensagem,
-    )
+    .transform((v) => (v == null || String(v).trim() === '' ? null : String(v).replace(',', '.')))
+    .refine((v) => v === null || (!Number.isNaN(Number(v)) && Number(v) > 0), mensagem)
 
 // Texto opcional que vira `null` (e não `undefined`) — é o que o insert
 // precisa mandar pra coluna nullable.

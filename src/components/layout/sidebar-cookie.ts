@@ -45,10 +45,7 @@ export function naFaixa(alvo: AlvoLargura, px: number, teto?: number): number {
 }
 
 /** Cookie vem do navegador: trata lixo caindo no padrão. */
-export function larguraDoCookie(
-  alvo: AlvoLargura,
-  bruto: string | undefined,
-): number {
+export function larguraDoCookie(alvo: AlvoLargura, bruto: string | undefined): number {
   const px = Number(bruto)
   if (!Number.isFinite(px)) return LARGURAS[alvo].padrao
   return naFaixa(alvo, px)

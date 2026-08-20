@@ -41,9 +41,7 @@ export function EstoqueFiosTabs({
     { value: 'saldo', label: 'Estoque' },
     { value: 'cores', label: 'Cores do fornecedor' },
   ]
-  const def = abas.some((a) => a.value === tabInicial)
-    ? tabInicial
-    : abas[0]!.value
+  const def = abas.some((a) => a.value === tabInicial) ? tabInicial : abas[0]!.value
 
   const coresFornecedorAtivas = coresFornecedor.filter((c) => c.ativo)
 
@@ -55,15 +53,12 @@ export function EstoqueFiosTabs({
       <div>
         <h1 className="text-2xl font-semibold">Estoque de fios</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          As entradas de lote, o estoque no formato da planilha e o de-para
-          entre a cor do fornecedor e a cor do catálogo.
+          As entradas de lote, o estoque no formato da planilha e o de-para entre a cor do
+          fornecedor e a cor do catálogo.
         </p>
       </div>
 
-      <Tabs
-        value={aba}
-        onValueChange={(v) => startTransition(() => setAba(v ?? def))}
-      >
+      <Tabs value={aba} onValueChange={(v) => startTransition(() => setAba(v ?? def))}>
         <TabsList>
           {abas.map((a) => (
             <TabsTrigger key={a.value} value={a.value}>
@@ -79,13 +74,7 @@ export function EstoqueFiosTabs({
             As abas viraram controladas e a troca vai dentro de
             startTransition porque o <ViewTransition> so e ativado por
             Transition/Suspense; setState puro nao dispara nada. */}
-        <ViewTransition
-          key={aba}
-          name="conteudo-abas"
-          share="auto"
-          enter="auto"
-          default="none"
-        >
+        <ViewTransition key={aba} name="conteudo-abas" share="auto" enter="auto" default="none">
           <div>
             <TabsContent value="entradas" className="mt-2">
               <LotesFioList

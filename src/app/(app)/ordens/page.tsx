@@ -65,13 +65,11 @@ export default async function OrdensPage({
               </Button>
             )}
             {podeEditar && (
-              <NovoFull
-                remessas={remessas}
-                produtos={produtosParaKit}
-                contas={contas}
-              />
+              <NovoFull remessas={remessas} produtos={produtosParaKit} contas={contas} />
             )}
-            {podeGerarKit && kits.length > 0 && <GerarDeKit kits={kits} produtos={produtosParaKit} />}
+            {podeGerarKit && kits.length > 0 && (
+              <GerarDeKit kits={kits} produtos={produtosParaKit} />
+            )}
             {podeEditar && <Button render={<Link href="/ordens/novo" />}>Nova OP</Button>}
           </div>
         </div>

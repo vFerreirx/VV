@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Store,
+  Tags,
   Spool,
   Trash2,
   Users,
@@ -117,6 +118,12 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/produtos', label: 'Produtos', icon: Package, area: 'produtos' },
       { href: '/kits', label: 'Kits', icon: Combine, area: 'produtos' },
+      {
+        href: '/precos-marketplace',
+        label: 'Preços de marketplace',
+        icon: Tags,
+        area: 'precosMarketplace',
+      },
       {
         href: '/variacoes',
         label: 'Variações',

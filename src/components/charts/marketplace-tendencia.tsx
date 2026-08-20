@@ -17,11 +17,7 @@ import {
   type TendenciaMetrica,
 } from '@/app/(app)/relatorios/actions'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  CONTAS_MARKETPLACE,
-  MARKETPLACE_LABEL,
-  type Marketplace,
-} from '@/lib/validators/vendas'
+import { CONTAS_MARKETPLACE, MARKETPLACE_LABEL, type Marketplace } from '@/lib/validators/vendas'
 import { cn } from '@/lib/utils'
 
 // Paleta com cores distintas o suficiente pra até 10 contas.
@@ -50,13 +46,7 @@ function formatBRL(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
-export function MarketplaceTendencia({
-  inicio,
-  fim,
-}: {
-  inicio: string
-  fim: string
-}) {
+export function MarketplaceTendencia({ inicio, fim }: { inicio: string; fim: string }) {
   const [metrica, setMetrica] = useState<TendenciaMetrica>('faturamento')
   const [dados, setDados] = useState<TendenciaMarketplace | null>(null)
   const [carregando, setCarregando] = useState(true)
@@ -70,9 +60,7 @@ export function MarketplaceTendencia({
       if (!ativo) return
       setDados(r)
       setSel((prev) => {
-        const validos = new Set(
-          [...prev].filter((k) => r.contas.some((c) => c.key === k)),
-        )
+        const validos = new Set([...prev].filter((k) => r.contas.some((c) => c.key === k)))
         if (validos.size > 0) return validos
         // padrão: as 4 contas com maior movimento
         return new Set(r.contas.slice(0, 4).map((c) => c.key))
@@ -110,8 +98,8 @@ export function MarketplaceTendencia({
         <div>
           <h3 className="font-medium">Tendência por conta</h3>
           <p className="text-muted-foreground text-xs">
-            {metrica === 'faturamento' ? 'Faturamento' : 'Vendas'} por dia, por
-            conta de marketplace.
+            {metrica === 'faturamento' ? 'Faturamento' : 'Vendas'} por dia, por conta de
+            marketplace.
           </p>
         </div>
 
@@ -152,10 +140,7 @@ export function MarketplaceTendencia({
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={dados!.pontos}
-              margin={{ top: 8, right: 8, left: -8, bottom: 0 }}
-            >
+            <LineChart data={dados!.pontos} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke="currentColor"
@@ -194,9 +179,7 @@ export function MarketplaceTendencia({
                 }}
                 labelStyle={{ color: 'var(--foreground)', fontWeight: 500 }}
                 formatter={(value) =>
-                  metrica === 'faturamento'
-                    ? formatBRL(Number(value))
-                    : Number(value)
+                  metrica === 'faturamento' ? formatBRL(Number(value)) : Number(value)
                 }
               />
               {contas

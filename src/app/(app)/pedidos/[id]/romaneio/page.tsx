@@ -9,11 +9,7 @@ import { calcularPesos } from '@/lib/peso'
 
 export const metadata: Metadata = { title: 'Romaneio — Vanvest' }
 
-export default async function RomaneioPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function RomaneioPage({ params }: { params: Promise<{ id: string }> }) {
   await requireArea('vendas')
   const { id } = await params
 

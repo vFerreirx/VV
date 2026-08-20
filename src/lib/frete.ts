@@ -81,8 +81,7 @@ export type AvaliacaoDeMedidas = {
   avisos: string[]
 }
 
-const num = (n: number) =>
-  n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
+const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })
 
 /**
  * Avalia UM pacote contra os limites dos Correios. As mensagens trazem a
@@ -149,13 +148,8 @@ export function capacidadeGramas(faixas: FaixaDeEmbalagem[]): number {
 }
 
 /** A menor faixa que comporta este peso, ou `null` se nenhuma comporta. */
-export function faixaPara(
-  pesoGramas: number,
-  faixas: FaixaDeEmbalagem[],
-): FaixaDeEmbalagem | null {
-  return (
-    ordenarFaixas(faixas).find((f) => f.pesoAteGramas >= pesoGramas) ?? null
-  )
+export function faixaPara(pesoGramas: number, faixas: FaixaDeEmbalagem[]): FaixaDeEmbalagem | null {
+  return ordenarFaixas(faixas).find((f) => f.pesoAteGramas >= pesoGramas) ?? null
 }
 
 /**
@@ -168,10 +162,7 @@ export function faixaPara(
  *
  * Peso exato do múltiplo não gera um pacote vazio no fim (54 kg = dois de 27).
  */
-export function dividirEmPacotes(
-  pesoGramas: number,
-  faixas: FaixaDeEmbalagem[],
-): Pacote[] {
+export function dividirEmPacotes(pesoGramas: number, faixas: FaixaDeEmbalagem[]): Pacote[] {
   if (pesoGramas <= 0 || faixas.length === 0) return []
   const ordenadas = ordenarFaixas(faixas)
   const maior = ordenadas[ordenadas.length - 1]!
@@ -243,10 +234,7 @@ export function valorDeclaradoCentavos(totalCentavos: number): number {
  *
  * Tudo em CENTAVOS inteiros; a conversão pra reais é na borda.
  */
-export function ratearValorDeclarado(
-  valorCentavos: number,
-  pacotes: Pacote[],
-): number[] {
+export function ratearValorDeclarado(valorCentavos: number, pacotes: Pacote[]): number[] {
   if (pacotes.length === 0) return []
   if (pacotes.length === 1) return [valorCentavos]
 
@@ -259,9 +247,7 @@ export function ratearValorDeclarado(
     return partes
   }
 
-  const partes = pacotes.map((p) =>
-    Math.floor((valorCentavos * p.pesoGramas) / somaPeso),
-  )
+  const partes = pacotes.map((p) => Math.floor((valorCentavos * p.pesoGramas) / somaPeso))
   const distribuido = partes.slice(0, -1).reduce((s, v) => s + v, 0)
   partes[partes.length - 1] = valorCentavos - distribuido
   return partes
@@ -312,16 +298,10 @@ export function soDigitosCep(cep: string): string {
   return cep.replace(/\D/g, '')
 }
 
-export function montarVolumes(
-  pacotes: Pacote[],
-  totalCentavos: number,
-): VolumeApi[] {
+export function montarVolumes(pacotes: Pacote[], totalCentavos: number): VolumeApi[] {
   // Recebe o TOTAL do pedido e declara a fração dela — a redução vem ANTES do
   // rateio, pra soma dos volumes fechar exatamente o declarado.
-  const valores = ratearValorDeclarado(
-    valorDeclaradoCentavos(totalCentavos),
-    pacotes,
-  )
+  const valores = ratearValorDeclarado(valorDeclaradoCentavos(totalCentavos), pacotes)
   return pacotes.map((p, i) => {
     const valor = centavosParaReais(valores[i] ?? 0)
     return {

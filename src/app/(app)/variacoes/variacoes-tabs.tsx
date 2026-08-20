@@ -33,9 +33,7 @@ export function VariacoesTabs({
     acessoTamanhos.ver ? { value: 'tamanhos', label: 'Tamanhos' } : null,
   ].filter((a): a is { value: string; label: string } => a !== null)
 
-  const def = abas.some((a) => a.value === tabInicial)
-    ? tabInicial
-    : abas[0]?.value
+  const def = abas.some((a) => a.value === tabInicial) ? tabInicial : abas[0]?.value
 
   const [aba, setAba] = useState(def)
   const [, startTransition] = useTransition()
@@ -49,10 +47,7 @@ export function VariacoesTabs({
         </p>
       </div>
 
-      <Tabs
-        value={aba}
-        onValueChange={(v) => startTransition(() => setAba(v ?? def))}
-      >
+      <Tabs value={aba} onValueChange={(v) => startTransition(() => setAba(v ?? def))}>
         <TabsList>
           {abas.map((a) => (
             <TabsTrigger key={a.value} value={a.value}>
@@ -68,15 +63,8 @@ export function VariacoesTabs({
             As abas viraram controladas e a troca vai dentro de
             startTransition porque o <ViewTransition> so e ativado por
             Transition/Suspense; setState puro nao dispara nada. */}
-        <ViewTransition
-          key={aba}
-          name="conteudo-abas"
-          share="auto"
-          enter="auto"
-          default="none"
-        >
+        <ViewTransition key={aba} name="conteudo-abas" share="auto" enter="auto" default="none">
           <div>
-
             {acessoCores.ver && (
               <TabsContent value="cores" className="mt-2">
                 <CoresList cores={cores} podeEditar={acessoCores.editar} />
@@ -89,10 +77,7 @@ export function VariacoesTabs({
             )}
             {acessoTamanhos.ver && (
               <TabsContent value="tamanhos" className="mt-2">
-                <TamanhosList
-                  tamanhos={tamanhos}
-                  podeEditar={acessoTamanhos.editar}
-                />
+                <TamanhosList tamanhos={tamanhos} podeEditar={acessoTamanhos.editar} />
               </TabsContent>
             )}
           </div>

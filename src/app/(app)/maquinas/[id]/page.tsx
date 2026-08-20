@@ -4,27 +4,17 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { listarOperadores, obterMaquina } from '../actions'
-import {
-  MaquinaForm,
-  type MaquinaFormDefaults,
-} from '@/components/forms/maquina-form'
+import { MaquinaForm, type MaquinaFormDefaults } from '@/components/forms/maquina-form'
 import { Button } from '@/components/ui/button'
 import { requireAreaEscrita } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Editar máquina — Vanvest' }
 
-export default async function EditarMaquinaPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
+export default async function EditarMaquinaPage({ params }: { params: Promise<{ id: string }> }) {
   await requireAreaEscrita('maquinas')
   const { id } = await params
 
-  const [maquina, operadores] = await Promise.all([
-    obterMaquina(id),
-    listarOperadores(),
-  ])
+  const [maquina, operadores] = await Promise.all([obterMaquina(id), listarOperadores()])
   if (!maquina) notFound()
 
   const defaults: MaquinaFormDefaults = {

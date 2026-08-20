@@ -31,11 +31,7 @@ import {
 import type { CompradorOpcao } from '../clientes/actions'
 import type { KitComItens } from '../kits/actions'
 import type { ProdutoComVariacoesParaForm } from '../ordens/actions'
-import {
-  freteEmCentavos,
-  temFrete,
-  totalComFrete,
-} from '@/lib/total-pedido'
+import { freteEmCentavos, temFrete, totalComFrete } from '@/lib/total-pedido'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -74,23 +70,14 @@ import { Textarea } from '@/components/ui/textarea'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import { cn } from '@/lib/utils'
 import {
+  chaveDeTamanhos,
   componentesVariaveis,
   tamanhoDoComponente as resolverTamanhoComponente,
   tamanhoDoKit,
   type EscolhasDeTamanho,
 } from '@/lib/kit-tamanhos'
-import {
-  ehExcecao,
-  ROTULO_STATUS,
-  statusAlcancaveis,
-  type StatusPedido,
-} from '@/lib/pedido-status'
-import {
-  centavosParaMoeda,
-  precoDeKit,
-  precoDeProduto,
-  type TabelaDePrecos,
-} from '@/lib/preco'
+import { ehExcecao, ROTULO_STATUS, statusAlcancaveis, type StatusPedido } from '@/lib/pedido-status'
+import { centavosParaMoeda, precoDeKit, precoDeProduto, type TabelaDePrecos } from '@/lib/preco'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 type Props = {
@@ -207,9 +194,7 @@ export function OrcamentosView({
 
   const gruposFiltrados = useMemo(() => {
     const entradas = [...gruposMes.entries()]
-    return mesSel === 'todos'
-      ? entradas
-      : entradas.filter(([key]) => key === mesSel)
+    return mesSel === 'todos' ? entradas : entradas.filter(([key]) => key === mesSel)
   }, [gruposMes, mesSel])
 
   return (
@@ -238,10 +223,7 @@ export function OrcamentosView({
       ) : (
         <>
           <div className="flex justify-end">
-            <Select
-              value={mesSel}
-              onValueChange={(v) => setMesSel(v ?? 'todos')}
-            >
+            <Select value={mesSel} onValueChange={(v) => setMesSel(v ?? 'todos')}>
               <SelectTrigger size="sm" className="w-48">
                 <SelectValue placeholder="Mês" />
               </SelectTrigger>
@@ -286,10 +268,7 @@ export function OrcamentosView({
                           #{formatarNumeroPedido(o.numero)}
                         </TableCell>
                         <TableCell className="font-medium">
-                          <Link
-                            href={`/pedidos/${o.id}`}
-                            className="hover:underline"
-                          >
+                          <Link href={`/pedidos/${o.id}`} className="hover:underline">
                             {o.cliente}
                           </Link>
                           {/* Indicador DISCRETO de item faltante. Sem ele,
@@ -315,9 +294,7 @@ export function OrcamentosView({
                         <TableCell>
                           <StatusBadge orcamento={o} podeEditar={podeEditar} />
                         </TableCell>
-                        <TableCell className="text-right tabular-nums">
-                          {o.itensCount}
-                        </TableCell>
+                        <TableCell className="text-right tabular-nums">{o.itensCount}</TableCell>
                         {/* COM frete, e sem coluna separada pra ele — foi
                             decidido assim. `o.total` (mercadoria) continua
                             existindo pra quem precisa dele. */}
@@ -338,9 +315,7 @@ export function OrcamentosView({
                             <Button
                               size="icon-sm"
                               variant="ghost"
-                              render={
-                                <Link href={`/pedidos/${o.id}/separacao`} />
-                              }
+                              render={<Link href={`/pedidos/${o.id}/separacao`} />}
                               aria-label="Via de separação"
                               title="Via de separação (sem preço)"
                             >
@@ -349,9 +324,7 @@ export function OrcamentosView({
                             <Button
                               size="icon-sm"
                               variant="ghost"
-                              render={
-                                <Link href={`/pedidos/${o.id}/romaneio`} />
-                              }
+                              render={<Link href={`/pedidos/${o.id}/romaneio`} />}
                               aria-label="Romaneio"
                               title="Romaneio (com valores e assinatura)"
                             >
@@ -412,10 +385,7 @@ export function OrcamentosView({
           onClose={() => setEditando(null)}
         />
       )}
-      <ExcluirDialog
-        orcamento={excluindo}
-        onClose={() => setExcluindo(null)}
-      />
+      <ExcluirDialog orcamento={excluindo} onClose={() => setExcluindo(null)} />
     </div>
   )
 }
@@ -490,16 +460,12 @@ function OrcamentoDialog({
   const [cliente, setCliente] = useState(dados?.cliente ?? '')
   // Vínculo opcional com o cadastro. Digitar um nome livre no campo de texto
   // limpa o vínculo — o `cliente` continua sendo o que vai pro documento.
-  const [compradorId, setCompradorId] = useState<string | null>(
-    dados?.compradorId ?? null,
-  )
+  const [compradorId, setCompradorId] = useState<string | null>(dados?.compradorId ?? null)
   const [observacao, setObservacao] = useState(dados?.observacao ?? '')
   // FRETE DIGITADO: campo comum, editável sempre. Cotar pelo Melhor Envio
   // (na tela do pedido) é ATALHO — a cotação escolhida preenche esta mesma
   // coluna, e digitar por cima é o caso normal, não uma exceção.
-  const [frete, setFrete] = useState(
-    dados?.freteValor ? decimalParaMoeda(dados.freteValor) : '',
-  )
+  const [frete, setFrete] = useState(dados?.freteValor ? decimalParaMoeda(dados.freteValor) : '')
   const [itens, setItens] = useState<LinhaItem[]>(() =>
     dados
       ? dados.itens.map((it) => ({
@@ -537,8 +503,7 @@ function OrcamentoDialog({
   }
 
   const total = itens.reduce(
-    (s, l) =>
-      s + (Number(l.quantidade) || 0) * Number(moedaParaDecimal(l.preco) || 0),
+    (s, l) => s + (Number(l.quantidade) || 0) * Number(moedaParaDecimal(l.preco) || 0),
     0,
   )
   const totalUnidades = itens.reduce(
@@ -618,8 +583,8 @@ function OrcamentoDialog({
                 : 'Fazer pedido'}
           </DialogTitle>
           <DialogDescription>
-            Itens com quantidade e preço unitário. Puxe um produto do
-            catálogo ou escreva a descrição livre.
+            Itens com quantidade e preço unitário. Puxe um produto do catálogo ou escreva a
+            descrição livre.
           </DialogDescription>
         </DialogHeader>
 
@@ -636,9 +601,7 @@ function OrcamentoDialog({
             <div className="space-y-1.5">
               <Label htmlFor="orc-comprador">
                 Cliente do cadastro{' '}
-                <span className="text-muted-foreground font-normal">
-                  (opcional)
-                </span>
+                <span className="text-muted-foreground font-normal">(opcional)</span>
               </Label>
               <div className="flex gap-2">
                 <Select
@@ -658,7 +621,7 @@ function OrcamentoDialog({
                   <SelectTrigger id="orc-comprador" className="w-full">
                     <SelectValue placeholder="Escolher do cadastro…" />
                   </SelectTrigger>
-                  <SelectContent className="w-auto min-w-(--anchor-width) max-w-[92vw]">
+                  <SelectContent className="w-auto max-w-[92vw] min-w-(--anchor-width)">
                     {compradores.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.nome}
@@ -722,12 +685,7 @@ function OrcamentoDialog({
             onAdd={(novas) =>
               setItens((prev) => {
                 // Substitui a linha inicial vazia, se for a única.
-                const base =
-                  prev.length === 1 &&
-                  !prev[0].descricao &&
-                  !prev[0].preco
-                    ? []
-                    : prev
+                const base = prev.length === 1 && !prev[0].descricao && !prev[0].preco ? [] : prev
                 return [...base, ...novas]
               })
             }
@@ -741,65 +699,58 @@ function OrcamentoDialog({
                 trataria os dois como itens da lista. */}
             <div ref={listaItens} className="space-y-2">
               {itens.map((linha, idx) => (
-              <div
-                key={linha.id}
-                className="grid grid-cols-[1fr_4rem_7rem_auto] items-center gap-2"
-              >
-                <Input
-                  aria-label="Descrição do item"
-                  placeholder="Descrição (ex.: Peseira Aconchego King Terracota)"
-                  value={linha.descricao}
-                  onChange={(e) => patchItem(idx, { descricao: e.target.value })}
-                  disabled={isPending}
-                  className="h-9"
-                />
-                <Input
-                  inputMode="numeric"
-                  aria-label="Quantidade"
-                  placeholder="qtd"
-                  value={linha.quantidade}
-                  onChange={(e) =>
-                    patchItem(idx, {
-                      quantidade: e.target.value.replace(/\D/g, ''),
-                    })
-                  }
-                  disabled={isPending}
-                  className="h-9 text-center"
-                />
-                <div className="relative">
-                  <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
-                    R$
-                  </span>
+                <div
+                  key={linha.id}
+                  className="grid grid-cols-[1fr_4rem_7rem_auto] items-center gap-2"
+                >
                   <Input
-                    aria-label="Preço unitário"
-                    inputMode="decimal"
-                    placeholder="0,00"
-                    value={linha.preco}
+                    aria-label="Descrição do item"
+                    placeholder="Descrição (ex.: Peseira Aconchego King Terracota)"
+                    value={linha.descricao}
+                    onChange={(e) => patchItem(idx, { descricao: e.target.value })}
+                    disabled={isPending}
+                    className="h-9"
+                  />
+                  <Input
+                    inputMode="numeric"
+                    aria-label="Quantidade"
+                    placeholder="qtd"
+                    value={linha.quantidade}
                     onChange={(e) =>
-                      patchItem(idx, { preco: mascararMoeda(e.target.value) })
+                      patchItem(idx, {
+                        quantidade: e.target.value.replace(/\D/g, ''),
+                      })
                     }
                     disabled={isPending}
-                    className="h-9 pl-7 text-right"
+                    className="h-9 text-center"
                   />
-                </div>
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  onClick={() => removeItem(idx)}
-                  disabled={isPending || itens.length === 1}
-                  aria-label="Remover item"
-                >
-                  <X />
-                </Button>
+                  <div className="relative">
+                    <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
+                      R$
+                    </span>
+                    <Input
+                      aria-label="Preço unitário"
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      value={linha.preco}
+                      onChange={(e) => patchItem(idx, { preco: mascararMoeda(e.target.value) })}
+                      disabled={isPending}
+                      className="h-9 pl-7 text-right"
+                    />
+                  </div>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={() => removeItem(idx)}
+                    disabled={isPending || itens.length === 1}
+                    aria-label="Remover item"
+                  >
+                    <X />
+                  </Button>
                 </div>
               ))}
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => addItem()}
-              disabled={isPending}
-            >
+            <Button size="sm" variant="outline" onClick={() => addItem()} disabled={isPending}>
               <Plus />
               Adicionar item
             </Button>
@@ -822,10 +773,7 @@ function OrcamentoDialog({
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1.5">
               <Label htmlFor="orc-frete" className="text-xs">
-                Frete{' '}
-                <span className="text-muted-foreground font-normal">
-                  (opcional)
-                </span>
+                Frete <span className="text-muted-foreground font-normal">(opcional)</span>
               </Label>
               <div className="relative">
                 <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
@@ -851,25 +799,19 @@ function OrcamentoDialog({
                 {temFrete(freteDecimal) && (
                   <>
                     {' · frete '}
-                    <span className="tabular-nums">
-                      {reais(Number(freteDecimal))}
-                    </span>
+                    <span className="tabular-nums">{reais(Number(freteDecimal))}</span>
                   </>
                 )}
               </div>
               <div>
                 <span className="text-muted-foreground">Total: </span>
-                <span className="font-semibold tabular-nums">
-                  {reais(totalGeral)}
-                </span>
+                <span className="font-semibold tabular-nums">{reais(totalGeral)}</span>
               </div>
               {/* De onde veio o número — sem isso ninguém sabe se é
                   estimativa ou combinado. */}
               {temFrete(freteDecimal) && (
                 <div className="text-muted-foreground text-xs">
-                  {cotacaoDeOrigem
-                    ? `Frete cotado: ${cotacaoDeOrigem}`
-                    : 'Frete informado à mão'}
+                  {cotacaoDeOrigem ? `Frete cotado: ${cotacaoDeOrigem}` : 'Frete informado à mão'}
                 </div>
               )}
             </div>
@@ -927,9 +869,7 @@ function CatalogoBuilder({
   const produto = origem.startsWith('p:')
     ? produtos.find((p) => p.id === origem.slice(2))
     : undefined
-  const kit = origem.startsWith('k:')
-    ? kits.find((k) => k.id === origem.slice(2))
-    : undefined
+  const kit = origem.startsWith('k:') ? kits.find((k) => k.id === origem.slice(2)) : undefined
 
   const SEM_MODELO = 'Sem modelo'
   const modeloDoProduto = (p: ProdutoComVariacoesParaForm): string =>
@@ -949,21 +889,16 @@ function CatalogoBuilder({
   }
 
   // Modelos que têm ao menos um produto/kit, em ordem.
-  const modelos = distintos([
-    ...produtos.map(modeloDoProduto),
-    ...kits.map(modeloDoKit),
-  ]).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-
-  const produtosDoModelo = produtos.filter(
-    (p) => modeloDoProduto(p) === modeloSel,
+  const modelos = distintos([...produtos.map(modeloDoProduto), ...kits.map(modeloDoKit)]).sort(
+    (a, b) => a.localeCompare(b, 'pt-BR'),
   )
+
+  const produtosDoModelo = produtos.filter((p) => modeloDoProduto(p) === modeloSel)
   const kitsDoModelo = kits.filter((k) => modeloDoKit(k) === modeloSel)
 
   // Tamanhos do produto (kits não têm tamanho no builder).
   const tamanhos = produto
-    ? distintos(produto.variacoes.map((v) => tok(v.tamanho))).filter(
-        (t) => t !== SEM,
-      )
+    ? distintos(produto.variacoes.map((v) => tok(v.tamanho))).filter((t) => t !== SEM)
     : []
 
   // Cores do PRODUTO (chips multi-seleção), das variações do tamanho
@@ -980,20 +915,14 @@ function CatalogoBuilder({
   // Cores disponíveis de um produto do kit (por item).
   function coresDoProduto(produtoId: string): string[] {
     const p = produtos.find((x) => x.id === produtoId)
-    return distintos(
-      (p?.variacoes ?? [])
-        .map((v) => v.cor)
-        .filter((c): c is string => Boolean(c)),
-    )
+    return distintos((p?.variacoes ?? []).map((v) => v.cor).filter((c): c is string => Boolean(c)))
   }
 
   // Tamanhos de um produto do kit (por item).
   function tamanhosDoProduto(produtoId: string): string[] {
     const p = produtos.find((x) => x.id === produtoId)
     return distintos(
-      (p?.variacoes ?? [])
-        .map((v) => v.tamanho)
-        .filter((t): t is string => Boolean(t)),
+      (p?.variacoes ?? []).map((v) => v.tamanho).filter((t): t is string => Boolean(t)),
     )
   }
 
@@ -1009,8 +938,16 @@ function CatalogoBuilder({
 
   // Tamanho que representa o kit inteiro — só existe com exatamente um
   // componente variável. É o que vai pra `orcamento_itens.tamanho`.
-  const tamanhoDoKitAtual = kit
-    ? tamanhoDoKit(kit.itens, tamanhosKit, tamanhosDoProduto)
+  const tamanhoDoKitAtual = kit ? tamanhoDoKit(kit.itens, tamanhosKit, tamanhosDoProduto) : null
+
+  // CHAVE DO PREÇO FECHADO, que NÃO é `tamanhoDoKitAtual`. As duas são
+  // `string | null` e o TypeScript aceita uma no lugar da outra sem reclamar
+  // — mas `tamanhoDoKitAtual` é null sempre que dois componentes variam, e
+  // aí o preço cadastrado do Kit ACONCHEGO nunca seria encontrado. É o
+  // "preço inalcançável sem ninguém perceber" que src/lib/kit-tamanhos.ts
+  // existe pra impedir. A chave é a combinação, e vem de lá.
+  const combinacaoDoKitAtual = kit
+    ? chaveDeTamanhos(kit.itens, tamanhosKit, tamanhosDoProduto)
     : null
 
   function trocarModelo(m: string) {
@@ -1040,9 +977,7 @@ function CatalogoBuilder({
   }
 
   function descricaoDe(cor?: string): string {
-    const base = produto
-      ? `${produto.nome}${tamanho ? ` ${tamanho}` : ''}`
-      : (kit?.nome ?? '')
+    const base = produto ? `${produto.nome}${tamanho ? ` ${tamanho}` : ''}` : (kit?.nome ?? '')
     return cor ? `${base} - ${cor}` : base
   }
 
@@ -1117,9 +1052,7 @@ function CatalogoBuilder({
       }
       // E o tamanho de cada componente que tem mais de um. Sem isso a peça
       // entra no pedido sem tamanho, e sem tamanho não há peso nem preço.
-      const semTamanho = variaveis.some(
-        (it) => !tamanhoDoComponente(it.produtoId),
-      )
+      const semTamanho = variaveis.some((it) => !tamanhoDoComponente(it.produtoId))
       if (semTamanho) {
         toast.error('Escolha o tamanho de cada item do kit')
         return
@@ -1141,7 +1074,7 @@ function CatalogoBuilder({
       const daTabela = precoDeKit(
         tabela,
         kit.id,
-        tamanhoDoKitAtual,
+        combinacaoDoKitAtual,
         kit.itens.map((it) => ({
           produtoId: it.produtoId,
           quantidade: it.quantidade,
@@ -1203,7 +1136,7 @@ function CatalogoBuilder({
           <SelectTrigger size="sm" className="w-full">
             <SelectValue placeholder="Modelo" />
           </SelectTrigger>
-          <SelectContent className="w-auto min-w-(--anchor-width) max-w-[92vw]">
+          <SelectContent className="w-auto max-w-[92vw] min-w-(--anchor-width)">
             {modelos.map((m) => (
               <SelectItem key={m} value={m}>
                 {m}
@@ -1234,7 +1167,7 @@ function CatalogoBuilder({
               <SelectValue placeholder="Produto ou kit" />
             </SelectTrigger>
             {/* Popup mais largo que o campo pra nomes longos de kit. */}
-            <SelectContent className="w-auto min-w-(--anchor-width) max-w-[92vw]">
+            <SelectContent className="w-auto max-w-[92vw] min-w-(--anchor-width)">
               {produtosDoModelo.map((p) => (
                 <SelectItem key={p.id} value={`p:${p.id}`}>
                   {semSufixoModelo(p.nome, modeloSel)}
@@ -1276,7 +1209,6 @@ function CatalogoBuilder({
             </SelectContent>
           </Select>
         )}
-
       </div>
 
       {produto && cores.length > 0 && (
@@ -1315,10 +1247,7 @@ function CatalogoBuilder({
             // há o que perguntar: linha sem campo nenhum não entra.
             if (cores.length === 0 && tams.length <= 1) return null
             return (
-              <div
-                key={it.id}
-                className="grid grid-cols-[1fr_auto] items-center gap-2"
-              >
+              <div key={it.id} className="grid grid-cols-[1fr_auto] items-center gap-2">
                 <span className="text-muted-foreground truncate text-xs">
                   {it.quantidade}× {it.produtoNome}
                 </span>
@@ -1353,9 +1282,7 @@ function CatalogoBuilder({
                   {cores.length > 0 && (
                     <Select
                       value={coresKit[it.id] || null}
-                      onValueChange={(v) =>
-                        setCoresKit((prev) => ({ ...prev, [it.id]: v ?? '' }))
-                      }
+                      onValueChange={(v) => setCoresKit((prev) => ({ ...prev, [it.id]: v ?? '' }))}
                       disabled={disabled}
                     >
                       <SelectTrigger
@@ -1448,9 +1375,8 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir pedido?</DialogTitle>
           <DialogDescription>
-            O pedido #{orcamento && formatarNumeroPedido(orcamento.numero)} de{' '}
-            {orcamento?.cliente} será
-            removido.
+            O pedido #{orcamento && formatarNumeroPedido(orcamento.numero)} de {orcamento?.cliente}{' '}
+            será removido.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -1546,10 +1472,7 @@ function StatusBadge({
   function Item({ s }: { s: StatusPedido }) {
     return (
       <DropdownMenuItem onClick={() => mudarPara(s)}>
-        <span
-          className={cn('size-2 rounded-full', ESTILO_STATUS[s].ponto)}
-          aria-hidden
-        />
+        <span className={cn('size-2 rounded-full', ESTILO_STATUS[s].ponto)} aria-hidden />
         {ROTULO_STATUS[s]}
       </DropdownMenuItem>
     )

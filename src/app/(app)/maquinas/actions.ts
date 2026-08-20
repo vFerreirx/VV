@@ -9,13 +9,7 @@ import {
   requireAreaEscrita,
 } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import {
-  estacoes,
-  maquinas,
-  users,
-  type Maquina,
-  type User,
-} from '@/lib/db/schema'
+import { estacoes, maquinas, users, type Maquina, type User } from '@/lib/db/schema'
 import {
   maquinaSchema,
   maquinasFiltrosSchema,
@@ -39,9 +33,7 @@ export type MaquinaListItem = Maquina & {
   estacaoNome: string | null
 }
 
-export async function listarMaquinas(
-  filtros: MaquinasFiltros = {},
-): Promise<MaquinaListItem[]> {
+export async function listarMaquinas(filtros: MaquinasFiltros = {}): Promise<MaquinaListItem[]> {
   await requireAuth()
 
   const parsed = maquinasFiltrosSchema.safeParse(filtros)
@@ -230,8 +222,7 @@ export async function trocarStatusAction(
 
   // Manager pode tudo. Operador só na própria máquina.
   const podeAlterar =
-    isManagerRole(user.role) ||
-    (user.role === 'operador' && atual.operadorAtualId === user.id)
+    isManagerRole(user.role) || (user.role === 'operador' && atual.operadorAtualId === user.id)
   if (!podeAlterar) {
     return { success: false, error: 'Sem permissão pra alterar essa máquina' }
   }

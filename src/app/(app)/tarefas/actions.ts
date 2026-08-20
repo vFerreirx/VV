@@ -58,8 +58,7 @@ function comEfetiva(
   }
 }
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const LIMITE_CONCLUIDAS = 50
 
@@ -94,13 +93,9 @@ const ORDEM_PENDENTES = [
 // URGENTE PRIMEIRO, pelo efetivo. Depois o prazo mais próximo (as vencidas
 // caem no topo sozinhas, porque a data é menor), sem prazo por último, e
 // entre as sem prazo a mais nova primeiro.
-function compararPendentes(
-  a: TarefaComContexto,
-  b: TarefaComContexto,
-): number {
+function compararPendentes(a: TarefaComContexto, b: TarefaComContexto): number {
   const nivel =
-    PRIORIDADE_NIVEIS.indexOf(b.prioridadeEfetiva) -
-    PRIORIDADE_NIVEIS.indexOf(a.prioridadeEfetiva)
+    PRIORIDADE_NIVEIS.indexOf(b.prioridadeEfetiva) - PRIORIDADE_NIVEIS.indexOf(a.prioridadeEfetiva)
   if (nivel !== 0) return nivel
 
   if (a.prazo !== b.prazo) {
@@ -164,9 +159,7 @@ export async function listarTarefas(): Promise<ListaTarefas> {
 }
 
 // Bloco do painel inicial: só as pendentes mais urgentes.
-export async function listarTarefasDoPainel(
-  limite = 5,
-): Promise<TarefaComContexto[]> {
+export async function listarTarefasDoPainel(limite = 5): Promise<TarefaComContexto[]> {
   await requireRole(['admin'])
 
   return (await buscarPendentes()).slice(0, limite)
@@ -193,16 +186,12 @@ async function contaValida(id: string): Promise<boolean> {
   const [row] = await db
     .select({ id: contasMarketplace.id })
     .from(contasMarketplace)
-    .where(
-      and(eq(contasMarketplace.id, id), isNull(contasMarketplace.deletedAt)),
-    )
+    .where(and(eq(contasMarketplace.id, id), isNull(contasMarketplace.deletedAt)))
     .limit(1)
   return row !== undefined
 }
 
-export async function criarTarefaAction(
-  input: TarefaInput,
-): Promise<ActionResult<{ id: string }>> {
+export async function criarTarefaAction(input: TarefaInput): Promise<ActionResult<{ id: string }>> {
   const user = await requireRole(['admin'])
 
   const parsed = tarefaSchema.safeParse(input)
@@ -235,10 +224,7 @@ export async function criarTarefaAction(
   return { success: true, data: { id: inserted!.id }, message: 'Tarefa criada' }
 }
 
-export async function atualizarTarefaAction(
-  id: string,
-  input: TarefaInput,
-): Promise<ActionResult> {
+export async function atualizarTarefaAction(id: string, input: TarefaInput): Promise<ActionResult> {
   await requireRole(['admin'])
 
   if (!UUID_RE.test(id)) return { success: false, error: 'ID inválido' }
@@ -281,10 +267,7 @@ export async function atualizarTarefaAction(
 
 // Concluir e reabrir são a MESMA operação com sinal trocado: as duas
 // colunas do estado andam juntas (o CHECK do banco não aceita metade).
-async function definirConclusao(
-  id: string,
-  quem: string | null,
-): Promise<ActionResult> {
+async function definirConclusao(id: string, quem: string | null): Promise<ActionResult> {
   if (!UUID_RE.test(id)) return { success: false, error: 'ID inválido' }
 
   const [atual] = await db
@@ -333,10 +316,7 @@ export async function excluirTarefaAction(id: string): Promise<ActionResult> {
     .limit(1)
   if (!atual) return { success: false, error: 'Tarefa não encontrada' }
 
-  await db
-    .update(tarefas)
-    .set({ deletedAt: new Date() })
-    .where(eq(tarefas.id, id))
+  await db.update(tarefas).set({ deletedAt: new Date() }).where(eq(tarefas.id, id))
 
   revalidatePath('/tarefas')
   revalidatePath('/dashboard')

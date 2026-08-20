@@ -13,10 +13,7 @@ export default async function KitsPage() {
   const user = await requireArea('produtos')
   const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'produtos'))
 
-  const [kits, produtos] = await Promise.all([
-    listarKitsComItens(),
-    listarProdutosParaOrdem(),
-  ])
+  const [kits, produtos] = await Promise.all([listarKitsComItens(), listarProdutosParaOrdem()])
 
   return <KitsView kits={kits} produtos={produtos} podeEditar={podeEditar} />
 }

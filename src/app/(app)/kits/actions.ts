@@ -14,7 +14,6 @@ import {
   kitTamanhoPreco,
   ordensProducao,
   produtos,
-  tamanhos,
   variacoesProduto,
   type Kit,
 } from '@/lib/db/schema'
@@ -64,11 +63,7 @@ export type KitComItens = Kit & {
 // Todos os kits ativos já com os itens resolvidos (lista + edição).
 export async function listarKitsComItens(): Promise<KitComItens[]> {
   await requireAuth()
-  const rows = await db
-    .select()
-    .from(kits)
-    .where(isNull(kits.deletedAt))
-    .orderBy(asc(kits.nome))
+  const rows = await db.select().from(kits).where(isNull(kits.deletedAt)).orderBy(asc(kits.nome))
   if (rows.length === 0) return []
 
   const ids = rows.map((k) => k.id)
@@ -90,20 +85,22 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
     tamanhosPesoPorProduto(produtoIds),
     precosPorProduto(produtoIds),
     db
+      // Chaveado pela COMBINAÇÃO de tamanhos (texto canônico), então não há
+      // join com `tamanhos` — ver `chaveDeTamanhos` em src/lib/kit-tamanhos.ts.
       .select({
         kitId: kitTamanhoPreco.kitId,
-        tamanho: tamanhos.nome,
+        combinacao: kitTamanhoPreco.combinacao,
         preco: kitTamanhoPreco.preco,
       })
       .from(kitTamanhoPreco)
-      .innerJoin(tamanhos, eq(tamanhos.id, kitTamanhoPreco.tamanhoId))
       .where(inArray(kitTamanhoPreco.kitId, ids)),
   ])
 
+  // Indexado pela combinação, que é a chave do preço.
   const precosPorKit = new Map<string, Record<string, string>>()
   for (const l of linhasPreco) {
     const atual = precosPorKit.get(l.kitId) ?? {}
-    atual[l.tamanho] = l.preco
+    atual[l.combinacao] = l.preco
     precosPorKit.set(l.kitId, atual)
   }
 
@@ -132,48 +129,37 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
   }))
 }
 
-// Grava o preço FECHADO do kit, resolvendo o tamanho por NOME. Mesma regra
-// do produto (ver `salvarPrecosDoProduto`): só mexe no que veio, e preço
-// vazio apaga a linha em vez de virar zero.
+// Grava o preço FECHADO do kit por COMBINAÇÃO de tamanhos. Mesma regra do
+// produto (ver `salvarPrecosDoProduto`): só mexe no que veio, e preço vazio
+// apaga a linha em vez de virar zero.
+//
+// Não há mais resolução de tamanho por nome: a `combinacao` chega pronta da
+// tela, montada por `chaveDeTamanhos` a partir dos componentes reais do kit.
+// A rede de segurança mudou de lugar — antes era o nome do tamanho ter que
+// existir, agora é a combinação ter que ser uma que o kit consegue produzir,
+// e isso quem garante é a própria função que a montou.
 async function salvarPrecosDoKit(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   kitId: string,
-  entradas: { tamanho: string; preco: number | null }[],
+  entradas: { combinacao: string; preco: number | null }[],
 ) {
   if (entradas.length === 0) return
 
-  const nomes = entradas.map((e) => e.tamanho.trim().toLowerCase())
-  const conhecidos = await tx
-    .select({ id: tamanhos.id, nome: tamanhos.nome })
-    .from(tamanhos)
-    .where(isNull(tamanhos.deletedAt))
-  const porNome = new Map(
-    conhecidos
-      .filter((t) => nomes.includes(t.nome.trim().toLowerCase()))
-      .map((t) => [t.nome.trim().toLowerCase(), t.id]),
-  )
-
   for (const e of entradas) {
-    const tamanhoId = porNome.get(e.tamanho.trim().toLowerCase())
-    if (!tamanhoId) continue
+    const combinacao = e.combinacao.trim()
 
     if (e.preco == null) {
       await tx
         .delete(kitTamanhoPreco)
-        .where(
-          and(
-            eq(kitTamanhoPreco.kitId, kitId),
-            eq(kitTamanhoPreco.tamanhoId, tamanhoId),
-          ),
-        )
+        .where(and(eq(kitTamanhoPreco.kitId, kitId), eq(kitTamanhoPreco.combinacao, combinacao)))
       continue
     }
 
     await tx
       .insert(kitTamanhoPreco)
-      .values({ kitId, tamanhoId, preco: e.preco.toFixed(2) })
+      .values({ kitId, combinacao, preco: e.preco.toFixed(2) })
       .onConflictDoUpdate({
-        target: [kitTamanhoPreco.kitId, kitTamanhoPreco.tamanhoId],
+        target: [kitTamanhoPreco.kitId, kitTamanhoPreco.combinacao],
         set: { preco: e.preco.toFixed(2), updatedAt: sql`now()` },
       })
   }
@@ -192,9 +178,7 @@ async function skuEmUso(sku: string, exceto?: string): Promise<boolean> {
   return linhas.length > 0 && linhas[0]!.id !== exceto
 }
 
-export async function criarKitAction(
-  input: KitInput,
-): Promise<ActionResult<{ id: string }>> {
+export async function criarKitAction(input: KitInput): Promise<ActionResult<{ id: string }>> {
   await requireAreaEscrita('produtos')
   const parsed = kitSchema.safeParse(input)
   if (!parsed.success) {
@@ -236,10 +220,7 @@ export async function criarKitAction(
   return { success: true, data: { id: novoId }, message: 'Kit criado' }
 }
 
-export async function atualizarKitAction(
-  id: string,
-  input: KitInput,
-): Promise<ActionResult> {
+export async function atualizarKitAction(id: string, input: KitInput): Promise<ActionResult> {
   await requireAreaEscrita('produtos')
   const parsed = kitSchema.safeParse(input)
   if (!parsed.success) {
@@ -299,10 +280,7 @@ export async function excluirKitAction(id: string): Promise<ActionResult> {
     .limit(1)
   if (!atual) return { success: false, error: 'Kit não encontrado' }
 
-  await db
-    .update(kits)
-    .set({ deletedAt: new Date(), ativo: false })
-    .where(eq(kits.id, id))
+  await db.update(kits).set({ deletedAt: new Date(), ativo: false }).where(eq(kits.id, id))
 
   revalidatePath('/kits')
   return { success: true, message: 'Kit excluído' }

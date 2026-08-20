@@ -10,23 +10,13 @@ import { concluirTarefaAction, type TarefaComContexto } from '../tarefas/actions
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
-import {
-  PRIORIDADE_BADGE,
-  PRIORIDADE_LABEL,
-  ehDestaque,
-} from '@/lib/prioridade'
+import { PRIORIDADE_BADGE, PRIORIDADE_LABEL, ehDestaque } from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
 import { estaVencida } from '@/lib/validators/tarefas'
 
 // Bloco de tarefas do painel. Só é renderizado pra admin (a página decide);
 // pros demais cargos o dashboard não muda em nada.
-export function TarefasCard({
-  tarefas,
-  total,
-}: {
-  tarefas: TarefaComContexto[]
-  total: number
-}) {
+export function TarefasCard({ tarefas, total }: { tarefas: TarefaComContexto[]; total: number }) {
   return (
     <Card>
       <CardHeader>
@@ -42,9 +32,7 @@ export function TarefasCard({
       </CardHeader>
       <CardContent>
         {tarefas.length === 0 ? (
-          <p className="text-muted-foreground text-sm">
-            Nenhuma tarefa pendente.
-          </p>
+          <p className="text-muted-foreground text-sm">Nenhuma tarefa pendente.</p>
         ) : (
           <>
             <ul className="divide-y">
@@ -118,9 +106,7 @@ function LinhaPainel({ tarefa: t }: { tarefa: TarefaComContexto }) {
         </div>
         {/* No telefone não cabe o badge à direita; aqui embaixo cabe. */}
         {t.contaNome && (
-          <div className="text-muted-foreground truncate text-xs sm:hidden">
-            {t.contaNome}
-          </div>
+          <div className="text-muted-foreground truncate text-xs sm:hidden">{t.contaNome}</div>
         )}
       </div>
       {t.contaNome && (

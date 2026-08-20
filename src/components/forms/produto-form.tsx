@@ -5,19 +5,10 @@ import { Plus, Sparkles, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
-import {
-  Controller,
-  useFieldArray,
-  useForm,
-  useWatch,
-  type Resolver,
-} from 'react-hook-form'
+import { Controller, useFieldArray, useForm, useWatch, type Resolver } from 'react-hook-form'
 import { toast } from 'sonner'
 
-import {
-  atualizarProdutoAction,
-  criarProdutoAction,
-} from '@/app/(app)/produtos/actions'
+import { atualizarProdutoAction, criarProdutoAction } from '@/app/(app)/produtos/actions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -41,10 +32,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { Cor, Modelo, Tamanho } from '@/lib/db/schema'
 import { cn } from '@/lib/utils'
-import {
-  produtoSchema,
-  type ProdutoInput,
-} from '@/lib/validators/produtos'
+import { produtoSchema, type ProdutoInput } from '@/lib/validators/produtos'
 
 // Normaliza um texto pra virar segmento de SKU: sem acento, MAIÚSCULO,
 // espaços/símbolos viram hífen. Ex: "Âmbar Dourado" -> "AMBAR-DOURADO".
@@ -187,9 +175,7 @@ export function ProdutoForm({
   const skusExistentes = useMemo(
     () =>
       new Set(
-        (variacoesAtuais ?? [])
-          .map((v) => v?.skuVariacao)
-          .filter((s): s is string => Boolean(s)),
+        (variacoesAtuais ?? []).map((v) => v?.skuVariacao).filter((s): s is string => Boolean(s)),
       ),
     [variacoesAtuais],
   )
@@ -250,19 +236,14 @@ export function ProdutoForm({
   // Peso do TAMANHO, pro placeholder: é o que vale quando o campo fica
   // vazio, e mostrá-lo evita que alguém preencha só pra repetir o padrão.
   const pesoDoTamanho = useMemo(
-    () =>
-      new Map(
-        tamanhos.map((t) => [t.nome.trim().toLowerCase(), t.pesoGramas]),
-      ),
+    () => new Map(tamanhos.map((t) => [t.nome.trim().toLowerCase(), t.pesoGramas])),
     [tamanhos],
   )
 
   // Código de SKU do tamanho selecionado (ex.: King -> "K", Manta -> "MANTA").
   function codigoDoTamanho(nomeTamanho: string): string {
     const t = tamanhos.find((x) => x.nome === nomeTamanho)
-    return (t?.codigo ?? '')
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, '')
+    return (t?.codigo ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
   }
 
   // Monta o SKU da variação: base + códigoTamanho + "-" + cor.
@@ -336,12 +317,7 @@ export function ProdutoForm({
           </div>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field
-            label="SKU"
-            id="sku"
-            error={errs.sku?.message}
-            required
-          >
+          <Field label="SKU" id="sku" error={errs.sku?.message} required>
             <Input
               id="sku"
               placeholder="MAL-001"
@@ -374,7 +350,6 @@ export function ProdutoForm({
               {...form.register('descricao')}
             />
           </Field>
-
         </CardContent>
       </Card>
 
@@ -445,11 +420,7 @@ export function ProdutoForm({
                         {...form.register(`variacoes.${index}.skuVariacao`)}
                       />
                     </Field>
-                    <Field
-                      label="Cor"
-                      id={`variacoes.${index}.cor`}
-                      error={ve?.cor?.message}
-                    >
+                    <Field label="Cor" id={`variacoes.${index}.cor`} error={ve?.cor?.message}>
                       <Controller
                         control={form.control}
                         name={`variacoes.${index}.cor`}
@@ -463,27 +434,19 @@ export function ProdutoForm({
                               regenerarSku(
                                 index,
                                 cor,
-                                form.getValues(`variacoes.${index}.tamanho`) ??
-                                  '',
+                                form.getValues(`variacoes.${index}.tamanho`) ?? '',
                               )
                             }}
                             disabled={isPending}
                           >
-                            <SelectTrigger
-                              id={`variacoes.${index}.cor`}
-                              className="w-full"
-                            >
+                            <SelectTrigger id={`variacoes.${index}.cor`} className="w-full">
                               <SelectValue placeholder="Selecione…" />
                             </SelectTrigger>
                             <SelectContent>
                               {cores.length === 0 && legadosCor.length === 0 && (
                                 <div className="text-muted-foreground p-2 text-xs">
                                   Nenhuma cor cadastrada.{' '}
-                                  <Link
-                                    href="/cores"
-                                    className="underline"
-                                    target="_blank"
-                                  >
+                                  <Link href="/cores" className="underline" target="_blank">
                                     Cadastre cores
                                   </Link>
                                   .
@@ -496,15 +459,14 @@ export function ProdutoForm({
                                     <div className="flex items-center gap-2">
                                       {(c.codigoHex || c.codigoHex2) && (
                                         <span
-                                          className="inline-block size-3 rounded-sm border ring-1 ring-foreground/10"
+                                          className="ring-foreground/10 inline-block size-3 rounded-sm border ring-1"
                                           style={
                                             c.codigoHex && c.codigoHex2
                                               ? {
                                                   background: `linear-gradient(135deg, ${c.codigoHex} 0 50%, ${c.codigoHex2} 50% 100%)`,
                                                 }
                                               : {
-                                                  backgroundColor:
-                                                    c.codigoHex ?? c.codigoHex2!,
+                                                  backgroundColor: c.codigoHex ?? c.codigoHex2!,
                                                 }
                                           }
                                         />
@@ -541,15 +503,10 @@ export function ProdutoForm({
                         render={({ field: ctl }) => (
                           <Select
                             value={ctl.value || 'nenhum'}
-                            onValueChange={(v) =>
-                              ctl.onChange(v === 'nenhum' ? '' : v)
-                            }
+                            onValueChange={(v) => ctl.onChange(v === 'nenhum' ? '' : v)}
                             disabled={isPending}
                           >
-                            <SelectTrigger
-                              id={`variacoes.${index}.modelo`}
-                              className="w-full"
-                            >
+                            <SelectTrigger id={`variacoes.${index}.modelo`} className="w-full">
                               <SelectValue placeholder="Selecione…" />
                             </SelectTrigger>
                             <SelectContent>
@@ -557,11 +514,7 @@ export function ProdutoForm({
                               {modelos.length === 0 && legadosModelo.length === 0 && (
                                 <div className="text-muted-foreground p-2 text-xs">
                                   Nenhum modelo cadastrado.{' '}
-                                  <Link
-                                    href="/modelos"
-                                    className="underline"
-                                    target="_blank"
-                                  >
+                                  <Link href="/modelos" className="underline" target="_blank">
                                     Cadastre modelos
                                   </Link>
                                   .
@@ -575,14 +528,9 @@ export function ProdutoForm({
                                   </SelectItem>
                                 ))}
                               {legadosModelo.map((nome) => (
-                                <SelectItem
-                                  key={`legado-mod-${nome}`}
-                                  value={nome}
-                                >
+                                <SelectItem key={`legado-mod-${nome}`} value={nome}>
                                   {nome}{' '}
-                                  <span className="text-muted-foreground text-xs">
-                                    (legado)
-                                  </span>
+                                  <span className="text-muted-foreground text-xs">(legado)</span>
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -613,28 +561,20 @@ export function ProdutoForm({
                             }}
                             disabled={isPending}
                           >
-                            <SelectTrigger
-                              id={`variacoes.${index}.tamanho`}
-                              className="w-full"
-                            >
+                            <SelectTrigger id={`variacoes.${index}.tamanho`} className="w-full">
                               <SelectValue placeholder="Selecione…" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="nenhum">Sem tamanho</SelectItem>
-                              {tamanhos.length === 0 &&
-                                legadosTamanho.length === 0 && (
-                                  <div className="text-muted-foreground p-2 text-xs">
-                                    Nenhum tamanho cadastrado.{' '}
-                                    <Link
-                                      href="/tamanhos"
-                                      className="underline"
-                                      target="_blank"
-                                    >
-                                      Cadastre tamanhos
-                                    </Link>
-                                    .
-                                  </div>
-                                )}
+                              {tamanhos.length === 0 && legadosTamanho.length === 0 && (
+                                <div className="text-muted-foreground p-2 text-xs">
+                                  Nenhum tamanho cadastrado.{' '}
+                                  <Link href="/tamanhos" className="underline" target="_blank">
+                                    Cadastre tamanhos
+                                  </Link>
+                                  .
+                                </div>
+                              )}
                               {tamanhos
                                 .filter((t) => t.ativo)
                                 .map((t) => (
@@ -643,14 +583,9 @@ export function ProdutoForm({
                                   </SelectItem>
                                 ))}
                               {legadosTamanho.map((nome) => (
-                                <SelectItem
-                                  key={`legado-tam-${nome}`}
-                                  value={nome}
-                                >
+                                <SelectItem key={`legado-tam-${nome}`} value={nome}>
                                   {nome}{' '}
-                                  <span className="text-muted-foreground text-xs">
-                                    (legado)
-                                  </span>
+                                  <span className="text-muted-foreground text-xs">(legado)</span>
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -682,19 +617,18 @@ export function ProdutoForm({
         <CardHeader>
           <CardTitle>Preço e peso por tamanho</CardTitle>
           <p className="text-muted-foreground mt-1 text-sm">
-            Os dois vivem no par produto × tamanho. O <strong>preço</strong> é
-            de tabela: preenche sozinho o preço do pedido e lá continua
-            editável, mas mexer aqui <strong>não</strong> altera pedido já
-            salvo. O <strong>peso</strong> é o contrário — serve pra cotar
-            frete e é recalculado em todo pedido, inclusive nos antigos.
-            Deixe o peso vazio no caso normal: vale o do tamanho.
+            Os dois vivem no par produto × tamanho. O <strong>preço</strong> é de tabela: preenche
+            sozinho o preço do pedido e lá continua editável, mas mexer aqui <strong>não</strong>{' '}
+            altera pedido já salvo. O <strong>peso</strong> é o contrário — serve pra cotar frete e
+            é recalculado em todo pedido, inclusive nos antigos. Deixe o peso vazio no caso normal:
+            vale o do tamanho.
           </p>
         </CardHeader>
         <CardContent>
           {tamanhosDoProduto.length === 0 ? (
             <p className="text-muted-foreground py-6 text-center text-sm">
-              Nenhum tamanho nas variações. Preço e peso são por tamanho —
-              cadastre as variações primeiro.
+              Nenhum tamanho nas variações. Preço e peso são por tamanho — cadastre as variações
+              primeiro.
             </p>
           ) : (
             <div className="space-y-3">
@@ -744,9 +678,7 @@ export function ProdutoForm({
                           aria-label={`Peso de ${t} em gramas`}
                           inputMode="numeric"
                           placeholder={
-                            padraoDoTamanho == null
-                              ? '(sem peso)'
-                              : `${padraoDoTamanho}`
+                            padraoDoTamanho == null ? '(sem peso)' : `${padraoDoTamanho}`
                           }
                           className="w-24 text-right tabular-nums"
                           value={pesos[t] ?? ''}
@@ -833,11 +765,7 @@ function GerarVariacoesDialog({
   const [modelosSel, setModelosSel] = useState<string[]>([])
   const [tamanhosSel, setTamanhosSel] = useState<string[]>([])
 
-  function toggle(
-    lista: string[],
-    set: (v: string[]) => void,
-    nome: string,
-  ) {
+  function toggle(lista: string[], set: (v: string[]) => void, nome: string) {
     set(lista.includes(nome) ? lista.filter((x) => x !== nome) : [...lista, nome])
   }
 
@@ -850,9 +778,7 @@ function GerarVariacoesDialog({
     const modList = modelosSel.length ? modelosSel : [undefined]
     const tamList = tamanhosSel.length ? tamanhosSel : [undefined]
     const codigoTam = (nome: string) =>
-      (tamanhos.find((x) => x.nome === nome)?.codigo ?? '')
-        .toUpperCase()
-        .replace(/[^A-Z0-9]/g, '')
+      (tamanhos.find((x) => x.nome === nome)?.codigo ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
     const usados = new Set(existentes)
     const out: NovaVariacao[] = []
     for (const cor of corList) {
@@ -898,8 +824,8 @@ function GerarVariacoesDialog({
         <DialogHeader>
           <DialogTitle>Gerar variações</DialogTitle>
           <DialogDescription>
-            Marque as cores, o modelo e o tamanho. O sistema cria todas as
-            combinações com o SKU já pronto.
+            Marque as cores, o modelo e o tamanho. O sistema cria todas as combinações com o SKU já
+            pronto.
           </DialogDescription>
         </DialogHeader>
 
@@ -961,9 +887,7 @@ function SecaoOpcoes({
       <p className="mb-1.5 text-sm font-medium">
         {titulo}{' '}
         {selecionados.length > 0 && (
-          <span className="text-muted-foreground font-normal">
-            ({selecionados.length})
-          </span>
+          <span className="text-muted-foreground font-normal">({selecionados.length})</span>
         )}
       </p>
       {itens.length === 0 ? (
@@ -979,9 +903,7 @@ function SecaoOpcoes({
                 onClick={() => onToggle(nome)}
                 className={cn(
                   'rounded-full border px-2.5 py-1 text-xs transition-colors',
-                  ativo
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'hover:bg-accent',
+                  ativo ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-accent',
                 )}
               >
                 {nome}
@@ -1022,9 +944,7 @@ function Field({
         {required && <span className="text-destructive ml-0.5">*</span>}
       </Label>
       {children}
-      {hint && !error && (
-        <p className="text-muted-foreground text-xs">{hint}</p>
-      )}
+      {hint && !error && <p className="text-muted-foreground text-xs">{hint}</p>}
       {error && <p className="text-destructive text-xs">{error}</p>}
     </div>
   )

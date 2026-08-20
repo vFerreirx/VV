@@ -155,10 +155,7 @@ function pesoUnitario(
 const PREFIXO_KIT = /^\s*kit\b/i
 
 // Peso de UMA unidade da linha (sem multiplicar pela quantidade do item).
-function pesoUnitarioDaLinha(
-  catalogo: CatalogoPesos,
-  item: ItemPesavel,
-): number | null {
+function pesoUnitarioDaLinha(catalogo: CatalogoPesos, item: ItemPesavel): number | null {
   const componentes = item.kitComponentes
   if ((!componentes || componentes.length === 0) && PREFIXO_KIT.test(item.descricao)) {
     return null
@@ -192,10 +189,7 @@ function pesoUnitarioDaLinha(
   })
 }
 
-export function calcularPesos(
-  itens: ItemPesavel[],
-  catalogo: CatalogoPesos,
-): ResumoPeso {
+export function calcularPesos(itens: ItemPesavel[], catalogo: CatalogoPesos): ResumoPeso {
   const porItem: Record<string, number | null> = {}
   let totalGramas = 0
   let itensSemPeso = 0
@@ -266,9 +260,7 @@ export type PesoDeProduto = {
   semPeso: string[]
 }
 
-export function pesoDeProduto(
-  tamanhosDoProduto: TamanhoDoProduto[],
-): PesoDeProduto {
+export function pesoDeProduto(tamanhosDoProduto: TamanhoDoProduto[]): PesoDeProduto {
   const semPeso: string[] = []
   let min: number | null = null
   let max: number | null = null

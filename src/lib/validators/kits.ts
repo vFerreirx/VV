@@ -13,10 +13,16 @@ export const kitItemSchema = z.object({
     .max(9999, 'Quantidade muito alta'),
 })
 
-// Preço FECHADO do kit num tamanho. Vazio = sem preço fechado, e aí o kit
-// cai na soma dos componentes — que é o caso normal. Ver src/lib/preco.ts.
+// Preço FECHADO do kit numa COMBINAÇÃO de tamanhos. Vazio = sem preço
+// fechado, e aí o kit cai na soma dos componentes — que é o caso normal.
+// Ver src/lib/preco.ts.
+//
+// `combinacao` é a string canônica de `chaveDeTamanhos`
+// (src/lib/kit-tamanhos.ts), não um nome de tamanho. Aceita '' de propósito:
+// kit sem componente variável tem um preço só, e essa é a chave dele — por
+// isso NÃO tem `.min(1)`.
 export const kitPrecoSchema = z.object({
-  tamanho: z.string().trim().min(1, 'Tamanho obrigatório').max(40),
+  combinacao: z.string().trim().max(400),
   preco: z
     .union([z.string(), z.number(), z.null(), z.undefined()])
     .transform((v) => {
@@ -26,10 +32,7 @@ export const kitPrecoSchema = z.object({
       if (limpo === '') return null
       return Number(limpo)
     })
-    .refine(
-      (v) => v === null || (Number.isFinite(v) && v >= 0),
-      'Informe um preço válido (>= 0)',
-    ),
+    .refine((v) => v === null || (Number.isFinite(v) && v >= 0), 'Informe um preço válido (>= 0)'),
 })
 
 export const kitSchema = z.object({

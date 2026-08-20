@@ -149,12 +149,7 @@ export const orcamentoFaltantes = pgTable(
       .defaultNow()
       .$onUpdate(() => sql`now()`),
   },
-  (table) => [
-    uniqueIndex('orcamento_faltantes_linha_uidx').on(
-      table.orcamentoId,
-      table.chave,
-    ),
-  ],
+  (table) => [uniqueIndex('orcamento_faltantes_linha_uidx').on(table.orcamentoId, table.chave)],
 )
 
 export type Orcamento = typeof orcamentos.$inferSelect

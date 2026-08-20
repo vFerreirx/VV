@@ -14,11 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  FRACAO_VALOR_DECLARADO,
-  formatarKgFrete,
-  valorDeclaradoCentavos,
-} from '@/lib/frete'
+import { FRACAO_VALOR_DECLARADO, formatarKgFrete, valorDeclaradoCentavos } from '@/lib/frete'
 import { freteEmCentavos, temFrete } from '@/lib/total-pedido'
 import { cn } from '@/lib/utils'
 
@@ -144,9 +140,8 @@ export function FretePainel({
             <p className="text-muted-foreground mt-1 text-xs">
               {formatarKgFrete(pesoGramas)} · valor declarado{' '}
               <strong>{reais(valorDeclaradoCentavos(totalCentavos))}</strong> —{' '}
-              {pct(FRACAO_VALOR_DECLARADO)} do total do pedido, que é{' '}
-              {reais(totalCentavos)}. É o declarado que influencia o preço do
-              frete e o que o seguro cobre.
+              {pct(FRACAO_VALOR_DECLARADO)} do total do pedido, que é {reais(totalCentavos)}. É o
+              declarado que influencia o preço do frete e o que o seguro cobre.
               {situacao.origem && (
                 <>
                   {' '}
@@ -189,8 +184,8 @@ export function FretePainel({
               Frete informado à mão: {reais(freteEmCentavos(salvo.valor))}
             </div>
             <div className="text-muted-foreground mt-0.5">
-              Digitado no pedido, sem cotação por trás. Escolher uma cotação
-              abaixo substitui este valor; editar o pedido também.
+              Digitado no pedido, sem cotação por trás. Escolher uma cotação abaixo substitui este
+              valor; editar o pedido também.
             </div>
           </div>
         )}
@@ -249,8 +244,8 @@ export function FretePainel({
               <ul className="space-y-0.5 tabular-nums">
                 {cotacao.pacotes.map((p, i) => (
                   <li key={i}>
-                    {i + 1}. {formatarKgFrete(p.pesoGramas)} · {p.medidas} ·
-                    declarado {reais(p.valorDeclaradoCentavos)}
+                    {i + 1}. {formatarKgFrete(p.pesoGramas)} · {p.medidas} · declarado{' '}
+                    {reais(p.valorDeclaradoCentavos)}
                   </li>
                 ))}
               </ul>
@@ -260,8 +255,7 @@ export function FretePainel({
               <div className="divide-y rounded-md border">
                 {cotacao.servicos.map((s) => {
                   const escolhido =
-                    salvo.transportadora === s.transportadora &&
-                    salvo.servico === s.servico
+                    salvo.transportadora === s.transportadora && salvo.servico === s.servico
                   return (
                     <div
                       key={`${s.transportadora}-${s.servico}-${s.id}`}
@@ -278,9 +272,7 @@ export function FretePainel({
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="font-medium tabular-nums">
-                          {reais(s.precoCentavos)}
-                        </span>
+                        <span className="font-medium tabular-nums">{reais(s.precoCentavos)}</span>
                         {podeEditar && (
                           <Button
                             size="sm"

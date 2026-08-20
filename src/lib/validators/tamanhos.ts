@@ -43,11 +43,7 @@ const codigoSku = z
   .refine((v) => v.length <= 12, 'Código muito longo')
 
 export const tamanhoSchema = z.object({
-  nome: z
-    .string()
-    .trim()
-    .min(1, 'Nome muito curto')
-    .max(40, 'Nome muito longo'),
+  nome: z.string().trim().min(1, 'Nome muito curto').max(40, 'Nome muito longo'),
   codigo: codigoSku,
   larguraCm: numericOpt,
   comprimentoCm: numericOpt,

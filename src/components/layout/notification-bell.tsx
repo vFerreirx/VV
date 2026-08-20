@@ -9,19 +9,11 @@ import { useEffect, useState, useTransition } from 'react'
 
 import { listarNotificacoes, type Notificacao } from '@/app/(app)/notificacoes/actions'
 import { Button } from '@/components/ui/button'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
-export function NotificationBell({
-  initial,
-}: {
-  initial: Notificacao[]
-}) {
+export function NotificationBell({ initial }: { initial: Notificacao[] }) {
   const router = useRouter()
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>(initial)
   const [, startTransition] = useTransition()
@@ -34,10 +26,8 @@ export function NotificationBell({
     const supabase = createBrowserSupabase()
     const channel = supabase
       .channel('notificacoes-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ordens_producao' },
-        () => refetch(),
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ordens_producao' }, () =>
+        refetch(),
       )
       .subscribe()
 
@@ -74,18 +64,14 @@ export function NotificationBell({
         {count > 0 && (
           <span
             className={cn(
-              'bg-destructive text-destructive-foreground absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-content-center rounded-full px-1 text-[10px] font-semibold leading-none tabular-nums',
+              'bg-destructive text-destructive-foreground absolute -top-0.5 -right-0.5 grid h-4 min-w-4 place-content-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums',
             )}
           >
             {count > 99 ? '99+' : count}
           </span>
         )}
       </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        sideOffset={6}
-        className="w-80 p-0 sm:w-96"
-      >
+      <PopoverContent align="end" sideOffset={6} className="w-80 p-0 sm:w-96">
         <div className="border-b px-4 py-2.5">
           <h3 className="text-sm font-medium">Notificações</h3>
           <p className="text-muted-foreground text-xs">
@@ -151,13 +137,8 @@ function NotificacaoItem({ n }: { n: Notificacao }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">{n.titulo}</div>
-          <div className="text-muted-foreground truncate text-xs">
-            {n.descricao}
-          </div>
-          <div
-            className="text-muted-foreground/70 mt-0.5 text-[11px]"
-            title={dataAbsoluta}
-          >
+          <div className="text-muted-foreground truncate text-xs">{n.descricao}</div>
+          <div className="text-muted-foreground/70 mt-0.5 text-[11px]" title={dataAbsoluta}>
             há {ago}
           </div>
         </div>

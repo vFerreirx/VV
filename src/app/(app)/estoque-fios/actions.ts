@@ -60,9 +60,7 @@ export async function listarCoresFornecedor(): Promise<CorFornecedorItem[]> {
 }
 
 // Só ativas — usado no select do formulário de entrada de lote.
-export async function listarCoresFornecedorAtivas(): Promise<
-  CorFornecedorItem[]
-> {
+export async function listarCoresFornecedorAtivas(): Promise<CorFornecedorItem[]> {
   await requireAuth()
   const rows = await db
     .select({
@@ -72,9 +70,7 @@ export async function listarCoresFornecedorAtivas(): Promise<
     })
     .from(coresFornecedorFio)
     .innerJoin(cores, eq(cores.id, coresFornecedorFio.corId))
-    .where(
-      and(isNull(coresFornecedorFio.deletedAt), eq(coresFornecedorFio.ativo, true)),
-    )
+    .where(and(isNull(coresFornecedorFio.deletedAt), eq(coresFornecedorFio.ativo, true)))
     .orderBy(asc(coresFornecedorFio.nomeFornecedor))
 
   return rows.map((r) => ({ ...r.cf, corNome: r.corNome, corHex: r.corHex }))
@@ -165,9 +161,7 @@ export async function atualizarCorFornecedorAction(
   return { success: true, message: 'Cor atualizada' }
 }
 
-export async function excluirCorFornecedorAction(
-  id: string,
-): Promise<ActionResult> {
+export async function excluirCorFornecedorAction(id: string): Promise<ActionResult> {
   await requireAreaEscrita('estoqueFios')
 
   const [atual] = await db
@@ -266,8 +260,7 @@ export async function listarLotesFio(): Promise<LoteFioItem[]> {
     saldoCaixas: r.caixas - r.saidaCaixas,
     // 2 casas: é a precisão da coluna, e somar floats de 50 lotes sem
     // arredondar faz o rodapé fechar com centavo de kg sobrando.
-    saldoPesoKg:
-      Math.round((Number(r.pesoTotalKg) - Number(r.saidaPesoKg)) * 100) / 100,
+    saldoPesoKg: Math.round((Number(r.pesoTotalKg) - Number(r.saidaPesoKg)) * 100) / 100,
   }))
 }
 
@@ -370,10 +363,7 @@ export async function excluirLoteFioAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Lote não encontrado' }
   }
 
-  await db
-    .update(lotesFio)
-    .set({ deletedAt: new Date() })
-    .where(eq(lotesFio.id, id))
+  await db.update(lotesFio).set({ deletedAt: new Date() }).where(eq(lotesFio.id, id))
 
   revalidatePath('/estoque-fios')
   return { success: true, message: 'Lote excluído' }
@@ -537,9 +527,7 @@ async function chavesJaExistentes(): Promise<Set<string>> {
 
   const chaves = new Set<string>()
   for (const r of rows) {
-    chaves.add(
-      chaveDeLote(r.corFornecedorId, r.numeroLote, r.caixas, r.pesoTotalKg),
-    )
+    chaves.add(chaveDeLote(r.corFornecedorId, r.numeroLote, r.caixas, r.pesoTotalKg))
   }
   return chaves
 }
@@ -550,9 +538,7 @@ async function chavesJaExistentes(): Promise<Set<string>> {
  * O parsing é puro (`src/lib/fios/importar-csv.ts`); o que se acrescenta
  * aqui é a única coisa que depende do banco: se o lote já existe.
  */
-export async function analisarFiosCSVAction(
-  texto: string,
-): Promise<AnaliseImportFios> {
+export async function analisarFiosCSVAction(texto: string): Promise<AnaliseImportFios> {
   await requireAuth()
 
   // `coresCadastradas`, não `cores`: `cores` aqui é a TABELA do catálogo,
@@ -566,9 +552,7 @@ export async function analisarFiosCSVAction(
 
   const linhas: LinhaAnalisada[] = r.linhas.map((l) => ({
     ...l,
-    jaExiste: existentes.has(
-      chaveDeLote(l.corFornecedorId, l.numeroLote, l.caixas, l.pesoTotalKg),
-    ),
+    jaExiste: existentes.has(chaveDeLote(l.corFornecedorId, l.numeroLote, l.caixas, l.pesoTotalKg)),
   }))
 
   const duplicadas = linhas
@@ -607,9 +591,7 @@ export async function importarFiosCSVAction(input: {
   texto: string
   dataReferencia: string
   incluirDuplicadas: boolean
-}): Promise<
-  ActionResult<{ lotes: number; movimentacoes: number; puladas: number }>
-> {
+}): Promise<ActionResult<{ lotes: number; movimentacoes: number; puladas: number }>> {
   const user = await requireAreaEscrita('estoqueFios')
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.dataReferencia)) {

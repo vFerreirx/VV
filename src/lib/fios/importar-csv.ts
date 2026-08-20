@@ -71,11 +71,7 @@ export type ResultadoImportFios = {
 }
 
 function normalizar(s: string): string {
-  return s
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+  return s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 }
 
 // Divide uma linha de CSV por vírgula respeitando aspas — sem isso o
@@ -109,9 +105,7 @@ function camposDaLinha(linha: string): string[] {
 function numeroBR(s: string): number {
   const limpo = s.trim()
   if (limpo === '') return NaN
-  const texto = limpo.includes(',')
-    ? limpo.replace(/\./g, '').replace(',', '.')
-    : limpo
+  const texto = limpo.includes(',') ? limpo.replace(/\./g, '').replace(',', '.') : limpo
   return Number(texto)
 }
 
@@ -136,10 +130,7 @@ function listaDeLinhas(ns: number[]): string {
  * devolve o que dá pra importar e o que há de errado. Quem grava (e quem
  * checa duplicata contra o banco) é a action; o diálogo só exibe.
  */
-export function parseFiosCSV(
-  texto: string,
-  coresConhecidas: CorConhecida[],
-): ResultadoImportFios {
+export function parseFiosCSV(texto: string, coresConhecidas: CorConhecida[]): ResultadoImportFios {
   const ignoradas: string[] = []
   const atencoes: string[] = []
   const linhas: LinhaFio[] = []
@@ -190,19 +181,15 @@ export function parseFiosCSV(
 
     if (!Number.isFinite(caixas) || !Number.isInteger(caixas) || caixas <= 0) {
       ignoradas.push(
-        `Linha ${numero} (${corCsv}): número de caixas inválido ` +
-          `("${campos[2]}").`,
+        `Linha ${numero} (${corCsv}): número de caixas inválido ` + `("${campos[2]}").`,
       )
       return
     }
     const ret =
-      Number.isFinite(retirada) && Number.isInteger(retirada) && retirada > 0
-        ? retirada
-        : 0
+      Number.isFinite(retirada) && Number.isInteger(retirada) && retirada > 0 ? retirada : 0
     if (ret > caixas) {
       ignoradas.push(
-        `Linha ${numero} (${corCsv}): retirada (${ret}) maior que a ` +
-          `entrada (${caixas}).`,
+        `Linha ${numero} (${corCsv}): retirada (${ret}) maior que a ` + `entrada (${caixas}).`,
       )
       return
     }
@@ -231,8 +218,7 @@ export function parseFiosCSV(
       )
     } else if (!Number.isFinite(quantidade) || quantidade < 0) {
       ignoradas.push(
-        `Linha ${numero} (${corCsv}): quantidade em kg inválida ` +
-          `("${campos[5]}").`,
+        `Linha ${numero} (${corCsv}): quantidade em kg inválida ` + `("${campos[5]}").`,
       )
       return
     } else {
@@ -270,12 +256,7 @@ export function parseFiosCSV(
   // importa as duas.
   const porLote = new Map<string, number[]>()
   for (const l of linhas) {
-    const chave = chaveDeLote(
-      l.corFornecedorId,
-      l.numeroLote,
-      l.caixas,
-      l.pesoTotalKg,
-    )
+    const chave = chaveDeLote(l.corFornecedorId, l.numeroLote, l.caixas, l.pesoTotalKg)
     porLote.set(chave, [...(porLote.get(chave) ?? []), l.linha])
   }
   for (const ns of porLote.values()) {
@@ -283,8 +264,7 @@ export function parseFiosCSV(
     const exemplo = linhas.find((l) => l.linha === ns[0])!
     const quem = exemplo.numeroLote
       ? `O lote ${exemplo.numeroLote} (${exemplo.corFornecedorNome})`
-      : `Um lote sem número de ${exemplo.corFornecedorNome} ` +
-        `(${exemplo.caixas} caixas)`
+      : `Um lote sem número de ${exemplo.corFornecedorNome} ` + `(${exemplo.caixas} caixas)`
     atencoes.push(
       `${quem} aparece ${ns.length}× no arquivo (${listaDeLinhas(ns)}). ` +
         `Todos entram — confira se são remessas diferentes mesmo.`,

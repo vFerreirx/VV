@@ -2,15 +2,7 @@
 
 // Bar chart horizontal — top produtos do mês por unidades em OPs.
 
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import type { TopProdutoItem } from '@/app/(app)/dashboard/actions'
 
@@ -30,10 +22,7 @@ export function TopProdutosChart({ data }: Props) {
   // Encurta nome pra eixo Y caber.
   const formatted = data.map((d) => ({
     ...d,
-    label:
-      d.produtoNome.length > 22
-        ? d.produtoNome.slice(0, 21) + '…'
-        : d.produtoNome,
+    label: d.produtoNome.length > 22 ? d.produtoNome.slice(0, 21) + '…' : d.produtoNome,
   }))
 
   return (

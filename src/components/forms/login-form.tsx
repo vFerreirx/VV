@@ -44,9 +44,7 @@ export function LoginForm({ next }: { next?: string }) {
           {...form.register('usuario')}
         />
         {form.formState.errors.usuario && (
-          <p className="text-destructive text-sm">
-            {form.formState.errors.usuario.message}
-          </p>
+          <p className="text-destructive text-sm">{form.formState.errors.usuario.message}</p>
         )}
       </div>
 
@@ -60,9 +58,7 @@ export function LoginForm({ next }: { next?: string }) {
           {...form.register('senha')}
         />
         {form.formState.errors.senha && (
-          <p className="text-destructive text-sm">
-            {form.formState.errors.senha.message}
-          </p>
+          <p className="text-destructive text-sm">{form.formState.errors.senha.message}</p>
         )}
       </div>
 

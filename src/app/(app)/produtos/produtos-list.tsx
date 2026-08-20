@@ -42,16 +42,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
-import {
-  formatarPesoDeProduto,
-  pesoDeProduto,
-  type PesoDeProduto,
-} from '@/lib/peso'
-import {
-  formatarPrecoDeProduto,
-  precoDeProdutoNaLista,
-  type PrecoDeProduto,
-} from '@/lib/preco'
+import { formatarPesoDeProduto, pesoDeProduto, type PesoDeProduto } from '@/lib/peso'
+import { formatarPrecoDeProduto, precoDeProdutoNaLista, type PrecoDeProduto } from '@/lib/preco'
 import { cn } from '@/lib/utils'
 
 type Props = {
@@ -60,11 +52,7 @@ type Props = {
   filtrosIniciais: { q?: string; ativo?: string }
 }
 
-export function ProdutosList({
-  produtos,
-  podeEditar,
-  filtrosIniciais,
-}: Props) {
+export function ProdutosList({ produtos, podeEditar, filtrosIniciais }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -94,21 +82,12 @@ export function ProdutosList({
   }
   const allChecked = produtos.length > 0 && selecionados.size === produtos.length
   const someChecked = selecionados.size > 0 && !allChecked
-  const idsSelecionados = useMemo(
-    () => Array.from(selecionados),
-    [selecionados],
-  )
+  const idsSelecionados = useMemo(() => Array.from(selecionados), [selecionados])
 
   function aplicarFiltro(updates: Record<string, string | null | undefined>) {
     const params = new URLSearchParams(searchParams.toString())
     for (const [k, v] of Object.entries(updates)) {
-      if (
-        v === undefined ||
-        v === null ||
-        v === '' ||
-        v === 'todas' ||
-        v === 'todos'
-      ) {
+      if (v === undefined || v === null || v === '' || v === 'todas' || v === 'todos') {
         params.delete(k)
       } else {
         params.set(k, v)
@@ -201,7 +180,7 @@ export function ProdutosList({
                   <TableHead>SKU</TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead className="w-32 text-right">Preço</TableHead>
-                <TableHead className="w-28 text-right">Peso</TableHead>
+                  <TableHead className="w-28 text-right">Peso</TableHead>
                   <TableHead className="text-right">Variações</TableHead>
                   <TableHead>Status</TableHead>
                   {podeEditar && <TableHead className="w-24" />}
@@ -209,10 +188,7 @@ export function ProdutosList({
               </TableHeader>
               <TableBody ref={corpoTabela}>
                 {produtos.map((p) => (
-                  <TableRow
-                    key={p.id}
-                    data-state={selecionados.has(p.id) ? 'selected' : undefined}
-                  >
+                  <TableRow key={p.id} data-state={selecionados.has(p.id) ? 'selected' : undefined}>
                     {podeEditar && (
                       <TableCell>
                         <Checkbox
@@ -224,10 +200,7 @@ export function ProdutosList({
                     )}
                     <TableCell className="font-mono text-xs">{p.sku}</TableCell>
                     <TableCell>
-                      <Link
-                        href={`/produtos/${p.id}`}
-                        className="hover:underline"
-                      >
+                      <Link href={`/produtos/${p.id}`} className="hover:underline">
                         {p.nome}
                       </Link>
                     </TableCell>
@@ -237,9 +210,7 @@ export function ProdutosList({
                     <TableCell className="text-right">
                       <PesoCelula produto={p} />
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {p.totalVariacoes}
-                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{p.totalVariacoes}</TableCell>
                     <TableCell>
                       <Badge variant={p.ativo ? 'default' : 'secondary'}>
                         {p.ativo ? 'Ativo' : 'Inativo'}
@@ -277,9 +248,7 @@ export function ProdutosList({
                       >
                         {p.nome}
                       </Link>
-                      <p className="text-muted-foreground font-mono text-xs">
-                        {p.sku}
-                      </p>
+                      <p className="text-muted-foreground font-mono text-xs">{p.sku}</p>
                     </div>
                   </div>
                   <Badge variant={p.ativo ? 'default' : 'secondary'}>
@@ -288,9 +257,7 @@ export function ProdutosList({
                 </div>
                 <div className="text-muted-foreground mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   <div>Variações</div>
-                  <div className="text-right text-foreground tabular-nums">
-                    {p.totalVariacoes}
-                  </div>
+                  <div className="text-foreground text-right tabular-nums">{p.totalVariacoes}</div>
                   <div>Preço</div>
                   <div className="text-right">
                     <PrecoCelula produto={p} />
@@ -342,24 +309,16 @@ function PrecoCelula({ produto }: { produto: ProdutoListItem }) {
 
   return (
     <span
-      className={cn(
-        'tabular-nums',
-        preco.min == null ? 'text-muted-foreground' : 'font-medium',
-      )}
+      className={cn('tabular-nums', preco.min == null ? 'text-muted-foreground' : 'font-medium')}
       title={tituloDoPreco(produto, preco)}
     >
       {formatarPrecoDeProduto(preco)}
-      {parcial && (
-        <span className="text-amber-600 dark:text-amber-500"> *</span>
-      )}
+      {parcial && <span className="text-amber-600 dark:text-amber-500"> *</span>}
     </span>
   )
 }
 
-function tituloDoPreco(
-  produto: ProdutoListItem,
-  preco: PrecoDeProduto,
-): string {
+function tituloDoPreco(produto: ProdutoListItem, preco: PrecoDeProduto): string {
   if (produto.tamanhosPreco.length === 0) {
     return 'Sem tamanho nas variações — preço é por tamanho.'
   }
@@ -410,16 +369,11 @@ function PesoCelula({ produto }: { produto: ProdutoListItem }) {
 
   return (
     <span
-      className={cn(
-        'tabular-nums',
-        peso.min == null ? 'text-muted-foreground' : 'font-medium',
-      )}
+      className={cn('tabular-nums', peso.min == null ? 'text-muted-foreground' : 'font-medium')}
       title={tituloDoPeso(produto, peso)}
     >
       {formatarPesoDeProduto(peso)}
-      {parcial && (
-        <span className="text-amber-600 dark:text-amber-500"> *</span>
-      )}
+      {parcial && <span className="text-amber-600 dark:text-amber-500"> *</span>}
     </span>
   )
 }
@@ -430,10 +384,7 @@ function tituloDoPeso(produto: ProdutoListItem, peso: PesoDeProduto): string {
   }
 
   const porTamanho = produto.tamanhosPeso
-    .map(
-      (t) =>
-        `${t.tamanho}: ${t.pesoGramas == null ? '—' : `${t.pesoGramas} g`}`,
-    )
+    .map((t) => `${t.tamanho}: ${t.pesoGramas == null ? '—' : `${t.pesoGramas} g`}`)
     .join(' · ')
 
   const cabecalho =
@@ -483,8 +434,8 @@ function BulkExcluirDialog({
             Excluir {ids.length} produto{ids.length === 1 ? '' : 's'}?
           </DialogTitle>
           <DialogDescription>
-            Os produtos selecionados serão marcados como excluídos. As variações
-            ficam preservadas pra histórico em OPs e movimentações.
+            Os produtos selecionados serão marcados como excluídos. As variações ficam preservadas
+            pra histórico em OPs e movimentações.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -574,20 +525,16 @@ function RowActions({ produto }: { produto: ProdutoListItem }) {
           <DialogHeader>
             <DialogTitle>Excluir produto?</DialogTitle>
             <DialogDescription>
-              {produto.nome} ({produto.sku}) será marcado como excluído. As
-              variações ficam preservadas para referência histórica em OPs e
-              movimentações.
+              {produto.nome} ({produto.sku}) será marcado como excluído. As variações ficam
+              preservadas para referência histórica em OPs e movimentações.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmando(false)}
-              disabled={isPending}
-            >
+            <Button variant="outline" onClick={() => setConfirmando(false)} disabled={isPending}>
               Cancelar
             </Button>
-            <Button loading={isPending}
+            <Button
+              loading={isPending}
               variant="destructive"
               onClick={excluir}
               disabled={isPending}
@@ -600,4 +547,3 @@ function RowActions({ produto }: { produto: ProdutoListItem }) {
     </div>
   )
 }
-

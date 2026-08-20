@@ -36,16 +36,16 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import {
+  chaveDeTamanhos,
   combinacoesDeTamanho,
-  componentesVariaveis,
+  descreverCombinacao,
   tamanhoDoComponente,
-  tamanhoDoKit,
-  tamanhosDoKit,
 } from '@/lib/kit-tamanhos'
 import {
   avisoPrecoDeKit,
   centavosParaMoeda,
   chave,
+  chaveKit,
   decimalParaCentavos,
   formatarPrecoDeKit,
   precoDeKit,
@@ -76,8 +76,8 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
         <div>
           <h1 className="text-2xl font-semibold">Kits</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Combos de venda (ex.: 1 peseira + 2 capas). O tamanho e a cor são
-            escolhidos na hora de gerar as OPs, lá em Ordens.
+            Combos de venda (ex.: 1 peseira + 2 capas). O tamanho e a cor são escolhidos na hora de
+            gerar as OPs, lá em Ordens.
           </p>
         </div>
         {podeEditar && (
@@ -99,17 +99,12 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
           {kits.map((kit) => {
             const pecas = kit.itens.reduce((s, i) => s + i.quantidade, 0)
             return (
-              <article
-                key={kit.id}
-                className="vv-lift flex flex-col gap-3 rounded-xl border p-4"
-              >
+              <article key={kit.id} className="vv-lift flex flex-col gap-3 rounded-xl border p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="truncate font-medium">{kit.nome}</span>
-                      {!kit.ativo && (
-                        <Badge variant="secondary">Inativo</Badge>
-                      )}
+                      {!kit.ativo && <Badge variant="secondary">Inativo</Badge>}
                     </div>
                     <div className="text-muted-foreground font-mono text-xs">
                       {kit.sku} · {pecas} peças/kit
@@ -182,18 +177,17 @@ function tabelaDoKit(kit: KitComItens) {
       }
     }
   }
-  // Preço FECHADO do kit vence a soma — mesma regra do builder.
-  for (const [tam, dec] of Object.entries(kit.precos)) {
-    tabela.kit[chave(kit.id, tam)] = decimalParaCentavos(dec)
+  // Preço FECHADO do kit vence a soma — mesma regra do builder. A chave é a
+  // COMBINAÇÃO de tamanhos, já canônica no banco.
+  for (const [combinacao, dec] of Object.entries(kit.precos)) {
+    tabela.kit[chaveKit(kit.id, combinacao)] = decimalParaCentavos(dec)
   }
   return tabela
 }
 
 function tamanhosDoComponente(kit: KitComItens) {
   return (produtoId: string) =>
-    kit.itens
-      .find((it) => it.produtoId === produtoId)
-      ?.tamanhosPeso.map((t) => t.tamanho) ?? []
+    kit.itens.find((it) => it.produtoId === produtoId)?.tamanhosPeso.map((t) => t.tamanho) ?? []
 }
 
 function PrecoDoKit({ kit }: { kit: KitComItens }) {
@@ -214,16 +208,11 @@ function PrecoDoKit({ kit }: { kit: KitComItens }) {
   return (
     <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t pt-2 text-xs">
       <span className="text-muted-foreground">Preço do kit</span>
-      <span
-        className="font-medium tabular-nums"
-        title={detalhePreco(kit, tamanhosDe)}
-      >
+      <span className="font-medium tabular-nums" title={detalhePreco(kit, tamanhosDe)}>
         {formatarPrecoDeKit(preco)}
       </span>
       {fechado && <span className="text-muted-foreground">(fechado)</span>}
-      {aviso && (
-        <span className="text-amber-600 dark:text-amber-500">{aviso}</span>
-      )}
+      {aviso && <span className="text-amber-600 dark:text-amber-500">{aviso}</span>}
     </div>
   )
 }
@@ -234,34 +223,24 @@ function PrecoDoKit({ kit }: { kit: KitComItens }) {
 //
 // O rótulo nomeia o componente quando há mais de um variável: com dois
 // tamanhos na mesma linha, "Queen · 50x50" não diria qual é de quem.
-function detalhePreco(
-  kit: KitComItens,
-  tamanhosDe: (produtoId: string) => string[],
-): string {
+function detalhePreco(kit: KitComItens, tamanhosDe: (produtoId: string) => string[]): string {
   const tabela = tabelaDoKit(kit)
-  const variaveis = componentesVariaveis(kit.itens, tamanhosDe)
+  const nomeados = kit.itens.map((it) => ({ ...it, nome: it.produtoNome }))
 
   const linhas = combinacoesDeTamanho(kit.itens, tamanhosDe).map((escolhas) => {
-    const doKit = tamanhoDoKit(kit.itens, escolhas, tamanhosDe)
+    const combinacao = chaveDeTamanhos(kit.itens, escolhas, tamanhosDe)
     const valor = precoDeKit(
       tabela,
       kit.id,
-      doKit,
+      combinacao,
       kit.itens.map((it) => ({
         produtoId: it.produtoId,
         quantidade: it.quantidade,
         tamanho: tamanhoDoComponente(it.produtoId, escolhas, tamanhosDe),
       })),
     )
-    const rotulo =
-      variaveis.length === 0
-        ? 'tamanho único'
-        : variaveis.length === 1
-          ? (escolhas[variaveis[0]!.produtoId] ?? '?')
-          : variaveis
-              .map((v) => `${v.produtoNome}: ${escolhas[v.produtoId] ?? '?'}`)
-              .join(' · ')
-    const fechado = doKit != null && kit.precos[doKit] != null
+    const rotulo = descreverCombinacao(nomeados, escolhas, tamanhosDe)
+    const fechado = combinacao != null && kit.precos[combinacao] != null
     return `${rotulo}: ${
       valor == null ? '—' : `R$ ${centavosParaMoeda(valor)}`
     }${fechado ? ' (preço fechado)' : ''}`
@@ -298,15 +277,10 @@ function PesoDoKit({ itens }: { itens: KitItemDetalhe[] }) {
   return (
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t pt-2 text-xs">
       <span className="text-muted-foreground">Peso do kit</span>
-      <span
-        className="font-medium tabular-nums"
-        title={detalhePorComponente(itens)}
-      >
+      <span className="font-medium tabular-nums" title={detalhePorComponente(itens)}>
         {formatarPesoDeKit(peso)}
       </span>
-      {aviso && (
-        <span className="text-amber-600 dark:text-amber-500">{aviso}</span>
-      )}
+      {aviso && <span className="text-amber-600 dark:text-amber-500">{aviso}</span>}
     </div>
   )
 }
@@ -317,8 +291,7 @@ function detalhePorComponente(itens: KitItemDetalhe[]): string {
   return itens
     .map((it) => {
       const p = pesoDeProduto(it.tamanhosPeso)
-      const falta =
-        p.semPeso.length > 0 ? ` (sem peso: ${p.semPeso.join(', ')})` : ''
+      const falta = p.semPeso.length > 0 ? ` (sem peso: ${p.semPeso.join(', ')})` : ''
       return `${it.quantidade}× ${it.produtoNome}: ${formatarPesoDeProduto(p)}${falta}`
     })
     .join('\n')
@@ -383,11 +356,12 @@ function KitDialog({
   )
   const [listaItens] = useListaAnimada<HTMLDivElement>()
 
-  // Preco FECHADO do kit, mascarado ("105,00"). Chave = nome do tamanho.
+  // Preco FECHADO do kit, mascarado ("105,00"). Chave = a COMBINAÇÃO de
+  // tamanhos (`chaveDeTamanhos`), a mesma que o banco guarda.
   const [precos, setPrecos] = useState<Record<string, string>>(() => {
     const inicial: Record<string, string> = {}
-    for (const [tam, dec] of Object.entries(kit?.precos ?? {})) {
-      inicial[tam] = decimalParaMoeda(dec)
+    for (const [combinacao, dec] of Object.entries(kit?.precos ?? {})) {
+      inicial[combinacao] = decimalParaMoeda(dec)
     }
     return inicial
   })
@@ -398,22 +372,28 @@ function KitDialog({
   const tamanhosDe = (produtoId: string) => {
     const p = produtos.find((x) => x.id === produtoId)
     return [
-      ...new Set(
-        (p?.variacoes ?? [])
-          .map((v) => v.tamanho)
-          .filter((t): t is string => Boolean(t)),
-      ),
+      ...new Set((p?.variacoes ?? []).map((v) => v.tamanho).filter((t): t is string => Boolean(t))),
     ]
   }
   const componentesDoKit = itens
     .filter((l) => l.produtoId)
-    .map((l) => ({ produtoId: l.produtoId }))
-  const tamanhosKit = tamanhosDoKit(componentesDoKit, tamanhosDe)
-  // Quantos componentes têm tamanho a escolher: com 0 não há tamanho no
-  // pedido, com 2+ não existe UM tamanho que descreva o kit. Nos dois casos
-  // não há onde pendurar preço fechado — mas o motivo é diferente e a tela
-  // precisa dizer qual é.
-  const qtdVariaveis = componentesVariaveis(componentesDoKit, tamanhosDe).length
+    .map((l) => ({
+      produtoId: l.produtoId,
+      nome: produtos.find((p) => p.id === l.produtoId)?.nome,
+    }))
+
+  // TODA combinação de tamanhos que o kit consegue produzir ganha uma linha
+  // de preço — inclusive o kit sem componente variável (uma linha, chave '')
+  // e o kit com DOIS variáveis (uma linha por par).
+  //
+  // Antes só existia linha quando havia EXATAMENTE um componente variável,
+  // porque a chave era um tamanho só. Era o que deixava o Kit Peseira+2 Capas
+  // ACONCHEGO sem lugar pra preço fechado: peseira e capa variam, e ele custa
+  // 149,99/159,99/169,99 conforme a capa.
+  const combinacoesDoKit = combinacoesDeTamanho(componentesDoKit, tamanhosDe).map((escolhas) => ({
+    combinacao: chaveDeTamanhos(componentesDoKit, escolhas, tamanhosDe) ?? '',
+    rotulo: descreverCombinacao(componentesDoKit, escolhas, tamanhosDe),
+  }))
 
   function patchItem(idx: number, patch: Partial<LinhaItem>) {
     setItens((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
@@ -446,7 +426,12 @@ function KitDialog({
         itens: itensLimpos,
         // Vazio apaga: e o usuario dizendo "este kit nao tem preco fechado
         // neste tamanho", e ai vale a soma dos componentes.
-        precos: tamanhosKit.map((t) => ({ tamanho: t, preco: precos[t] ?? '' })),
+        // Vazio apaga: e o usuario dizendo "este kit nao tem preco fechado
+        // nesta combinacao", e ai vale a soma dos componentes.
+        precos: combinacoesDoKit.map((c) => ({
+          combinacao: c.combinacao,
+          preco: precos[c.combinacao] ?? '',
+        })),
       }
       const result = isEdit
         ? await atualizarKitAction(kit.id, payload)
@@ -466,8 +451,8 @@ function KitDialog({
         <DialogHeader className="border-b p-6">
           <DialogTitle>{isEdit ? 'Editar kit' : 'Novo kit'}</DialogTitle>
           <DialogDescription>
-            Escolha os produtos e a quantidade de cada um por kit. Tamanho e
-            cor são definidos só ao gerar as OPs.
+            Escolha os produtos e a quantidade de cada um por kit. Tamanho e cor são definidos só ao
+            gerar as OPs.
           </DialogDescription>
         </DialogHeader>
 
@@ -503,89 +488,85 @@ function KitDialog({
             <div ref={listaItens} className="space-y-2">
               {itens.map((linha, idx) => (
                 <div key={linha.id} className="flex items-center gap-2">
-                <Select
-                  value={linha.produtoId || null}
-                  onValueChange={(v) => patchItem(idx, { produtoId: v ?? '' })}
-                  disabled={isPending}
-                >
-                  <SelectTrigger size="sm" className="flex-1">
-                    <SelectValue placeholder="Produto" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {produtos.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  inputMode="numeric"
-                  aria-label="Quantidade por kit"
-                  value={linha.quantidade}
-                  onChange={(e) =>
-                    patchItem(idx, {
-                      quantidade: e.target.value.replace(/\D/g, ''),
-                    })
-                  }
-                  disabled={isPending}
-                  className="h-9 w-14 text-center"
-                />
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  onClick={() => removeItem(idx)}
-                  disabled={isPending || itens.length === 1}
-                  aria-label="Remover item"
-                >
-                  <X />
-                </Button>
+                  <Select
+                    value={linha.produtoId || null}
+                    onValueChange={(v) => patchItem(idx, { produtoId: v ?? '' })}
+                    disabled={isPending}
+                  >
+                    <SelectTrigger size="sm" className="flex-1">
+                      <SelectValue placeholder="Produto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {produtos.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    inputMode="numeric"
+                    aria-label="Quantidade por kit"
+                    value={linha.quantidade}
+                    onChange={(e) =>
+                      patchItem(idx, {
+                        quantidade: e.target.value.replace(/\D/g, ''),
+                      })
+                    }
+                    disabled={isPending}
+                    className="h-9 w-14 text-center"
+                  />
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    onClick={() => removeItem(idx)}
+                    disabled={isPending || itens.length === 1}
+                    aria-label="Remover item"
+                  >
+                    <X />
+                  </Button>
                 </div>
               ))}
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={addItem}
-              disabled={isPending}
-            >
+            <Button size="sm" variant="outline" onClick={addItem} disabled={isPending}>
               <Plus />
               Adicionar produto
             </Button>
           </div>
 
           <div className="space-y-2">
-            <Label>Preço fechado por tamanho (opcional)</Label>
+            <Label>Preço fechado por combinação de tamanhos (opcional)</Label>
             <p className="text-muted-foreground text-xs">
-              Deixe vazio no caso normal — o pedido soma o preço dos
-              componentes. Preencha só quando o combo custa diferente da
-              soma. Mexer aqui não altera pedido já salvo.
+              Deixe vazio no caso normal — o pedido soma o preço dos componentes. Preencha só quando
+              o combo custa diferente da soma. Uma linha por combinação porque o preço pode depender
+              do tamanho de mais de uma peça. Mexer aqui não altera pedido já salvo.
             </p>
-            {tamanhosKit.length === 0 ? (
+            {combinacoesDoKit.length === 0 ? (
               <p className="text-muted-foreground py-2 text-sm">
-                {qtdVariaveis === 0
-                  ? 'Nenhum componente deste kit varia de tamanho, então ele não tem tamanho a escolher no pedido — e não há onde pendurar um preço fechado. Vale a soma dos componentes.'
-                  : 'Mais de um componente deste kit varia de tamanho, então não existe um tamanho que descreva o kit inteiro (cada peça escolhe a sua no pedido). Preço fechado precisa de um tamanho só; aqui vale a soma dos componentes.'}
+                Adicione ao menos um componente pra o kit ter combinação de tamanhos.
               </p>
             ) : (
               <div className="space-y-2">
-                {tamanhosKit.map((t) => (
-                  <div key={t} className="flex items-center justify-between gap-3">
-                    <Label htmlFor={`kit-preco-${t}`} className="text-sm font-normal">
-                      {t}
+                {combinacoesDoKit.map((c) => (
+                  <div key={c.combinacao} className="flex items-center justify-between gap-3">
+                    <Label
+                      htmlFor={`kit-preco-${c.combinacao}`}
+                      className="min-w-0 text-sm font-normal"
+                    >
+                      {c.rotulo}
                     </Label>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                       <span className="text-muted-foreground text-sm">R$</span>
                       <Input
-                        id={`kit-preco-${t}`}
+                        id={`kit-preco-${c.combinacao}`}
                         inputMode="numeric"
                         placeholder="(soma os componentes)"
                         className="h-9 w-40 text-right tabular-nums"
-                        value={precos[t] ?? ''}
+                        value={precos[c.combinacao] ?? ''}
                         onChange={(e) =>
                           setPrecos((prev) => ({
                             ...prev,
-                            [t]: mascararMoeda(e.target.value),
+                            [c.combinacao]: mascararMoeda(e.target.value),
                           }))
                         }
                         disabled={isPending}
@@ -638,13 +619,7 @@ function KitDialog({
 // Dialog: excluir
 // -----------------------------------------------------------------
 
-function ExcluirDialog({
-  kit,
-  onClose,
-}: {
-  kit: KitComItens | null
-  onClose: () => void
-}) {
+function ExcluirDialog({ kit, onClose }: { kit: KitComItens | null; onClose: () => void }) {
   const [isPending, startTransition] = useTransition()
 
   function excluir() {

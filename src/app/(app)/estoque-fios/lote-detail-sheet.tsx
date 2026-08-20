@@ -99,9 +99,7 @@ function DetalheBody({
       <SheetHeader>
         {/* Lote sem número existe de verdade (a planilha traz duas linhas
             assim) — o título cai na cor, que é o que identifica a caixa. */}
-        <SheetTitle>
-          {lote.numeroLote ?? `${lote.corFornecedorNome} · sem lote`}
-        </SheetTitle>
+        <SheetTitle>{lote.numeroLote ?? `${lote.corFornecedorNome} · sem lote`}</SheetTitle>
         <SheetDescription>
           {lote.corFornecedorNome} → {lote.corNome}
         </SheetDescription>
@@ -125,11 +123,7 @@ function DetalheBody({
         </div>
 
         {podeEditar && !esgotado && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setMostrarForm((v) => !v)}
-          >
+          <Button size="sm" variant="outline" onClick={() => setMostrarForm((v) => !v)}>
             <Plus />
             {mostrarForm ? 'Cancelar' : 'Registrar saída'}
           </Button>
@@ -154,9 +148,7 @@ function DetalheBody({
               <Skeleton className="h-14 w-full" />
             </div>
           ) : saidas.length === 0 ? (
-            <p className="text-muted-foreground text-sm">
-              Nenhuma saída registrada.
-            </p>
+            <p className="text-muted-foreground text-sm">Nenhuma saída registrada.</p>
           ) : (
             <ul className="space-y-2">
               {saidas.map((s) => (
@@ -165,17 +157,13 @@ function DetalheBody({
                     <span className="font-medium">
                       {s.caixas} cx · {formatarKg(s.pesoKg)}
                     </span>
-                    <span className="text-muted-foreground text-xs">
-                      {formatarData(s.data)}
-                    </span>
+                    <span className="text-muted-foreground text-xs">{formatarData(s.data)}</span>
                   </div>
                   <div className="text-muted-foreground text-xs">
                     {s.motivo}
                     {s.usuarioNome ? ` · ${s.usuarioNome}` : ''}
                   </div>
-                  {s.observacao && (
-                    <div className="mt-1 text-xs">{s.observacao}</div>
-                  )}
+                  {s.observacao && <div className="mt-1 text-xs">{s.observacao}</div>}
                 </li>
               ))}
             </ul>
@@ -186,13 +174,7 @@ function DetalheBody({
   )
 }
 
-function SaidaForm({
-  lote,
-  onDone,
-}: {
-  lote: LoteFioItem
-  onDone: () => void
-}) {
+function SaidaForm({ lote, onDone }: { lote: LoteFioItem; onDone: () => void }) {
   const [isPending, startTransition] = useTransition()
   const [pesoTocado, setPesoTocado] = useState(false)
 
@@ -234,11 +216,7 @@ function SaidaForm({
   })
 
   return (
-    <form
-      onSubmit={onSubmit}
-      className="space-y-3 rounded-lg border p-3"
-      noValidate
-    >
+    <form onSubmit={onSubmit} className="space-y-3 rounded-lg border p-3" noValidate>
       <p className="text-muted-foreground text-xs">
         Saldo disponível: {lote.saldoCaixas} cx · {formatarKg(lote.saldoPesoKg)}
       </p>
@@ -257,9 +235,7 @@ function SaidaForm({
             disabled={isPending}
             {...form.register('caixas')}
           />
-          {errs.caixas && (
-            <p className="text-destructive text-xs">{errs.caixas.message}</p>
-          )}
+          {errs.caixas && <p className="text-destructive text-xs">{errs.caixas.message}</p>}
         </div>
 
         <div className="space-y-1.5">
@@ -275,9 +251,7 @@ function SaidaForm({
             disabled={isPending}
             {...form.register('pesoKg', { onChange: () => setPesoTocado(true) })}
           />
-          {errs.pesoKg && (
-            <p className="text-destructive text-xs">{errs.pesoKg.message}</p>
-          )}
+          {errs.pesoKg && <p className="text-destructive text-xs">{errs.pesoKg.message}</p>}
         </div>
       </div>
 
@@ -285,15 +259,8 @@ function SaidaForm({
         <Label htmlFor="sf-data">
           Data <span className="text-destructive">*</span>
         </Label>
-        <Input
-          id="sf-data"
-          type="date"
-          disabled={isPending}
-          {...form.register('data')}
-        />
-        {errs.data && (
-          <p className="text-destructive text-xs">{errs.data.message}</p>
-        )}
+        <Input id="sf-data" type="date" disabled={isPending} {...form.register('data')} />
+        {errs.data && <p className="text-destructive text-xs">{errs.data.message}</p>}
       </div>
 
       <div className="space-y-1.5">
@@ -306,19 +273,12 @@ function SaidaForm({
           disabled={isPending}
           {...form.register('motivo')}
         />
-        {errs.motivo && (
-          <p className="text-destructive text-xs">{errs.motivo.message}</p>
-        )}
+        {errs.motivo && <p className="text-destructive text-xs">{errs.motivo.message}</p>}
       </div>
 
       <div className="space-y-1.5">
         <Label htmlFor="sf-obs">Observação</Label>
-        <Textarea
-          id="sf-obs"
-          rows={2}
-          disabled={isPending}
-          {...form.register('observacao')}
-        />
+        <Textarea id="sf-obs" rows={2} disabled={isPending} {...form.register('observacao')} />
       </div>
 
       <Button loading={isPending} type="submit" size="sm" disabled={isPending}>
