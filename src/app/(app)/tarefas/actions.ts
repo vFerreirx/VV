@@ -34,6 +34,7 @@ const CAMPOS = {
   titulo: tarefas.titulo,
   descricao: tarefas.descricao,
   prazo: tarefas.prazo,
+  prioridade: tarefas.prioridade,
   contaId: tarefas.contaId,
   concluidaEm: tarefas.concluidaEm,
   concluidaPor: tarefas.concluidaPor,
@@ -45,10 +46,17 @@ const CAMPOS = {
   concluidaPorNome: users.nome,
 }
 
-// Pendentes: prazo mais próximo primeiro (as vencidas caem naturalmente no
-// topo, porque a data é menor), sem prazo por último, e entre as sem prazo
-// a mais nova primeiro.
+// Pendentes: URGENTE PRIMEIRO, e só depois o prazo — a prioridade é o que
+// alguém decidiu sobre a tarefa, o prazo é só quando ela vence, e uma
+// urgente sem data não pode ficar atrás de uma normal pra semana que vem.
+// `desc(prioridade)` funciona sem CASE porque a ordem de declaração do enum
+// (baixa < normal < alta < urgente) é a ordem de comparação no Postgres.
+//
+// Dentro do mesmo nível vale o de antes: prazo mais próximo primeiro (as
+// vencidas caem naturalmente no topo, porque a data é menor), sem prazo por
+// último, e entre as sem prazo a mais nova primeiro.
 const ORDEM_PENDENTES = [
+  desc(tarefas.prioridade),
   sql`${tarefas.prazo} ASC NULLS LAST`,
   desc(tarefas.createdAt),
 ]
@@ -154,6 +162,7 @@ export async function criarTarefaAction(
     .values({
       titulo: data.titulo,
       descricao: data.descricao,
+      prioridade: data.prioridade,
       prazo: data.prazo,
       contaId: data.contaId,
       criadoPor: user.id,
@@ -198,6 +207,7 @@ export async function atualizarTarefaAction(
     .set({
       titulo: data.titulo,
       descricao: data.descricao,
+      prioridade: data.prioridade,
       prazo: data.prazo,
       contaId: data.contaId,
     })

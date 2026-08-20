@@ -11,6 +11,7 @@ import { useRef, useState, useTransition } from 'react'
 
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
+import { IndicadorTarefas } from '@/components/layout/indicador-tarefas'
 import { NavGrupo } from '@/components/layout/nav-grupo'
 import { visibleGroups } from '@/components/layout/nav-items'
 import { NavResizer } from '@/components/layout/nav-resizer'
@@ -24,9 +25,16 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import type { AreaKey } from '@/lib/auth/permissoes'
+import type { PrioridadeAlerta } from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
 
-export function MobileNav({ bloqueadas }: { bloqueadas: AreaKey[] }) {
+export function MobileNav({
+  bloqueadas,
+  alertaTarefas,
+}: {
+  bloqueadas: AreaKey[]
+  alertaTarefas: PrioridadeAlerta
+}) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -43,18 +51,25 @@ export function MobileNav({ bloqueadas }: { bloqueadas: AreaKey[] }) {
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Abrir menu"
-            className="md:hidden"
-          />
-        }
-      >
-        <Menu />
-      </SheetTrigger>
+      {/* No telefone a sidebar não existe: se o aviso morasse só no item
+          do menu, quem trabalha no galpão nunca veria — o menu está fechado.
+          Por isso a bolinha aparece TAMBÉM no botão que abre a gaveta.
+          Ela fica FORA do <Button> (e não dentro) porque o SheetTrigger
+          controla o conteúdo do botão; o wrapper `relative` é quem a
+          posiciona. */}
+      <span className="relative inline-flex md:hidden">
+        <SheetTrigger
+          render={
+            <Button variant="ghost" size="icon-sm" aria-label="Abrir menu" />
+          }
+        >
+          <Menu />
+        </SheetTrigger>
+        <IndicadorTarefas
+          prioridade={alertaTarefas}
+          className="pointer-events-none absolute -top-0.5 -right-0.5"
+        />
+      </span>
       {/* Largura inline (e não por classe): o SheetContent já traz um
           `data-[side=left]:w-3/4`, e o seletor de atributo dele ganha de
           qualquer `w-*` solto — a largura salva era ignorada.
@@ -114,6 +129,9 @@ export function MobileNav({ bloqueadas }: { bloqueadas: AreaKey[] }) {
                     >
                       <item.icon className="size-4 transition-transform duration-200 group-hover/nav:translate-x-0.5" />
                       {item.label}
+                      {item.alerta === 'tarefas' && (
+                        <IndicadorTarefas prioridade={alertaTarefas} />
+                      )}
                     </Link>
                   )
                 })}

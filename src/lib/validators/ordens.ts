@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { PRIORIDADE_LABEL, PRIORIDADE_NIVEIS } from '@/lib/prioridade'
+
 // Helpers (mesmo padrão dos outros validators).
 // Todos toleram tanto INPUT (string vinda do form) quanto OUTPUT
 // (já transformado: Date, number, null) — o form usa zodResolver que
@@ -69,7 +71,9 @@ export const canalValues = [
   'estoque',
 ] as const
 
-export const prioridadeValues = ['baixa', 'normal', 'alta', 'urgente'] as const
+// Os quatro níveis vivem em src/lib/prioridade.ts, junto do rótulo e da cor
+// — a tarefa usa exatamente os mesmos e nada aqui pode divergir de lá.
+export const prioridadeValues = PRIORIDADE_NIVEIS
 
 export const statusValues = [
   'aguardando_materia_prima',
@@ -205,15 +209,8 @@ export const CANAL_LABEL_CURTO: Record<(typeof canalValues)[number], string> = {
   estoque: 'Estoque',
 }
 
-export const PRIORIDADE_LABEL: Record<
-  (typeof prioridadeValues)[number],
-  string
-> = {
-  baixa: 'Baixa',
-  normal: 'Normal',
-  alta: 'Alta',
-  urgente: 'Urgente',
-}
+// Re-export: quem já importava daqui continua importando daqui.
+export { PRIORIDADE_LABEL }
 
 export const STATUS_LABEL: Record<(typeof statusValues)[number], string> = {
   aguardando_materia_prima: 'Aguardando matéria-prima',

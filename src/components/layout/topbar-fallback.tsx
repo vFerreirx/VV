@@ -9,6 +9,7 @@ import { MobileNav } from '@/components/layout/mobile-nav'
 import { SidebarToggle } from '@/components/layout/sidebar-toggle'
 import { Button } from '@/components/ui/button'
 import type { AreaKey } from '@/lib/auth/permissoes'
+import type { PrioridadeAlerta } from '@/lib/prioridade'
 import type { User } from '@/lib/db/schema'
 
 import { ThemeToggle } from './theme-toggle'
@@ -17,9 +18,11 @@ import { UserMenu } from './user-menu'
 export function TopbarFallback({
   user,
   bloqueadas,
+  alertaTarefas,
 }: {
   user: Pick<User, 'nome' | 'username' | 'role'>
   bloqueadas: AreaKey[]
+  alertaTarefas: PrioridadeAlerta
 }) {
   return (
     <header
@@ -32,7 +35,7 @@ export function TopbarFallback({
       <div className="flex items-center gap-2">
         <SidebarToggle />
         <div className="flex items-center gap-2 md:hidden">
-          <MobileNav bloqueadas={bloqueadas} />
+          <MobileNav bloqueadas={bloqueadas} alertaTarefas={alertaTarefas} />
           <Logo variant="mark" className="text-primary size-6" />
           <span className="font-heading text-sm font-medium tracking-[0.15em] uppercase">
             Vanvest

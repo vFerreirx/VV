@@ -39,6 +39,10 @@ export type NavItem = {
   // Item que agrega várias áreas (página com sub-abas): visível se QUALQUER
   // uma das áreas não estiver bloqueada pro cargo.
   areas?: AreaKey[]
+  // Item que ganha bolinha de aviso. Declarado aqui, e não checado por href
+  // lá na Sidebar, pra o próximo aviso não virar um `if` escondido no meio
+  // do render. O dado vem do layout; ver IndicadorTarefas.
+  alerta?: 'tarefas'
 }
 
 export type NavGroup = {
@@ -130,7 +134,13 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     titulo: 'Administração',
     items: [
-      { href: '/tarefas', label: 'Tarefas', icon: ListTodo, area: 'tarefas' },
+      {
+        href: '/tarefas',
+        label: 'Tarefas',
+        icon: ListTodo,
+        area: 'tarefas',
+        alerta: 'tarefas',
+      },
       { href: '/empresas', label: 'Empresas', icon: Building2, area: 'empresas' },
       { href: '/usuarios', label: 'Usuários', icon: Users, area: 'usuarios' },
       {

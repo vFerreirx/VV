@@ -45,6 +45,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  PRIORIDADE_BADGE,
+  PRIORIDADE_LABEL,
+  PRIORIDADE_NIVEIS,
+  ehDestaque,
+  type PrioridadeNivel,
+} from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
 import { estaVencida } from '@/lib/validators/tarefas'
 
@@ -151,6 +158,7 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [titulo, setTitulo] = useState('')
+  const [prioridade, setPrioridade] = useState<PrioridadeNivel>('normal')
   const [prazo, setPrazo] = useState('')
   const [contaId, setContaId] = useState<string | null>(null)
   const [aberto, setAberto] = useState(false)
@@ -164,6 +172,7 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
       const r = await criarTarefaAction({
         titulo,
         descricao: null,
+        prioridade,
         prazo: prazo || null,
         contaId,
       })
@@ -173,6 +182,7 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
       }
       toast.success(r.message ?? 'Tarefa criada')
       setTitulo('')
+      setPrioridade('normal')
       setPrazo('')
       setContaId(null)
       setAberto(false)
@@ -193,6 +203,16 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
           disabled={isPending}
           autoComplete="off"
           className="min-w-56 flex-1"
+        />
+        {/* Prioridade fica na linha rápida, e não atrás do "mais opções":
+            é ela que acende a bolinha do menu, e aviso que depende de
+            alguém abrir uma gaveta pra marcar nunca acende. */}
+        <SeletorPrioridade
+          id="nova-prioridade"
+          valor={prioridade}
+          onChange={setPrioridade}
+          disabled={isPending}
+          className="w-32"
         />
         <Button onClick={salvar} loading={isPending} disabled={isPending}>
           {!isPending && <Plus />}
@@ -235,6 +255,42 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
         </div>
       )}
     </div>
+  )
+}
+
+// Mesmo seletor da OP, mesmos rótulos — quem escolhe "Urgente" no kanban
+// escolhe "Urgente" aqui, e o selo que sai é o mesmo.
+function SeletorPrioridade({
+  id,
+  valor,
+  onChange,
+  disabled,
+  className,
+}: {
+  id: string
+  valor: PrioridadeNivel
+  onChange: (v: PrioridadeNivel) => void
+  disabled?: boolean
+  className?: string
+}) {
+  return (
+    <Select
+      items={PRIORIDADE_LABEL}
+      value={valor}
+      onValueChange={(v) => v && onChange(v as PrioridadeNivel)}
+      disabled={disabled}
+    >
+      <SelectTrigger id={id} className={className}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {PRIORIDADE_NIVEIS.map((p) => (
+          <SelectItem key={p} value={p}>
+            {PRIORIDADE_LABEL[p]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -336,6 +392,19 @@ function LinhaTarefa({
           )}
         >
           {t.titulo}
+          {ehDestaque(t.prioridade) && (
+            <Badge
+              className={cn(
+                'ml-2 align-middle text-[11px]',
+                PRIORIDADE_BADGE[t.prioridade],
+                // Pulso só enquanto a tarefa está de pé: em concluída ele
+                // seria um chamado pra algo que já foi feito.
+                t.prioridade === 'urgente' && !concluida && 'pulse-urgente',
+              )}
+            >
+              {PRIORIDADE_LABEL[t.prioridade]}
+            </Badge>
+          )}
           {t.contaNome && (
             <Badge variant="secondary" className="ml-2 align-middle text-[11px]">
               {t.contaNome}
@@ -416,6 +485,9 @@ function TarefaDialog({
   const [isPending, startTransition] = useTransition()
   const [titulo, setTitulo] = useState(tarefa.titulo)
   const [descricao, setDescricao] = useState(tarefa.descricao ?? '')
+  const [prioridade, setPrioridade] = useState<PrioridadeNivel>(
+    tarefa.prioridade,
+  )
   const [prazo, setPrazo] = useState(tarefa.prazo ?? '')
   const [contaId, setContaId] = useState<string | null>(tarefa.contaId)
 
@@ -428,6 +500,7 @@ function TarefaDialog({
       const r = await atualizarTarefaAction(tarefa.id, {
         titulo,
         descricao: descricao || null,
+        prioridade,
         prazo: prazo || null,
         contaId,
       })
@@ -477,6 +550,16 @@ function TarefaDialog({
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="tarefa-prioridade">Prioridade</Label>
+              <SeletorPrioridade
+                id="tarefa-prioridade"
+                valor={prioridade}
+                onChange={setPrioridade}
+                disabled={isPending}
+                className="w-full"
+              />
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="tarefa-prazo">Prazo</Label>
               <Input

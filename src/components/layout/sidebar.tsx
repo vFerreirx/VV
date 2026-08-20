@@ -14,6 +14,7 @@ import {
 
 import { logoutAction } from '@/app/(auth)/login/actions'
 import { Logo } from '@/components/brand/logo'
+import { IndicadorTarefas } from '@/components/layout/indicador-tarefas'
 import { NavGrupo } from '@/components/layout/nav-grupo'
 import { NavLinkHint } from '@/components/layout/nav-link-hint'
 import { visibleGroups } from '@/components/layout/nav-items'
@@ -22,9 +23,16 @@ import { useSidebar } from '@/components/layout/sidebar-estado'
 import { NavResizer } from '@/components/layout/nav-resizer'
 import { useNavCollapse } from '@/components/layout/use-nav-collapse'
 import type { AreaKey } from '@/lib/auth/permissoes'
+import type { PrioridadeAlerta } from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
 
-export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
+export function Sidebar({
+  bloqueadas,
+  alertaTarefas,
+}: {
+  bloqueadas: AreaKey[]
+  alertaTarefas: PrioridadeAlerta
+}) {
   const pathname = usePathname()
   const [isPending, startTransition] = useTransition()
   const grupos = visibleGroups(bloqueadas)
@@ -198,6 +206,9 @@ export function Sidebar({ bloqueadas }: { bloqueadas: AreaKey[] }) {
                     >
                       <item.icon className="size-4 transition-transform duration-200 group-hover/nav:translate-x-0.5" />
                       {item.label}
+                      {item.alerta === 'tarefas' && (
+                        <IndicadorTarefas prioridade={alertaTarefas} />
+                      )}
                       <NavLinkHint className="ml-auto" />
                     </Link>
                   )

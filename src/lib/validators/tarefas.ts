@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { PRIORIDADE_NIVEIS } from '@/lib/prioridade'
+
 // Tarefa da administração. Só o título é obrigatório — o caminho rápido de
 // criação é digitar o título e salvar; prazo e conta são secundários e a
 // maioria das tarefas nasce sem eles.
@@ -15,6 +17,12 @@ export const tarefaSchema = z.object({
     .transform((v) => (v == null ? null : v.trim()))
     .refine((v) => v === null || v.length <= 2000, 'Descrição muito longa')
     .transform((v) => (v === '' ? null : v)),
+
+  // Mesmos quatro níveis da OP (enum próprio no banco, ver
+  // supabase/sql/46_tarefa_prioridade.sql). `.default('normal')` deixa o
+  // campo opcional na ENTRADA: o caminho rápido continua sendo título +
+  // Enter, e quem não escolhe nada cai em normal — igual às tarefas antigas.
+  prioridade: z.enum(PRIORIDADE_NIVEIS).default('normal'),
 
   prazo: z
     .union([z.string(), z.null(), z.undefined()])

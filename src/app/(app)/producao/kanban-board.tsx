@@ -42,13 +42,13 @@ import {
   soltarOrdemAction,
 } from '@/app/(app)/ordens/actions'
 import { Badge } from '@/components/ui/badge'
+import { PRIORIDADE_BADGE } from '@/lib/prioridade'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import {
   PRIORIDADE_LABEL,
   STATUS_KANBAN,
   STATUS_LABEL_CURTO,
-  prioridadeValues,
   statusValues,
 } from '@/lib/validators/ordens'
 
@@ -89,13 +89,6 @@ export const COLUMN_STYLES: Record<
     bar: 'bg-emerald-700',
   },
   cancelado: { header: '', bar: '' }, // não usado no kanban
-}
-
-const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
-  baixa: 'bg-muted text-muted-foreground',
-  normal: 'bg-secondary text-secondary-foreground',
-  alta: 'bg-orange-500/15 text-orange-600',
-  urgente: 'bg-destructive/15 text-destructive',
 }
 
 // Limite de WIP (work-in-progress) por etapa. null = sem limite.

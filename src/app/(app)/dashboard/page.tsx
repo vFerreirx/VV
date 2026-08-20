@@ -33,12 +33,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { CountUp } from '@/components/ui/count-up'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth } from '@/lib/auth/require-auth'
+import { PRIORIDADE_BADGE } from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
 import {
   CANAL_LABEL_CURTO,
   PRIORIDADE_LABEL,
   STATUS_LABEL_CURTO,
-  prioridadeValues,
   statusValues,
 } from '@/lib/validators/ordens'
 
@@ -53,13 +53,6 @@ const STATUS_COLOR: Record<(typeof statusValues)[number], string> = {
   pronto_envio: 'bg-amber-500',
   enviado: 'bg-emerald-700',
   cancelado: 'bg-muted-foreground',
-}
-
-const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
-  baixa: 'bg-muted text-muted-foreground',
-  normal: 'bg-secondary text-secondary-foreground',
-  alta: 'bg-orange-500/15 text-orange-600',
-  urgente: 'bg-destructive/15 text-destructive',
 }
 
 export default async function DashboardPage() {

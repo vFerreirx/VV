@@ -265,7 +265,13 @@
   }
 }
 
-/* Anel pulsante discreto pra badges/itens urgentes. */
+/* Anel pulsante discreto pra badges/itens urgentes.
+ *
+ * O MOVIMENTO É REFORÇO, NÃO A MENSAGEM. Com `prefers-reduced-motion` a
+ * animação não roda (bloco lá embaixo) e o pulso vira um ANEL PARADO, em vez
+ * de sumir: quem pediu menos animação continua vendo que aquilo é urgente.
+ * Nada que dependa só deste anel pra se distinguir — o indicador do menu
+ * separa alta de urgente por preenchimento, e as OPs por cor + rótulo. */
 .pulse-urgente {
   animation: vv-pulse-urgente 2s ease-in-out infinite;
 }
@@ -323,6 +329,11 @@
   .skeleton-shimmer,
   .pulse-urgente {
     animation: none;
+  }
+  /* `animation: none` sozinho apagaria o anel junto com o movimento, e o
+   * urgente ficaria idêntico ao resto. O halo estático mantém a marca. */
+  .pulse-urgente {
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 22%, transparent);
   }
   .vv-rise,
   .vv-stagger > * {

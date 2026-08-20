@@ -34,6 +34,20 @@ export const ordemPrioridadeEnum = pgEnum('ordem_prioridade', [
   'urgente',
 ])
 
+// Prioridade da TAREFA da administração. Mesmos quatro valores da OP, tipo
+// SEPARADO de propósito (`supabase/sql/46_tarefa_prioridade.sql`): um enum
+// chamado "ordem" numa tabela de tarefas confunde pra sempre, e um nível
+// novo na produção não pode vazar pra tarefa em silêncio.
+//
+// A ORDEM é a mesma dos dois e é a ordem de comparação no Postgres —
+// `ORDER BY prioridade DESC` devolve urgente primeiro.
+export const tarefaPrioridadeEnum = pgEnum('tarefa_prioridade', [
+  'baixa',
+  'normal',
+  'alta',
+  'urgente',
+])
+
 // Estado do fluxo da OP — usado tanto na tabela ordens_producao
 // quanto nas colunas status_anterior/status_novo de eventos_kanban
 export const ordemStatusEnum = pgEnum('ordem_status', [

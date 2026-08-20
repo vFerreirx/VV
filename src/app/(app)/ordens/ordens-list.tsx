@@ -51,6 +51,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { PRIORIDADE_BADGE } from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
 import {
   CANAL_LABEL_CURTO,
@@ -71,13 +72,6 @@ const STATUS_BADGE: Record<(typeof statusValues)[number], string> = {
   pronto_envio: 'bg-amber-500 text-white',
   enviado: 'bg-emerald-700 text-white',
   cancelado: 'bg-muted text-muted-foreground',
-}
-
-const PRIORIDADE_BADGE: Record<(typeof prioridadeValues)[number], string> = {
-  baixa: 'bg-muted text-muted-foreground',
-  normal: 'bg-secondary text-secondary-foreground',
-  alta: 'bg-orange-500/15 text-orange-600',
-  urgente: 'bg-destructive/15 text-destructive',
 }
 
 type Props = {
