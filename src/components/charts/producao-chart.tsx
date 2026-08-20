@@ -32,7 +32,10 @@ export function ProducaoChart({ data }: Props) {
   return (
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={formatted} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+        <AreaChart
+          data={formatted}
+          margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+        >
           <defs>
             <linearGradient id="producaoFill" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="oklch(0.65 0.13 160)" stopOpacity={0.4} />
@@ -73,7 +76,10 @@ export function ProducaoChart({ data }: Props) {
             }}
             labelStyle={{ color: 'var(--foreground)', fontWeight: 500 }}
           />
-          <Legend wrapperStyle={{ fontSize: '0.75rem' }} iconType="circle" />
+          <Legend
+            wrapperStyle={{ fontSize: '0.75rem' }}
+            iconType="circle"
+          />
           <Area
             type="monotone"
             dataKey="produzido"

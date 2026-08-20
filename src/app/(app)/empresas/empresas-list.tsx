@@ -51,8 +51,8 @@ export function EmpresasList({ empresas, podeEditar }: Props) {
         <div>
           <h1 className="text-2xl font-semibold">Empresas</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Os CNPJs do grupo. A empresa marcada como principal é a que sai no cabeçalho do pedido,
-            da via de separação e do romaneio.
+            Os CNPJs do grupo. A empresa marcada como principal é a que sai
+            no cabeçalho do pedido, da via de separação e do romaneio.
           </p>
         </div>
         {podeEditar && (
@@ -85,9 +85,13 @@ export function EmpresasList({ empresas, podeEditar }: Props) {
               {empresas.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell>
-                    <div className="font-medium">{e.nomeFantasia ?? e.razaoSocial}</div>
+                    <div className="font-medium">
+                      {e.nomeFantasia ?? e.razaoSocial}
+                    </div>
                     {e.nomeFantasia && (
-                      <div className="text-muted-foreground text-xs">{e.razaoSocial}</div>
+                      <div className="text-muted-foreground text-xs">
+                        {e.razaoSocial}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell className="tabular-nums">
@@ -97,10 +101,14 @@ export function EmpresasList({ empresas, podeEditar }: Props) {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">{e.contas}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {e.contas}
+                  </TableCell>
                   <TableCell>
                     {e.principal ? (
-                      <Badge className="bg-emerald-500/15 text-emerald-600">Principal</Badge>
+                      <Badge className="bg-emerald-500/15 text-emerald-600">
+                        Principal
+                      </Badge>
                     ) : (
                       <span className="text-muted-foreground text-sm">—</span>
                     )}
@@ -171,7 +179,9 @@ function EmpresaDialog({
   const [isPending, startTransition] = useTransition()
   const [razaoSocial, setRazaoSocial] = useState(empresa?.razaoSocial ?? '')
   const [nomeFantasia, setNomeFantasia] = useState(empresa?.nomeFantasia ?? '')
-  const [cnpj, setCnpj] = useState(empresa?.cnpj ? mascararDocumento(empresa.cnpj) : '')
+  const [cnpj, setCnpj] = useState(
+    empresa?.cnpj ? mascararDocumento(empresa.cnpj) : '',
+  )
   const [principal, setPrincipal] = useState(empresa?.principal ?? primeira)
   const [cep, setCep] = useState(empresa?.cep ?? '')
   const [logradouro, setLogradouro] = useState(empresa?.logradouro ?? '')
@@ -221,10 +231,12 @@ function EmpresaDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{empresa ? 'Editar empresa' : 'Nova empresa'}</DialogTitle>
+          <DialogTitle>
+            {empresa ? 'Editar empresa' : 'Nova empresa'}
+          </DialogTitle>
           <DialogDescription>
-            A razão social e o CNPJ identificam quem emite o documento; o nome fantasia é o que
-            aparece grande no cabeçalho.
+            A razão social e o CNPJ identificam quem emite o documento; o nome
+            fantasia é o que aparece grande no cabeçalho.
           </DialogDescription>
         </DialogHeader>
 

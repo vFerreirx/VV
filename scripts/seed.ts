@@ -199,7 +199,8 @@ async function seedUsuarios() {
         role: u.role,
       },
     })
-    if (error) throw new Error(`Falha ao criar ${u.username}: ${error.message}`)
+    if (error)
+      throw new Error(`Falha ao criar ${u.username}: ${error.message}`)
     if (!data.user) throw new Error(`Sem dados pra ${u.username}`)
 
     idsByRole.set(u.role, data.user.id)
@@ -342,12 +343,7 @@ const PRODUTOS_BASE = [
   { sku: 'CAP-001', nome: 'Capa de Almofada 45x45', comprimentoCm: '45.00', larguraCm: '45.00' },
   { sku: 'CAP-002', nome: 'Capa de Almofada 50x50', comprimentoCm: '50.00', larguraCm: '50.00' },
   { sku: 'CAP-003', nome: 'Capa de Almofada 60x60', comprimentoCm: '60.00', larguraCm: '60.00' },
-  {
-    sku: 'CAP-004',
-    nome: 'Capa de Almofada Retangular',
-    comprimentoCm: '50.00',
-    larguraCm: '30.00',
-  },
+  { sku: 'CAP-004', nome: 'Capa de Almofada Retangular', comprimentoCm: '50.00', larguraCm: '30.00' },
   { sku: 'PES-005', nome: 'Peseira Super King', comprimentoCm: '260.00', larguraCm: '70.00' },
   { sku: 'CAP-005', nome: 'Capa de Almofada Lombar', comprimentoCm: '55.00', larguraCm: '35.00' },
 ] as const
@@ -391,9 +387,14 @@ async function seedProdutos() {
     }
   }
 
-  const insertedVariacoes = await db.insert(schema.variacoesProduto).values(variacoes).returning()
+  const insertedVariacoes = await db
+    .insert(schema.variacoesProduto)
+    .values(variacoes)
+    .returning()
 
-  console.log(`  • ${insertedProdutos.length} produtos, ${insertedVariacoes.length} variações`)
+  console.log(
+    `  • ${insertedProdutos.length} produtos, ${insertedVariacoes.length} variações`,
+  )
   return { produtos: insertedProdutos, variacoes: insertedVariacoes }
 }
 
@@ -449,7 +450,10 @@ async function seedOrdens(
     const quantidade = randomInt(20, 300)
 
     // OPs em estados ativos têm máquina alocada
-    const precisaMaquina = !['aguardando_materia_prima', 'cancelado'].includes(status)
+    const precisaMaquina = ![
+      'aguardando_materia_prima',
+      'cancelado',
+    ].includes(status)
     const maquina = precisaMaquina ? randomChoice(maquinas) : null
 
     const dataPrevistaInicio = daysFromNow(randomInt(-30, 5))
@@ -459,7 +463,11 @@ async function seedOrdens(
 
     let dataRealInicio: Date | null = null
     let dataRealFim: Date | null = null
-    if (['em_producao', 'acabamento', 'embalagem', 'pronto_envio', 'enviado'].includes(status)) {
+    if (
+      ['em_producao', 'acabamento', 'embalagem', 'pronto_envio', 'enviado'].includes(
+        status,
+      )
+    ) {
       dataRealInicio = new Date(
         dataPrevistaInicio.getTime() + randomInt(-1, 2) * 24 * 60 * 60 * 1000,
       )
@@ -499,12 +507,17 @@ async function seedOrdens(
 // Apontamentos (pra OPs em produção)
 // -----------------------------------------------------------------
 
-async function seedApontamentos(ordens: schema.OrdemProducao[], operadorId: string) {
+async function seedApontamentos(
+  ordens: schema.OrdemProducao[],
+  operadorId: string,
+) {
   console.log('▶ Criando apontamentos pras OPs em produção…')
   const ativas = ordens.filter(
     (o) =>
       o.maquinaId &&
-      ['em_producao', 'acabamento', 'embalagem', 'pronto_envio', 'enviado'].includes(o.status),
+      ['em_producao', 'acabamento', 'embalagem', 'pronto_envio', 'enviado'].includes(
+        o.status,
+      ),
   )
 
   const rows: schema.NewApontamentoProducao[] = []
@@ -538,13 +551,18 @@ async function seedApontamentos(ordens: schema.OrdemProducao[], operadorId: stri
 // Movimentações de estoque (entrada de produção + saída por canal)
 // -----------------------------------------------------------------
 
-async function seedMovimentacoes(ordens: schema.OrdemProducao[], estoquistaId: string) {
+async function seedMovimentacoes(
+  ordens: schema.OrdemProducao[],
+  estoquistaId: string,
+) {
   console.log('▶ Criando movimentações de estoque…')
   const rows: schema.NewMovimentacaoEstoque[] = []
 
   for (const op of ordens) {
     // Entrada: para tudo que já saiu de em_producao
-    if (['acabamento', 'embalagem', 'pronto_envio', 'enviado'].includes(op.status)) {
+    if (
+      ['acabamento', 'embalagem', 'pronto_envio', 'enviado'].includes(op.status)
+    ) {
       rows.push({
         produtoId: op.produtoId,
         variacaoId: op.variacaoId ?? null,

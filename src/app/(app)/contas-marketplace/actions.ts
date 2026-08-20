@@ -6,7 +6,12 @@ import { revalidatePath } from 'next/cache'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
-import { contasMarketplace, empresas, remessasFull, type ContaMarketplace } from '@/lib/db/schema'
+import {
+  contasMarketplace,
+  empresas,
+  remessasFull,
+  type ContaMarketplace,
+} from '@/lib/db/schema'
 import {
   contaMarketplaceSchema,
   type ContaMarketplaceInput,
@@ -26,7 +31,8 @@ export type ContaComUso = ContaMarketplace & {
   empresaNome: string | null
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // -----------------------------------------------------------------
 // Listagem
@@ -77,7 +83,12 @@ export async function listarContasAtivas(): Promise<ContaMarketplace[]> {
   return db
     .select()
     .from(contasMarketplace)
-    .where(and(isNull(contasMarketplace.deletedAt), eq(contasMarketplace.ativo, true)))
+    .where(
+      and(
+        isNull(contasMarketplace.deletedAt),
+        eq(contasMarketplace.ativo, true),
+      ),
+    )
     .orderBy(asc(contasMarketplace.canal), asc(contasMarketplace.nome))
 }
 
@@ -168,7 +179,9 @@ export async function atualizarContaAction(
   const [atual] = await db
     .select({ id: contasMarketplace.id })
     .from(contasMarketplace)
-    .where(and(eq(contasMarketplace.id, id), isNull(contasMarketplace.deletedAt)))
+    .where(
+      and(eq(contasMarketplace.id, id), isNull(contasMarketplace.deletedAt)),
+    )
     .limit(1)
   if (!atual) return { success: false, error: 'Conta não encontrada' }
 
@@ -209,7 +222,9 @@ export async function excluirContaAction(id: string): Promise<ActionResult> {
   const [atual] = await db
     .select({ id: contasMarketplace.id })
     .from(contasMarketplace)
-    .where(and(eq(contasMarketplace.id, id), isNull(contasMarketplace.deletedAt)))
+    .where(
+      and(eq(contasMarketplace.id, id), isNull(contasMarketplace.deletedAt)),
+    )
     .limit(1)
   if (!atual) return { success: false, error: 'Conta não encontrada' }
 

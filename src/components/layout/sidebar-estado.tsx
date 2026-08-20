@@ -10,7 +10,14 @@
 // localStorage a sidebar nasceria com a largura padrão e pularia depois que
 // o JS rodasse — um flash em todo carregamento.
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 
 import {
   LARGURAS,
@@ -66,11 +73,16 @@ export function SidebarProvider({
     })
   }, [])
 
-  const definirLargura = useCallback((alvo: AlvoLargura, px: number, teto?: number) => {
-    const nova = naFaixa(alvo, px, teto)
-    setLarguras((atual) => (atual[alvo] === nova ? atual : { ...atual, [alvo]: nova }))
-    gravar(LARGURAS[alvo].cookie, String(nova))
-  }, [])
+  const definirLargura = useCallback(
+    (alvo: AlvoLargura, px: number, teto?: number) => {
+      const nova = naFaixa(alvo, px, teto)
+      setLarguras((atual) =>
+        atual[alvo] === nova ? atual : { ...atual, [alvo]: nova },
+      )
+      gravar(LARGURAS[alvo].cookie, String(nova))
+    },
+    [],
+  )
 
   // Atalho Ctrl/⌘ + B. Sem conflito com o Ctrl+K da busca global.
   useEffect(() => {
@@ -90,5 +102,7 @@ export function SidebarProvider({
     [oculta, alternar, larguras, definirLargura],
   )
 
-  return <SidebarContext.Provider value={valor}>{children}</SidebarContext.Provider>
+  return (
+    <SidebarContext.Provider value={valor}>{children}</SidebarContext.Provider>
+  )
 }

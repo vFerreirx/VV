@@ -9,7 +9,10 @@ const stringOpt = (max: number, label = 'Texto') =>
   z
     .union([z.string(), z.null(), z.undefined()])
     .transform((v) => (v == null || v === '' ? undefined : v))
-    .refine((v) => v === undefined || v.length <= max, `${label} muito longo`)
+    .refine(
+      (v) => v === undefined || v.length <= max,
+      `${label} muito longo`,
+    )
     .optional()
 
 // -----------------------------------------------------------------
@@ -23,7 +26,10 @@ export const variacaoSchema = z.object({
     .string()
     .min(2, 'SKU da variação obrigatório')
     .max(80, 'SKU muito longo')
-    .regex(/^[A-Z0-9_\-./]+$/i, 'Use apenas letras, números, hífen, ponto, barra ou underline'),
+    .regex(
+      /^[A-Z0-9_\-./]+$/i,
+      'Use apenas letras, números, hífen, ponto, barra ou underline',
+    ),
   cor: stringOpt(60, 'Cor'),
   modelo: stringOpt(80, 'Modelo'),
   tamanho: stringOpt(40, 'Tamanho'),
@@ -50,7 +56,10 @@ export const precoTamanhoSchema = z.object({
       if (limpo === '') return null
       return Number(limpo)
     })
-    .refine((v) => v === null || (Number.isFinite(v) && v >= 0), 'Informe um preço válido (>= 0)'),
+    .refine(
+      (v) => v === null || (Number.isFinite(v) && v >= 0),
+      'Informe um preço válido (>= 0)',
+    ),
 })
 
 export type PrecoTamanhoInput = z.input<typeof precoTamanhoSchema>
@@ -83,7 +92,10 @@ export const produtoSchema = z.object({
     .string()
     .min(2, 'SKU obrigatório')
     .max(60, 'SKU muito longo')
-    .regex(/^[A-Z0-9_\-./]+$/i, 'Use apenas letras, números, hífen, ponto, barra ou underline'),
+    .regex(
+      /^[A-Z0-9_\-./]+$/i,
+      'Use apenas letras, números, hífen, ponto, barra ou underline',
+    ),
   nome: z.string().min(2, 'Nome obrigatório').max(120, 'Nome muito longo'),
   descricao: stringOpt(500, 'Descrição'),
 
@@ -108,7 +120,9 @@ export type ProdutoOutput = z.output<typeof produtoSchema>
 
 export const produtosFiltrosSchema = z.object({
   q: z.string().trim().optional(),
-  ativo: z.union([z.literal('true'), z.literal('false'), z.literal('todos')]).optional(),
+  ativo: z
+    .union([z.literal('true'), z.literal('false'), z.literal('todos')])
+    .optional(),
 })
 
 export type ProdutosFiltros = z.infer<typeof produtosFiltrosSchema>

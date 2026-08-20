@@ -99,13 +99,14 @@ export function mascararDocumento(v: string): string {
     .replace(new RegExp(`^(${c}{2})(${c})`), '$1.$2')
     .replace(new RegExp(`^(${c}{2})\\.(${c}{3})(${c})`), '$1.$2.$3')
     .replace(new RegExp(`^(${c}{2})\\.(${c}{3})\\.(${c}{3})(${c})`), '$1.$2.$3/$4')
-    .replace(new RegExp(`^(${c}{2})\\.(${c}{3})\\.(${c}{3})/(${c}{4})(${c})`), '$1.$2.$3/$4-$5')
+    .replace(
+      new RegExp(`^(${c}{2})\\.(${c}{3})\\.(${c}{3})/(${c}{4})(${c})`),
+      '$1.$2.$3/$4-$5',
+    )
 }
 
 export function mascararCep(v: string): string {
-  return soDigitos(v)
-    .slice(0, 8)
-    .replace(/^(\d{5})(\d)/, '$1-$2')
+  return soDigitos(v).slice(0, 8).replace(/^(\d{5})(\d)/, '$1-$2')
 }
 
 export function formatarCep(v: string | null | undefined): string {
@@ -115,31 +116,7 @@ export function formatarCep(v: string | null | undefined): string {
 }
 
 export const UFS = [
-  'AC',
-  'AL',
-  'AM',
-  'AP',
-  'BA',
-  'CE',
-  'DF',
-  'ES',
-  'GO',
-  'MA',
-  'MG',
-  'MS',
-  'MT',
-  'PA',
-  'PB',
-  'PE',
-  'PI',
-  'PR',
-  'RJ',
-  'RN',
-  'RO',
-  'RR',
-  'RS',
-  'SC',
-  'SE',
-  'SP',
-  'TO',
+  'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS',
+  'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC',
+  'SE', 'SP', 'TO',
 ] as const

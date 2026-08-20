@@ -71,7 +71,10 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
   }
   const allChecked = tamanhos.length > 0 && selecionados.size === tamanhos.length
   const someChecked = selecionados.size > 0 && !allChecked
-  const idsSelecionados = useMemo(() => Array.from(selecionados), [selecionados])
+  const idsSelecionados = useMemo(
+    () => Array.from(selecionados),
+    [selecionados],
+  )
 
   return (
     <div className="space-y-4">
@@ -94,9 +97,15 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
 
       {tamanhos.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">Nenhum tamanho cadastrado.</p>
+          <p className="text-muted-foreground text-sm">
+            Nenhum tamanho cadastrado.
+          </p>
           {podeEditar && (
-            <Button size="sm" className="mt-3" onClick={() => setEditando('novo')}>
+            <Button
+              size="sm"
+              className="mt-3"
+              onClick={() => setEditando('novo')}
+            >
               Cadastrar primeiro tamanho
             </Button>
           )}
@@ -129,7 +138,10 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
               </TableHeader>
               <TableBody ref={corpoTabela}>
                 {tamanhos.map((t) => (
-                  <TableRow key={t.id} data-state={selecionados.has(t.id) ? 'selected' : undefined}>
+                  <TableRow
+                    key={t.id}
+                    data-state={selecionados.has(t.id) ? 'selected' : undefined}
+                  >
                     {podeEditar && (
                       <TableCell>
                         <Checkbox
@@ -190,7 +202,10 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
           {/* Mobile */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:hidden">
             {tamanhos.map((t) => (
-              <div key={t.id} className="flex items-center justify-between rounded-lg border p-3">
+              <div
+                key={t.id}
+                className="flex items-center justify-between rounded-lg border p-3"
+              >
                 <div className="flex min-w-0 items-center gap-2">
                   {podeEditar && (
                     <Checkbox
@@ -247,7 +262,10 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
         onClose={() => setEditando(null)}
         proximaOrdem={tamanhos.length}
       />
-      <ExcluirDialog tamanho={excluindo} onClose={() => setExcluindo(null)} />
+      <ExcluirDialog
+        tamanho={excluindo}
+        onClose={() => setExcluindo(null)}
+      />
       <BulkExcluirDialog
         open={bulkExcluindo}
         ids={idsSelecionados}
@@ -297,8 +315,8 @@ function BulkExcluirDialog({
             Excluir {ids.length} tamanho{ids.length === 1 ? '' : 's'}?
           </DialogTitle>
           <DialogDescription>
-            Os tamanhos selecionados serão marcados como excluídos. As variações que já os usam
-            permanecem inalteradas.
+            Os tamanhos selecionados serão marcados como excluídos. As variações
+            que já os usam permanecem inalteradas.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -375,7 +393,9 @@ function TamanhoDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Editar tamanho' : 'Novo tamanho'}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? 'Editar tamanho' : 'Novo tamanho'}
+          </DialogTitle>
           <DialogDescription>
             Use a Ordem pra controlar a sequência nos selects (menor primeiro).
           </DialogDescription>
@@ -393,7 +413,9 @@ function TamanhoDialog({
               disabled={isPending}
               {...form.register('nome')}
             />
-            {errs.nome && <p className="text-destructive text-xs">{errs.nome.message}</p>}
+            {errs.nome && (
+              <p className="text-destructive text-xs">{errs.nome.message}</p>
+            )}
           </div>
 
           <div className="space-y-1.5">
@@ -406,10 +428,12 @@ function TamanhoDialog({
               {...form.register('codigo')}
             />
             <p className="text-muted-foreground text-xs">
-              Vai no SKU da variação: base + código + cor (ex.: 059-P + K + -ROSE = 059-PK-ROSE).
-              Deixe vazio pra não entrar.
+              Vai no SKU da variação: base + código + cor (ex.: 059-P + K +
+              -ROSE = 059-PK-ROSE). Deixe vazio pra não entrar.
             </p>
-            {errs.codigo && <p className="text-destructive text-xs">{errs.codigo.message}</p>}
+            {errs.codigo && (
+              <p className="text-destructive text-xs">{errs.codigo.message}</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -426,7 +450,9 @@ function TamanhoDialog({
                 {...form.register('larguraCm')}
               />
               {errs.larguraCm && (
-                <p className="text-destructive text-xs">{errs.larguraCm.message}</p>
+                <p className="text-destructive text-xs">
+                  {errs.larguraCm.message}
+                </p>
               )}
             </div>
             <div className="space-y-1.5">
@@ -442,7 +468,9 @@ function TamanhoDialog({
                 {...form.register('comprimentoCm')}
               />
               {errs.comprimentoCm && (
-                <p className="text-destructive text-xs">{errs.comprimentoCm.message}</p>
+                <p className="text-destructive text-xs">
+                  {errs.comprimentoCm.message}
+                </p>
               )}
             </div>
           </div>
@@ -460,11 +488,13 @@ function TamanhoDialog({
               {...form.register('pesoGramas')}
             />
             <p className="text-muted-foreground text-xs">
-              Peso de uma peça deste tamanho, em gramas. É o que soma o peso total do pedido pro
-              frete. Deixe vazio se ainda não pesou.
+              Peso de uma peça deste tamanho, em gramas. É o que soma o peso
+              total do pedido pro frete. Deixe vazio se ainda não pesou.
             </p>
             {errs.pesoGramas && (
-              <p className="text-destructive text-xs">{errs.pesoGramas.message}</p>
+              <p className="text-destructive text-xs">
+                {errs.pesoGramas.message}
+              </p>
             )}
           </div>
 
@@ -481,7 +511,9 @@ function TamanhoDialog({
               disabled={isPending}
               {...form.register('ordem')}
             />
-            {errs.ordem && <p className="text-destructive text-xs">{errs.ordem.message}</p>}
+            {errs.ordem && (
+              <p className="text-destructive text-xs">{errs.ordem.message}</p>
+            )}
           </div>
 
           <div className="flex items-center justify-between">
@@ -491,13 +523,20 @@ function TamanhoDialog({
             <Switch
               id="tam-ativo"
               checked={ativo}
-              onCheckedChange={(v) => form.setValue('ativo', v, { shouldDirty: true })}
+              onCheckedChange={(v) =>
+                form.setValue('ativo', v, { shouldDirty: true })
+              }
               disabled={isPending}
             />
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isPending}
+            >
               Cancelar
             </Button>
             <Button loading={isPending} type="submit" disabled={isPending}>
@@ -510,7 +549,13 @@ function TamanhoDialog({
   )
 }
 
-function ExcluirDialog({ tamanho, onClose }: { tamanho: Tamanho | null; onClose: () => void }) {
+function ExcluirDialog({
+  tamanho,
+  onClose,
+}: {
+  tamanho: Tamanho | null
+  onClose: () => void
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -534,15 +579,19 @@ function ExcluirDialog({ tamanho, onClose }: { tamanho: Tamanho | null; onClose:
         <DialogHeader>
           <DialogTitle>Excluir tamanho?</DialogTitle>
           <DialogDescription>
-            {tamanho?.nome} será marcado como excluído. As variações que já o usam permanecem
-            inalteradas.
+            {tamanho?.nome} será marcado como excluído. As variações que já o
+            usam permanecem inalteradas.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+          <Button loading={isPending}
+            variant="destructive"
+            onClick={excluir}
+            disabled={isPending}
+          >
             {'Excluir'}
           </Button>
         </DialogFooter>

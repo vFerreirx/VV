@@ -45,7 +45,9 @@ import type { User } from '@/lib/db/schema'
 // já existem — `tarefas_abertas_prioridade_idx` (por prioridade, migration
 // 46) e `tarefas_pendentes_idx` (por prazo, migration 35) —, então cada uma
 // lê UMA entrada, não importa o tamanho do histórico.
-export async function alertaDeTarefas(role: User['role']): Promise<PrioridadeAlerta> {
+export async function alertaDeTarefas(
+  role: User['role'],
+): Promise<PrioridadeAlerta> {
   // /tarefas é área de admin e não editável em /permissoes. Quem não vê o
   // item no menu não gera nem a consulta — o indicador não existe pra ele.
   if (role !== 'admin') return null
@@ -74,6 +76,9 @@ export async function alertaDeTarefas(role: User['role']): Promise<PrioridadeAle
   const linha = linhas[0]
   if (!linha) return null
 
-  const efetiva = maiorPrioridade(linha.nivel ?? 'baixa', escalarPorPrazo(linha.prazo))
+  const efetiva = maiorPrioridade(
+    linha.nivel ?? 'baixa',
+    escalarPorPrazo(linha.prazo),
+  )
   return ehDestaque(efetiva) ? efetiva : null
 }

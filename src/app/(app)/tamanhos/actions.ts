@@ -152,7 +152,10 @@ export async function excluirTamanhoAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Tamanho não encontrado' }
   }
 
-  await db.update(tamanhos).set({ deletedAt: new Date(), ativo: false }).where(eq(tamanhos.id, id))
+  await db
+    .update(tamanhos)
+    .set({ deletedAt: new Date(), ativo: false })
+    .where(eq(tamanhos.id, id))
 
   revalidatePath('/variacoes')
   return { success: true, message: 'Tamanho excluído' }
@@ -162,7 +165,8 @@ export async function excluirTamanhoAction(id: string): Promise<ActionResult> {
 // Excluir múltiplos (bulk delete)
 // -----------------------------------------------------------------
 
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function excluirMultiplosTamanhosAction(
   ids: string[],
@@ -187,6 +191,9 @@ export async function excluirMultiplosTamanhosAction(
   return {
     success: true,
     data: { excluidos: result.length },
-    message: result.length === 1 ? '1 tamanho excluído' : `${result.length} tamanhos excluídos`,
+    message:
+      result.length === 1
+        ? '1 tamanho excluído'
+        : `${result.length} tamanhos excluídos`,
   }
 }

@@ -67,7 +67,10 @@ export async function buscarGlobal(q: string): Promise<ResultadoBusca[]> {
             and(
               isNull(ordensProducao.deletedAt),
               ne(ordensProducao.status, 'cancelado'),
-              or(ilike(ordensProducao.numero, like), ilike(produtos.nome, like)),
+              or(
+                ilike(ordensProducao.numero, like),
+                ilike(produtos.nome, like),
+              ),
             ),
           )
           .orderBy(desc(ordensProducao.createdAt))
@@ -83,7 +86,12 @@ export async function buscarGlobal(q: string): Promise<ResultadoBusca[]> {
             ativo: kits.ativo,
           })
           .from(kits)
-          .where(and(isNull(kits.deletedAt), or(ilike(kits.sku, like), ilike(kits.nome, like))))
+          .where(
+            and(
+              isNull(kits.deletedAt),
+              or(ilike(kits.sku, like), ilike(kits.nome, like)),
+            ),
+          )
           .orderBy(asc(kits.nome))
           .limit(LIMITE_POR_TIPO)
       : Promise.resolve([]),

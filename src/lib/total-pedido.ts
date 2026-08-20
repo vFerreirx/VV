@@ -34,7 +34,9 @@
 // o tipo de erro que aparece como "R$ 1.234,5699999" numa nota.
 
 /** `frete_valor` (numeric(12,2) ou nulo) → centavos inteiros. */
-export function freteEmCentavos(freteValor: string | number | null | undefined): number {
+export function freteEmCentavos(
+  freteValor: string | number | null | undefined,
+): number {
   if (freteValor == null || freteValor === '') return 0
   const n = Number(freteValor)
   if (!Number.isFinite(n) || n <= 0) return 0
@@ -49,7 +51,9 @@ export function freteEmCentavos(freteValor: string | number | null | undefined):
  * dizendo zero é uma afirmação, e a afirmação aqui seria "o frete é por nossa
  * conta". Sem valor a linha simplesmente não sai.
  */
-export function temFrete(freteValor: string | number | null | undefined): boolean {
+export function temFrete(
+  freteValor: string | number | null | undefined,
+): boolean {
   return freteEmCentavos(freteValor) > 0
 }
 
@@ -58,5 +62,7 @@ export function totalComFrete(
   totalMercadoria: number,
   freteValor: string | number | null | undefined,
 ): number {
-  return (Math.round(totalMercadoria * 100) + freteEmCentavos(freteValor)) / 100
+  return (
+    (Math.round(totalMercadoria * 100) + freteEmCentavos(freteValor)) / 100
+  )
 }

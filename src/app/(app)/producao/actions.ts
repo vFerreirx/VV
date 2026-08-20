@@ -64,7 +64,9 @@ export type KanbanFiltros = {
   responsavelId?: string | 'todos'
 }
 
-export async function listarOrdensProducao(filtros: KanbanFiltros = {}): Promise<KanbanCardData[]> {
+export async function listarOrdensProducao(
+  filtros: KanbanFiltros = {},
+): Promise<KanbanCardData[]> {
   const user = await requireAuth()
 
   const conditions = [
@@ -79,7 +81,10 @@ export async function listarOrdensProducao(filtros: KanbanFiltros = {}): Promise
   // (na fila) e as que pegou. Os demais cargos veem tudo.
   if (user.role === 'operador') {
     conditions.push(
-      or(isNull(ordensProducao.responsavelId), eq(ordensProducao.responsavelId, user.id))!,
+      or(
+        isNull(ordensProducao.responsavelId),
+        eq(ordensProducao.responsavelId, user.id),
+      )!,
     )
   }
 
@@ -143,11 +148,17 @@ export async function listarOrdensProducao(filtros: KanbanFiltros = {}): Promise
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
-    .leftJoin(variacoesProduto, eq(variacoesProduto.id, ordensProducao.variacaoId))
+    .leftJoin(
+      variacoesProduto,
+      eq(variacoesProduto.id, ordensProducao.variacaoId),
+    )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
-    .leftJoin(estMaq, and(eq(estMaq.id, maquinas.estacaoId), isNull(estMaq.deletedAt)))
+    .leftJoin(
+      estMaq,
+      and(eq(estMaq.id, maquinas.estacaoId), isNull(estMaq.deletedAt)),
+    )
     .leftJoin(
       estResp,
       and(
@@ -217,7 +228,9 @@ export async function listarOrdensProducao(filtros: KanbanFiltros = {}): Promise
         op.dataPrevistaFim !== null &&
         op.status !== 'enviado' &&
         new Date(op.dataPrevistaFim).getTime() < now,
-      desdeStatus: desdeStatus ? new Date(desdeStatus) : (op.updatedAt ?? op.createdAt),
+      desdeStatus: desdeStatus
+        ? new Date(desdeStatus)
+        : (op.updatedAt ?? op.createdAt),
       observacoes: op.observacoes,
     }),
   )
@@ -231,7 +244,9 @@ export type EventoKanbanComUsuario = EventoKanban & {
   usuarioNome: string | null
 }
 
-export async function listarEventosOrdem(ordemId: string): Promise<EventoKanbanComUsuario[]> {
+export async function listarEventosOrdem(
+  ordemId: string,
+): Promise<EventoKanbanComUsuario[]> {
   await requireAuth()
   const rows = await db
     .select({

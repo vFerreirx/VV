@@ -17,7 +17,10 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-import { listarEventosOrdem, type EventoKanbanComUsuario } from './actions'
+import {
+  listarEventosOrdem,
+  type EventoKanbanComUsuario,
+} from './actions'
 import {
   apontarProducaoAction,
   excluirOrdemAction,
@@ -153,7 +156,9 @@ function DetalheBody({
   function pegarOuSoltar(pegar: boolean) {
     if (!ordem) return
     startAcao(async () => {
-      const result = pegar ? await pegarOrdemAction(ordem.id) : await soltarOrdemAction(ordem.id)
+      const result = pegar
+        ? await pegarOrdemAction(ordem.id)
+        : await soltarOrdemAction(ordem.id)
       if (!result.success) {
         toast.error(result.error)
         return
@@ -216,7 +221,9 @@ function DetalheBody({
       }
       // Enviado/cancelado saem do kanban — fecha o painel e atualiza o board.
       if (novoStatus === 'enviado' || novoStatus === 'cancelado') {
-        toast.success(novoStatus === 'enviado' ? 'OP concluída e enviada' : 'OP cancelada')
+        toast.success(
+          novoStatus === 'enviado' ? 'OP concluída e enviada' : 'OP cancelada',
+        )
         onClose()
         router.refresh()
         return
@@ -260,7 +267,7 @@ function DetalheBody({
 
           return (
             <section className="space-y-2">
-              <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+              <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
                 Ações
               </h3>
 
@@ -268,7 +275,8 @@ function DetalheBody({
                 <Button
                   className={cn(
                     'w-full',
-                    concluir && 'bg-emerald-600 text-white hover:bg-emerald-700',
+                    concluir &&
+                      'bg-emerald-600 text-white hover:bg-emerald-700',
                   )}
                   disabled={acaoPend}
                   onClick={() => handleMudarStatus(proximo)}
@@ -325,7 +333,7 @@ function DetalheBody({
 
         {/* Produção (progresso + apontamentos) */}
         <section className="space-y-2">
-          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
             Produção
           </h3>
           <div className="text-muted-foreground flex justify-between text-xs tabular-nums">
@@ -333,7 +341,9 @@ function DetalheBody({
             <span className="text-foreground font-medium">
               {produzido}/{ordem.quantidade} un
               {refugoTotal > 0 && (
-                <span className="text-destructive ml-2">{refugoTotal} refugo</span>
+                <span className="text-destructive ml-2">
+                  {refugoTotal} refugo
+                </span>
               )}
             </span>
           </div>
@@ -341,7 +351,9 @@ function DetalheBody({
             <div
               className={cn(
                 'h-full rounded-full',
-                produzido >= ordem.quantidade ? 'bg-emerald-500' : 'bg-primary',
+                produzido >= ordem.quantidade
+                  ? 'bg-emerald-500'
+                  : 'bg-primary',
               )}
               style={{
                 width: `${Math.min(100, ordem.quantidade > 0 ? (produzido / ordem.quantidade) * 100 : 0)}%`,
@@ -354,11 +366,13 @@ function DetalheBody({
                 <li key={a.id} className="flex items-center justify-between gap-2">
                   <span className="truncate">
                     {a.operadorNome ?? 'Operador'} ·{' '}
-                    {format(new Date(a.em), 'dd/MM HH:mm', { locale: ptBR })}
+                    {format(new Date(a.em), "dd/MM HH:mm", { locale: ptBR })}
                   </span>
                   <span className="text-foreground shrink-0 tabular-nums">
                     +{a.produzida}
-                    {a.refugo > 0 && <span className="text-destructive"> /{a.refugo}r</span>}
+                    {a.refugo > 0 && (
+                      <span className="text-destructive"> /{a.refugo}r</span>
+                    )}
                   </span>
                 </li>
               ))}
@@ -367,12 +381,14 @@ function DetalheBody({
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
             Status manual
           </h3>
           <Select
             value={ordem.status}
-            onValueChange={(v) => v && handleMudarStatus(v as (typeof statusValues)[number])}
+            onValueChange={(v) =>
+              v && handleMudarStatus(v as (typeof statusValues)[number])
+            }
           >
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -388,7 +404,7 @@ function DetalheBody({
         </section>
 
         <section className="space-y-2">
-          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
             Detalhes
           </h3>
           <dl className="text-muted-foreground grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm">
@@ -397,17 +413,33 @@ function DetalheBody({
               label="Variação"
               value={
                 ordem.variacao
-                  ? [ordem.variacao.cor, ordem.variacao.modelo, ordem.variacao.tamanho]
+                  ? [
+                      ordem.variacao.cor,
+                      ordem.variacao.modelo,
+                      ordem.variacao.tamanho,
+                    ]
                       .filter(Boolean)
                       .join(' / ') || ordem.variacao.skuVariacao
                   : '—'
               }
             />
-            <Detail label="Quantidade" value={`${ordem.quantidade.toLocaleString('pt-BR')} un`} />
-            <Detail label="Máquina" value={ordem.maquina ? ordem.maquina.nome : '—'} />
+            <Detail
+              label="Quantidade"
+              value={`${ordem.quantidade.toLocaleString('pt-BR')} un`}
+            />
+            <Detail
+              label="Máquina"
+              value={ordem.maquina ? ordem.maquina.nome : '—'}
+            />
             <Detail label="Canal" value={CANAL_LABEL[ordem.canalDestino]} />
-            <Detail label="Prioridade" value={PRIORIDADE_LABEL[ordem.prioridade]} />
-            <Detail label="Responsável" value={ordem.responsavel?.nome ?? '—'} />
+            <Detail
+              label="Prioridade"
+              value={PRIORIDADE_LABEL[ordem.prioridade]}
+            />
+            <Detail
+              label="Responsável"
+              value={ordem.responsavel?.nome ?? '—'}
+            />
             <Detail
               label="Início previsto"
               value={
@@ -453,7 +485,7 @@ function DetalheBody({
 
         {ordem.observacoes && (
           <section className="space-y-2">
-            <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+            <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
               Observações
             </h3>
             <p className="text-sm whitespace-pre-wrap">{ordem.observacoes}</p>
@@ -461,25 +493,34 @@ function DetalheBody({
         )}
 
         <section className="space-y-2">
-          <h3 className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
+          <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
             Histórico ({eventos.length})
           </h3>
           {eventos.length === 0 ? (
-            <p className="text-muted-foreground text-xs">Sem eventos registrados.</p>
+            <p className="text-muted-foreground text-xs">
+              Sem eventos registrados.
+            </p>
           ) : (
             <ol className="space-y-2 text-xs">
               {eventos.map((ev) => (
-                <li key={ev.id} className="border-foreground/10 border-l-2 pl-3">
+                <li
+                  key={ev.id}
+                  className="border-l-2 border-foreground/10 pl-3"
+                >
                   <div className="flex flex-wrap items-center gap-1">
                     {ev.statusAnterior ? (
                       <>
-                        <Badge variant="secondary">{STATUS_LABEL_CURTO[ev.statusAnterior]}</Badge>
+                        <Badge variant="secondary">
+                          {STATUS_LABEL_CURTO[ev.statusAnterior]}
+                        </Badge>
                         <span className="text-muted-foreground">→</span>
                       </>
                     ) : (
                       <span className="text-muted-foreground">criada</span>
                     )}
-                    <Badge variant="default">{STATUS_LABEL_CURTO[ev.statusNovo]}</Badge>
+                    <Badge variant="default">
+                      {STATUS_LABEL_CURTO[ev.statusNovo]}
+                    </Badge>
                   </div>
                   <div className="text-muted-foreground mt-0.5">
                     {ev.usuarioNome ?? 'Sistema'} ·{' '}
@@ -488,7 +529,9 @@ function DetalheBody({
                     })}
                   </div>
                   {ev.observacao && (
-                    <div className="text-muted-foreground italic">{ev.observacao}</div>
+                    <div className="text-muted-foreground italic">
+                      {ev.observacao}
+                    </div>
                   )}
                 </li>
               ))}
@@ -506,20 +549,27 @@ function DetalheBody({
             <Trash2 className="text-destructive" />
             Excluir OP
           </Button>
-          <Button size="sm" variant="outline" render={<Link href={`/ordens/${ordem.id}`} />}>
+          <Button
+            size="sm"
+            variant="outline"
+            render={<Link href={`/ordens/${ordem.id}`} />}
+          >
             <ExternalLink />
             Abrir OP completa
           </Button>
         </div>
       </div>
 
-      <Dialog open={confirmarExcluir} onOpenChange={(o) => !o && setConfirmarExcluir(false)}>
+      <Dialog
+        open={confirmarExcluir}
+        onOpenChange={(o) => !o && setConfirmarExcluir(false)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Excluir OP {ordem.numero}?</DialogTitle>
             <DialogDescription>
-              A ordem será cancelada e removida do kanban. O histórico fica preservado para
-              referência.
+              A ordem será cancelada e removida do kanban. O histórico fica
+              preservado para referência.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -530,7 +580,11 @@ function DetalheBody({
             >
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={excluir} disabled={excluindo}>
+            <Button
+              variant="destructive"
+              onClick={excluir}
+              disabled={excluindo}
+            >
               {excluindo ? 'Excluindo…' : 'Excluir'}
             </Button>
           </DialogFooter>
@@ -542,8 +596,8 @@ function DetalheBody({
           <DialogHeader>
             <DialogTitle>Apontar produção</DialogTitle>
             <DialogDescription>
-              Quantas peças ficaram prontas agora? Vai somando ao total ({produzido}/
-              {ordem.quantidade}).
+              Quantas peças ficaram prontas agora? Vai somando ao total
+              ({produzido}/{ordem.quantidade}).
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
@@ -578,7 +632,11 @@ function DetalheBody({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setApontarOpen(false)} disabled={apontando}>
+            <Button
+              variant="outline"
+              onClick={() => setApontarOpen(false)}
+              disabled={apontando}
+            >
               Cancelar
             </Button>
             <Button onClick={apontar} disabled={apontando}>
@@ -591,11 +649,24 @@ function DetalheBody({
   )
 }
 
-function Detail({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Detail({
+  label,
+  value,
+  mono,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+}) {
   return (
     <>
       <dt className="text-xs">{label}</dt>
-      <dd className={cn('text-foreground text-right tabular-nums', mono && 'font-mono')}>
+      <dd
+        className={cn(
+          'text-foreground text-right tabular-nums',
+          mono && 'font-mono',
+        )}
+      >
         {value}
       </dd>
     </>

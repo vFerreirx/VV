@@ -9,9 +9,16 @@ import { atualizarPerfilAction } from '@/app/(app)/configuracoes/actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { atualizarPerfilSchema, type AtualizarPerfilInput } from '@/lib/validators/auth'
+import {
+  atualizarPerfilSchema,
+  type AtualizarPerfilInput,
+} from '@/lib/validators/auth'
 
-export function PerfilForm({ defaultValues }: { defaultValues: AtualizarPerfilInput }) {
+export function PerfilForm({
+  defaultValues,
+}: {
+  defaultValues: AtualizarPerfilInput
+}) {
   const [isPending, startTransition] = useTransition()
 
   const form = useForm<AtualizarPerfilInput>({
@@ -43,7 +50,12 @@ export function PerfilForm({ defaultValues }: { defaultValues: AtualizarPerfilIn
 
       <div className="space-y-2">
         <Label htmlFor="telefone">Telefone</Label>
-        <Input id="telefone" inputMode="tel" disabled={isPending} {...form.register('telefone')} />
+        <Input
+          id="telefone"
+          inputMode="tel"
+          disabled={isPending}
+          {...form.register('telefone')}
+        />
         {form.formState.errors.telefone && (
           <p className="text-destructive text-sm">{form.formState.errors.telefone.message}</p>
         )}

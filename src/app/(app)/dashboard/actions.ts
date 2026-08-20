@@ -1,6 +1,18 @@
 'use server'
 
-import { and, asc, desc, eq, gt, gte, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  gte,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm'
 
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
@@ -91,7 +103,9 @@ export async function obterKPIs(): Promise<DashboardKPIs> {
   const [{ total: maquinasOperando }] = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(maquinas)
-    .where(and(isNull(maquinas.deletedAt), eq(maquinas.status, 'operando')))
+    .where(
+      and(isNull(maquinas.deletedAt), eq(maquinas.status, 'operando')),
+    )
 
   // Distribuição visual (somente estados ativos do kanban).
   const STATUS_KANBAN_ATIVO: (typeof statusValues)[number][] = [
@@ -137,14 +151,18 @@ export type OpUrgenteItem = {
   atrasada: boolean
 }
 
-export async function listarOpsUrgentes(limit = 5): Promise<OpUrgenteItem[]> {
+export async function listarOpsUrgentes(
+  limit = 5,
+): Promise<OpUrgenteItem[]> {
   const user = await requireAuth()
 
   // OP pega fica privada SÓ entre operadores; demais cargos veem tudo.
-  const visibilidade =
-    user.role !== 'operador'
-      ? undefined
-      : or(isNull(ordensProducao.responsavelId), eq(ordensProducao.responsavelId, user.id))
+  const visibilidade = user.role !== 'operador'
+    ? undefined
+    : or(
+        isNull(ordensProducao.responsavelId),
+        eq(ordensProducao.responsavelId, user.id),
+      )
 
   const rows = await db
     .select({
@@ -162,7 +180,10 @@ export async function listarOpsUrgentes(limit = 5): Promise<OpUrgenteItem[]> {
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
-    .leftJoin(variacoesProduto, eq(variacoesProduto.id, ordensProducao.variacaoId))
+    .leftJoin(
+      variacoesProduto,
+      eq(variacoesProduto.id, ordensProducao.variacaoId),
+    )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
     .where(
@@ -198,7 +219,9 @@ export async function listarOpsUrgentes(limit = 5): Promise<OpUrgenteItem[]> {
     dataPrevistaFim: r.dataPrevistaFim,
     maquinaNome: r.maquinaNome ?? null,
     responsavelNome: r.responsavelNome ?? null,
-    atrasada: r.dataPrevistaFim !== null && new Date(r.dataPrevistaFim).getTime() < now,
+    atrasada:
+      r.dataPrevistaFim !== null &&
+      new Date(r.dataPrevistaFim).getTime() < now,
   }))
 }
 
@@ -212,7 +235,9 @@ export type ProducaoDia = {
   refugo: number
 }
 
-export async function listarProducaoUltimosDias(dias = 14): Promise<ProducaoDia[]> {
+export async function listarProducaoUltimosDias(
+  dias = 14,
+): Promise<ProducaoDia[]> {
   await requireAuth()
 
   const inicio = new Date()
@@ -268,7 +293,12 @@ export async function listarOpsPorCanal(): Promise<OpsPorCanal[]> {
       unidades: sql<number>`coalesce(sum(${ordensProducao.quantidade}), 0)::int`,
     })
     .from(ordensProducao)
-    .where(and(isNull(ordensProducao.deletedAt), ne(ordensProducao.status, 'cancelado')))
+    .where(
+      and(
+        isNull(ordensProducao.deletedAt),
+        ne(ordensProducao.status, 'cancelado'),
+      ),
+    )
     .groupBy(ordensProducao.canalDestino)
 
   return rows
@@ -286,7 +316,9 @@ export type TopProdutoItem = {
   ops: number
 }
 
-export async function listarTopProdutosMes(limit = 5): Promise<TopProdutoItem[]> {
+export async function listarTopProdutosMes(
+  limit = 5,
+): Promise<TopProdutoItem[]> {
   await requireAuth()
 
   const inicioMes = new Date()

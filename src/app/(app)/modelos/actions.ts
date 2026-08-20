@@ -15,7 +15,11 @@ export type ActionResult<T = undefined> =
 
 export async function listarModelos(): Promise<Modelo[]> {
   await requireAuth()
-  return db.select().from(modelos).where(isNull(modelos.deletedAt)).orderBy(asc(modelos.nome))
+  return db
+    .select()
+    .from(modelos)
+    .where(isNull(modelos.deletedAt))
+    .orderBy(asc(modelos.nome))
 }
 
 export async function listarModelosAtivos(): Promise<Modelo[]> {
@@ -27,7 +31,9 @@ export async function listarModelosAtivos(): Promise<Modelo[]> {
     .orderBy(asc(modelos.nome))
 }
 
-export async function criarModeloAction(input: ModeloInput): Promise<ActionResult<{ id: string }>> {
+export async function criarModeloAction(
+  input: ModeloInput,
+): Promise<ActionResult<{ id: string }>> {
   await requireAreaEscrita('modelos')
 
   const parsed = modeloSchema.safeParse(input)
@@ -73,7 +79,10 @@ export async function criarModeloAction(input: ModeloInput): Promise<ActionResul
   }
 }
 
-export async function atualizarModeloAction(id: string, input: ModeloInput): Promise<ActionResult> {
+export async function atualizarModeloAction(
+  id: string,
+  input: ModeloInput,
+): Promise<ActionResult> {
   await requireAreaEscrita('modelos')
 
   const parsed = modeloSchema.safeParse(input)
@@ -135,7 +144,10 @@ export async function excluirModeloAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Modelo não encontrado' }
   }
 
-  await db.update(modelos).set({ deletedAt: new Date(), ativo: false }).where(eq(modelos.id, id))
+  await db
+    .update(modelos)
+    .set({ deletedAt: new Date(), ativo: false })
+    .where(eq(modelos.id, id))
 
   revalidatePath('/variacoes')
   return { success: true, message: 'Modelo excluído' }
@@ -145,7 +157,8 @@ export async function excluirModeloAction(id: string): Promise<ActionResult> {
 // Excluir múltiplos (bulk delete)
 // -----------------------------------------------------------------
 
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function excluirMultiplosModelosAction(
   ids: string[],
@@ -170,6 +183,9 @@ export async function excluirMultiplosModelosAction(
   return {
     success: true,
     data: { excluidos: result.length },
-    message: result.length === 1 ? '1 modelo excluído' : `${result.length} modelos excluídos`,
+    message:
+      result.length === 1
+        ? '1 modelo excluído'
+        : `${result.length} modelos excluídos`,
   }
 }

@@ -18,7 +18,12 @@ import { NavResizer } from '@/components/layout/nav-resizer'
 import { useSidebar } from '@/components/layout/sidebar-estado'
 import { useNavCollapse } from '@/components/layout/use-nav-collapse'
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 import type { AreaKey } from '@/lib/auth/permissoes'
 import type { PrioridadeAlerta } from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
@@ -53,7 +58,11 @@ export function MobileNav({
           controla o conteúdo do botão; o wrapper `relative` é quem a
           posiciona. */}
       <span className="relative inline-flex md:hidden">
-        <SheetTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Abrir menu" />}>
+        <SheetTrigger
+          render={
+            <Button variant="ghost" size="icon-sm" aria-label="Abrir menu" />
+          }
+        >
           <Menu />
         </SheetTrigger>
         <IndicadorTarefas
@@ -103,7 +112,9 @@ export function MobileNav({
                 triggerClassName="text-muted-foreground px-3"
               >
                 {grupo.items.map((item) => {
-                  const active = pathname === item.href || pathname.startsWith(`${item.href}/`)
+                  const active =
+                    pathname === item.href ||
+                    pathname.startsWith(`${item.href}/`)
                   return (
                     <Link
                       key={item.href}
@@ -118,7 +129,9 @@ export function MobileNav({
                     >
                       <item.icon className="size-4 transition-transform duration-200 group-hover/nav:translate-x-0.5" />
                       {item.label}
-                      {item.alerta === 'tarefas' && <IndicadorTarefas prioridade={alertaTarefas} />}
+                      {item.alerta === 'tarefas' && (
+                        <IndicadorTarefas prioridade={alertaTarefas} />
+                      )}
                     </Link>
                   )
                 })}

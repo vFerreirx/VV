@@ -7,7 +7,10 @@ import { toast } from 'sonner'
 
 import { listarProdutosParaOrdem } from './actions'
 import type { ContaMarketplace } from '@/lib/db/schema'
-import { criarOpsFullAction, type RemessaFullOpcao } from './remessas-actions'
+import {
+  criarOpsFullAction,
+  type RemessaFullOpcao,
+} from './remessas-actions'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -26,7 +29,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { CANAL_LABEL_CURTO, PRIORIDADE_LABEL, prioridadeValues } from '@/lib/validators/ordens'
+import {
+  CANAL_LABEL_CURTO,
+  PRIORIDADE_LABEL,
+  prioridadeValues,
+} from '@/lib/validators/ordens'
 import { fullCanalValues } from '@/lib/validators/remessas'
 
 type Produtos = Awaited<ReturnType<typeof listarProdutosParaOrdem>>
@@ -65,18 +72,22 @@ export function NovoFull({
   const [isPending, startTransition] = useTransition()
   // 'nova' = criar um Full novo; senão, id do Full existente.
   const [remessaSel, setRemessaSel] = useState<string>('nova')
-  const [canal, setCanal] = useState<(typeof fullCanalValues)[number]>('full_ml')
+  const [canal, setCanal] =
+    useState<(typeof fullCanalValues)[number]>('full_ml')
   const [contaId, setContaId] = useState<string | null>(null)
   const [dataEnvio, setDataEnvio] = useState('')
 
   // Só as contas do canal escolhido. Trocar de canal zera a conta — senão
   // sobraria uma conta do ML selecionada num Full da Shopee.
   const contasDoCanal = contas.filter((c) => c.canal === canal)
-  const [prioridade, setPrioridade] = useState<(typeof prioridadeValues)[number]>('normal')
+  const [prioridade, setPrioridade] =
+    useState<(typeof prioridadeValues)[number]>('normal')
   const [linhas, setLinhas] = useState<Linha[]>([{ ...LINHA_VAZIA }])
 
   function patchLinha(idx: number, patch: Partial<Linha>) {
-    setLinhas((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)))
+    setLinhas((prev) =>
+      prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)),
+    )
   }
   function addLinha() {
     setLinhas((prev) => [...prev, { ...LINHA_VAZIA }])
@@ -87,7 +98,9 @@ export function NovoFull({
 
   function variacaoDe(l: Linha): string | null {
     const prod = produtos.find((p) => p.id === l.produtoId)
-    const v = prod?.variacoes.find((x) => tok(x.tamanho) === l.tamanho && tok(x.cor) === l.cor)
+    const v = prod?.variacoes.find(
+      (x) => tok(x.tamanho) === l.tamanho && tok(x.cor) === l.cor,
+    )
     return v?.id ?? null
   }
 
@@ -157,8 +170,8 @@ export function NovoFull({
           <DialogHeader className="border-b p-6">
             <DialogTitle>Cadastrar Full</DialogTitle>
             <DialogDescription>
-              Crie o Full (canal + data de envio) e os produtos dele — cada produto vira uma OP com
-              a data de envio como prazo.
+              Crie o Full (canal + data de envio) e os produtos dele — cada
+              produto vira uma OP com a data de envio como prazo.
             </DialogDescription>
           </DialogHeader>
 
@@ -190,7 +203,9 @@ export function NovoFull({
                 <Select
                   value={prioridade}
                   onValueChange={(v) =>
-                    setPrioridade((v ?? 'normal') as (typeof prioridadeValues)[number])
+                    setPrioridade(
+                      (v ?? 'normal') as (typeof prioridadeValues)[number],
+                    )
                   }
                   disabled={isPending}
                 >
@@ -264,8 +279,8 @@ export function NovoFull({
                   </Select>
                   {contasDoCanal.length === 0 && (
                     <p className="text-muted-foreground text-xs">
-                      Nenhuma conta ativa de {CANAL_LABEL_CURTO[canal]}. Cadastre em Contas de
-                      marketplace.
+                      Nenhuma conta ativa de {CANAL_LABEL_CURTO[canal]}.
+                      Cadastre em Contas de marketplace.
                     </p>
                   )}
                 </div>
@@ -277,7 +292,9 @@ export function NovoFull({
               <Label>Produtos</Label>
               {linhas.map((linha, idx) => {
                 const prod = produtos.find((p) => p.id === linha.produtoId)
-                const tamanhos = prod ? distintos(prod.variacoes.map((v) => tok(v.tamanho))) : []
+                const tamanhos = prod
+                  ? distintos(prod.variacoes.map((v) => tok(v.tamanho)))
+                  : []
                 const cores = prod
                   ? distintos(
                       prod.variacoes
@@ -345,7 +362,9 @@ export function NovoFull({
                       <Select
                         key={linha.produtoId}
                         value={linha.tamanho || null}
-                        onValueChange={(v) => patchLinha(idx, { tamanho: v ?? '', cor: '' })}
+                        onValueChange={(v) =>
+                          patchLinha(idx, { tamanho: v ?? '', cor: '' })
+                        }
                         disabled={isPending || !prod}
                       >
                         <SelectTrigger size="sm">
@@ -380,7 +399,12 @@ export function NovoFull({
                   </div>
                 )
               })}
-              <Button size="sm" variant="outline" onClick={addLinha} disabled={isPending}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={addLinha}
+                disabled={isPending}
+              >
                 <Plus />
                 Adicionar produto
               </Button>
@@ -395,7 +419,11 @@ export function NovoFull({
               </span>
             </span>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
+              <Button
+                variant="outline"
+                onClick={() => setOpen(false)}
+                disabled={isPending}
+              >
                 Cancelar
               </Button>
               <Button loading={isPending} onClick={criar} disabled={isPending}>

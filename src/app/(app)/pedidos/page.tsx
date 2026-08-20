@@ -25,15 +25,25 @@ export default async function OrcamentosPage() {
   // tem `vendas` mas não tem `compradores` não recebe dado pessoal nenhum.
   const nivelCompradores = await nivelDaAreaPara(user.role, 'compradores')
 
-  const [orcamentos, produtos, kits, precos, tabela, clientes, compradores] = await Promise.all([
-    listarOrcamentos(),
-    listarProdutosParaOrdem(),
-    listarKitsComItens(),
-    listarPrecosRecentes(),
-    obterCatalogoDePrecos(),
-    listarClientesOrcamentos(),
-    nivelCompradores !== 'nenhum' ? listarCompradoresParaSelecao() : Promise.resolve([]),
-  ])
+  const [
+    orcamentos,
+    produtos,
+    kits,
+    precos,
+    tabela,
+    clientes,
+    compradores,
+  ] = await Promise.all([
+      listarOrcamentos(),
+      listarProdutosParaOrdem(),
+      listarKitsComItens(),
+      listarPrecosRecentes(),
+      obterCatalogoDePrecos(),
+      listarClientesOrcamentos(),
+      nivelCompradores !== 'nenhum'
+        ? listarCompradoresParaSelecao()
+        : Promise.resolve([]),
+    ])
 
   // Entrada do reveal de Suspense: par do exit no loading.tsx desta rota.
   // `default="none"` impede este ViewTransition de animar junto em qualquer

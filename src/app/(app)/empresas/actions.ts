@@ -26,7 +26,8 @@ export type EmpresaDoDocumento = {
   cnpj: string | null
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -137,7 +138,9 @@ export async function obterEmpresaPrincipal(): Promise<EmpresaDoDocumento | null
 // O índice único diz qual regra estourou; sem isso os dois casos virariam a
 // mesma mensagem genérica.
 function nomeDaConstraint(err: unknown): string | undefined {
-  const e = err as { constraint_name?: string; cause?: { constraint_name?: string } } | null
+  const e = err as
+    | { constraint_name?: string; cause?: { constraint_name?: string } }
+    | null
   return e?.constraint_name ?? e?.cause?.constraint_name
 }
 
@@ -155,7 +158,10 @@ function erroDeIndice(err: unknown): string | null {
 // Marcar esta como principal desmarca a anterior. Roda DENTRO da transação
 // de quem chama, sempre antes do insert/update que marca a nova — o índice
 // único não deixa as duas coexistirem nem por um instante.
-async function desmarcarOutraPrincipal(tx: Tx, exceto?: string): Promise<void> {
+async function desmarcarOutraPrincipal(
+  tx: Tx,
+  exceto?: string,
+): Promise<void> {
   await tx
     .update(empresas)
     .set({ principal: false })

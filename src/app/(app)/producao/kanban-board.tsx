@@ -56,38 +56,40 @@ import {
 // Estilos por status (header e borda da coluna)
 // -----------------------------------------------------------------
 
-export const COLUMN_STYLES: Record<(typeof statusValues)[number], { header: string; bar: string }> =
-  {
-    aguardando_materia_prima: {
-      header: 'bg-zinc-500/10 text-zinc-700 dark:text-zinc-300',
-      bar: 'bg-zinc-500',
-    },
-    programado: {
-      header: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-      bar: 'bg-blue-500',
-    },
-    em_producao: {
-      header: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-      bar: 'bg-emerald-500',
-    },
-    acabamento: {
-      header: 'bg-cyan-600/10 text-cyan-700 dark:text-cyan-300',
-      bar: 'bg-cyan-600',
-    },
-    embalagem: {
-      header: 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
-      bar: 'bg-violet-500',
-    },
-    pronto_envio: {
-      header: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-      bar: 'bg-amber-500',
-    },
-    enviado: {
-      header: 'bg-emerald-700/10 text-emerald-800 dark:text-emerald-400',
-      bar: 'bg-emerald-700',
-    },
-    cancelado: { header: '', bar: '' }, // não usado no kanban
-  }
+export const COLUMN_STYLES: Record<
+  (typeof statusValues)[number],
+  { header: string; bar: string }
+> = {
+  aguardando_materia_prima: {
+    header: 'bg-zinc-500/10 text-zinc-700 dark:text-zinc-300',
+    bar: 'bg-zinc-500',
+  },
+  programado: {
+    header: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+    bar: 'bg-blue-500',
+  },
+  em_producao: {
+    header: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    bar: 'bg-emerald-500',
+  },
+  acabamento: {
+    header: 'bg-cyan-600/10 text-cyan-700 dark:text-cyan-300',
+    bar: 'bg-cyan-600',
+  },
+  embalagem: {
+    header: 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
+    bar: 'bg-violet-500',
+  },
+  pronto_envio: {
+    header: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    bar: 'bg-amber-500',
+  },
+  enviado: {
+    header: 'bg-emerald-700/10 text-emerald-800 dark:text-emerald-400',
+    bar: 'bg-emerald-700',
+  },
+  cancelado: { header: '', bar: '' }, // não usado no kanban
+}
 
 // Limite de WIP (work-in-progress) por etapa. null = sem limite.
 // Ajuste os números conforme a capacidade real de cada etapa.
@@ -160,7 +162,9 @@ export function KanbanBoard({
   const [items, setOptimisticItems] = useOptimistic(
     ordens,
     (state, update: { id: string; status: (typeof statusValues)[number] }) =>
-      state.map((o) => (o.id === update.id ? { ...o, status: update.status } : o)),
+      state.map((o) =>
+        o.id === update.id ? { ...o, status: update.status } : o,
+      ),
   )
 
   // Realtime: outros usuários alterando OPs.
@@ -201,7 +205,8 @@ export function KanbanBoard({
   const visiveis = useMemo(() => {
     if (filtros.size === 0) return items
     return items.filter((o) => {
-      if (filtros.has('minhas') && o.responsavelId !== currentUserId) return false
+      if (filtros.has('minhas') && o.responsavelId !== currentUserId)
+        return false
       if (filtros.has('urgentes') && o.prioridade !== 'urgente') return false
       if (filtros.has('atrasadas') && !o.atrasada) return false
       if (filtros.has('semDono') && o.responsavelId) return false
@@ -252,7 +257,8 @@ export function KanbanBoard({
           duration: 6000,
           action: {
             label: 'Desfazer',
-            onClick: () => mover(ordemId, statusAnterior, { semDesfazer: true }),
+            onClick: () =>
+              mover(ordemId, statusAnterior, { semDesfazer: true }),
           },
         })
       }
@@ -271,25 +277,27 @@ export function KanbanBoard({
     <>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          {(['minhas', 'urgentes', 'atrasadas', 'semDono'] as FiltroChip[]).map((f) => {
-            const ativo = filtros.has(f)
-            return (
-              <button
-                key={f}
-                type="button"
-                onClick={() => toggleFiltro(f)}
-                aria-pressed={ativo}
-                className={cn(
-                  'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-                  ativo
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border text-muted-foreground hover:bg-muted',
-                )}
-              >
-                {FILTRO_LABEL[f]}
-              </button>
-            )
-          })}
+          {(['minhas', 'urgentes', 'atrasadas', 'semDono'] as FiltroChip[]).map(
+            (f) => {
+              const ativo = filtros.has(f)
+              return (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => toggleFiltro(f)}
+                  aria-pressed={ativo}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    ativo
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  {FILTRO_LABEL[f]}
+                </button>
+              )
+            },
+          )}
           {filtros.size > 0 && (
             <button
               type="button"
@@ -301,7 +309,11 @@ export function KanbanBoard({
           )}
         </div>
         {podeCriar && (
-          <Button size="sm" className="ml-auto" onClick={() => setNovaOpOpen(true)}>
+          <Button
+            size="sm"
+            className="ml-auto"
+            onClick={() => setNovaOpOpen(true)}
+          >
             <Plus />
             Nova OP rápida
           </Button>
@@ -412,7 +424,7 @@ function KanbanColumn({
         className={cn(
           'mb-2 flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium',
           styles.header,
-          acima && 'ring-destructive/50 ring-1',
+          acima && 'ring-1 ring-destructive/50',
         )}
       >
         <span className="flex items-center gap-2">
@@ -440,11 +452,15 @@ function KanbanColumn({
           // Altura limitada à viewport: a pilha de OPs rola DENTRO da coluna,
           // sem esticar a página inteira.
           'max-h-[calc(100dvh-12rem)] flex-1 space-y-1.5 overflow-y-auto rounded-lg border border-dashed p-2 transition-colors',
-          isOver ? 'border-foreground/40 bg-muted/30' : 'border-border bg-muted/10',
+          isOver
+            ? 'border-foreground/40 bg-muted/30'
+            : 'border-border bg-muted/10',
         )}
       >
         {ordens.length === 0 && !isOver && (
-          <p className="text-muted-foreground py-6 text-center text-xs">(vazio)</p>
+          <p className="text-muted-foreground py-6 text-center text-xs">
+            (vazio)
+          </p>
         )}
         {fulls.map((f) => (
           <PastaFull
@@ -632,17 +648,14 @@ function PastaProduto({
 
   const tamanhos = useMemo(() => contar(grupo.ops, tamDe), [grupo.ops])
   const cores = useMemo(
-    () =>
-      tam
-        ? contar(
-            grupo.ops.filter((o) => tamDe(o) === tam),
-            corDe,
-          )
-        : [],
+    () => (tam ? contar(grupo.ops.filter((o) => tamDe(o) === tam), corDe) : []),
     [grupo.ops, tam],
   )
   const opsFiltradas = useMemo(
-    () => (tam && cor ? grupo.ops.filter((o) => tamDe(o) === tam && corDe(o) === cor) : []),
+    () =>
+      tam && cor
+        ? grupo.ops.filter((o) => tamDe(o) === tam && corDe(o) === cor)
+        : [],
     [grupo.ops, tam, cor],
   )
   const totalUn = grupo.ops.reduce((s, o) => s + o.quantidade, 0)
@@ -665,7 +678,9 @@ function PastaProduto({
               )}
             />
             <span className="flex min-w-0 flex-col">
-              <span className="truncate text-xs font-medium">{grupo.produtoNome}</span>
+              <span className="truncate text-xs font-medium">
+                {grupo.produtoNome}
+              </span>
               <span className="text-muted-foreground truncate font-mono text-[10px]">
                 {grupo.produtoSku}
               </span>
@@ -673,7 +688,12 @@ function PastaProduto({
           </span>
           <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-[10px] tabular-nums">
             {grupo.ops.length} OPs · {totalUn} un
-            <ChevronDown className={cn('size-3.5 transition-transform', aberta && 'rotate-180')} />
+            <ChevronDown
+              className={cn(
+                'size-3.5 transition-transform',
+                aberta && 'rotate-180',
+              )}
+            />
           </span>
         </span>
 
@@ -798,7 +818,8 @@ function KanbanCard({
   })
 
   // Operador só move a OP que é dele; manager move qualquer uma.
-  const podeMoverEsta = podeMover && (!isOperador || ordem.responsavelId === currentUserId)
+  const podeMoverEsta =
+    podeMover && (!isOperador || ordem.responsavelId === currentUserId)
 
   // Quando arrastando, escondemos o card original (DragOverlay mostra a cópia).
   return (
@@ -817,7 +838,10 @@ function KanbanCard({
           onAbrirDetalhe(ordem.id)
         }
       }}
-      className={cn('cursor-pointer select-none', isDragging && 'opacity-30')}
+      className={cn(
+        'cursor-pointer select-none',
+        isDragging && 'opacity-30',
+      )}
     >
       <KanbanCardContent
         ordem={ordem}
@@ -830,7 +854,13 @@ function KanbanCard({
 }
 
 // Botão "Pegar pra mim" / "Soltar" (fluxo puxado).
-function PegarSoltar({ ordem, currentUserId }: { ordem: KanbanCardData; currentUserId: string }) {
+function PegarSoltar({
+  ordem,
+  currentUserId,
+}: {
+  ordem: KanbanCardData
+  currentUserId: string
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const semDono = !ordem.responsavelId
@@ -897,30 +927,40 @@ function KanbanCardContent({
 }) {
   const tempo = tempoNaEtapa(ordem.desdeStatus)
   const idx = STATUS_KANBAN.indexOf(ordem.status)
-  const proximo = idx >= 0 && idx < STATUS_KANBAN.length - 1 ? STATUS_KANBAN[idx + 1] : null
-  const variacao = [ordem.variacaoCor, ordem.variacaoTamanho].filter(Boolean).join('/')
-  const destaque = ordem.prioridade === 'alta' || ordem.prioridade === 'urgente'
+  const proximo =
+    idx >= 0 && idx < STATUS_KANBAN.length - 1 ? STATUS_KANBAN[idx + 1] : null
+  const variacao = [ordem.variacaoCor, ordem.variacaoTamanho]
+    .filter(Boolean)
+    .join('/')
+  const destaque =
+    ordem.prioridade === 'alta' || ordem.prioridade === 'urgente'
   // Barra de progresso só faz sentido a partir de em_producao — antes disso
   // a produção nem começou.
   const emEtapaProdutiva =
     STATUS_KANBAN.indexOf(ordem.status) >= STATUS_KANBAN.indexOf('em_producao')
   const pctProduzido =
-    ordem.quantidade > 0 ? Math.min(100, Math.round((ordem.produzido / ordem.quantidade) * 100)) : 0
+    ordem.quantidade > 0
+      ? Math.min(100, Math.round((ordem.produzido / ordem.quantidade) * 100))
+      : 0
 
   return (
     <article
       style={
-        ordem.estacaoCor ? { borderLeftColor: ordem.estacaoCor, borderLeftWidth: 3 } : undefined
+        ordem.estacaoCor
+          ? { borderLeftColor: ordem.estacaoCor, borderLeftWidth: 3 }
+          : undefined
       }
       className={cn(
         'bg-card rounded-md border p-2 text-xs shadow-sm transition-shadow',
-        dragging ? 'ring-foreground/20 shadow-lg ring-1' : 'hover:shadow-md',
+        dragging ? 'shadow-lg ring-1 ring-foreground/20' : 'hover:shadow-md',
       )}
     >
       {/* Linha 1: nome do produto (inteiro) + SKU + (prioridade alta) + avançar */}
       <div className="flex items-start gap-1.5">
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-xs leading-snug font-medium">{ordem.produtoNome}</span>
+          <span className="text-xs font-medium leading-snug">
+            {ordem.produtoNome}
+          </span>
           <span className="text-muted-foreground truncate font-mono text-[10px]">
             {ordem.produtoSku}
           </span>
@@ -953,10 +993,15 @@ function KanbanCardContent({
 
       {/* Linha 2: dados da OP */}
       <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px]">
-        <span className="tabular-nums">{ordem.quantidade.toLocaleString('pt-BR')} un</span>
+        <span className="tabular-nums">
+          {ordem.quantidade.toLocaleString('pt-BR')} un
+        </span>
         {variacao && <span className="truncate">{variacao}</span>}
         {ordem.maquinaCodigo && (
-          <span className="inline-flex items-center gap-0.5" title={ordem.maquinaNome ?? undefined}>
+          <span
+            className="inline-flex items-center gap-0.5"
+            title={ordem.maquinaNome ?? undefined}
+          >
             <Cog className="size-2.5" />
             {ordem.maquinaCodigo}
           </span>
@@ -1013,7 +1058,9 @@ function KanbanCardContent({
               <div
                 className={cn(
                   'h-full rounded-full',
-                  ordem.produzido >= ordem.quantidade ? 'bg-emerald-500' : 'bg-primary',
+                  ordem.produzido >= ordem.quantidade
+                    ? 'bg-emerald-500'
+                    : 'bg-primary',
                 )}
                 style={{ width: `${pctProduzido}%` }}
               />
@@ -1025,7 +1072,9 @@ function KanbanCardContent({
         </div>
       )}
 
-      {currentUserId && <PegarSoltar ordem={ordem} currentUserId={currentUserId} />}
+      {currentUserId && (
+        <PegarSoltar ordem={ordem} currentUserId={currentUserId} />
+      )}
     </article>
   )
 }

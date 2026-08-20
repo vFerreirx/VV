@@ -32,5 +32,7 @@ export async function login(page: Page) {
   await page.getByLabel(/senha/i).fill(E2E_PASSWORD)
   await page.getByRole('button', { name: /entrar/i }).click()
   await page.waitForURL('**/dashboard')
-  await expect(page.getByRole('heading', { name: /dashboard/i })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: /dashboard/i }),
+  ).toBeVisible()
 }

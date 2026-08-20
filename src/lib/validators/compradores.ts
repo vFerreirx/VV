@@ -1,6 +1,12 @@
 import { z } from 'zod'
 
-import { documentoValido, normalizarDocumento, soDigitos, tipoDocumento, UFS } from './documento'
+import {
+  documentoValido,
+  normalizarDocumento,
+  soDigitos,
+  tipoDocumento,
+  UFS,
+} from './documento'
 
 // Campo opcional que vira null quando vazio (as colunas são nullable).
 const opcional = (max: number) =>
@@ -12,7 +18,11 @@ const opcional = (max: number) =>
 
 export const compradorSchema = z.object({
   // Único campo obrigatório — o cadastro pode nascer só com o nome.
-  nome: z.string().trim().min(2, 'Nome muito curto').max(120, 'Nome muito longo'),
+  nome: z
+    .string()
+    .trim()
+    .min(2, 'Nome muito curto')
+    .max(120, 'Nome muito longo'),
 
   // Guardado normalizado (sem pontuação, maiúsculas). Recusa DV inválido —
   // documento errado não entra.
@@ -24,7 +34,10 @@ export const compradorSchema = z.object({
       (v) => v === null || tipoDocumento(v) !== null,
       'Documento deve ter 11 dígitos (CPF) ou 14 (CNPJ)',
     )
-    .refine((v) => v === null || documentoValido(v), 'CPF/CNPJ inválido — confira os números'),
+    .refine(
+      (v) => v === null || documentoValido(v),
+      'CPF/CNPJ inválido — confira os números',
+    ),
 
   telefone: opcional(20),
 
@@ -44,7 +57,10 @@ export const compradorSchema = z.object({
     .union([z.string(), z.null(), z.undefined()])
     .transform((v) => (v == null ? null : v.trim().toUpperCase()))
     .transform((v) => (v === '' ? null : v))
-    .refine((v) => v === null || (UFS as readonly string[]).includes(v), 'UF inválida'),
+    .refine(
+      (v) => v === null || (UFS as readonly string[]).includes(v),
+      'UF inválida',
+    ),
 
   observacao: opcional(500),
 })

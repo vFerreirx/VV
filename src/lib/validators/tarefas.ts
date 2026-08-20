@@ -1,12 +1,20 @@
 import { z } from 'zod'
 
-import { PRIORIDADE_NIVEIS, maiorPrioridade, type PrioridadeNivel } from '@/lib/prioridade'
+import {
+  PRIORIDADE_NIVEIS,
+  maiorPrioridade,
+  type PrioridadeNivel,
+} from '@/lib/prioridade'
 
 // Tarefa da administração. Só o título é obrigatório — o caminho rápido de
 // criação é digitar o título e salvar; prazo e conta são secundários e a
 // maioria das tarefas nasce sem eles.
 export const tarefaSchema = z.object({
-  titulo: z.string().trim().min(2, 'Título muito curto').max(160, 'Título muito longo'),
+  titulo: z
+    .string()
+    .trim()
+    .min(2, 'Título muito curto')
+    .max(160, 'Título muito longo'),
 
   descricao: z
     .union([z.string(), z.null(), z.undefined()])
@@ -23,9 +31,14 @@ export const tarefaSchema = z.object({
   prazo: z
     .union([z.string(), z.null(), z.undefined()])
     .transform((v) => (v == null || v === '' ? null : v))
-    .refine((v) => v === null || /^\d{4}-\d{2}-\d{2}$/.test(v), 'Data inválida'),
+    .refine(
+      (v) => v === null || /^\d{4}-\d{2}-\d{2}$/.test(v),
+      'Data inválida',
+    ),
 
-  contaId: z.union([z.uuid('Conta inválida'), z.null(), z.undefined()]).transform((v) => v ?? null),
+  contaId: z
+    .union([z.uuid('Conta inválida'), z.null(), z.undefined()])
+    .transform((v) => v ?? null),
 })
 
 export type TarefaInput = z.input<typeof tarefaSchema>
@@ -87,7 +100,10 @@ export function diasAteOPrazo(prazo: string, hoje = hojeISO()): number {
 // Nível que a DATA sozinha pede. `baixa` é o piso — o menor nível que
 // existe —, então "não escala nada" e "escala pra baixa" são a mesma coisa
 // e `maiorPrioridade` nunca é enganado por uma tarefa sem prazo.
-export function escalarPorPrazo(prazo: string | null, hoje = hojeISO()): PrioridadeNivel {
+export function escalarPorPrazo(
+  prazo: string | null,
+  hoje = hojeISO(),
+): PrioridadeNivel {
   if (prazo === null) return 'baixa'
   const dias = diasAteOPrazo(prazo, hoje)
   if (dias <= DIAS_PARA_URGENTE) return 'urgente'

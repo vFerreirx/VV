@@ -96,9 +96,15 @@ export function CoresList({ cores, podeEditar }: Props) {
 
       {cores.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">Nenhuma cor cadastrada.</p>
+          <p className="text-muted-foreground text-sm">
+            Nenhuma cor cadastrada.
+          </p>
           {podeEditar && (
-            <Button size="sm" className="mt-3" onClick={() => setEditingCor('novo')}>
+            <Button
+              size="sm"
+              className="mt-3"
+              onClick={() => setEditingCor('novo')}
+            >
               Cadastrar primeira cor
             </Button>
           )}
@@ -129,7 +135,10 @@ export function CoresList({ cores, podeEditar }: Props) {
               </TableHeader>
               <TableBody ref={corpoTabela}>
                 {cores.map((c) => (
-                  <TableRow key={c.id} data-state={selecionados.has(c.id) ? 'selected' : undefined}>
+                  <TableRow
+                    key={c.id}
+                    data-state={selecionados.has(c.id) ? 'selected' : undefined}
+                  >
                     {podeEditar && (
                       <TableCell>
                         <Checkbox
@@ -183,7 +192,10 @@ export function CoresList({ cores, podeEditar }: Props) {
           {/* Mobile/tablet retrato */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:hidden">
             {cores.map((c) => (
-              <div key={c.id} className="flex items-center justify-between rounded-lg border p-3">
+              <div
+                key={c.id}
+                className="flex items-center justify-between rounded-lg border p-3"
+              >
                 <div className="flex min-w-0 items-center gap-3">
                   {podeEditar && (
                     <Checkbox
@@ -256,15 +268,26 @@ export function CoresList({ cores, podeEditar }: Props) {
 // ColorSwatch
 // -----------------------------------------------------------------
 
-function ColorSwatch({ hex, hex2 }: { hex: string | null; hex2?: string | null }) {
+function ColorSwatch({
+  hex,
+  hex2,
+}: {
+  hex: string | null
+  hex2?: string | null
+}) {
   if (!hex && !hex2) {
-    return <div className="size-7 rounded-md border border-dashed" aria-label="Sem cor definida" />
+    return (
+      <div
+        className="size-7 rounded-md border border-dashed"
+        aria-label="Sem cor definida"
+      />
+    )
   }
   // Bicolor: swatch dividido na diagonal entre as duas tonalidades.
   if (hex && hex2) {
     return (
       <div
-        className="ring-foreground/10 size-7 rounded-md border ring-1"
+        className="size-7 rounded-md border ring-1 ring-foreground/10"
         style={{
           background: `linear-gradient(135deg, ${hex} 0 50%, ${hex2} 50% 100%)`,
         }}
@@ -275,7 +298,7 @@ function ColorSwatch({ hex, hex2 }: { hex: string | null; hex2?: string | null }
   const cor = hex ?? hex2!
   return (
     <div
-      className="ring-foreground/10 size-7 rounded-md border ring-1"
+      className="size-7 rounded-md border ring-1 ring-foreground/10"
       style={{ backgroundColor: cor }}
       aria-label={cor}
     />
@@ -290,7 +313,13 @@ function normHexPreview(v?: string | null): string | null {
   return s.startsWith('#') ? s : `#${s}`
 }
 
-function SwatchPreview({ hex, hex2 }: { hex?: string | null; hex2?: string | null }) {
+function SwatchPreview({
+  hex,
+  hex2,
+}: {
+  hex?: string | null
+  hex2?: string | null
+}) {
   return <ColorSwatch hex={normHexPreview(hex)} hex2={normHexPreview(hex2)} />
 }
 
@@ -298,7 +327,13 @@ function SwatchPreview({ hex, hex2 }: { hex?: string | null; hex2?: string | nul
 // Dialog de criar/editar
 // -----------------------------------------------------------------
 
-function CorDialog({ cor, onClose }: { cor: Cor | 'novo' | null; onClose: () => void }) {
+function CorDialog({
+  cor,
+  onClose,
+}: {
+  cor: Cor | 'novo' | null
+  onClose: () => void
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const isEdit = cor && cor !== 'novo'
@@ -308,14 +343,14 @@ function CorDialog({ cor, onClose }: { cor: Cor | 'novo' | null; onClose: () => 
     resolver: zodResolver(corSchema) as unknown as Resolver<CorInput>,
     defaultValues: {
       nome: isEdit ? cor.nome : '',
-      codigoHex: isEdit ? (cor.codigoHex ?? '') : '',
-      codigoHex2: isEdit ? (cor.codigoHex2 ?? '') : '',
+      codigoHex: isEdit ? cor.codigoHex ?? '' : '',
+      codigoHex2: isEdit ? cor.codigoHex2 ?? '' : '',
       ativo: isEdit ? cor.ativo : true,
     },
     values: {
       nome: isEdit ? cor.nome : '',
-      codigoHex: isEdit ? (cor.codigoHex ?? '') : '',
-      codigoHex2: isEdit ? (cor.codigoHex2 ?? '') : '',
+      codigoHex: isEdit ? cor.codigoHex ?? '' : '',
+      codigoHex2: isEdit ? cor.codigoHex2 ?? '' : '',
       ativo: isEdit ? cor.ativo : true,
     },
   })
@@ -357,8 +392,15 @@ function CorDialog({ cor, onClose }: { cor: Cor | 'novo' | null; onClose: () => 
             <Label htmlFor="cor-nome">
               Nome <span className="text-destructive">*</span>
             </Label>
-            <Input id="cor-nome" autoFocus disabled={isPending} {...form.register('nome')} />
-            {errs.nome && <p className="text-destructive text-xs">{errs.nome.message}</p>}
+            <Input
+              id="cor-nome"
+              autoFocus
+              disabled={isPending}
+              {...form.register('nome')}
+            />
+            {errs.nome && (
+              <p className="text-destructive text-xs">{errs.nome.message}</p>
+            )}
           </div>
 
           <div className="flex items-end gap-3">
@@ -371,7 +413,9 @@ function CorDialog({ cor, onClose }: { cor: Cor | 'novo' | null; onClose: () => 
                 {...form.register('codigoHex')}
               />
               {errs.codigoHex && (
-                <p className="text-destructive text-xs">{errs.codigoHex.message}</p>
+                <p className="text-destructive text-xs">
+                  {errs.codigoHex.message}
+                </p>
               )}
             </div>
             <div className="flex-1 space-y-1.5">
@@ -383,15 +427,17 @@ function CorDialog({ cor, onClose }: { cor: Cor | 'novo' | null; onClose: () => 
                 {...form.register('codigoHex2')}
               />
               {errs.codigoHex2 && (
-                <p className="text-destructive text-xs">{errs.codigoHex2.message}</p>
+                <p className="text-destructive text-xs">
+                  {errs.codigoHex2.message}
+                </p>
               )}
             </div>
             {/* Prévia ao vivo do swatch (divide quando há 2 tonalidades). */}
             <SwatchPreview hex={hex1Preview} hex2={hex2Preview} />
           </div>
           <p className="text-muted-foreground -mt-1 text-xs">
-            Preencha o 2º hex só para cores bicolor (ex.: capa listrada) — o swatch fica dividido
-            entre as duas.
+            Preencha o 2º hex só para cores bicolor (ex.: capa listrada) — o
+            swatch fica dividido entre as duas.
           </p>
 
           <div className="flex items-center justify-between">
@@ -401,13 +447,20 @@ function CorDialog({ cor, onClose }: { cor: Cor | 'novo' | null; onClose: () => 
             <Switch
               id="cor-ativo"
               checked={ativo}
-              onCheckedChange={(v) => form.setValue('ativo', v, { shouldDirty: true })}
+              onCheckedChange={(v) =>
+                form.setValue('ativo', v, { shouldDirty: true })
+              }
               disabled={isPending}
             />
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isPending}
+            >
               Cancelar
             </Button>
             <Button loading={isPending} type="submit" disabled={isPending}>
@@ -424,7 +477,13 @@ function CorDialog({ cor, onClose }: { cor: Cor | 'novo' | null; onClose: () => 
 // Dialog de exclusão individual
 // -----------------------------------------------------------------
 
-function ExcluirDialog({ cor, onClose }: { cor: Cor | null; onClose: () => void }) {
+function ExcluirDialog({
+  cor,
+  onClose,
+}: {
+  cor: Cor | null
+  onClose: () => void
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -448,15 +507,19 @@ function ExcluirDialog({ cor, onClose }: { cor: Cor | null; onClose: () => void 
         <DialogHeader>
           <DialogTitle>Excluir cor?</DialogTitle>
           <DialogDescription>
-            {cor?.nome} será marcada como excluída. As variações que já a usam permanecem
-            inalteradas.
+            {cor?.nome} será marcada como excluída. As variações que já a usam
+            permanecem inalteradas.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+          <Button loading={isPending}
+            variant="destructive"
+            onClick={excluir}
+            disabled={isPending}
+          >
             {'Excluir'}
           </Button>
         </DialogFooter>
@@ -501,12 +564,10 @@ function BulkExcluirDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            Excluir {ids.length} cor{ids.length === 1 ? '' : 'es'}?
-          </DialogTitle>
+          <DialogTitle>Excluir {ids.length} cor{ids.length === 1 ? '' : 'es'}?</DialogTitle>
           <DialogDescription>
-            As cores selecionadas serão marcadas como excluídas. As variações que já as usam
-            permanecem inalteradas.
+            As cores selecionadas serão marcadas como excluídas. As variações
+            que já as usam permanecem inalteradas.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

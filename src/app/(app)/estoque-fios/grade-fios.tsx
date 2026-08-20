@@ -18,7 +18,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { coresDaGrade, ordenarParaGrade, totalDaGrade } from '@/lib/fios/saldo'
+import {
+  coresDaGrade,
+  ordenarParaGrade,
+  totalDaGrade,
+} from '@/lib/fios/saldo'
 import { cn } from '@/lib/utils'
 
 // A visão de estoque, no formato da planilha que a fábrica usava: uma linha
@@ -67,7 +71,10 @@ export function GradeFios({ lotes }: { lotes: LoteFioItem[] }) {
   const ordenados = useMemo(() => ordenarParaGrade(lotes), [lotes])
   const cores = useMemo(() => coresDaGrade(lotes), [lotes])
   const visiveis = useMemo(
-    () => (cor === TODAS ? ordenados : ordenados.filter((l) => l.corFornecedorNome === cor)),
+    () =>
+      cor === TODAS
+        ? ordenados
+        : ordenados.filter((l) => l.corFornecedorNome === cor),
     [ordenados, cor],
   )
   // Somado das linhas VISÍVEIS, como o subtotal de uma planilha filtrada.
@@ -76,9 +83,12 @@ export function GradeFios({ lotes }: { lotes: LoteFioItem[] }) {
   if (lotes.length === 0) {
     return (
       <div className="rounded-lg border border-dashed py-12 text-center">
-        <p className="text-muted-foreground text-sm">Nenhum lote de fio em estoque.</p>
+        <p className="text-muted-foreground text-sm">
+          Nenhum lote de fio em estoque.
+        </p>
         <p className="text-muted-foreground mt-1 text-xs">
-          Importe a planilha ou cadastre uma entrada na aba &quot;Entradas de lote&quot;.
+          Importe a planilha ou cadastre uma entrada na aba &quot;Entradas de
+          lote&quot;.
         </p>
       </div>
     )
@@ -154,9 +164,15 @@ export function GradeFios({ lotes }: { lotes: LoteFioItem[] }) {
                   {l.corFornecedorNome}
                 </TableCell>
                 <TableCell className={cn('border-b', CELULA)}>
-                  {l.numeroLote ?? <span className="text-muted-foreground italic">sem lote</span>}
+                  {l.numeroLote ?? (
+                    <span className="text-muted-foreground italic">
+                      sem lote
+                    </span>
+                  )}
                 </TableCell>
-                <TableCell className={cn('border-b', CELULA, NUMERO)}>{num(l.caixas)}</TableCell>
+                <TableCell className={cn('border-b', CELULA, NUMERO)}>
+                  {num(l.caixas)}
+                </TableCell>
                 <TableCell
                   className={cn(
                     'border-b',

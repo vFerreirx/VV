@@ -2,7 +2,14 @@
 
 // Donut chart de OPs ativas por canal de destino.
 
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
+import {
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+} from 'recharts'
 
 import type { OpsPorCanal } from '@/app/(app)/dashboard/actions'
 import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
@@ -67,7 +74,11 @@ export function CanaisChart({ data }: Props) {
               ]
             }}
           />
-          <Legend wrapperStyle={{ fontSize: '0.75rem' }} iconType="circle" verticalAlign="bottom" />
+          <Legend
+            wrapperStyle={{ fontSize: '0.75rem' }}
+            iconType="circle"
+            verticalAlign="bottom"
+          />
         </PieChart>
       </ResponsiveContainer>
     </div>

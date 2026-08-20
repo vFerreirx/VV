@@ -18,7 +18,9 @@ export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
   | { success: false; error: string }
 
-export async function atualizarPerfilAction(input: AtualizarPerfilInput): Promise<ActionResult> {
+export async function atualizarPerfilAction(
+  input: AtualizarPerfilInput,
+): Promise<ActionResult> {
   const parsed = atualizarPerfilSchema.safeParse(input)
   if (!parsed.success) {
     return { success: false, error: 'Dados inválidos' }
@@ -39,7 +41,9 @@ export async function atualizarPerfilAction(input: AtualizarPerfilInput): Promis
   return { success: true, message: 'Perfil atualizado' }
 }
 
-export async function alterarSenhaAction(input: AlterarSenhaInput): Promise<ActionResult> {
+export async function alterarSenhaAction(
+  input: AlterarSenhaInput,
+): Promise<ActionResult> {
   const parsed = alterarSenhaSchema.safeParse(input)
   if (!parsed.success) {
     return { success: false, error: 'Dados inválidos' }

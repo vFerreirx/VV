@@ -14,7 +14,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { Maquina, User } from '@/lib/db/schema'
-import { CANAL_LABEL_CURTO, canalValues } from '@/lib/validators/ordens'
+import {
+  CANAL_LABEL_CURTO,
+  canalValues,
+} from '@/lib/validators/ordens'
 
 type Props = {
   maquinas: Array<Pick<Maquina, 'id' | 'codigo' | 'nome'>>
@@ -27,7 +30,11 @@ type Props = {
   }
 }
 
-export function ProducaoFiltros({ maquinas, responsaveis, filtrosIniciais }: Props) {
+export function ProducaoFiltros({
+  maquinas,
+  responsaveis,
+  filtrosIniciais,
+}: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -46,7 +53,7 @@ export function ProducaoFiltros({ maquinas, responsaveis, filtrosIniciais }: Pro
   }
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:flex-wrap">
       <form
         onSubmit={(e) => {
           e.preventDefault()

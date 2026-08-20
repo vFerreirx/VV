@@ -42,7 +42,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import type { Cor } from '@/lib/db/schema'
-import { corFornecedorSchema, type CorFornecedorInput } from '@/lib/validators/fios'
+import {
+  corFornecedorSchema,
+  type CorFornecedorInput,
+} from '@/lib/validators/fios'
 
 type Props = {
   coresFornecedor: CorFornecedorItem[]
@@ -50,8 +53,14 @@ type Props = {
   podeEditar: boolean
 }
 
-export function CoresFornecedorList({ coresFornecedor, coresAtivas, podeEditar }: Props) {
-  const [editing, setEditing] = useState<CorFornecedorItem | 'novo' | null>(null)
+export function CoresFornecedorList({
+  coresFornecedor,
+  coresAtivas,
+  podeEditar,
+}: Props) {
+  const [editing, setEditing] = useState<CorFornecedorItem | 'novo' | null>(
+    null,
+  )
   const [excluindo, setExcluindo] = useState<CorFornecedorItem | null>(null)
 
   return (
@@ -67,9 +76,15 @@ export function CoresFornecedorList({ coresFornecedor, coresAtivas, podeEditar }
 
       {coresFornecedor.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">Nenhuma cor de fornecedor cadastrada.</p>
+          <p className="text-muted-foreground text-sm">
+            Nenhuma cor de fornecedor cadastrada.
+          </p>
           {podeEditar && (
-            <Button size="sm" className="mt-3" onClick={() => setEditing('novo')}>
+            <Button
+              size="sm"
+              className="mt-3"
+              onClick={() => setEditing('novo')}
+            >
               Cadastrar primeira cor
             </Button>
           )}
@@ -88,11 +103,13 @@ export function CoresFornecedorList({ coresFornecedor, coresAtivas, podeEditar }
             <TableBody>
               {coresFornecedor.map((c) => (
                 <TableRow key={c.id}>
-                  <TableCell className="font-medium">{c.nomeFornecedor}</TableCell>
+                  <TableCell className="font-medium">
+                    {c.nomeFornecedor}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <span
-                        className="ring-foreground/10 size-4 rounded border ring-1"
+                        className="size-4 rounded border ring-1 ring-foreground/10"
                         style={{ backgroundColor: c.corHex ?? undefined }}
                       />
                       {c.corNome}
@@ -158,7 +175,9 @@ function CorFornecedorDialog({
   const open = cor !== null
 
   const form = useForm<CorFornecedorInput>({
-    resolver: zodResolver(corFornecedorSchema) as unknown as Resolver<CorFornecedorInput>,
+    resolver: zodResolver(
+      corFornecedorSchema,
+    ) as unknown as Resolver<CorFornecedorInput>,
     values: {
       nomeFornecedor: isEdit ? cor.nomeFornecedor : '',
       corId: isEdit ? cor.corId : '',
@@ -193,14 +212,16 @@ function CorFornecedorDialog({
             {isEdit ? 'Editar cor de fornecedor' : 'Nova cor de fornecedor'}
           </DialogTitle>
           <DialogDescription>
-            Vincule o nome/código que o fornecedor usa à cor equivalente do nosso catálogo.
+            Vincule o nome/código que o fornecedor usa à cor equivalente do
+            nosso catálogo.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="space-y-3" noValidate>
           <div className="space-y-1.5">
             <Label htmlFor="cf-nome">
-              Nome/código do fornecedor <span className="text-destructive">*</span>
+              Nome/código do fornecedor{' '}
+              <span className="text-destructive">*</span>
             </Label>
             <Input
               id="cf-nome"
@@ -209,7 +230,9 @@ function CorFornecedorDialog({
               {...form.register('nomeFornecedor')}
             />
             {errs.nomeFornecedor && (
-              <p className="text-destructive text-xs">{errs.nomeFornecedor.message}</p>
+              <p className="text-destructive text-xs">
+                {errs.nomeFornecedor.message}
+              </p>
             )}
           </div>
 
@@ -239,7 +262,9 @@ function CorFornecedorDialog({
                 </Select>
               )}
             />
-            {errs.corId && <p className="text-destructive text-xs">{errs.corId.message}</p>}
+            {errs.corId && (
+              <p className="text-destructive text-xs">{errs.corId.message}</p>
+            )}
           </div>
 
           <div className="flex items-center justify-between">
@@ -261,7 +286,12 @@ function CorFornecedorDialog({
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isPending}
+            >
               Cancelar
             </Button>
             <Button loading={isPending} type="submit" disabled={isPending}>
@@ -274,7 +304,13 @@ function CorFornecedorDialog({
   )
 }
 
-function ExcluirDialog({ cor, onClose }: { cor: CorFornecedorItem | null; onClose: () => void }) {
+function ExcluirDialog({
+  cor,
+  onClose,
+}: {
+  cor: CorFornecedorItem | null
+  onClose: () => void
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -298,15 +334,19 @@ function ExcluirDialog({ cor, onClose }: { cor: CorFornecedorItem | null; onClos
         <DialogHeader>
           <DialogTitle>Excluir cor de fornecedor?</DialogTitle>
           <DialogDescription>
-            {cor?.nomeFornecedor} será marcada como excluída. Lotes já cadastrados com ela
-            permanecem inalterados.
+            {cor?.nomeFornecedor} será marcada como excluída. Lotes já
+            cadastrados com ela permanecem inalterados.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+          <Button loading={isPending}
+            variant="destructive"
+            onClick={excluir}
+            disabled={isPending}
+          >
             {'Excluir'}
           </Button>
         </DialogFooter>

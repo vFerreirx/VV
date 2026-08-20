@@ -36,11 +36,18 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0
 }
 
-export async function obterRelatorioPeriodo(inicio: string, fim: string): Promise<RelatorioMensal> {
+export async function obterRelatorioPeriodo(
+  inicio: string,
+  fim: string,
+): Promise<RelatorioMensal> {
   await requireArea('vendas')
   const prox = diaSeguinte(fim)
 
-  const noMesVendas = and(gte(vendas.data, inicio), lt(vendas.data, prox), isNull(vendas.deletedAt))
+  const noMesVendas = and(
+    gte(vendas.data, inicio),
+    lt(vendas.data, prox),
+    isNull(vendas.deletedAt),
+  )
 
   const [aggVendas, porContaRows, porDiaRows] = await Promise.all([
     db
@@ -131,7 +138,9 @@ export async function obterTendenciaPeriodo(
   const inicioDate = new Date(iy, im - 1, id)
 
   const col =
-    metrica === 'quantidade' ? vendasMarketplace.quantidade : vendasMarketplace.faturamento
+    metrica === 'quantidade'
+      ? vendasMarketplace.quantidade
+      : vendasMarketplace.faturamento
 
   const rows = await db
     .select({
@@ -141,7 +150,9 @@ export async function obterTendenciaPeriodo(
     })
     .from(vendasMarketplace)
     .innerJoin(vendas, eq(vendas.id, vendasMarketplace.vendaId))
-    .where(and(gte(vendas.data, inicio), lte(vendas.data, fim), isNull(vendas.deletedAt)))
+    .where(
+      and(gte(vendas.data, inicio), lte(vendas.data, fim), isNull(vendas.deletedAt)),
+    )
     .groupBy(vendas.data, vendasMarketplace.conta)
 
   // data -> conta -> valor ; e total por conta

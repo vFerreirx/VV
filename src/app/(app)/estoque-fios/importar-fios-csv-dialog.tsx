@@ -157,18 +157,23 @@ export function ImportarFiosCSVDialog() {
           <DialogHeader>
             <DialogTitle>Importar planilha de fios (CSV)</DialogTitle>
             <DialogDescription>
-              Cada linha vira um lote. Onde houver retirada, entra também a saída correspondente.
-              Confira os totais contra o rodapé da planilha antes de importar.
+              Cada linha vira um lote. Onde houver retirada, entra também a
+              saída correspondente. Confira os totais contra o rodapé da
+              planilha antes de importar.
             </DialogDescription>
           </DialogHeader>
 
           {res === null ? (
             <div className="space-y-2 py-2">
-              <Button onClick={() => inputRef.current?.click()} disabled={analisando}>
+              <Button
+                onClick={() => inputRef.current?.click()}
+                disabled={analisando}
+              >
                 {analisando ? 'Lendo arquivo…' : 'Selecionar arquivo CSV'}
               </Button>
               <p className="text-muted-foreground text-xs">
-                Colunas: COR, PARTIDA (LOTE), CAIXAS, RETIRADA, TOTAL CAIXA, QUANTIDADE (KG).
+                Colunas: COR, PARTIDA (LOTE), CAIXAS, RETIRADA, TOTAL CAIXA,
+                QUANTIDADE (KG).
               </p>
             </div>
           ) : (
@@ -207,7 +212,8 @@ export function ImportarFiosCSVDialog() {
                   </ul>
                   {res.duplicadas.length > MAX_AVISOS && (
                     <div className="mt-1 opacity-80">
-                      … e mais {res.duplicadas.length - MAX_AVISOS} não exibido(s).
+                      … e mais {res.duplicadas.length - MAX_AVISOS} não
+                      exibido(s).
                     </div>
                   )}
                   <label className="mt-2 flex items-start gap-2 font-medium">
@@ -216,10 +222,11 @@ export function ImportarFiosCSVDialog() {
                       onCheckedChange={(v) => setIncluirDuplicadas(v === true)}
                     />
                     <span>
-                      Importar mesmo assim — são remessas novas da mesma partida.
+                      Importar mesmo assim — são remessas novas da mesma
+                      partida.
                       <span className="block font-normal opacity-80">
-                        Desmarcado, essas linhas são puladas: importar a mesma planilha duas vezes
-                        não dobra o estoque.
+                        Desmarcado, essas linhas são puladas: importar a mesma
+                        planilha duas vezes não dobra o estoque.
                       </span>
                     </span>
                   </label>
@@ -236,24 +243,33 @@ export function ImportarFiosCSVDialog() {
                   disabled={importando}
                 />
                 <p className="text-muted-foreground text-xs">
-                  A planilha não tem data. Esta é aplicada a todas as linhas — informe o mês dela.
+                  A planilha não tem data. Esta é aplicada a todas as linhas —
+                  informe o mês dela.
                 </p>
               </div>
 
               {totais && (
                 <div className="rounded-lg border p-3 text-sm">
-                  <div className="mb-1.5 font-medium">{totais.lotes} lote(s) a importar</div>
+                  <div className="mb-1.5 font-medium">
+                    {totais.lotes} lote(s) a importar
+                  </div>
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-1 tabular-nums">
                     <dt className="text-muted-foreground">Caixas de entrada</dt>
-                    <dd className="text-right">{totais.caixasEntrada.toLocaleString('pt-BR')}</dd>
+                    <dd className="text-right">
+                      {totais.caixasEntrada.toLocaleString('pt-BR')}
+                    </dd>
                     <dt className="text-muted-foreground">Caixas retiradas</dt>
-                    <dd className="text-right">{totais.caixasRetirada.toLocaleString('pt-BR')}</dd>
+                    <dd className="text-right">
+                      {totais.caixasRetirada.toLocaleString('pt-BR')}
+                    </dd>
                     <dt className="font-medium">Caixas de saldo</dt>
                     <dd className="text-right font-medium">
                       {totais.caixasSaldo.toLocaleString('pt-BR')}
                     </dd>
                     <dt className="font-medium">Peso de saldo</dt>
-                    <dd className="text-right font-medium">{kg(totais.kgSaldo)}</dd>
+                    <dd className="text-right font-medium">
+                      {kg(totais.kgSaldo)}
+                    </dd>
                   </dl>
                 </div>
               )}
@@ -271,7 +287,11 @@ export function ImportarFiosCSVDialog() {
               <Button variant="outline" onClick={reset} disabled={importando}>
                 Escolher outro
               </Button>
-              <Button onClick={importar} loading={importando} disabled={importando || !temLinhas}>
+              <Button
+                onClick={importar}
+                loading={importando}
+                disabled={importando || !temLinhas}
+              >
                 Importar
               </Button>
             </DialogFooter>

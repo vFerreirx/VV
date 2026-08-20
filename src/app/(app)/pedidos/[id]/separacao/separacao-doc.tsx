@@ -24,7 +24,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { montarLinhasSeparacao, type CatalogoSeparacao } from '@/lib/separacao'
+import {
+  montarLinhasSeparacao,
+  type CatalogoSeparacao,
+} from '@/lib/separacao'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 // Via de separação: SEM preço, kit quebrado em componentes — é a lista que
@@ -59,7 +62,9 @@ export function SeparacaoDoc({
   // Campo por linha, guardado como TEXTO: vazio é "não falta nada", que é
   // diferente de zero digitado — e apagar o campo não pode virar 0 na hora.
   const [faltam, setFaltam] = useState<Record<string, string>>(() =>
-    Object.fromEntries(faltantesSalvos.map((f) => [f.chave, String(f.quantidade)])),
+    Object.fromEntries(
+      faltantesSalvos.map((f) => [f.chave, String(f.quantidade)]),
+    ),
   )
   const [sujo, setSujo] = useState(false)
 
@@ -111,7 +116,10 @@ export function SeparacaoDoc({
         </Button>
         <div className="flex gap-2">
           {totalFaltante > 0 && (
-            <Button variant="outline" render={<Link href={`/pedidos/${orcamento.id}/faltantes`} />}>
+            <Button
+              variant="outline"
+              render={<Link href={`/pedidos/${orcamento.id}/faltantes`} />}
+            >
               <PackageX />
               Via de faltantes
             </Button>
@@ -124,13 +132,14 @@ export function SeparacaoDoc({
       </div>
 
       {/* Cabeçalho do documento */}
-      <div className="print:border-foreground/20 flex items-start justify-between gap-4 border-b pb-4">
+      <div className="flex items-start justify-between gap-4 border-b pb-4 print:border-foreground/20">
         <div className="flex items-center gap-3">
           <Logo variant="mark" className="size-10" />
           <div>
             <IdentidadeEmpresa empresa={empresa} />
             <div className="text-muted-foreground mt-1 text-sm">
-              Via de separação — Pedido nº {formatarNumeroPedido(orcamento.numero)}
+              Via de separação — Pedido nº{' '}
+              {formatarNumeroPedido(orcamento.numero)}
             </div>
           </div>
         </div>
@@ -146,12 +155,14 @@ export function SeparacaoDoc({
 
       {/* Cliente */}
       <div>
-        <div className="text-muted-foreground text-xs tracking-wide uppercase">Cliente</div>
+        <div className="text-muted-foreground text-xs tracking-wide uppercase">
+          Cliente
+        </div>
         <div className="mt-0.5 text-base font-medium">{orcamento.cliente}</div>
       </div>
 
       {/* Itens — sem preço nenhum, só o que separar */}
-      <div className="print:border-foreground/20 rounded-lg border">
+      <div className="rounded-lg border print:border-foreground/20">
         <Table className="table-fixed">
           {/* As larguras vivem aqui, e não na primeira linha: `table-fixed`
               tira as colunas da primeira linha do <thead>, que na impressão
@@ -171,14 +182,18 @@ export function SeparacaoDoc({
                 colSpan={2}
                 className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
               >
-                Via de separação — Pedido nº {formatarNumeroPedido(orcamento.numero)} ·{' '}
-                {orcamento.cliente}
+                Via de separação — Pedido nº{' '}
+                {formatarNumeroPedido(orcamento.numero)} · {orcamento.cliente}
               </TableHead>
             </TableRow>
             <TableRow>
               <TableHead>Produto</TableHead>
               <TableHead className="text-right">Qtd</TableHead>
-              {podeEditar && <TableHead className="text-right print:hidden">Faltam</TableHead>}
+              {podeEditar && (
+                <TableHead className="text-right print:hidden">
+                  Faltam
+                </TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -194,7 +209,9 @@ export function SeparacaoDoc({
                   <TableCell className="text-right print:hidden">
                     <Input
                       value={faltam[l.chave] ?? ''}
-                      onChange={(e) => digitar(l.chave, e.target.value, l.quantidade)}
+                      onChange={(e) =>
+                        digitar(l.chave, e.target.value, l.quantidade)
+                      }
                       disabled={salvando}
                       inputMode="numeric"
                       placeholder="0"
@@ -226,9 +243,10 @@ export function SeparacaoDoc({
       {podeEditar && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3 print:hidden">
           <p className="text-muted-foreground text-xs">
-            Digite em <strong>Faltam</strong> o que não achou na hora de separar. O sistema não sabe
-            o que tem em estoque — quem sabe é você. O que ficar marcado sai na{' '}
-            <strong>via de faltantes</strong>, que é a lista do que produzir.
+            Digite em <strong>Faltam</strong> o que não achou na hora de
+            separar. O sistema não sabe o que tem em estoque — quem sabe é
+            você. O que ficar marcado sai na <strong>via de faltantes</strong>,
+            que é a lista do que produzir.
           </p>
           <Button onClick={salvar} loading={salvando} disabled={salvando || !sujo}>
             <Save />
@@ -237,8 +255,9 @@ export function SeparacaoDoc({
         </div>
       )}
 
-      <p className="text-muted-foreground print:border-foreground/20 border-t pt-3 text-xs">
-        Documento gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} — via de
+      <p className="text-muted-foreground border-t pt-3 text-xs print:border-foreground/20">
+        Documento gerado em{' '}
+        {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} — via de
         separação, sem valores.
       </p>
     </div>

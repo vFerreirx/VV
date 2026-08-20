@@ -14,7 +14,8 @@ function hojeISO(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-const isData = (s: unknown): s is string => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
+const isData = (s: unknown): s is string =>
+  typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
 
 export default async function VendasPage({
   searchParams,
@@ -49,7 +50,9 @@ export default async function VendasPage({
   const [vendaDoDia, relatorio, comparacao] = await Promise.all([
     obterVendaDoDia(data),
     obterRelatorioPeriodo(inicio, fim),
-    inicioComp && fimComp ? obterRelatorioPeriodo(inicioComp, fimComp) : Promise.resolve(null),
+    inicioComp && fimComp
+      ? obterRelatorioPeriodo(inicioComp, fimComp)
+      : Promise.resolve(null),
   ])
 
   return (

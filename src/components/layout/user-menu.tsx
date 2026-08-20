@@ -34,7 +34,11 @@ function initials(nome: string) {
     .join('')
 }
 
-export function UserMenu({ user }: { user: Pick<User, 'nome' | 'username' | 'role'> }) {
+export function UserMenu({
+  user,
+}: {
+  user: Pick<User, 'nome' | 'username' | 'role'>
+}) {
   const [isPending, startTransition] = useTransition()
 
   const handleLogout = () => {
@@ -61,7 +65,9 @@ export function UserMenu({ user }: { user: Pick<User, 'nome' | 'username' | 'rol
           <span className="text-muted-foreground font-mono text-xs font-normal">
             {user.username}
           </span>
-          <span className="text-muted-foreground text-xs font-normal">{ROLE_LABEL[user.role]}</span>
+          <span className="text-muted-foreground text-xs font-normal">
+            {ROLE_LABEL[user.role]}
+          </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/configuracoes" />}>

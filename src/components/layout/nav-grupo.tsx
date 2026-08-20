@@ -40,7 +40,11 @@ export function NavGrupo({
   children: React.ReactNode
 }) {
   return (
-    <Collapsible.Root open={aberto} onOpenChange={onAbertoChange} className="space-y-0.5">
+    <Collapsible.Root
+      open={aberto}
+      onOpenChange={onAbertoChange}
+      className="space-y-0.5"
+    >
       <Collapsible.Trigger
         className={cn(
           'flex w-full items-center justify-between pb-0.5 text-[0.6rem] font-medium tracking-[0.12em] uppercase transition-colors',

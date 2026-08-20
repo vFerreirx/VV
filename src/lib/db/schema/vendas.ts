@@ -69,7 +69,10 @@ export const vendasMarketplace = pgTable(
   },
   (table) => [
     index('vendas_marketplace_venda_idx').on(table.vendaId),
-    uniqueIndex('vendas_marketplace_venda_conta_idx').on(table.vendaId, table.conta),
+    uniqueIndex('vendas_marketplace_venda_conta_idx').on(
+      table.vendaId,
+      table.conta,
+    ),
   ],
 )
 

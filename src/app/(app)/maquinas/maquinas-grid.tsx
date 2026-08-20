@@ -6,7 +6,11 @@ import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-import { excluirMaquinaAction, trocarStatusAction, type MaquinaListItem } from './actions'
+import {
+  excluirMaquinaAction,
+  trocarStatusAction,
+  type MaquinaListItem,
+} from './actions'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -81,9 +85,12 @@ export function MaquinasGrid({ maquinas, podeEditar }: Props) {
         {grupos.map((g) => (
           <section key={g.estacao ?? SEM_ESTACAO} className="space-y-2.5">
             <div className="flex items-baseline gap-2">
-              <h2 className="text-sm font-semibold">{g.estacao ?? 'Sem estação'}</h2>
+              <h2 className="text-sm font-semibold">
+                {g.estacao ?? 'Sem estação'}
+              </h2>
               <span className="text-muted-foreground text-xs">
-                {g.maquinas.length} {g.maquinas.length === 1 ? 'máquina' : 'máquinas'}
+                {g.maquinas.length}{' '}
+                {g.maquinas.length === 1 ? 'máquina' : 'máquinas'}
               </span>
             </div>
             <div className="vv-stagger grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -141,12 +148,17 @@ function MaquinaCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-3">
           <span
-            className={cn('size-2.5 shrink-0 rounded-full', STATUS_DOT[maquina.status])}
+            className={cn(
+              'size-2.5 shrink-0 rounded-full',
+              STATUS_DOT[maquina.status],
+            )}
             title={STATUS_LABEL[maquina.status]}
           />
           <div className="min-w-0">
             <div className="truncate font-medium">{maquina.nome}</div>
-            <div className="text-muted-foreground text-xs">{STATUS_LABEL[maquina.status]}</div>
+            <div className="text-muted-foreground text-xs">
+              {STATUS_LABEL[maquina.status]}
+            </div>
           </div>
         </div>
 
@@ -160,7 +172,12 @@ function MaquinaCard({
             >
               <Pencil />
             </Button>
-            <Button size="icon-sm" variant="ghost" onClick={onExcluir} aria-label="Excluir">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={onExcluir}
+              aria-label="Excluir"
+            >
               <Trash2 className="text-destructive" />
             </Button>
           </div>
@@ -175,7 +192,9 @@ function MaquinaCard({
             className="flex-1"
             disabled={isPending}
             aria-pressed={emManutencao}
-            onClick={() => definirStatus(emManutencao ? 'operando' : 'manutencao')}
+            onClick={() =>
+              definirStatus(emManutencao ? 'operando' : 'manutencao')
+            }
           >
             <Wrench />
             Manutenção
@@ -231,8 +250,8 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir máquina?</DialogTitle>
           <DialogDescription>
-            {maquina?.nome} será marcada como excluída. As OPs vinculadas mantêm a referência
-            histórica.
+            {maquina?.nome} será marcada como excluída. As OPs vinculadas
+            mantêm a referência histórica.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

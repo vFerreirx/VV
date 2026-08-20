@@ -38,7 +38,8 @@ export async function requireRole(roles: User['role'][]): Promise<AuthUser> {
   return user
 }
 
-export const isManager = (role: User['role']) => role === 'admin' || role === 'gerente_producao'
+export const isManager = (role: User['role']) =>
+  role === 'admin' || role === 'gerente_producao'
 
 // Garante acesso a uma área (segundo o mapa de permissões editável pelo
 // admin). Redireciona pra /dashboard se o cargo não tem acesso à área.

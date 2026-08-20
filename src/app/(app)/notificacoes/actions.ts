@@ -29,10 +29,12 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
 
   // Operador só é alertado de OPs livres ou que ele pegou; os demais
   // cargos veem tudo (mesma regra de visibilidade do kanban).
-  const visibilidade =
-    user.role !== 'operador'
-      ? undefined
-      : or(isNull(ordensProducao.responsavelId), eq(ordensProducao.responsavelId, user.id))
+  const visibilidade = user.role !== 'operador'
+    ? undefined
+    : or(
+        isNull(ordensProducao.responsavelId),
+        eq(ordensProducao.responsavelId, user.id),
+      )
 
   // 1) OPs atrasadas (dataPrevistaFim < now e status diferente de enviado/cancelado)
   const opsAtrasadas = await db
@@ -77,7 +79,9 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   }
 
   // Ordena por mais atrasado primeiro
-  notificacoes.sort((a, b) => a.referenciaEm.getTime() - b.referenciaEm.getTime())
+  notificacoes.sort(
+    (a, b) => a.referenciaEm.getTime() - b.referenciaEm.getTime(),
+  )
 
   return notificacoes
 }

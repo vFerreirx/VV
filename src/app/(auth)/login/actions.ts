@@ -2,12 +2,19 @@
 
 import { redirect } from 'next/navigation'
 
-import { loginSchema, usernameToInternalEmail, type LoginInput } from '@/lib/validators/auth'
+import {
+  loginSchema,
+  usernameToInternalEmail,
+  type LoginInput,
+} from '@/lib/validators/auth'
 import { createClient } from '@/lib/supabase/server'
 
 export type ActionResult = { success: true } | { success: false; error: string }
 
-export async function loginAction(input: LoginInput, next?: string): Promise<ActionResult> {
+export async function loginAction(
+  input: LoginInput,
+  next?: string,
+): Promise<ActionResult> {
   const parsed = loginSchema.safeParse(input)
   if (!parsed.success) {
     return { success: false, error: 'Usuário ou senha inválidos' }

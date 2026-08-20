@@ -15,7 +15,10 @@ export default async function ContasMarketplacePage() {
   const nivel = await nivelDaAreaPara(user.role, 'contasMarketplace')
   const podeEditar = podeEscrever(nivel)
 
-  const [contas, empresas] = await Promise.all([listarContas(), listarEmpresasParaSelecao()])
+  const [contas, empresas] = await Promise.all([
+    listarContas(),
+    listarEmpresasParaSelecao(),
+  ])
 
   return (
     <ContasList

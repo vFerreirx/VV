@@ -4,7 +4,12 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { KeyRound, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
-import { Controller, useForm, useWatch, type Resolver } from 'react-hook-form'
+import {
+  Controller,
+  useForm,
+  useWatch,
+  type Resolver,
+} from 'react-hook-form'
 import { toast } from 'sonner'
 
 import {
@@ -101,7 +106,9 @@ export function UsuariosList({ usuarios, selfId }: Props) {
               <TableRow key={u.id}>
                 <TableCell>
                   <Avatar className="size-7">
-                    <AvatarFallback className="text-[10px]">{initials(u.nome)}</AvatarFallback>
+                    <AvatarFallback className="text-[10px]">
+                      {initials(u.nome)}
+                    </AvatarFallback>
                   </Avatar>
                 </TableCell>
                 <TableCell className="font-medium">
@@ -113,9 +120,13 @@ export function UsuariosList({ usuarios, selfId }: Props) {
                 <TableCell className="text-muted-foreground font-mono text-xs">
                   {u.username}
                 </TableCell>
-                <TableCell className="text-muted-foreground text-xs">{u.telefone ?? '—'}</TableCell>
+                <TableCell className="text-muted-foreground text-xs">
+                  {u.telefone ?? '—'}
+                </TableCell>
                 <TableCell>
-                  <Badge className={ROLE_BADGE[u.role]}>{ROLE_LABEL[u.role]}</Badge>
+                  <Badge className={ROLE_BADGE[u.role]}>
+                    {ROLE_LABEL[u.role]}
+                  </Badge>
                 </TableCell>
                 <TableCell>
                   <Badge variant={u.ativo ? 'default' : 'secondary'}>
@@ -168,14 +179,20 @@ export function UsuariosList({ usuarios, selfId }: Props) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{u.nome}</span>
-                  {u.id === selfId && <span className="text-muted-foreground text-xs">(você)</span>}
+                  {u.id === selfId && (
+                    <span className="text-muted-foreground text-xs">(você)</span>
+                  )}
                   <Badge variant={u.ativo ? 'default' : 'secondary'}>
                     {u.ativo ? 'Ativo' : 'Inativo'}
                   </Badge>
                 </div>
-                <div className="text-muted-foreground truncate font-mono text-xs">{u.username}</div>
+                <div className="text-muted-foreground truncate font-mono text-xs">
+                  {u.username}
+                </div>
                 <div className="mt-1">
-                  <Badge className={ROLE_BADGE[u.role]}>{ROLE_LABEL[u.role]}</Badge>
+                  <Badge className={ROLE_BADGE[u.role]}>
+                    {ROLE_LABEL[u.role]}
+                  </Badge>
                 </div>
               </div>
             </div>
@@ -202,9 +219,19 @@ export function UsuariosList({ usuarios, selfId }: Props) {
       </div>
 
       <CriarUsuarioDialog open={criando} onClose={() => setCriando(false)} />
-      <EditarUsuarioDialog usuario={editando} onClose={() => setEditando(null)} selfId={selfId} />
-      <ResetSenhaDialog usuario={resetando} onClose={() => setResetando(null)} />
-      <ExcluirUsuarioDialog usuario={excluindo} onClose={() => setExcluindo(null)} />
+      <EditarUsuarioDialog
+        usuario={editando}
+        onClose={() => setEditando(null)}
+        selfId={selfId}
+      />
+      <ResetSenhaDialog
+        usuario={resetando}
+        onClose={() => setResetando(null)}
+      />
+      <ExcluirUsuarioDialog
+        usuario={excluindo}
+        onClose={() => setExcluindo(null)}
+      />
     </div>
   )
 }
@@ -222,7 +249,13 @@ function initials(nome: string): string {
 // Dialog: criar
 // -----------------------------------------------------------------
 
-function CriarUsuarioDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+function CriarUsuarioDialog({
+  open,
+  onClose,
+}: {
+  open: boolean
+  onClose: () => void
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -267,15 +300,25 @@ function CriarUsuarioDialog({ open, onClose }: { open: boolean; onClose: () => v
         <DialogHeader>
           <DialogTitle>Novo usuário</DialogTitle>
           <DialogDescription>
-            Defina nome, usuário de login e senha inicial. O usuário pode trocar a senha depois em
-            Configurações.
+            Defina nome, usuário de login e senha inicial. O usuário pode
+            trocar a senha depois em Configurações.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-3" noValidate>
           <FieldRow label="Nome" id="cu-nome" error={errs.nome?.message} required>
-            <Input id="cu-nome" autoFocus disabled={isPending} {...form.register('nome')} />
+            <Input
+              id="cu-nome"
+              autoFocus
+              disabled={isPending}
+              {...form.register('nome')}
+            />
           </FieldRow>
-          <FieldRow label="Usuário" id="cu-username" error={errs.username?.message} required>
+          <FieldRow
+            label="Usuário"
+            id="cu-username"
+            error={errs.username?.message}
+            required
+          >
             <Input
               id="cu-username"
               type="text"
@@ -287,7 +330,11 @@ function CriarUsuarioDialog({ open, onClose }: { open: boolean; onClose: () => v
             />
           </FieldRow>
           <FieldRow label="Telefone" id="cu-tel" error={errs.telefone?.message}>
-            <Input id="cu-tel" disabled={isPending} {...form.register('telefone')} />
+            <Input
+              id="cu-tel"
+              disabled={isPending}
+              {...form.register('telefone')}
+            />
           </FieldRow>
           <FieldRow label="Role" id="cu-role" error={errs.role?.message} required>
             <Controller
@@ -313,8 +360,18 @@ function CriarUsuarioDialog({ open, onClose }: { open: boolean; onClose: () => v
               )}
             />
           </FieldRow>
-          <FieldRow label="Senha inicial" id="cu-senha" error={errs.senha?.message} required>
-            <Input id="cu-senha" type="password" disabled={isPending} {...form.register('senha')} />
+          <FieldRow
+            label="Senha inicial"
+            id="cu-senha"
+            error={errs.senha?.message}
+            required
+          >
+            <Input
+              id="cu-senha"
+              type="password"
+              disabled={isPending}
+              {...form.register('senha')}
+            />
           </FieldRow>
 
           <DialogFooter>
@@ -356,7 +413,12 @@ function EditarUsuarioDialog({
     <Dialog open={usuario !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         {usuario && (
-          <EditarBody key={usuario.id} usuario={usuario} selfId={selfId} onClose={onClose} />
+          <EditarBody
+            key={usuario.id}
+            usuario={usuario}
+            selfId={selfId}
+            onClose={onClose}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -377,7 +439,9 @@ function EditarBody({
   const isSelf = usuario.id === selfId
 
   const form = useForm<AtualizarUsuarioInput>({
-    resolver: zodResolver(atualizarUsuarioSchema) as unknown as Resolver<AtualizarUsuarioInput>,
+    resolver: zodResolver(
+      atualizarUsuarioSchema,
+    ) as unknown as Resolver<AtualizarUsuarioInput>,
     defaultValues: {
       nome: usuario.nome,
       telefone: usuario.telefone ?? '',
@@ -413,10 +477,19 @@ function EditarBody({
       </DialogHeader>
       <form onSubmit={onSubmit} className="space-y-3" noValidate>
         <FieldRow label="Nome" id="eu-nome" error={errs.nome?.message} required>
-          <Input id="eu-nome" autoFocus disabled={isPending} {...form.register('nome')} />
+          <Input
+            id="eu-nome"
+            autoFocus
+            disabled={isPending}
+            {...form.register('nome')}
+          />
         </FieldRow>
         <FieldRow label="Telefone" id="eu-tel" error={errs.telefone?.message}>
-          <Input id="eu-tel" disabled={isPending} {...form.register('telefone')} />
+          <Input
+            id="eu-tel"
+            disabled={isPending}
+            {...form.register('telefone')}
+          />
         </FieldRow>
         <FieldRow label="Role" id="eu-role" error={errs.role?.message} required>
           <Controller
@@ -442,7 +515,9 @@ function EditarBody({
             )}
           />
           {isSelf && (
-            <p className="text-muted-foreground text-xs">Você não pode alterar a própria role.</p>
+            <p className="text-muted-foreground text-xs">
+              Você não pode alterar a própria role.
+            </p>
           )}
         </FieldRow>
         <div className="flex items-center justify-between rounded-md border p-2">
@@ -452,13 +527,20 @@ function EditarBody({
           <Switch
             id="eu-ativo"
             checked={ativo}
-            onCheckedChange={(v) => form.setValue('ativo', v, { shouldDirty: true })}
+            onCheckedChange={(v) =>
+              form.setValue('ativo', v, { shouldDirty: true })
+            }
             disabled={isPending || isSelf}
           />
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            disabled={isPending}
+          >
             Cancelar
           </Button>
           <Button loading={isPending} type="submit" disabled={isPending}>
@@ -474,7 +556,13 @@ function EditarBody({
 // Dialog: reset senha
 // -----------------------------------------------------------------
 
-function ResetSenhaDialog({ usuario, onClose }: { usuario: User | null; onClose: () => void }) {
+function ResetSenhaDialog({
+  usuario,
+  onClose,
+}: {
+  usuario: User | null
+  onClose: () => void
+}) {
   const [isPending, startTransition] = useTransition()
   const form = useForm<ResetSenhaInput>({
     resolver: zodResolver(resetSenhaSchema) as unknown as Resolver<ResetSenhaInput>,
@@ -509,8 +597,8 @@ function ResetSenhaDialog({ usuario, onClose }: { usuario: User | null; onClose:
         <DialogHeader>
           <DialogTitle>Resetar senha</DialogTitle>
           <DialogDescription>
-            {usuario?.nome} ({usuario?.username}) — informe a nova senha. O usuário poderá trocá-la
-            depois em Configurações.
+            {usuario?.nome} ({usuario?.username}) — informe a nova senha. O
+            usuário poderá trocá-la depois em Configurações.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="space-y-3" noValidate>
@@ -554,7 +642,13 @@ function ResetSenhaDialog({ usuario, onClose }: { usuario: User | null; onClose:
 // Dialog: excluir
 // -----------------------------------------------------------------
 
-function ExcluirUsuarioDialog({ usuario, onClose }: { usuario: User | null; onClose: () => void }) {
+function ExcluirUsuarioDialog({
+  usuario,
+  onClose,
+}: {
+  usuario: User | null
+  onClose: () => void
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -578,15 +672,20 @@ function ExcluirUsuarioDialog({ usuario, onClose }: { usuario: User | null; onCl
         <DialogHeader>
           <DialogTitle>Excluir usuário?</DialogTitle>
           <DialogDescription>
-            {usuario?.nome} ({usuario?.username}) será desativado e não poderá mais fazer login. Os
-            registros históricos (OPs criadas, apontamentos, etc.) ficam preservados.
+            {usuario?.nome} ({usuario?.username}) será desativado e não poderá
+            mais fazer login. Os registros históricos (OPs criadas,
+            apontamentos, etc.) ficam preservados.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
+          <Button loading={isPending}
+            variant="destructive"
+            onClick={excluir}
+            disabled={isPending}
+          >
             {'Excluir'}
           </Button>
         </DialogFooter>

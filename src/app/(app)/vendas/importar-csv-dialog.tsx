@@ -169,14 +169,17 @@ export function ImportarCSVDialog() {
           <DialogHeader>
             <DialogTitle>Importar vendas (CSV)</DialogTitle>
             <DialogDescription>
-              Cada dia do arquivo substitui o registro daquele dia. Confira a prévia antes de
-              importar.
+              Cada dia do arquivo substitui o registro daquele dia. Confira a
+              prévia antes de importar.
             </DialogDescription>
           </DialogHeader>
 
           {res === null ? (
             <div className="space-y-2 py-2">
-              <Button onClick={() => inputRef.current?.click()} disabled={analisando}>
+              <Button
+                onClick={() => inputRef.current?.click()}
+                disabled={analisando}
+              >
                 {analisando ? 'Lendo arquivo…' : 'Selecionar arquivo CSV'}
               </Button>
               <p className="text-muted-foreground text-xs">
@@ -201,8 +204,12 @@ export function ImportarCSVDialog() {
               {res.dias.map((d) => (
                 <div key={d.data} className="rounded-lg border p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-medium capitalize">{dataLonga(d.data)}</span>
-                    <span className="text-muted-foreground text-xs">{d.contas.length} contas</span>
+                    <span className="font-medium capitalize">
+                      {dataLonga(d.data)}
+                    </span>
+                    <span className="text-muted-foreground text-xs">
+                      {d.contas.length} contas
+                    </span>
                   </div>
                   <div className="mt-1 text-sm tabular-nums">
                     {d.totalQtd} vendas ·{' '}

@@ -17,19 +17,24 @@ import { and, eq, isNull } from 'drizzle-orm'
 
 export const metadata: Metadata = { title: 'Pedido — Vanvest' }
 
-export default async function OrcamentoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrcamentoPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
   const user = await requireArea('vendas')
   const { id } = await params
 
   // A empresa é carregada AQUI, no server component — o componente de
   // impressão só recebe o que já veio resolvido.
-  const [orcamento, empresa, catalogo, situacaoFrete, faltantes] = await Promise.all([
-    obterOrcamento(id),
-    obterEmpresaPrincipal(),
-    obterCatalogoDePesos(),
-    obterSituacaoFrete(),
-    listarFaltantes(id),
-  ])
+  const [orcamento, empresa, catalogo, situacaoFrete, faltantes] =
+    await Promise.all([
+      obterOrcamento(id),
+      obterEmpresaPrincipal(),
+      obterCatalogoDePesos(),
+      obterSituacaoFrete(),
+      listarFaltantes(id),
+    ])
   if (!orcamento) notFound()
 
   // O peso é calculado AQUI, a cada leitura, a partir do catálogo de agora —
@@ -44,7 +49,12 @@ export default async function OrcamentoPage({ params }: { params: Promise<{ id: 
     const [c] = await db
       .select({ cep: compradores.cep })
       .from(compradores)
-      .where(and(eq(compradores.id, orcamento.compradorId), isNull(compradores.deletedAt)))
+      .where(
+        and(
+          eq(compradores.id, orcamento.compradorId),
+          isNull(compradores.deletedAt),
+        ),
+      )
       .limit(1)
     cepDoComprador = c?.cep ?? null
   }

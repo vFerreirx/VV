@@ -40,7 +40,10 @@ export const CONTAS_MARKETPLACE = [
 
 export type ContaKey = (typeof CONTAS_MARKETPLACE)[number]['key']
 
-const CONTA_KEYS = CONTAS_MARKETPLACE.map((c) => c.key) as [ContaKey, ...ContaKey[]]
+const CONTA_KEYS = CONTAS_MARKETPLACE.map((c) => c.key) as [
+  ContaKey,
+  ...ContaKey[],
+]
 
 export function marketplaceDaConta(key: string): Marketplace | null {
   return CONTAS_MARKETPLACE.find((c) => c.key === key)?.marketplace ?? null
@@ -48,7 +51,9 @@ export function marketplaceDaConta(key: string): Marketplace | null {
 
 // Marketplaces/contas ATIVOS pro registro manual (esconde contas inativas,
 // como a Amazon, e marketplaces que ficaram sem nenhuma conta ativa).
-export const MARKETPLACES_AGRUPADOS = (Object.keys(MARKETPLACE_LABEL) as Marketplace[])
+export const MARKETPLACES_AGRUPADOS = (
+  Object.keys(MARKETPLACE_LABEL) as Marketplace[]
+)
   .map((m) => ({
     marketplace: m,
     label: MARKETPLACE_LABEL[m],
@@ -81,7 +86,10 @@ const valorOpt = z
     if (v == null || v === '') return null
     return String(v).replace(',', '.')
   })
-  .refine((v) => v === null || (!Number.isNaN(Number(v)) && Number(v) >= 0), 'Valor inválido')
+  .refine(
+    (v) => v === null || (!Number.isNaN(Number(v)) && Number(v) >= 0),
+    'Valor inválido',
+  )
   .optional()
 
 // -----------------------------------------------------------------

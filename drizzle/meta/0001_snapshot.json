@@ -78,7 +78,9 @@
         "cores_nome_unique": {
           "name": "cores_nome_unique",
           "nullsNotDistinct": false,
-          "columns": ["nome"]
+          "columns": [
+            "nome"
+          ]
         }
       },
       "policies": {},
@@ -213,8 +215,12 @@
           "name": "movimentacoes_estoque_produto_id_produtos_id_fk",
           "tableFrom": "movimentacoes_estoque",
           "tableTo": "produtos",
-          "columnsFrom": ["produto_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "produto_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -222,8 +228,12 @@
           "name": "movimentacoes_estoque_variacao_id_variacoes_produto_id_fk",
           "tableFrom": "movimentacoes_estoque",
           "tableTo": "variacoes_produto",
-          "columnsFrom": ["variacao_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "variacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -231,8 +241,12 @@
           "name": "movimentacoes_estoque_usuario_id_users_id_fk",
           "tableFrom": "movimentacoes_estoque",
           "tableTo": "users",
-          "columnsFrom": ["usuario_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -351,7 +365,9 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": ["email"]
+          "columns": [
+            "email"
+          ]
         }
       },
       "policies": {},
@@ -527,7 +543,9 @@
         "produtos_sku_unique": {
           "name": "produtos_sku_unique",
           "nullsNotDistinct": false,
-          "columns": ["sku"]
+          "columns": [
+            "sku"
+          ]
         }
       },
       "policies": {},
@@ -613,8 +631,12 @@
           "name": "variacoes_produto_produto_id_produtos_id_fk",
           "tableFrom": "variacoes_produto",
           "tableTo": "produtos",
-          "columnsFrom": ["produto_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "produto_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -624,7 +646,9 @@
         "variacoes_produto_skuVariacao_unique": {
           "name": "variacoes_produto_skuVariacao_unique",
           "nullsNotDistinct": false,
-          "columns": ["sku_variacao"]
+          "columns": [
+            "sku_variacao"
+          ]
         }
       },
       "policies": {},
@@ -776,7 +800,9 @@
         "maquinas_codigo_unique": {
           "name": "maquinas_codigo_unique",
           "nullsNotDistinct": false,
-          "columns": ["codigo"]
+          "columns": [
+            "codigo"
+          ]
         }
       },
       "policies": {},
@@ -911,8 +937,12 @@
           "name": "apontamentos_producao_ordem_id_ordens_producao_id_fk",
           "tableFrom": "apontamentos_producao",
           "tableTo": "ordens_producao",
-          "columnsFrom": ["ordem_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "ordem_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -920,8 +950,12 @@
           "name": "apontamentos_producao_maquina_id_maquinas_id_fk",
           "tableFrom": "apontamentos_producao",
           "tableTo": "maquinas",
-          "columnsFrom": ["maquina_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "maquina_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -929,8 +963,12 @@
           "name": "apontamentos_producao_operador_id_users_id_fk",
           "tableFrom": "apontamentos_producao",
           "tableTo": "users",
-          "columnsFrom": ["operador_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "operador_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1029,8 +1067,12 @@
           "name": "eventos_kanban_ordem_id_ordens_producao_id_fk",
           "tableFrom": "eventos_kanban",
           "tableTo": "ordens_producao",
-          "columnsFrom": ["ordem_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "ordem_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1038,8 +1080,12 @@
           "name": "eventos_kanban_usuario_id_users_id_fk",
           "tableFrom": "eventos_kanban",
           "tableTo": "users",
-          "columnsFrom": ["usuario_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "usuario_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1287,8 +1333,12 @@
           "name": "ordens_producao_produto_id_produtos_id_fk",
           "tableFrom": "ordens_producao",
           "tableTo": "produtos",
-          "columnsFrom": ["produto_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "produto_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1296,8 +1346,12 @@
           "name": "ordens_producao_variacao_id_variacoes_produto_id_fk",
           "tableFrom": "ordens_producao",
           "tableTo": "variacoes_produto",
-          "columnsFrom": ["variacao_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "variacao_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1305,8 +1359,12 @@
           "name": "ordens_producao_maquina_id_maquinas_id_fk",
           "tableFrom": "ordens_producao",
           "tableTo": "maquinas",
-          "columnsFrom": ["maquina_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "maquina_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1314,8 +1372,12 @@
           "name": "ordens_producao_criado_por_users_id_fk",
           "tableFrom": "ordens_producao",
           "tableTo": "users",
-          "columnsFrom": ["criado_por"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "criado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1323,8 +1385,12 @@
           "name": "ordens_producao_responsavel_id_users_id_fk",
           "tableFrom": "ordens_producao",
           "tableTo": "users",
-          "columnsFrom": ["responsavel_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "responsavel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1334,7 +1400,9 @@
         "ordens_producao_numero_unique": {
           "name": "ordens_producao_numero_unique",
           "nullsNotDistinct": false,
-          "columns": ["numero"]
+          "columns": [
+            "numero"
+          ]
         }
       },
       "policies": {},
@@ -1346,12 +1414,22 @@
     "public.maquina_status": {
       "name": "maquina_status",
       "schema": "public",
-      "values": ["operando", "parada", "manutencao", "setup", "desativada"]
+      "values": [
+        "operando",
+        "parada",
+        "manutencao",
+        "setup",
+        "desativada"
+      ]
     },
     "public.maquina_tipo": {
       "name": "maquina_tipo",
       "schema": "public",
-      "values": ["circular_pequeno", "circular_medio", "circular_grande"]
+      "values": [
+        "circular_pequeno",
+        "circular_medio",
+        "circular_grande"
+      ]
     },
     "public.movimentacao_tipo": {
       "name": "movimentacao_tipo",
@@ -1368,12 +1446,22 @@
     "public.ordem_canal_destino": {
       "name": "ordem_canal_destino",
       "schema": "public",
-      "values": ["full_ml", "full_shopee", "venda_direta", "estoque"]
+      "values": [
+        "full_ml",
+        "full_shopee",
+        "venda_direta",
+        "estoque"
+      ]
     },
     "public.ordem_prioridade": {
       "name": "ordem_prioridade",
       "schema": "public",
-      "values": ["baixa", "normal", "alta", "urgente"]
+      "values": [
+        "baixa",
+        "normal",
+        "alta",
+        "urgente"
+      ]
     },
     "public.ordem_status": {
       "name": "ordem_status",
@@ -1392,7 +1480,13 @@
     "public.user_role": {
       "name": "user_role",
       "schema": "public",
-      "values": ["admin", "gerente_producao", "operador", "estoquista", "vendas"]
+      "values": [
+        "admin",
+        "gerente_producao",
+        "operador",
+        "estoquista",
+        "vendas"
+      ]
     }
   },
   "schemas": {},

@@ -1,6 +1,16 @@
 'use server'
 
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import {
@@ -70,7 +80,9 @@ export type OrdensPagina = {
   totalPaginas: number
 }
 
-export async function listarOrdens(filtros: OrdensFiltros = {}): Promise<OrdensPagina> {
+export async function listarOrdens(
+  filtros: OrdensFiltros = {},
+): Promise<OrdensPagina> {
   const user = await requireAuth()
   const parsed = ordensFiltrosSchema.safeParse(filtros)
   const f = parsed.success ? parsed.data : {}
@@ -80,7 +92,10 @@ export async function listarOrdens(filtros: OrdensFiltros = {}): Promise<OrdensP
   // OP pega fica privada SÓ entre operadores; demais cargos veem tudo.
   if (user.role === 'operador') {
     conditions.push(
-      or(isNull(ordensProducao.responsavelId), eq(ordensProducao.responsavelId, user.id))!,
+      or(
+        isNull(ordensProducao.responsavelId),
+        eq(ordensProducao.responsavelId, user.id),
+      )!,
     )
   }
   if (f.q && f.q.length > 0) {
@@ -131,7 +146,10 @@ export async function listarOrdens(filtros: OrdensFiltros = {}): Promise<OrdensP
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
-    .leftJoin(variacoesProduto, eq(variacoesProduto.id, ordensProducao.variacaoId))
+    .leftJoin(
+      variacoesProduto,
+      eq(variacoesProduto.id, ordensProducao.variacaoId),
+    )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
@@ -192,7 +210,10 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
-    .leftJoin(variacoesProduto, eq(variacoesProduto.id, ordensProducao.variacaoId))
+    .leftJoin(
+      variacoesProduto,
+      eq(variacoesProduto.id, ordensProducao.variacaoId),
+    )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .where(and(eq(ordensProducao.id, id), isNull(ordensProducao.deletedAt)))
     .limit(1)
@@ -233,11 +254,18 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
 // Listas pra preencher selects do form
 // -----------------------------------------------------------------
 
-export type ProdutoComVariacoesParaForm = Pick<Produto, 'id' | 'sku' | 'nome'> & {
-  variacoes: Array<Pick<VariacaoProduto, 'id' | 'skuVariacao' | 'cor' | 'modelo' | 'tamanho'>>
+export type ProdutoComVariacoesParaForm = Pick<
+  Produto,
+  'id' | 'sku' | 'nome'
+> & {
+  variacoes: Array<
+    Pick<VariacaoProduto, 'id' | 'skuVariacao' | 'cor' | 'modelo' | 'tamanho'>
+  >
 }
 
-export async function listarProdutosParaOrdem(): Promise<ProdutoComVariacoesParaForm[]> {
+export async function listarProdutosParaOrdem(): Promise<
+  ProdutoComVariacoesParaForm[]
+> {
   await requireAuth()
 
   const prods = await db
@@ -326,7 +354,9 @@ export async function listarResponsaveis(): Promise<
 // Criar
 // -----------------------------------------------------------------
 
-export async function criarOrdemAction(input: OrdemInput): Promise<ActionResult<{ id: string }>> {
+export async function criarOrdemAction(
+  input: OrdemInput,
+): Promise<ActionResult<{ id: string }>> {
   const user = await requireAreaEscrita('ordens')
 
   const parsed = ordemSchema.safeParse(input)
@@ -436,7 +466,10 @@ export async function criarOrdemRapidaAction(
 // Atualizar
 // -----------------------------------------------------------------
 
-export async function atualizarOrdemAction(id: string, input: OrdemInput): Promise<ActionResult> {
+export async function atualizarOrdemAction(
+  id: string,
+  input: OrdemInput,
+): Promise<ActionResult> {
   const user = await requireAreaEscrita('ordens')
 
   const parsed = ordemSchema.safeParse(input)
@@ -481,7 +514,7 @@ export async function atualizarOrdemAction(id: string, input: OrdemInput): Promi
             : atual.dataRealInicio,
         // Marca dataRealFim quando vira enviado.
         dataRealFim:
-          data.status === 'enviado' ? (atual.dataRealFim ?? new Date()) : atual.dataRealFim,
+          data.status === 'enviado' ? atual.dataRealFim ?? new Date() : atual.dataRealFim,
       })
       .where(eq(ordensProducao.id, id))
 
@@ -558,7 +591,9 @@ export async function mudarStatusOrdemAction(
             ? new Date()
             : atual.dataRealInicio,
         dataRealFim:
-          data.status === 'enviado' ? (atual.dataRealFim ?? new Date()) : atual.dataRealFim,
+          data.status === 'enviado'
+            ? atual.dataRealFim ?? new Date()
+            : atual.dataRealFim,
       })
       .where(eq(ordensProducao.id, id))
 
@@ -616,7 +651,8 @@ export async function mudarStatusOrdemAction(
 // Pegar / soltar OP (fluxo puxado: operador assume a OP da fila)
 // -----------------------------------------------------------------
 
-const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuidRe =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function pegarOrdemAction(id: string): Promise<ActionResult> {
   const user = await requireAuth()
@@ -645,7 +681,8 @@ export async function pegarOrdemAction(id: string): Promise<ActionResult> {
   // Ao pegar a OP, ela já entra em produção se ainda estava na fila
   // (registra o evento no kanban e marca o início real da produção).
   const entraEmProducao =
-    atual.status === 'programado' || atual.status === 'aguardando_materia_prima'
+    atual.status === 'programado' ||
+    atual.status === 'aguardando_materia_prima'
 
   await db.transaction(async (tx) => {
     await tx
@@ -676,7 +713,9 @@ export async function pegarOrdemAction(id: string): Promise<ActionResult> {
   revalidatePath('/ordens')
   return {
     success: true,
-    message: entraEmProducao ? 'OP é sua e entrou em produção' : 'OP é sua agora',
+    message: entraEmProducao
+      ? 'OP é sua e entrou em produção'
+      : 'OP é sua agora',
   }
 }
 
@@ -696,11 +735,18 @@ export async function soltarOrdemAction(id: string): Promise<ActionResult> {
   if (!atual) return { success: false, error: 'OP não encontrada' }
 
   // Só o próprio responsável ou um gerente pode soltar.
-  if (atual.responsavelId && atual.responsavelId !== user.id && !isManagerRole(user.role)) {
+  if (
+    atual.responsavelId &&
+    atual.responsavelId !== user.id &&
+    !isManagerRole(user.role)
+  ) {
     return { success: false, error: 'Só quem pegou pode soltar' }
   }
 
-  await db.update(ordensProducao).set({ responsavelId: null }).where(eq(ordensProducao.id, id))
+  await db
+    .update(ordensProducao)
+    .set({ responsavelId: null })
+    .where(eq(ordensProducao.id, id))
 
   revalidatePath('/producao')
   revalidatePath('/ordens')
@@ -851,7 +897,8 @@ export async function excluirOrdemAction(id: string): Promise<ActionResult> {
 // Excluir múltiplas OPs (bulk delete)
 // -----------------------------------------------------------------
 
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function excluirMultiplasOrdensAction(
   ids: string[],
@@ -870,7 +917,12 @@ export async function excluirMultiplasOrdensAction(
   const opsAtivas = await db
     .select({ id: ordensProducao.id, status: ordensProducao.status })
     .from(ordensProducao)
-    .where(and(inArray(ordensProducao.id, idsValidos), isNull(ordensProducao.deletedAt)))
+    .where(
+      and(
+        inArray(ordensProducao.id, idsValidos),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
 
   if (opsAtivas.length === 0) {
     return { success: false, error: 'Nenhuma OP encontrada' }
@@ -882,12 +934,7 @@ export async function excluirMultiplasOrdensAction(
     await tx
       .update(ordensProducao)
       .set({ deletedAt: now })
-      .where(
-        inArray(
-          ordensProducao.id,
-          opsAtivas.map((o) => o.id),
-        ),
-      )
+      .where(inArray(ordensProducao.id, opsAtivas.map((o) => o.id)))
 
     // Vira "cancelado" só pras que ainda estavam ativas
     const paraCancelar = opsAtivas
@@ -919,6 +966,9 @@ export async function excluirMultiplasOrdensAction(
   return {
     success: true,
     data: { excluidas: opsAtivas.length },
-    message: opsAtivas.length === 1 ? '1 OP excluída' : `${opsAtivas.length} OPs excluídas`,
+    message:
+      opsAtivas.length === 1
+        ? '1 OP excluída'
+        : `${opsAtivas.length} OPs excluídas`,
   }
 }

@@ -1,6 +1,9 @@
 import type { Metadata } from 'next'
 
-import { listarOrdensProducao, type KanbanFiltros } from './actions'
+import {
+  listarOrdensProducao,
+  type KanbanFiltros,
+} from './actions'
 import { KanbanBoard } from './kanban-board'
 import { ProducaoFiltros } from './producao-filtros'
 import {
@@ -56,12 +59,16 @@ export default async function ProducaoPage({
       <div>
         <h1 className="text-2xl font-semibold">Produção (Kanban)</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          {ordens.length} OP{ordens.length === 1 ? '' : 's'} ativas · arraste os cards entre as
-          colunas pra mover de status
+          {ordens.length} OP{ordens.length === 1 ? '' : 's'} ativas · arraste
+          os cards entre as colunas pra mover de status
         </p>
       </div>
 
-      <ProducaoFiltros maquinas={maquinas} responsaveis={responsaveis} filtrosIniciais={filtros} />
+      <ProducaoFiltros
+        maquinas={maquinas}
+        responsaveis={responsaveis}
+        filtrosIniciais={filtros}
+      />
 
       <KanbanBoard
         ordens={ordens}

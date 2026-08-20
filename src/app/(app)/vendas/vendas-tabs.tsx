@@ -32,10 +32,15 @@ export function VendasTabs({
     <div className="space-y-6">
       <div className="print:hidden">
         <h1 className="text-2xl font-semibold">Vendas</h1>
-        <p className="text-muted-foreground mt-1 text-sm">Registro diário e fechamento mensal.</p>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Registro diário e fechamento mensal.
+        </p>
       </div>
 
-      <Tabs value={aba} onValueChange={(v) => startTransition(() => setAba(v ?? tabInicial))}>
+      <Tabs
+        value={aba}
+        onValueChange={(v) => startTransition(() => setAba(v ?? tabInicial))}
+      >
         <TabsList className="print:hidden">
           <TabsTrigger value="diario">Diário</TabsTrigger>
           <TabsTrigger value="mensal">Mensal</TabsTrigger>
@@ -48,8 +53,15 @@ export function VendasTabs({
             As abas viraram controladas e a troca vai dentro de
             startTransition porque o <ViewTransition> so e ativado por
             Transition/Suspense; setState puro nao dispara nada. */}
-        <ViewTransition key={aba} name="conteudo-abas" share="auto" enter="auto" default="none">
+        <ViewTransition
+          key={aba}
+          name="conteudo-abas"
+          share="auto"
+          enter="auto"
+          default="none"
+        >
           <div>
+
             <TabsContent value="diario" className="mt-2">
               <VendasView
                 data={data}

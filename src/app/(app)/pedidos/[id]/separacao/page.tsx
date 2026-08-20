@@ -11,7 +11,11 @@ import { requireArea } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Via de separação — Vanvest' }
 
-export default async function SeparacaoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SeparacaoPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
   const user = await requireArea('vendas')
   const { id } = await params
 

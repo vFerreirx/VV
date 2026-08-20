@@ -13,7 +13,11 @@ import { requireRole } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Editar produto — Vanvest' }
 
-export default async function EditarProdutoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditarProdutoPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
+}) {
   await requireRole(['admin', 'gerente_producao'])
   const { id } = await params
 
@@ -55,11 +59,18 @@ export default async function EditarProdutoPage({ params }: { params: Promise<{ 
         </Button>
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-2xl font-semibold">{produto.nome}</h1>
-          <p className="text-muted-foreground font-mono text-xs">{produto.sku}</p>
+          <p className="text-muted-foreground font-mono text-xs">
+            {produto.sku}
+          </p>
         </div>
       </div>
 
-      <ProdutoForm defaults={defaults} cores={cores} modelos={modelos} tamanhos={tamanhos} />
+      <ProdutoForm
+        defaults={defaults}
+        cores={cores}
+        modelos={modelos}
+        tamanhos={tamanhos}
+      />
     </div>
   )
 }

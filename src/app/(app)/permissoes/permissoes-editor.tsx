@@ -1,6 +1,13 @@
 'use client'
 
-import { CircleCheck, Eye, Lock, Minus, UserCheck, type LucideIcon } from 'lucide-react'
+import {
+  CircleCheck,
+  Eye,
+  Lock,
+  Minus,
+  UserCheck,
+  type LucideIcon,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -42,7 +49,10 @@ function NivelMarca({ nivel }: { nivel: Nivel }) {
   const Icon = NIVEL_ICON[nivel]
   return (
     <span
-      className={cn('inline-flex items-center gap-1.5 text-sm font-medium', NIVEL_CLASSE[nivel])}
+      className={cn(
+        'inline-flex items-center gap-1.5 text-sm font-medium',
+        NIVEL_CLASSE[nivel],
+      )}
     >
       <Icon className="size-4 shrink-0" />
       {NIVEL_INFO[nivel].label}
@@ -66,7 +76,11 @@ function estadoInicial(overrides: OverridesAcesso): Record<string, OpcaoNivel> {
 
 const SECOES = [...new Set(AREAS.map((a) => a.secao))]
 
-export function PermissoesEditor({ overrides }: { overrides: OverridesAcesso }) {
+export function PermissoesEditor({
+  overrides,
+}: {
+  overrides: OverridesAcesso
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const inicial = useMemo(() => estadoInicial(overrides), [overrides])
@@ -119,7 +133,9 @@ export function PermissoesEditor({ overrides }: { overrides: OverridesAcesso }) 
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <div className="font-medium">{area.label}</div>
-                    <div className="text-muted-foreground text-sm">{area.descricao}</div>
+                    <div className="text-muted-foreground text-sm">
+                      {area.descricao}
+                    </div>
                   </div>
                   {!area.editavel && (
                     <span className="text-muted-foreground/60 inline-flex items-center gap-1 text-xs">
@@ -134,7 +150,8 @@ export function PermissoesEditor({ overrides }: { overrides: OverridesAcesso }) 
                     const editavel = area.editavel && EDITAVEIS.has(role)
                     const key = chaveOverride(role, area.key)
                     const valor = valores[key] ?? 'nenhum'
-                    const nivelFixo: Nivel = role === 'admin' ? 'total' : area.nivelPadrao[role]
+                    const nivelFixo: Nivel =
+                      role === 'admin' ? 'total' : area.nivelPadrao[role]
                     return (
                       <div
                         key={role}
@@ -167,10 +184,16 @@ export function PermissoesEditor({ overrides }: { overrides: OverridesAcesso }) 
 
       {sujo && (
         <div className="bg-background/90 fixed inset-x-0 bottom-0 z-20 border-t backdrop-blur-md">
-          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 pr-[max(1rem,var(--sa-right,env(safe-area-inset-right)))] pl-[max(1rem,var(--sa-left,env(safe-area-inset-left)))]">
-            <span className="text-muted-foreground text-sm">Há alterações não salvas.</span>
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3 pl-[max(1rem,var(--sa-left,env(safe-area-inset-left)))] pr-[max(1rem,var(--sa-right,env(safe-area-inset-right)))]">
+            <span className="text-muted-foreground text-sm">
+              Há alterações não salvas.
+            </span>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setValores(baseline)} disabled={isPending}>
+              <Button
+                variant="outline"
+                onClick={() => setValores(baseline)}
+                disabled={isPending}
+              >
                 Descartar
               </Button>
               <Button loading={isPending} onClick={salvar} disabled={isPending}>

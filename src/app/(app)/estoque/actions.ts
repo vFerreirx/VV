@@ -5,8 +5,16 @@ import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { movimentacoesEstoque, produtos, users, variacoesProduto } from '@/lib/db/schema'
-import { movimentacaoEstoqueSchema, type MovimentacaoEstoqueInput } from '@/lib/validators/estoque'
+import {
+  movimentacoesEstoque,
+  produtos,
+  users,
+  variacoesProduto,
+} from '@/lib/db/schema'
+import {
+  movimentacaoEstoqueSchema,
+  type MovimentacaoEstoqueInput,
+} from '@/lib/validators/estoque'
 
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
@@ -31,7 +39,10 @@ export type EstoqueItem = {
 export async function listarEstoque(q?: string): Promise<EstoqueItem[]> {
   await requireAuth()
 
-  const conditions = [isNull(variacoesProduto.deletedAt), isNull(produtos.deletedAt)]
+  const conditions = [
+    isNull(variacoesProduto.deletedAt),
+    isNull(produtos.deletedAt),
+  ]
   const termo = q?.trim()
   if (termo && termo.length > 0) {
     conditions.push(
@@ -98,7 +109,9 @@ export type MovimentacaoItem = {
   em: Date
 }
 
-export async function listarMovimentacoes(variacaoId: string): Promise<MovimentacaoItem[]> {
+export async function listarMovimentacoes(
+  variacaoId: string,
+): Promise<MovimentacaoItem[]> {
   await requireAuth()
   const rows = await db
     .select({
@@ -142,7 +155,8 @@ export async function movimentarEstoqueAction(
     }
   }
   const data = parsed.data
-  const assinada = data.sentido === 'entrada' ? data.quantidade : -data.quantidade
+  const assinada =
+    data.sentido === 'entrada' ? data.quantidade : -data.quantidade
 
   await db.insert(movimentacoesEstoque).values({
     produtoId: data.produtoId,

@@ -14,13 +14,17 @@ import {
 import { db } from '@/lib/db'
 import { permissoesAcesso } from '@/lib/db/schema'
 
-export type ActionResult = { success: true; message?: string } | { success: false; error: string }
+export type ActionResult =
+  | { success: true; message?: string }
+  | { success: false; error: string }
 
 export type ItemPermissao = { role: Role; area: AreaKey; nivel: OpcaoNivel }
 
 const OPCOES_VALIDAS = new Set<OpcaoNivel>(NIVEL_OPCOES.map((o) => o.value))
 
-export async function salvarPermissoesAction(itens: ItemPermissao[]): Promise<ActionResult> {
+export async function salvarPermissoesAction(
+  itens: ItemPermissao[],
+): Promise<ActionResult> {
   const admin = await requireRole(['admin'])
 
   // Só aceita combinações válidas (cargo editável + área editável + nível ok).

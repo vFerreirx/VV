@@ -1,6 +1,16 @@
 'use server'
 
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
@@ -45,14 +55,21 @@ export type ProdutoListItem = Produto & {
   tamanhosPreco: TamanhoComPreco[]
 }
 
-export async function listarProdutos(filtros: ProdutosFiltros = {}): Promise<ProdutoListItem[]> {
+export async function listarProdutos(
+  filtros: ProdutosFiltros = {},
+): Promise<ProdutoListItem[]> {
   await requireAuth()
   const parsed = produtosFiltrosSchema.safeParse(filtros)
   const { q, ativo } = parsed.success ? parsed.data : {}
 
   const conditions = [isNull(produtos.deletedAt)]
   if (q && q.length > 0) {
-    conditions.push(or(ilike(produtos.sku, `%${q}%`), ilike(produtos.nome, `%${q}%`))!)
+    conditions.push(
+      or(
+        ilike(produtos.sku, `%${q}%`),
+        ilike(produtos.nome, `%${q}%`),
+      )!,
+    )
   }
   if (ativo === 'true') conditions.push(eq(produtos.ativo, true))
   else if (ativo === 'false') conditions.push(eq(produtos.ativo, false))
@@ -123,7 +140,9 @@ export type ProdutoComVariacoes = Produto & {
   pesos: Record<string, number>
 }
 
-export async function obterProduto(id: string): Promise<ProdutoComVariacoes | null> {
+export async function obterProduto(
+  id: string,
+): Promise<ProdutoComVariacoes | null> {
   await requireAuth()
   const [produto] = await db
     .select()
@@ -137,7 +156,12 @@ export async function obterProduto(id: string): Promise<ProdutoComVariacoes | nu
     db
       .select()
       .from(variacoesProduto)
-      .where(and(eq(variacoesProduto.produtoId, id), isNull(variacoesProduto.deletedAt)))
+      .where(
+        and(
+          eq(variacoesProduto.produtoId, id),
+          isNull(variacoesProduto.deletedAt),
+        ),
+      )
       .orderBy(asc(variacoesProduto.skuVariacao)),
     db
       .select({ tamanho: tamanhos.nome, preco: produtoTamanhoPreco.preco })
@@ -395,7 +419,9 @@ export async function atualizarProdutoAction(
       .from(variacoesProduto)
       .where(eq(variacoesProduto.produtoId, id))
     const existIds = new Set(existentes.map((e) => e.id))
-    const inputIds = new Set(data.variacoes.map((v) => v.id).filter((x): x is string => Boolean(x)))
+    const inputIds = new Set(
+      data.variacoes.map((v) => v.id).filter((x): x is string => Boolean(x)),
+    )
 
     // DELETE: existem no banco mas não no input
     const toDelete = [...existIds].filter((eid) => !inputIds.has(eid))
@@ -454,7 +480,9 @@ function gerarSkuUnico(base: string, usados: Set<string>): string {
   return cand
 }
 
-export async function duplicarProdutoAction(id: string): Promise<ActionResult<{ id: string }>> {
+export async function duplicarProdutoAction(
+  id: string,
+): Promise<ActionResult<{ id: string }>> {
   await requireAreaEscrita('produtos')
 
   const [orig] = await db
@@ -469,14 +497,22 @@ export async function duplicarProdutoAction(id: string): Promise<ActionResult<{ 
   const variacoes = await db
     .select()
     .from(variacoesProduto)
-    .where(and(eq(variacoesProduto.produtoId, id), isNull(variacoesProduto.deletedAt)))
+    .where(
+      and(
+        eq(variacoesProduto.produtoId, id),
+        isNull(variacoesProduto.deletedAt),
+      ),
+    )
     .orderBy(asc(variacoesProduto.skuVariacao))
 
   // Conjuntos de SKUs ATIVOS já existentes pra garantir unicidade.
   const skusProduto = new Set(
-    (await db.select({ sku: produtos.sku }).from(produtos).where(isNull(produtos.deletedAt))).map(
-      (r) => r.sku,
-    ),
+    (
+      await db
+        .select({ sku: produtos.sku })
+        .from(produtos)
+        .where(isNull(produtos.deletedAt))
+    ).map((r) => r.sku),
   )
   const skusVariacao = new Set(
     (
@@ -543,11 +579,19 @@ export async function excluirProdutoAction(id: string): Promise<ActionResult> {
   // Soft-delete do produto + suas variações (libera os SKUs pra reuso).
   const agora = new Date()
   await db.transaction(async (tx) => {
-    await tx.update(produtos).set({ deletedAt: agora, ativo: false }).where(eq(produtos.id, id))
+    await tx
+      .update(produtos)
+      .set({ deletedAt: agora, ativo: false })
+      .where(eq(produtos.id, id))
     await tx
       .update(variacoesProduto)
       .set({ deletedAt: agora })
-      .where(and(eq(variacoesProduto.produtoId, id), isNull(variacoesProduto.deletedAt)))
+      .where(
+        and(
+          eq(variacoesProduto.produtoId, id),
+          isNull(variacoesProduto.deletedAt),
+        ),
+      )
   })
 
   revalidatePath('/produtos')
@@ -558,7 +602,8 @@ export async function excluirProdutoAction(id: string): Promise<ActionResult> {
 // Excluir múltiplos (bulk delete)
 // -----------------------------------------------------------------
 
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function excluirMultiplosProdutosAction(
   ids: string[],
@@ -585,7 +630,12 @@ export async function excluirMultiplosProdutosAction(
       await tx
         .update(variacoesProduto)
         .set({ deletedAt: agora })
-        .where(and(inArray(variacoesProduto.produtoId, ids), isNull(variacoesProduto.deletedAt)))
+        .where(
+          and(
+            inArray(variacoesProduto.produtoId, ids),
+            isNull(variacoesProduto.deletedAt),
+          ),
+        )
     }
     return r
   })
@@ -594,6 +644,9 @@ export async function excluirMultiplosProdutosAction(
   return {
     success: true,
     data: { excluidos: result.length },
-    message: result.length === 1 ? '1 produto excluído' : `${result.length} produtos excluídos`,
+    message:
+      result.length === 1
+        ? '1 produto excluído'
+        : `${result.length} produtos excluídos`,
   }
 }

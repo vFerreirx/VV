@@ -10,7 +10,9 @@ export const metadata: Metadata = { title: 'Faixas de embalagem — Vanvest' }
 
 export default async function FaixasEmbalagemPage() {
   const user = await requireArea('faixasEmbalagem')
-  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'faixasEmbalagem'))
+  const podeEditar = podeEscrever(
+    await nivelDaAreaPara(user.role, 'faixasEmbalagem'),
+  )
   const faixas = await listarFaixasEmbalagem()
 
   return (

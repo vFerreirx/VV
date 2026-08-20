@@ -56,7 +56,11 @@ const MARKETPLACE_ALIAS: Record<string, Marketplace> = {
 }
 
 function normalizar(s: string): string {
-  return s.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
 }
 
 function marketplaceDoTexto(s: string): Marketplace | null {
@@ -122,7 +126,10 @@ type ResolucaoConta =
 //  - a conta RESOLVE assim mesmo ("Mercado Livre / Conta 1 - Shopee": o ML
 //    tem Conta 1) -> vira ALERTA. A venda entra, e entra numa conta
 //    plausível: sem o aviso, esse é o caso que ninguém percebe.
-function resolverConta(marketplaceCsv: string, contaCsv: string): ResolucaoConta {
+function resolverConta(
+  marketplaceCsv: string,
+  contaCsv: string,
+): ResolucaoConta {
   const mk = marketplaceDoTexto(marketplaceCsv)
   const generico = `conta não reconhecida: "${marketplaceCsv} / ${contaCsv}"`
   if (!mk) return { conta: null, motivo: generico }
@@ -153,18 +160,15 @@ function resolverConta(marketplaceCsv: string, contaCsv: string): ResolucaoConta
 
   return {
     conta: null,
-    motivo: discorda ? `${discorda} ("${marketplaceCsv} / ${contaCsv}")` : generico,
+    motivo: discorda
+      ? `${discorda} ("${marketplaceCsv} / ${contaCsv}")`
+      : generico,
   }
 }
 
 // Divide uma linha CSV por ';' e tira as aspas.
 function camposDaLinha(linha: string): string[] {
-  return linha.split(';').map((c) =>
-    c
-      .trim()
-      .replace(/^"(.*)"$/, '$1')
-      .trim(),
-  )
+  return linha.split(';').map((c) => c.trim().replace(/^"(.*)"$/, '$1').trim())
 }
 
 export function parseVendasCSV(texto: string): ResultadoImport {
@@ -242,11 +246,13 @@ export function parseVendasCSV(texto: string): ResultadoImport {
   }
 
   const dias: DiaImport[] = ordenados.map(([data, contasMap]) => {
-    const contas: ContaImport[] = [...contasMap.entries()].map(([conta, v]) => ({
-      conta,
-      quantidade: v.q,
-      faturamento: v.f.toFixed(2),
-    }))
+    const contas: ContaImport[] = [...contasMap.entries()].map(
+      ([conta, v]) => ({
+        conta,
+        quantidade: v.q,
+        faturamento: v.f.toFixed(2),
+      }),
+    )
     return {
       data,
       contas,

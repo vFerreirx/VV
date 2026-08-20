@@ -8,14 +8,19 @@ import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { vendas, vendasMarketplace } from '@/lib/db/schema'
-import { marketplaceDaConta, vendaDiaSchema, type VendaDiaInput } from '@/lib/validators/vendas'
+import {
+  marketplaceDaConta,
+  vendaDiaSchema,
+  type VendaDiaInput,
+} from '@/lib/validators/vendas'
 import { parseVendasCSV, type ResultadoImport } from '@/lib/vendas/importar-csv'
 
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
   | { success: false; error: string }
 
-const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const uuidRe =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export type VendaContaLinha = {
   conta: string
@@ -85,7 +90,9 @@ export async function listarVendasRecentes(limit = 14): Promise<VendaDia[]> {
 // Salvar (upsert por dia) / excluir
 // -----------------------------------------------------------------
 
-export async function salvarVendaDiaAction(input: VendaDiaInput): Promise<ActionResult> {
+export async function salvarVendaDiaAction(
+  input: VendaDiaInput,
+): Promise<ActionResult> {
   const user = await requireAreaEscrita('vendas')
 
   const parsed = vendaDiaSchema.safeParse(input)
@@ -111,7 +118,8 @@ export async function salvarVendaDiaAction(input: VendaDiaInput): Promise<Action
         : null
     })
     .filter(
-      (c): c is NonNullable<typeof c> => c !== null && (c.quantidade > 0 || c.faturamento !== null),
+      (c): c is NonNullable<typeof c> =>
+        c !== null && (c.quantidade > 0 || c.faturamento !== null),
     )
 
   // Totais do dia = soma das contas.
@@ -139,7 +147,9 @@ export async function salvarVendaDiaAction(input: VendaDiaInput): Promise<Action
           usuarioId: user.id,
         })
         .where(eq(vendas.id, vendaId))
-      await tx.delete(vendasMarketplace).where(eq(vendasMarketplace.vendaId, vendaId))
+      await tx
+        .delete(vendasMarketplace)
+        .where(eq(vendasMarketplace.vendaId, vendaId))
     } else {
       const [nova] = await tx
         .insert(vendas)
@@ -171,7 +181,9 @@ export async function salvarVendaDiaAction(input: VendaDiaInput): Promise<Action
   return { success: true, message: 'Vendas do dia salvas' }
 }
 
-export async function excluirVendaDiaAction(id: string): Promise<ActionResult> {
+export async function excluirVendaDiaAction(
+  id: string,
+): Promise<ActionResult> {
   await requireAreaEscrita('vendas')
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
 
@@ -189,7 +201,9 @@ export async function excluirVendaDiaAction(id: string): Promise<ActionResult> {
 // -----------------------------------------------------------------
 
 // Só analisa (preview) — não grava nada.
-export async function analisarVendasCSVAction(texto: string): Promise<ResultadoImport> {
+export async function analisarVendasCSVAction(
+  texto: string,
+): Promise<ResultadoImport> {
   await requireArea('vendas')
   return parseVendasCSV(texto)
 }
@@ -255,7 +269,9 @@ export async function importarVendasCSVAction(
             usuarioId: user.id,
           })
           .where(eq(vendas.id, vendaId))
-        await tx.delete(vendasMarketplace).where(eq(vendasMarketplace.vendaId, vendaId))
+        await tx
+          .delete(vendasMarketplace)
+          .where(eq(vendasMarketplace.vendaId, vendaId))
       } else {
         const [nova] = await tx
           .insert(vendas)

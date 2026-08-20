@@ -5,14 +5,19 @@ import { z } from 'zod'
 const corOpt = z
   .union([z.string(), z.null(), z.undefined()])
   .transform((v) => (v == null || v === '' ? undefined : v))
-  .refine((v) => v === undefined || /^#[0-9a-fA-F]{6}$/.test(v), 'Cor inválida')
+  .refine(
+    (v) => v === undefined || /^#[0-9a-fA-F]{6}$/.test(v),
+    'Cor inválida',
+  )
   .optional()
 
 const uuidOpt = z
   .union([z.string(), z.null(), z.undefined()])
   .transform((v) => (v == null || v === '' || v === 'nenhum' ? null : v))
   .refine(
-    (v) => v === null || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
+    (v) =>
+      v === null ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
     'ID inválido',
   )
   .optional()
@@ -22,7 +27,9 @@ const uuidArray = z
   .transform((v) => v ?? [])
   .refine(
     (arr) =>
-      arr.every((v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)),
+      arr.every((v) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
+      ),
     'IDs inválidos',
   )
   .optional()

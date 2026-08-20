@@ -18,7 +18,10 @@ const medidaCm = z
 const pesoAte = z
   .union([z.string(), z.number()])
   .transform((v) => (v === '' ? NaN : Number(v)))
-  .refine((v) => Number.isInteger(v) && v > 0, 'Informe o peso em gramas inteiras, maior que zero')
+  .refine(
+    (v) => Number.isInteger(v) && v > 0,
+    'Informe o peso em gramas inteiras, maior que zero',
+  )
 
 // Os limites dos Correios são validados AQUI, no cadastro — não só na hora de
 // cotar. Uma faixa que gere volume inválido, checada só na cotação, aparece

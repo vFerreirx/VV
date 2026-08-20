@@ -119,7 +119,8 @@ export function parseShopee(paginas: PaginaPdf[]): LeituraPdf {
           .sort((a, b) => b.y - a.y)
           .map((t) => t.str.trim())
           .filter(Boolean)
-        const junto = col === 'variacao' ? emendarVariacao(partes) : partes.join(SEPARADOR[col])
+        const junto =
+          col === 'variacao' ? emendarVariacao(partes) : partes.join(SEPARADOR[col])
         return junto.replace(/\s+/g, ' ').trim()
       }
 

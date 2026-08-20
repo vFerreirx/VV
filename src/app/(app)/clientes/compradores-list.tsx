@@ -43,7 +43,10 @@ import {
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import { Textarea } from '@/components/ui/textarea'
 import type { Comprador } from '@/lib/db/schema'
-import { compradorSchema, type CompradorInput } from '@/lib/validators/compradores'
+import {
+  compradorSchema,
+  type CompradorInput,
+} from '@/lib/validators/compradores'
 import {
   formatarCep,
   formatarDocumento,
@@ -88,7 +91,8 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
         <div>
           <h1 className="text-2xl font-semibold">Clientes</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Quem compra de você. Só o nome é obrigatório — o resto pode ser completado depois.
+            Quem compra de você. Só o nome é obrigatório — o resto pode ser
+            completado depois.
           </p>
         </div>
         {podeEditar && (
@@ -149,7 +153,9 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
                         )}
                       </TableCell>
                       <TableCell>
-                        {c.telefone || <span className="text-muted-foreground">—</span>}
+                        {c.telefone || (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {c.cidade ? (
@@ -189,8 +195,14 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
         </>
       )}
 
-      <CompradorDialog comprador={editando} onClose={() => setEditando(null)} />
-      <ExcluirDialog comprador={excluindo} onClose={() => setExcluindo(null)} />
+      <CompradorDialog
+        comprador={editando}
+        onClose={() => setEditando(null)}
+      />
+      <ExcluirDialog
+        comprador={excluindo}
+        onClose={() => setExcluindo(null)}
+      />
     </div>
   )
 }
@@ -275,9 +287,12 @@ function CompradorDialog({
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-h-[92vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <DialogHeader className="border-b p-6">
-          <DialogTitle>{isEdit ? 'Editar cliente' : 'Novo cliente'}</DialogTitle>
+          <DialogTitle>
+            {isEdit ? 'Editar cliente' : 'Novo cliente'}
+          </DialogTitle>
           <DialogDescription>
-            Só o nome é obrigatório. Documento e endereço podem ficar pra depois.
+            Só o nome é obrigatório. Documento e endereço podem ficar pra
+            depois.
           </DialogDescription>
         </DialogHeader>
 
@@ -294,7 +309,9 @@ function CompradorDialog({
                 placeholder="Nome do cliente / empresa"
                 {...form.register('nome')}
               />
-              {errs.nome && <p className="text-destructive text-xs">{errs.nome.message}</p>}
+              {errs.nome && (
+                <p className="text-destructive text-xs">{errs.nome.message}</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -314,7 +331,9 @@ function CompradorDialog({
                           disabled={isPending}
                           placeholder="000.000.000-00 ou 00.000.000/0000-00"
                           value={String(ctl.value ?? '')}
-                          onChange={(e) => ctl.onChange(mascararDocumento(e.target.value))}
+                          onChange={(e) =>
+                            ctl.onChange(mascararDocumento(e.target.value))
+                          }
                         />
                         {!errs.documento && tipo && (
                           <p className="text-muted-foreground text-xs">
@@ -326,7 +345,9 @@ function CompradorDialog({
                   }}
                 />
                 {errs.documento && (
-                  <p className="text-destructive text-xs">{errs.documento.message}</p>
+                  <p className="text-destructive text-xs">
+                    {errs.documento.message}
+                  </p>
                 )}
               </div>
 
@@ -340,7 +361,9 @@ function CompradorDialog({
                   {...form.register('telefone')}
                 />
                 {errs.telefone && (
-                  <p className="text-destructive text-xs">{errs.telefone.message}</p>
+                  <p className="text-destructive text-xs">
+                    {errs.telefone.message}
+                  </p>
                 )}
               </div>
             </div>
@@ -388,17 +411,31 @@ function CompradorDialog({
                       aria-label="Buscar endereço pelo CEP"
                       title="Buscar endereço pelo CEP"
                     >
-                      {buscandoCep ? <Loader2 className="animate-spin" /> : <MapPin />}
+                      {buscandoCep ? (
+                        <Loader2 className="animate-spin" />
+                      ) : (
+                        <MapPin />
+                      )}
                     </Button>
                   </div>
-                  {errs.cep && <p className="text-destructive text-xs">{errs.cep.message}</p>}
+                  {errs.cep && (
+                    <p className="text-destructive text-xs">
+                      {errs.cep.message}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
                   <Label htmlFor="cp-logradouro">Logradouro</Label>
-                  <Input id="cp-logradouro" disabled={isPending} {...form.register('logradouro')} />
+                  <Input
+                    id="cp-logradouro"
+                    disabled={isPending}
+                    {...form.register('logradouro')}
+                  />
                   {errs.logradouro && (
-                    <p className="text-destructive text-xs">{errs.logradouro.message}</p>
+                    <p className="text-destructive text-xs">
+                      {errs.logradouro.message}
+                    </p>
                   )}
                 </div>
               </div>
@@ -406,7 +443,11 @@ function CompradorDialog({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[8rem_1fr]">
                 <div className="space-y-1.5">
                   <Label htmlFor="cp-numero">Número</Label>
-                  <Input id="cp-numero" disabled={isPending} {...form.register('numero')} />
+                  <Input
+                    id="cp-numero"
+                    disabled={isPending}
+                    {...form.register('numero')}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cp-complemento">Complemento</Label>
@@ -422,11 +463,19 @@ function CompradorDialog({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_7rem]">
                 <div className="space-y-1.5">
                   <Label htmlFor="cp-bairro">Bairro</Label>
-                  <Input id="cp-bairro" disabled={isPending} {...form.register('bairro')} />
+                  <Input
+                    id="cp-bairro"
+                    disabled={isPending}
+                    {...form.register('bairro')}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cp-cidade">Cidade</Label>
-                  <Input id="cp-cidade" disabled={isPending} {...form.register('cidade')} />
+                  <Input
+                    id="cp-cidade"
+                    disabled={isPending}
+                    {...form.register('cidade')}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="cp-uf">UF</Label>
@@ -456,7 +505,9 @@ function CompradorDialog({
                       </Select>
                     )}
                   />
-                  {errs.uf && <p className="text-destructive text-xs">{errs.uf.message}</p>}
+                  {errs.uf && (
+                    <p className="text-destructive text-xs">{errs.uf.message}</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -471,13 +522,20 @@ function CompradorDialog({
                 {...form.register('observacao')}
               />
               {errs.observacao && (
-                <p className="text-destructive text-xs">{errs.observacao.message}</p>
+                <p className="text-destructive text-xs">
+                  {errs.observacao.message}
+                </p>
               )}
             </div>
           </div>
 
           <DialogFooter className="border-t p-6">
-            <Button type="button" variant="outline" onClick={onClose} disabled={isPending}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={isPending}
+            >
               Cancelar
             </Button>
             <Button loading={isPending} type="submit" disabled={isPending}>
@@ -520,8 +578,9 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir cliente?</DialogTitle>
           <DialogDescription>
-            {comprador?.nome} será marcado como excluído. Os pedidos dele continuam abrindo
-            normalmente — o nome do cliente fica gravado no próprio pedido.
+            {comprador?.nome} será marcado como excluído. Os pedidos dele
+            continuam abrindo normalmente — o nome do cliente fica gravado no
+            próprio pedido.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

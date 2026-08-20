@@ -69,7 +69,9 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
     return {
       ...e,
       operadorDiaNome: e.operadorDiaId ? (opNome.get(e.operadorDiaId) ?? null) : null,
-      operadorNoiteNome: e.operadorNoiteId ? (opNome.get(e.operadorNoiteId) ?? null) : null,
+      operadorNoiteNome: e.operadorNoiteId
+        ? (opNome.get(e.operadorNoiteId) ?? null)
+        : null,
       maquinaIds: minhas.map((m) => m.id),
       maquinaNomes: minhas.map((m) => m.nome),
     }
@@ -82,7 +84,9 @@ export async function listarOperadores(): Promise<OperadorOpcao[]> {
   return db
     .select({ id: users.id, nome: users.nome })
     .from(users)
-    .where(and(eq(users.role, 'operador'), eq(users.ativo, true), isNull(users.deletedAt)))
+    .where(
+      and(eq(users.role, 'operador'), eq(users.ativo, true), isNull(users.deletedAt)),
+    )
     .orderBy(asc(users.nome))
 }
 
@@ -106,10 +110,16 @@ async function aplicarMaquinas(
   maquinaIds: string[],
 ) {
   // Desvincula as que estavam nesta estação mas saíram da seleção.
-  await tx.update(maquinas).set({ estacaoId: null }).where(eq(maquinas.estacaoId, estacaoId))
+  await tx
+    .update(maquinas)
+    .set({ estacaoId: null })
+    .where(eq(maquinas.estacaoId, estacaoId))
   // Vincula as selecionadas (tira de outra estação se preciso).
   if (maquinaIds.length > 0) {
-    await tx.update(maquinas).set({ estacaoId }).where(inArray(maquinas.id, maquinaIds))
+    await tx
+      .update(maquinas)
+      .set({ estacaoId })
+      .where(inArray(maquinas.id, maquinaIds))
   }
 }
 
@@ -181,7 +191,13 @@ export async function atualizarEstacaoAction(
   const conflito = await db
     .select({ id: estacoes.id })
     .from(estacoes)
-    .where(and(eq(estacoes.nome, data.nome), isNull(estacoes.deletedAt), ne(estacoes.id, id)))
+    .where(
+      and(
+        eq(estacoes.nome, data.nome),
+        isNull(estacoes.deletedAt),
+        ne(estacoes.id, id),
+      ),
+    )
     .limit(1)
   if (conflito.length > 0) {
     return { success: false, error: `Já existe outra estação "${data.nome}"` }
@@ -212,7 +228,8 @@ export async function atualizarEstacaoAction(
 export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
   await requireAreaEscrita('estacoes')
 
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  const uuidRegex =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!uuidRegex.test(id)) return { success: false, error: 'ID inválido' }
 
   await db.transaction(async (tx) => {
@@ -220,7 +237,10 @@ export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
       .update(estacoes)
       .set({ deletedAt: new Date(), ativo: false })
       .where(and(eq(estacoes.id, id), isNull(estacoes.deletedAt)))
-    await tx.update(maquinas).set({ estacaoId: null }).where(eq(maquinas.estacaoId, id))
+    await tx
+      .update(maquinas)
+      .set({ estacaoId: null })
+      .where(eq(maquinas.estacaoId, id))
   })
 
   revalidatePath('/estacoes')

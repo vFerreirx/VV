@@ -1,5 +1,12 @@
 import { sql } from 'drizzle-orm'
-import { boolean, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import {
+  boolean,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core'
 
 // Estação = grupo de máquinas cuidado por uma dupla (operador de dia +
 // operador de noite). Tem uma cor própria usada pra colorir os cards do

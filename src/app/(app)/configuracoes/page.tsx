@@ -2,7 +2,13 @@ import type { Metadata } from 'next'
 
 import { AlterarSenhaForm } from '@/components/forms/alterar-senha-form'
 import { PerfilForm } from '@/components/forms/perfil-form'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { requireAuth } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = {

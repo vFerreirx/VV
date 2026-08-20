@@ -128,7 +128,9 @@ export function OrdemForm({
       { value: 'nenhuma', label: 'Sem variação' },
       ...variacoesDisponiveis.map((v) => ({
         value: v.id,
-        label: [v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') || v.skuVariacao,
+        label:
+          [v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') ||
+          v.skuVariacao,
       })),
     ],
     [variacoesDisponiveis],
@@ -220,7 +222,11 @@ export function OrdemForm({
                   items={variacoesItems}
                   value={ctl.value || 'nenhuma'}
                   onValueChange={(v) => ctl.onChange(v === 'nenhuma' ? '' : v)}
-                  disabled={isPending || !produtoSelecionado || variacoesDisponiveis.length === 0}
+                  disabled={
+                    isPending ||
+                    !produtoSelecionado ||
+                    variacoesDisponiveis.length === 0
+                  }
                 >
                   <SelectTrigger id="variacaoId" className="w-full">
                     <SelectValue placeholder="Selecione…" />
@@ -229,7 +235,9 @@ export function OrdemForm({
                     <SelectItem value="nenhuma">Sem variação</SelectItem>
                     {variacoesDisponiveis.map((v) => (
                       <SelectItem key={v.id} value={v.id}>
-                        {[v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') || v.skuVariacao}
+                        {[v.cor, v.modelo, v.tamanho]
+                          .filter(Boolean)
+                          .join(' / ') || v.skuVariacao}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -262,8 +270,8 @@ export function OrdemForm({
         <CardHeader>
           <CardTitle>Roteiro de produção</CardTitle>
           <p className="text-muted-foreground text-sm">
-            Máquina e responsável são definidos depois — a OP entra na fila e o operador puxa pra
-            ele no kanban.
+            Máquina e responsável são definidos depois — a OP entra na fila e o
+            operador puxa pra ele no kanban.
           </p>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -297,7 +305,13 @@ export function OrdemForm({
               )}
             />
           </Field>
-          <Field label="Prioridade" id="prioridade" error={errs.prioridade?.message} required>
+
+          <Field
+            label="Prioridade"
+            id="prioridade"
+            error={errs.prioridade?.message}
+            required
+          >
             <Controller
               control={form.control}
               name="prioridade"
@@ -322,7 +336,13 @@ export function OrdemForm({
               )}
             />
           </Field>
-          <Field label="Status" id="status" error={errs.status?.message} required>
+
+          <Field
+            label="Status"
+            id="status"
+            error={errs.status?.message}
+            required
+          >
             <Controller
               control={form.control}
               name="status"
@@ -347,7 +367,9 @@ export function OrdemForm({
               )}
             />
           </Field>
+
           <div /> {/* placeholder pra grid */}
+
           <Field
             label="Início previsto"
             id="dataPrevistaInicio"
@@ -360,7 +382,12 @@ export function OrdemForm({
               {...form.register('dataPrevistaInicio')}
             />
           </Field>
-          <Field label="Fim previsto" id="dataPrevistaFim" error={errs.dataPrevistaFim?.message}>
+
+          <Field
+            label="Fim previsto"
+            id="dataPrevistaFim"
+            error={errs.dataPrevistaFim?.message}
+          >
             <Input
               id="dataPrevistaFim"
               type="date"
@@ -368,6 +395,7 @@ export function OrdemForm({
               {...form.register('dataPrevistaFim')}
             />
           </Field>
+
           <Field
             label="Observações"
             id="observacoes"
@@ -426,7 +454,9 @@ function Field({
         {required && <span className="text-destructive ml-0.5">*</span>}
       </Label>
       {children}
-      {hint && !error && <p className="text-muted-foreground text-xs">{hint}</p>}
+      {hint && !error && (
+        <p className="text-muted-foreground text-xs">{hint}</p>
+      )}
       {error && <p className="text-destructive text-xs">{error}</p>}
     </div>
   )

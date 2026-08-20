@@ -42,14 +42,21 @@ const distintos = <T,>(arr: T[]): T[] => [...new Set(arr)]
 
 type Escolha = { tamanho: string; cor: string }
 
-export function GerarDeKit({ kits, produtos }: { kits: KitComItens[]; produtos: Produtos }) {
+export function GerarDeKit({
+  kits,
+  produtos,
+}: {
+  kits: KitComItens[]
+  produtos: Produtos
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [kitId, setKitId] = useState(kits[0]?.id ?? '')
   const [qtd, setQtd] = useState('1')
   const [canal, setCanal] = useState<(typeof canalValues)[number]>('estoque')
-  const [prioridade, setPrioridade] = useState<(typeof prioridadeValues)[number]>('normal')
+  const [prioridade, setPrioridade] =
+    useState<(typeof prioridadeValues)[number]>('normal')
   // Escolha de tamanho/cor por item do kit (kitItemId -> tokens).
   const [sel, setSel] = useState<Record<string, Escolha>>({})
 
@@ -70,7 +77,9 @@ export function GerarDeKit({ kits, produtos }: { kits: KitComItens[]; produtos: 
   function variacaoDe(produtoId: string, e?: Escolha): string | null {
     if (!e?.tamanho || !e.cor) return null
     const prod = produtos.find((p) => p.id === produtoId)
-    const v = prod?.variacoes.find((x) => tok(x.tamanho) === e.tamanho && tok(x.cor) === e.cor)
+    const v = prod?.variacoes.find(
+      (x) => tok(x.tamanho) === e.tamanho && tok(x.cor) === e.cor,
+    )
     return v?.id ?? null
   }
 
@@ -158,7 +167,9 @@ export function GerarDeKit({ kits, produtos }: { kits: KitComItens[]; produtos: 
                 <Label>Canal</Label>
                 <Select
                   value={canal}
-                  onValueChange={(v) => setCanal((v ?? 'estoque') as (typeof canalValues)[number])}
+                  onValueChange={(v) =>
+                    setCanal((v ?? 'estoque') as (typeof canalValues)[number])
+                  }
                   disabled={isPending}
                 >
                   <SelectTrigger size="sm">
@@ -178,7 +189,9 @@ export function GerarDeKit({ kits, produtos }: { kits: KitComItens[]; produtos: 
                 <Select
                   value={prioridade}
                   onValueChange={(v) =>
-                    setPrioridade((v ?? 'normal') as (typeof prioridadeValues)[number])
+                    setPrioridade(
+                      (v ?? 'normal') as (typeof prioridadeValues)[number],
+                    )
                   }
                   disabled={isPending}
                 >
@@ -202,7 +215,9 @@ export function GerarDeKit({ kits, produtos }: { kits: KitComItens[]; produtos: 
                 {kit.itens.map((it) => {
                   const prod = produtos.find((p) => p.id === it.produtoId)
                   const e = sel[it.id]
-                  const tamanhos = prod ? distintos(prod.variacoes.map((v) => tok(v.tamanho))) : []
+                  const tamanhos = prod
+                    ? distintos(prod.variacoes.map((v) => tok(v.tamanho)))
+                    : []
                   const cores = prod
                     ? distintos(
                         prod.variacoes
@@ -211,9 +226,14 @@ export function GerarDeKit({ kits, produtos }: { kits: KitComItens[]; produtos: 
                       )
                     : []
                   return (
-                    <div key={it.id} className="space-y-2 rounded-lg border p-2.5">
+                    <div
+                      key={it.id}
+                      className="space-y-2 rounded-lg border p-2.5"
+                    >
                       <div className="flex items-center justify-between gap-2 text-sm">
-                        <span className="min-w-0 truncate font-medium">{it.produtoNome}</span>
+                        <span className="min-w-0 truncate font-medium">
+                          {it.produtoNome}
+                        </span>
                         <span className="text-muted-foreground shrink-0 tabular-nums">
                           {it.quantidade * n} un
                         </span>
@@ -221,7 +241,9 @@ export function GerarDeKit({ kits, produtos }: { kits: KitComItens[]; produtos: 
                       <div className="grid grid-cols-2 gap-2">
                         <Select
                           value={e?.tamanho || null}
-                          onValueChange={(v) => patchSel(it.id, { tamanho: v ?? '', cor: '' })}
+                          onValueChange={(v) =>
+                            patchSel(it.id, { tamanho: v ?? '', cor: '' })
+                          }
                           disabled={isPending || !prod}
                         >
                           <SelectTrigger size="sm">
@@ -260,7 +282,11 @@ export function GerarDeKit({ kits, produtos }: { kits: KitComItens[]; produtos: 
           </div>
 
           <DialogFooter className="border-t p-6">
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
+            <Button
+              variant="outline"
+              onClick={() => setOpen(false)}
+              disabled={isPending}
+            >
               Cancelar
             </Button>
             <Button loading={isPending} onClick={gerar} disabled={isPending || !kit}>

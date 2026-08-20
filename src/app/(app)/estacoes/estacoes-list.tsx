@@ -57,7 +57,9 @@ export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
 
       {estacoes.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
-          <p className="text-muted-foreground text-sm">Nenhuma estação cadastrada.</p>
+          <p className="text-muted-foreground text-sm">
+            Nenhuma estação cadastrada.
+          </p>
           <Button size="sm" className="mt-3" onClick={() => setCriando(true)}>
             Criar primeira estação
           </Button>
@@ -68,7 +70,9 @@ export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
             <article
               key={e.id}
               className="bg-card flex flex-col gap-3 rounded-xl border p-4"
-              style={e.cor ? { borderLeftColor: e.cor, borderLeftWidth: 4 } : undefined}
+              style={
+                e.cor ? { borderLeftColor: e.cor, borderLeftWidth: 4 } : undefined
+              }
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -100,7 +104,7 @@ export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
 
               <div className="space-y-1.5 text-sm">
                 <div className="flex items-center gap-2">
-                  <Sun className="size-4 shrink-0 text-amber-500" />
+                  <Sun className="text-amber-500 size-4 shrink-0" />
                   <span className="text-muted-foreground">Dia:</span>
                   <span>{e.operadorDiaNome ?? '—'}</span>
                 </div>
@@ -113,7 +117,9 @@ export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
 
               <div className="flex flex-wrap gap-1">
                 {e.maquinaNomes.length === 0 ? (
-                  <span className="text-muted-foreground text-xs">Sem máquinas vinculadas</span>
+                  <span className="text-muted-foreground text-xs">
+                    Sem máquinas vinculadas
+                  </span>
                 ) : (
                   e.maquinaNomes.map((n) => (
                     <Badge key={n} variant="secondary">
@@ -196,9 +202,15 @@ function EstacaoBody({
 
   const [nome, setNome] = useState(estacao?.nome ?? '')
   const [cor, setCor] = useState<string | undefined>(estacao?.cor ?? undefined)
-  const [operadorDiaId, setOperadorDiaId] = useState(estacao?.operadorDiaId ?? 'nenhum')
-  const [operadorNoiteId, setOperadorNoiteId] = useState(estacao?.operadorNoiteId ?? 'nenhum')
-  const [maquinaIds, setMaquinaIds] = useState<string[]>(estacao?.maquinaIds ?? [])
+  const [operadorDiaId, setOperadorDiaId] = useState(
+    estacao?.operadorDiaId ?? 'nenhum',
+  )
+  const [operadorNoiteId, setOperadorNoiteId] = useState(
+    estacao?.operadorNoiteId ?? 'nenhum',
+  )
+  const [maquinaIds, setMaquinaIds] = useState<string[]>(
+    estacao?.maquinaIds ?? [],
+  )
 
   const operadoresItems = useMemo(
     () => ({
@@ -209,7 +221,9 @@ function EstacaoBody({
   )
 
   function toggleMaquina(id: string) {
-    setMaquinaIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+    setMaquinaIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    )
   }
 
   function salvar() {
@@ -218,7 +232,8 @@ function EstacaoBody({
         nome,
         cor,
         operadorDiaId: operadorDiaId === 'nenhum' ? undefined : operadorDiaId,
-        operadorNoiteId: operadorNoiteId === 'nenhum' ? undefined : operadorNoiteId,
+        operadorNoiteId:
+          operadorNoiteId === 'nenhum' ? undefined : operadorNoiteId,
         maquinaIds,
       }
       const result = estacao
@@ -281,7 +296,9 @@ function EstacaoBody({
                 style={{ backgroundColor: c }}
                 className={cn(
                   'size-7 rounded-full border-2 transition-transform hover:scale-110',
-                  cor === c ? 'border-foreground ring-foreground/20 ring-2' : 'border-transparent',
+                  cor === c
+                    ? 'border-foreground ring-foreground/20 ring-2'
+                    : 'border-transparent',
                 )}
               />
             ))}
@@ -291,7 +308,7 @@ function EstacaoBody({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="est-dia" className="flex items-center gap-1.5">
-              <Sun className="size-4 text-amber-500" /> Operador de dia
+              <Sun className="text-amber-500 size-4" /> Operador de dia
             </Label>
             <Select
               items={operadoresItems}
@@ -341,11 +358,15 @@ function EstacaoBody({
           <Label>
             Máquinas{' '}
             {maquinaIds.length > 0 && (
-              <span className="text-muted-foreground font-normal">({maquinaIds.length})</span>
+              <span className="text-muted-foreground font-normal">
+                ({maquinaIds.length})
+              </span>
             )}
           </Label>
           {maquinas.length === 0 ? (
-            <p className="text-muted-foreground text-xs">Nenhuma máquina cadastrada.</p>
+            <p className="text-muted-foreground text-xs">
+              Nenhuma máquina cadastrada.
+            </p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {maquinas.map((m) => {
@@ -419,8 +440,8 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir estação?</DialogTitle>
           <DialogDescription>
-            &ldquo;{estacao?.nome}&rdquo; será removida. As máquinas voltam a ficar sem estação (não
-            são apagadas).
+            &ldquo;{estacao?.nome}&rdquo; será removida. As máquinas voltam a
+            ficar sem estação (não são apagadas).
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

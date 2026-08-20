@@ -10,7 +10,11 @@ export const contaMarketplaceSchema = z.object({
   // coluna do banco é nullable porque as contas cadastradas antes deste
   // vínculo não têm empresa e não houve backfill.
   empresaId: z.uuid('Escolha a empresa dona da conta'),
-  nome: z.string().trim().min(2, 'Nome muito curto').max(80, 'Nome muito longo'),
+  nome: z
+    .string()
+    .trim()
+    .min(2, 'Nome muito curto')
+    .max(80, 'Nome muito longo'),
   ativo: z.boolean().default(true),
 })
 

@@ -20,7 +20,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { montarLinhasSeparacao, type CatalogoSeparacao } from '@/lib/separacao'
+import {
+  montarLinhasSeparacao,
+  type CatalogoSeparacao,
+} from '@/lib/separacao'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 // VIA DE ITENS FALTANTES: o que a separação não achou e a fábrica precisa
@@ -74,7 +77,10 @@ export function FaltantesDoc({
           <ArrowLeft />
         </Button>
         <div className="flex gap-2">
-          <Button variant="outline" render={<Link href={`/pedidos/${orcamento.id}/separacao`} />}>
+          <Button
+            variant="outline"
+            render={<Link href={`/pedidos/${orcamento.id}/separacao`} />}
+          >
             <ClipboardList />
             Via de separação
           </Button>
@@ -86,7 +92,7 @@ export function FaltantesDoc({
       </div>
 
       {orfas.length > 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-400 print:hidden">
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 print:hidden dark:text-amber-400">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" />
           <div>
             <div className="font-medium">
@@ -100,21 +106,22 @@ export function FaltantesDoc({
               ))}
             </div>
             <div className="mt-1">
-              O item foi alterado ou removido depois da marcação. Abra a via de separação e salve de
-              novo pra limpar.
+              O item foi alterado ou removido depois da marcação. Abra a via de
+              separação e salve de novo pra limpar.
             </div>
           </div>
         </div>
       )}
 
       {/* Cabeçalho do documento */}
-      <div className="print:border-foreground/20 flex items-start justify-between gap-4 border-b pb-4">
+      <div className="flex items-start justify-between gap-4 border-b pb-4 print:border-foreground/20">
         <div className="flex items-center gap-3">
           <Logo variant="mark" className="size-10" />
           <div>
             <IdentidadeEmpresa empresa={empresa} />
             <div className="text-muted-foreground mt-1 text-sm">
-              Itens faltantes — Pedido nº {formatarNumeroPedido(orcamento.numero)}
+              Itens faltantes — Pedido nº{' '}
+              {formatarNumeroPedido(orcamento.numero)}
             </div>
           </div>
         </div>
@@ -130,20 +137,25 @@ export function FaltantesDoc({
 
       {/* Cliente */}
       <div>
-        <div className="text-muted-foreground text-xs tracking-wide uppercase">Cliente</div>
+        <div className="text-muted-foreground text-xs tracking-wide uppercase">
+          Cliente
+        </div>
         <div className="mt-0.5 text-base font-medium">{orcamento.cliente}</div>
       </div>
 
       {linhas.length === 0 ? (
         <div className="text-muted-foreground rounded-lg border p-6 text-center text-sm print:hidden">
           Nada marcado como faltante neste pedido. A marcação é feita na{' '}
-          <Link href={`/pedidos/${orcamento.id}/separacao`} className="underline">
+          <Link
+            href={`/pedidos/${orcamento.id}/separacao`}
+            className="underline"
+          >
             via de separação
           </Link>
           .
         </div>
       ) : (
-        <div className="print:border-foreground/20 rounded-lg border">
+        <div className="rounded-lg border print:border-foreground/20">
           <Table className="table-fixed">
             <colgroup>
               <col />
@@ -157,8 +169,8 @@ export function FaltantesDoc({
                   colSpan={2}
                   className="text-muted-foreground h-auto py-1 text-[10px] font-normal"
                 >
-                  Itens faltantes — Pedido nº {formatarNumeroPedido(orcamento.numero)} ·{' '}
-                  {orcamento.cliente}
+                  Itens faltantes — Pedido nº{' '}
+                  {formatarNumeroPedido(orcamento.numero)} · {orcamento.cliente}
                 </TableHead>
               </TableRow>
               <TableRow>
@@ -190,8 +202,9 @@ export function FaltantesDoc({
         </div>
       )}
 
-      <p className="text-muted-foreground print:border-foreground/20 border-t pt-3 text-xs">
-        Documento gerado em {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} — o que
+      <p className="text-muted-foreground border-t pt-3 text-xs print:border-foreground/20">
+        Documento gerado em{' '}
+        {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} — o que
         faltou na separação deste pedido, sem valores.
       </p>
     </div>

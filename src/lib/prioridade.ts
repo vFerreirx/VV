@@ -44,7 +44,10 @@ export const PRIORIDADE_BADGE: Record<PrioridadeNivel, string> = {
 // A MAIOR de duas prioridades, pela ordem de PRIORIDADE_NIVEIS. É o operador
 // da escalada por prazo: a data pode SUBIR o nível de uma tarefa, nunca
 // baixar — ver `prioridadeEfetiva` em src/lib/validators/tarefas.ts.
-export function maiorPrioridade(a: PrioridadeNivel, b: PrioridadeNivel): PrioridadeNivel {
+export function maiorPrioridade(
+  a: PrioridadeNivel,
+  b: PrioridadeNivel,
+): PrioridadeNivel {
   return PRIORIDADE_NIVEIS.indexOf(a) >= PRIORIDADE_NIVEIS.indexOf(b) ? a : b
 }
 

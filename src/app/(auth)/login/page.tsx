@@ -8,7 +8,11 @@ export const metadata: Metadata = {
 
 type SearchParams = { [key: string]: string | string[] | undefined }
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>
+}) {
   const sp = await searchParams
   const next = typeof sp.next === 'string' ? sp.next : undefined
 

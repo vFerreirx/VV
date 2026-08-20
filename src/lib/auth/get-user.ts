@@ -27,7 +27,13 @@ export const getCurrentUser = cache(async (): Promise<AuthUser | null> => {
   const [profile] = await db
     .select()
     .from(users)
-    .where(and(eq(users.id, authUser.id), isNull(users.deletedAt), eq(users.ativo, true)))
+    .where(
+      and(
+        eq(users.id, authUser.id),
+        isNull(users.deletedAt),
+        eq(users.ativo, true),
+      ),
+    )
     .limit(1)
 
   if (!profile) return null

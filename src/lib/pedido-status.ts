@@ -47,7 +47,10 @@ export const ROTULO_STATUS: Record<StatusPedido, string> = {
 }
 
 export function ehStatusPedido(valor: unknown): valor is StatusPedido {
-  return typeof valor === 'string' && (STATUS_PEDIDO as readonly string[]).includes(valor)
+  return (
+    typeof valor === 'string' &&
+    (STATUS_PEDIDO as readonly string[]).includes(valor)
+  )
 }
 
 // Estados que não são etapa do pedido, e sim exceção. A tela usa isto pra
@@ -77,7 +80,10 @@ export function transicaoValida(de: StatusPedido, para: StatusPedido): boolean {
  * livre sobrou um caso só, mas ele continua acontecendo: dois cliques
  * seguidos, ou a lista recarregada entre o clique e a resposta.
  */
-export function erroDeTransicao(de: StatusPedido, para: StatusPedido): string | null {
+export function erroDeTransicao(
+  de: StatusPedido,
+  para: StatusPedido,
+): string | null {
   if (!ehStatusPedido(para)) return 'Status inválido'
   if (de === para) return `O pedido já está em "${ROTULO_STATUS[de]}"`
   return null
