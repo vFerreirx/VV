@@ -41,6 +41,16 @@ export const PRIORIDADE_BADGE: Record<PrioridadeNivel, string> = {
   urgente: 'bg-destructive/15 text-destructive',
 }
 
+// A MAIOR de duas prioridades, pela ordem de PRIORIDADE_NIVEIS. É o operador
+// da escalada por prazo: a data pode SUBIR o nível de uma tarefa, nunca
+// baixar — ver `prioridadeEfetiva` em src/lib/validators/tarefas.ts.
+export function maiorPrioridade(
+  a: PrioridadeNivel,
+  b: PrioridadeNivel,
+): PrioridadeNivel {
+  return PRIORIDADE_NIVEIS.indexOf(a) >= PRIORIDADE_NIVEIS.indexOf(b) ? a : b
+}
+
 // Prioridade que vale a pena mostrar. Baixa e normal são o caso comum: um
 // selo em cada linha vira ruído e o ruído esconde o urgente.
 export function ehDestaque(p: PrioridadeNivel): p is NonNullable<PrioridadeAlerta> {

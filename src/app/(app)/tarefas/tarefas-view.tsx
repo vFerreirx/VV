@@ -81,6 +81,14 @@ export function TarefasView({ pendentes, concluidas, contas }: Props) {
           Pendências da administração — promoções, anúncios e o que mais
           precisar de alguém. A lista é dos admins: quem fizer, marca.
         </p>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Tarefa com prazo chegando <strong className="font-medium">sobe de
+          nível sozinha</strong> — até 7 dias vira Alta, até 2 dias (ou
+          vencida) vira Urgente. O selo com{' '}
+          <CalendarClock className="inline size-3.5 align-[-0.15em]" /> é o
+          que subiu pelo prazo. Marcar à mão continua valendo e nunca é
+          rebaixado.
+        </p>
       </div>
 
       <NovaTarefa contas={contas} />
@@ -392,17 +400,30 @@ function LinhaTarefa({
           )}
         >
           {t.titulo}
-          {ehDestaque(t.prioridade) && (
+          {ehDestaque(t.prioridadeEfetiva) && (
             <Badge
+              // Quando foi o PRAZO que subiu o nível, o selo diz de onde
+              // veio: sem isso, a tela parece afirmar que alguém marcou
+              // "Urgente" numa tarefa que ninguém tocou.
+              title={
+                t.escalou
+                  ? `Subiu sozinha pelo prazo (marcada como ${PRIORIDADE_LABEL[t.prioridade]})`
+                  : undefined
+              }
               className={cn(
-                'ml-2 align-middle text-[11px]',
-                PRIORIDADE_BADGE[t.prioridade],
+                'ml-2 inline-flex items-center gap-1 align-middle text-[11px]',
+                PRIORIDADE_BADGE[t.prioridadeEfetiva],
                 // Pulso só enquanto a tarefa está de pé: em concluída ele
                 // seria um chamado pra algo que já foi feito.
-                t.prioridade === 'urgente' && !concluida && 'pulse-urgente',
+                t.prioridadeEfetiva === 'urgente' &&
+                  !concluida &&
+                  'pulse-urgente',
               )}
             >
-              {PRIORIDADE_LABEL[t.prioridade]}
+              {/* O relógio é a diferença VISÍVEL entre "marcaram" e "o prazo
+                  subiu" — o title sozinho não existe no celular. */}
+              {t.escalou && <CalendarClock className="size-3" />}
+              {PRIORIDADE_LABEL[t.prioridadeEfetiva]}
             </Badge>
           )}
           {t.contaNome && (

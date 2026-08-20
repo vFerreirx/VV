@@ -10,6 +10,11 @@ import { concluirTarefaAction, type TarefaComContexto } from '../tarefas/actions
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Checkbox } from '@/components/ui/checkbox'
+import {
+  PRIORIDADE_BADGE,
+  PRIORIDADE_LABEL,
+  ehDestaque,
+} from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
 import { estaVencida } from '@/lib/validators/tarefas'
 
@@ -86,7 +91,31 @@ function LinhaPainel({ tarefa: t }: { tarefa: TarefaComContexto }) {
         aria-label={`Concluir ${t.titulo}`}
       />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{t.titulo}</div>
+        {/* O selo fica FORA do `truncate`: dentro dele um título longo
+            empurraria o selo pra fora da vista, e é justamente na tarefa
+            urgente que o título costuma ser comprido. */}
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium">{t.titulo}</span>
+          {/* Mesmo selo da tela de tarefas: o painel reordena por prioridade
+              efetiva, e sem o selo ninguém entende por que aquela subiu. */}
+          {ehDestaque(t.prioridadeEfetiva) && (
+            <Badge
+              title={
+                t.escalou
+                  ? `Subiu sozinha pelo prazo (marcada como ${PRIORIDADE_LABEL[t.prioridade]})`
+                  : undefined
+              }
+              className={cn(
+                'inline-flex shrink-0 items-center gap-1 text-[11px]',
+                PRIORIDADE_BADGE[t.prioridadeEfetiva],
+                t.prioridadeEfetiva === 'urgente' && 'pulse-urgente',
+              )}
+            >
+              {t.escalou && <CalendarClock className="size-3" />}
+              {PRIORIDADE_LABEL[t.prioridadeEfetiva]}
+            </Badge>
+          )}
+        </div>
         {/* No telefone não cabe o badge à direita; aqui embaixo cabe. */}
         {t.contaNome && (
           <div className="text-muted-foreground truncate text-xs sm:hidden">
