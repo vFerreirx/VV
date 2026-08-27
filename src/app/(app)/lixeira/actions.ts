@@ -21,8 +21,10 @@ import {
   remessasFull,
   tamanhos,
   tarefas,
+  tarefasDiarias,
   variacoesProduto,
 } from '@/lib/db/schema'
+import { resumoDeDias } from '@/lib/dia-brasil'
 import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
 
 // Lixeira: tudo no sistema é soft-delete (deleted_at). Aqui o admin vê o
@@ -43,6 +45,7 @@ export type TipoLixeira =
   | 'estacao'
   | 'remessa'
   | 'tarefa'
+  | 'diaria'
 
 export type ItemLixeira = {
   tipo: TipoLixeira
@@ -70,6 +73,7 @@ const TABELA = {
   estacao: estacoes,
   remessa: remessasFull,
   tarefa: tarefas,
+  diaria: tarefasDiarias,
 } as const
 
 // Executa as consultas UMA DE CADA VEZ, e não com Promise.all.
@@ -107,6 +111,7 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
     ests,
     remessas,
     tarefasRows,
+    diariasRows,
   ] = await emSerie(
       () => db
         .select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku, em: produtos.deletedAt })
@@ -169,6 +174,12 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
         .where(isNotNull(tarefas.deletedAt))
         .orderBy(desc(tarefas.deletedAt))
         .limit(LIMITE_POR_TIPO),
+      () => db
+        .select({ id: tarefasDiarias.id, titulo: tarefasDiarias.titulo, diasSemana: tarefasDiarias.diasSemana, em: tarefasDiarias.deletedAt })
+        .from(tarefasDiarias)
+        .where(isNotNull(tarefasDiarias.deletedAt))
+        .orderBy(desc(tarefasDiarias.deletedAt))
+        .limit(LIMITE_POR_TIPO),
     )
 
   const itens: ItemLixeira[] = [
@@ -195,6 +206,15 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
       // vale dizer em qual estado ela vai voltar.
       subtitulo: t.concluidaEm ? 'volta como concluída' : 'volta como pendente',
       excluidoEm: t.em!,
+    })),
+    ...diariasRows.map((d): ItemLixeira => ({
+      tipo: 'diaria',
+      id: d.id,
+      titulo: d.titulo,
+      // Os dias são o que distingue duas rotinas de nome parecido — sem
+      // eles, restaurar vira adivinhação.
+      subtitulo: `diária · ${resumoDeDias(d.diasSemana)}`,
+      excluidoEm: d.em!,
     })),
   ]
 
@@ -303,6 +323,14 @@ export async function restaurarAction(
           .set({ deletedAt: null })
           .where(eq(tarefas.id, id))
         break
+      case 'diaria':
+        // `concluida_em` volta como estava e não precisa de limpeza: se for
+        // de um dia passado, ela simplesmente não conta como feita hoje.
+        await db
+          .update(tarefasDiarias)
+          .set({ deletedAt: null })
+          .where(eq(tarefasDiarias.id, id))
+        break
       default:
         return { success: false, error: 'Tipo desconhecido' }
     }
@@ -326,6 +354,8 @@ export async function restaurarAction(
     revalidatePath('/tarefas')
     revalidatePath('/dashboard')
   }
+  // Diária não aparece no painel — só /tarefas precisa saber.
+  if (tipo === 'diaria') revalidatePath('/tarefas')
   return { success: true, message: 'Item restaurado' }
 }
 
@@ -433,8 +463,9 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
     },
   ],
   // Ninguém referencia tarefa: ela é folha do grafo. Apagar de vez só
-  // apaga ela mesma.
+  // apaga ela mesma. A diária idem — e ela nem histórico por dia tem.
   tarefa: [],
+  diaria: [],
 }
 
 type Bloqueio = { curto: string; detalhado: string }

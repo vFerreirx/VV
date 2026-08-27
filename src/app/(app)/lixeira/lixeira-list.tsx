@@ -12,6 +12,7 @@ import {
   Package,
   PackageSearch,
   Palette,
+  Repeat,
   Ruler,
   Shapes,
   Trash2,
@@ -54,6 +55,7 @@ const ICONE: Record<TipoLixeira, LucideIcon> = {
   estacao: Grid2x2,
   remessa: PackageSearch,
   tarefa: ListTodo,
+  diaria: Repeat,
 }
 
 const TIPO_LABEL: Record<TipoLixeira, string> = {
@@ -67,6 +69,7 @@ const TIPO_LABEL: Record<TipoLixeira, string> = {
   estacao: 'Estação',
   remessa: 'Remessa',
   tarefa: 'Tarefa',
+  diaria: 'Diária',
 }
 
 // O que some JUNTO com o item, por cascata do banco. Só os tipos que levam

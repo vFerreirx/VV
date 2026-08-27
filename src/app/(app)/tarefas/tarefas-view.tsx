@@ -23,6 +23,8 @@ import {
   reabrirTarefaAction,
   type TarefaComContexto,
 } from './actions'
+import { DiariasBloco } from './diarias-bloco'
+import type { ListaDiarias } from './diarias-actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -60,6 +62,10 @@ export type ContaOpcao = { id: string; nome: string }
 type Props = {
   pendentes: TarefaComContexto[]
   concluidas: TarefaComContexto[]
+  // Rotinas do dia. Bloco à parte, e NÃO misturadas nas pendentes: diária
+  // pendente não é dívida, é só "ainda não deu a hora" — e por isso ela
+  // também não acende a bolinha do menu nem entra no painel.
+  diarias: ListaDiarias
   contas: ContaOpcao[]
 }
 
@@ -68,7 +74,12 @@ function dataCurta(iso: string): string {
   return `${d}/${m}/${a!.slice(2)}`
 }
 
-export function TarefasView({ pendentes, concluidas, contas }: Props) {
+export function TarefasView({
+  pendentes,
+  concluidas,
+  diarias,
+  contas,
+}: Props) {
   const [editando, setEditando] = useState<TarefaComContexto | null>(null)
   const [excluindo, setExcluindo] = useState<TarefaComContexto | null>(null)
   const [mostrarConcluidas, setMostrarConcluidas] = useState(false)
@@ -90,6 +101,10 @@ export function TarefasView({ pendentes, concluidas, contas }: Props) {
           rebaixado.
         </p>
       </div>
+
+      {/* No topo: é o checklist do dia, a primeira coisa que se olha de
+          manhã. Fica ACIMA do campo rápido de tarefa nova de propósito. */}
+      <DiariasBloco lista={diarias} />
 
       <NovaTarefa contas={contas} />
 

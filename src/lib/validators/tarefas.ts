@@ -129,3 +129,42 @@ export function escalouSozinha(
 ): boolean {
   return prioridadeEfetiva(marcada, prazo, hoje) !== marcada
 }
+
+// -----------------------------------------------------------------
+// Tarefa DIÁRIA
+// -----------------------------------------------------------------
+//
+// Rotina que volta pendente todo dia. Só título, descrição e dias da
+// semana: NÃO tem prazo nem prioridade, de propósito — ela não acende a
+// bolinha do menu nem entra no painel, então não haveria nada pra um nível
+// significar. Ver src/lib/db/schema/tarefas.ts e a migration 49.
+export const tarefaDiariaSchema = z.object({
+  titulo: z
+    .string()
+    .trim()
+    .min(2, 'Título muito curto')
+    .max(160, 'Título muito longo'),
+
+  descricao: z
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((v) => (v == null ? null : v.trim()))
+    .refine((v) => v === null || v.length <= 2000, 'Descrição muito longa')
+    .transform((v) => (v === '' ? null : v)),
+
+  // 0=domingo (ver src/lib/dia-brasil.ts). O `transform` NORMALIZA — remove
+  // repetidos e ordena — porque o CHECK do banco não consegue pegar
+  // duplicata (Postgres não aceita subquery em CHECK) e porque a lista
+  // ordenada é o que o resumo "Seg, Qua, Sex" espera ler.
+  //
+  // Vazio é ERRO, não "todos": diária que não vale em dia nenhum nunca
+  // apareceria no bloco, e quem desmarcasse o último dia sem querer acharia
+  // que a rotina sumiu. O padrão de todos os sete é a DEFAULT da coluna,
+  // aplicada quando ninguém tocou no campo — coisa diferente de esvaziar.
+  diasSemana: z
+    .array(z.number().int().min(0, 'Dia inválido').max(6, 'Dia inválido'))
+    .transform((dias) => [...new Set(dias)].sort((a, b) => a - b))
+    .refine((dias) => dias.length > 0, 'Escolha pelo menos um dia da semana'),
+})
+
+export type TarefaDiariaInput = z.input<typeof tarefaDiariaSchema>
+export type TarefaDiariaData = z.output<typeof tarefaDiariaSchema>

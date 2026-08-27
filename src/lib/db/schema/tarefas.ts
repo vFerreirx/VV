@@ -1,5 +1,13 @@
 import { sql } from 'drizzle-orm'
-import { date, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import {
+  date,
+  index,
+  pgTable,
+  smallint,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core'
 
 import { contasMarketplace } from './contas-marketplace'
 import { tarefaPrioridadeEnum } from './enums'
@@ -64,3 +72,54 @@ export const tarefas = pgTable(
 
 export type Tarefa = typeof tarefas.$inferSelect
 export type NewTarefa = typeof tarefas.$inferInsert
+
+// -----------------------------------------------------------------
+// Tarefas DIÁRIAS
+// -----------------------------------------------------------------
+//
+// Rotinas que voltam a aparecer pendentes todo dia. Tabela SEPARADA, e não
+// uma coluna `diaria` em `tarefas`: as duas quase não compartilham campo —
+// a diária não tem prazo, não tem prioridade, não tem conta — e sobretudo
+// não compartilham SIGNIFICADO. Uma tarefa pendente é dívida; uma diária
+// pendente é só "ainda não deu a hora".
+//
+// NÃO ACUMULA e NÃO ACENDE A BOLINHA DO MENU. `alertaDeTarefas`
+// (src/lib/db/tarefas.ts) não olha esta tabela, e não deve passar a olhar:
+// um aviso que acende sozinho toda manhã deixa de ser aviso em uma semana.
+// Pelo mesmo motivo ela não entra no painel do dashboard.
+//
+// "FEITA HOJE" NÃO É COLUNA — é `concluidaEm` caindo no dia de hoje EM
+// BRASÍLIA (src/lib/dia-brasil.ts). Virou o dia, a diária volta pendente
+// sozinha, sem cron e sem linha por dia. Ver supabase/sql/49_tarefas_diarias.sql.
+export const tarefasDiarias = pgTable('tarefas_diarias', {
+  id: uuid().primaryKey().defaultRandom(),
+  titulo: text().notNull(),
+  descricao: text(),
+
+  // 0=domingo, igual ao getDay() do JS e ao EXTRACT(DOW) do Postgres.
+  // Padrão: todos os sete. O CHECK do banco garante não-vazio e 0..6.
+  diasSemana: smallint()
+    .array()
+    .notNull()
+    .default(sql`'{0,1,2,3,4,5,6}'`),
+
+  // Instante da última conclusão. Só vale como "feita hoje" se cair no dia
+  // de hoje; uma conclusão de ontem simplesmente deixa de contar.
+  concluidaEm: timestamp({ withTimezone: true }),
+  // São vários admins: a pergunta do dia é "quem já fez isso hoje?".
+  concluidaPor: uuid().references(() => users.id),
+  criadoPor: uuid().references(() => users.id),
+
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp({ withTimezone: true })
+    .notNull()
+    .defaultNow()
+    .$onUpdate(() => sql`now()`),
+  deletedAt: timestamp({ withTimezone: true }),
+})
+// Sem índice de propósito: a tabela não cresce com o uso — é o conjunto fixo
+// de rotinas da casa, justamente porque "feita hoje" não gera linha. O
+// porquê longo está na migration 49.
+
+export type TarefaDiaria = typeof tarefasDiarias.$inferSelect
+export type NewTarefaDiaria = typeof tarefasDiarias.$inferInsert
