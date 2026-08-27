@@ -16,6 +16,7 @@ import {
 
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { hojeEmBrasilia, inicioDoDiaEmBrasilia } from '@/lib/dia-brasil'
 import {
   apontamentosProducao,
   maquinas,
@@ -25,6 +26,16 @@ import {
   variacoesProduto,
 } from '@/lib/db/schema'
 import { type canalValues, type statusValues } from '@/lib/validators/ordens'
+
+// O instante em que o mês corrente COMEÇOU em Brasília.
+//
+// Antes era `new Date()` + `setDate(1)` + `setHours(0,0,0,0)`, que usa o fuso
+// do processo. Em UTC isso dá meia-noite UTC do dia 1, que é 21h do último dia
+// do mês ANTERIOR em Brasília — a janela pegava três horas do mês passado, e o
+// "mês corrente" virava às 21h do dia 31.
+function inicioDoMes(): Date {
+  return inicioDoDiaEmBrasilia(`${hojeEmBrasilia().slice(0, 7)}-01`)
+}
 
 // -----------------------------------------------------------------
 // KPIs principais
@@ -47,9 +58,7 @@ export type DashboardKPIs = {
 export async function obterKPIs(): Promise<DashboardKPIs> {
   await requireAuth()
 
-  const inicioMes = new Date()
-  inicioMes.setDate(1)
-  inicioMes.setHours(0, 0, 0, 0)
+  const inicioMes = inicioDoMes()
 
   // Conta OPs por status (excluindo soft-deleted).
   const distribuicao = await db
@@ -321,9 +330,7 @@ export async function listarTopProdutosMes(
 ): Promise<TopProdutoItem[]> {
   await requireAuth()
 
-  const inicioMes = new Date()
-  inicioMes.setDate(1)
-  inicioMes.setHours(0, 0, 0, 0)
+  const inicioMes = inicioDoMes()
 
   const rows = await db
     .select({
