@@ -16,7 +16,12 @@ import {
 
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { hojeEmBrasilia, inicioDoDiaEmBrasilia } from '@/lib/dia-brasil'
+import {
+  FUSO_BRASIL,
+  hojeEmBrasilia,
+  inicioDoDiaEmBrasilia,
+  somarDias,
+} from '@/lib/dia-brasil'
 import {
   apontamentosProducao,
   maquinas,
@@ -249,29 +254,52 @@ export async function listarProducaoUltimosDias(
 ): Promise<ProducaoDia[]> {
   await requireAuth()
 
-  const inicio = new Date()
-  inicio.setHours(0, 0, 0, 0)
-  inicio.setDate(inicio.getDate() - (dias - 1))
+  // A série termina HOJE em Brasília e anda pra trás em dias de calendário.
+  const ultimoDia = hojeEmBrasilia()
+  const primeiroDia = somarDias(ultimoDia, -(dias - 1))
+  const inicio = inicioDoDiaEmBrasilia(primeiroDia)
 
-  // Agrupa apontamentos por data (na timezone do servidor) usando o início
-  // do apontamento como referência.
+  // ⚠️ ÚNICO `AT TIME ZONE` do código, e src/lib/dia-brasil.ts registra a
+  // exceção. `apontamentos_producao.inicio` é timestamptz e o TimeZone da
+  // SESSÃO do Postgres é UTC, então `to_char` cru rendia o dia em UTC: todo
+  // apontamento feito das 21h à meia-noite caía no dia SEGUINTE. Com turno da
+  // noite isso não é bug noturno, é produção atribuída ao dia errado todo dia.
+  //
+  // O fuso vem IMPORTADO de dia-brasil (`FUSO_BRASIL`), nunca redigitado aqui:
+  // o nome existe uma vez só no repositório, então não há duas cópias da regra
+  // pra divergirem — Postgres e ICU leem a mesma tzdata.
+  //
+  // Agrupar no banco (e não trazer as linhas cruas pra somar em TS) mantém a
+  // resposta em `dias` linhas por mais que a fábrica cresça.
+  //
+  // `sql.raw` não é descuido: o fuso PRECISA virar texto literal na query. Como
+  // parâmetro ligado, as duas ocorrências viram placeholders DIFERENTES ($1 no
+  // select, $2 no group by), o Postgres não reconhece as duas expressões como a
+  // mesma e a query morre com 42803 ("must appear in the GROUP BY clause").
+  // Interpolar é seguro aqui porque `FUSO_BRASIL` é constante do código, nunca
+  // entrada de usuário.
+  const diaEmBrasiliaSQL = sql<string>`to_char(${apontamentosProducao.inicio} AT TIME ZONE ${sql.raw(`'${FUSO_BRASIL}'`)}, 'YYYY-MM-DD')`
+
   const rows = await db
     .select({
-      dia: sql<string>`to_char(${apontamentosProducao.inicio}, 'YYYY-MM-DD')`,
+      // MESMO fragmento no select e no group by, de propósito: eram duas
+      // strings iguais copiadas, e duas cópias divergem quando alguém mexe
+      // numa só.
+      dia: diaEmBrasiliaSQL,
       produzido: sql<number>`coalesce(sum(${apontamentosProducao.quantidadeProduzida}), 0)::int`,
       refugo: sql<number>`coalesce(sum(${apontamentosProducao.quantidadeRefugo}), 0)::int`,
     })
     .from(apontamentosProducao)
     .where(gte(apontamentosProducao.inicio, inicio))
-    .groupBy(sql`to_char(${apontamentosProducao.inicio}, 'YYYY-MM-DD')`)
+    .groupBy(diaEmBrasiliaSQL)
 
   // Preenche dias sem apontamento com zero pra linha não ficar com gaps.
+  // `somarDias` é aritmética de calendário pura: as chaves saem iguais às que
+  // o `to_char` acima produz, sem passar por fuso de novo.
   const map = new Map(rows.map((r) => [r.dia, r]))
   const serie: ProducaoDia[] = []
   for (let i = 0; i < dias; i++) {
-    const d = new Date(inicio)
-    d.setDate(inicio.getDate() + i)
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const key = somarDias(primeiroDia, i)
     const r = map.get(key)
     serie.push({
       dia: key,
