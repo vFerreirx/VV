@@ -32,10 +32,11 @@ export type TarefaComContexto = Tarefa & {
 
   // O QUE A TAREFA É AGORA: o maior entre `prioridade` (o que marcaram) e o
   // que o prazo pede. Calculado AQUI, no servidor, e não na tela — assim o
-  // menu, a lista e o painel usam o mesmo relógio. Deixar cada componente
-  // chamar `hojeISO()` por conta própria faria o servidor (UTC na Vercel) e
-  // o navegador (UTC-3) discordarem à noite, e a tarefa apareceria urgente
-  // na ordenação e alta no selo.
+  // menu, a lista e o painel usam o mesmo relógio. Espalhar a chamada de
+  // `hojeISO()` pelos componentes faria cada um responder num instante
+  // diferente, e uma tarefa apareceria urgente na ordenação e alta no selo.
+  // (De qual FUSO é esse "hoje" quem responde é `hojeISO`, que hoje usa o
+  // de Brasília nos dois lados — ver src/lib/validators/tarefas.ts.)
   prioridadeEfetiva: PrioridadeNivel
   // A data subiu o nível sozinha? A tela usa isso pra não parecer que
   // alguém marcou "Urgente" numa tarefa que ninguém tocou.

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   PRIORIDADE_NIVEIS,
   maiorPrioridade,
@@ -47,11 +48,25 @@ export type TarefaData = z.output<typeof tarefaSchema>
 // Vencida = prazo anterior a hoje. Comparação em texto YYYY-MM-DD de
 // propósito: `prazo` é `date` (sem hora nem fuso) e virar Date aqui traria
 // o fuso do servidor junto, fazendo a tarefa vencer cedo ou tarde demais.
+//
+// O "HOJE" É O DE BRASÍLIA, e não o do relógio de quem pergunta. Isto já
+// montou a data com o fuso LOCAL, e o local é diferente nos dois lados:
+//
+//   - no servidor da Vercel é UTC, então das 21h à meia-noite ele já
+//     achava que era amanhã. A escalada por prazo acontecia uma noite
+//     adiantada (tarefa pra daqui a 3 dias virava Urgente às 21h da
+//     véspera) e `estaVencida` marcava vencida às 21h do próprio dia do
+//     prazo;
+//   - no navegador é o fuso do computador de quem abriu — que por acaso
+//     estava certo aqui, e deixaria de estar pra quem abrisse de outro
+//     estado ou com o relógio errado.
+//
+// Ou seja: das 21h à meia-noite o selo escalado (calculado no servidor) e o
+// vermelho de "venceu" (calculado na tela) podiam se contradizer na MESMA
+// linha. Agora os dois perguntam a mesma coisa a src/lib/dia-brasil.ts, que
+// não depende do fuso de ninguém.
 export function hojeISO(): string {
-  const agora = new Date()
-  const mes = String(agora.getMonth() + 1).padStart(2, '0')
-  const dia = String(agora.getDate()).padStart(2, '0')
-  return `${agora.getFullYear()}-${mes}-${dia}`
+  return hojeEmBrasilia()
 }
 
 export function estaVencida(prazo: string | null): boolean {
