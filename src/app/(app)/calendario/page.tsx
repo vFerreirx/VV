@@ -13,12 +13,14 @@ import { CalendarioView } from '@/components/calendario/calendario-view'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
 
 export const metadata: Metadata = { title: 'Calendário — Vanvest' }
 
+// O mês corrente em BRASÍLIA. Com getFullYear/getMonth do servidor (UTC na
+// Vercel), às 21h do último dia do mês o calendário já abria no mês seguinte.
 function mesAtual(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  return hojeEmBrasilia().slice(0, 7)
 }
 
 export default async function CalendarioPage({

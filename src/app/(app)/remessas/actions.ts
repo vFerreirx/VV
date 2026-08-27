@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   apontamentosProducao,
   contasMarketplace,
@@ -65,13 +66,14 @@ export type RemessaAberta = {
   risco: 'no_prazo' | 'em_risco' | 'atrasada'
 }
 
-function hojeISO(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
+// `dataEnvio` é coluna `date` (dia de calendário, sem fuso), então a conta é
+// dia contra dia — o T12:00:00Z dos dois lados é só pra fugir de qualquer
+// borda de horário de verão no meio do subtrai. O "hoje" tem que ser o de
+// BRASÍLIA: com o dia do servidor (UTC na Vercel), das 21h à meia-noite toda
+// remessa aparecia um dia mais perto do prazo do que está, e a classificação
+// no_prazo/em_risco/atrasada logo abaixo decidia operação em cima disso.
 function diasAte(dataEnvio: string): number {
-  const hoje = hojeISO()
+  const hoje = hojeEmBrasilia()
   return Math.round(
     (Date.parse(`${dataEnvio}T12:00:00Z`) - Date.parse(`${hoje}T12:00:00Z`)) /
       86_400_000,

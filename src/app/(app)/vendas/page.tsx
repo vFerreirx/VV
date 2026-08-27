@@ -6,13 +6,9 @@ import { obterRelatorioPeriodo } from '../relatorios/actions'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
 
 export const metadata: Metadata = { title: 'Vendas — Vanvest' }
-
-function hojeISO(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 const isData = (s: unknown): s is string =>
   typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
@@ -30,7 +26,11 @@ export default async function VendasPage({
   const tabInicial = sp.tab === 'mensal' ? 'mensal' : 'diario'
 
   // Período do relatório (De/Até). Padrão: mês atual (dia 1 -> hoje).
-  const hoje = hojeISO()
+  //
+  // Com o dia do servidor (UTC na Vercel) isto zerava a tela: às 21h do dia
+  // 31, `hoje` já era o dia 1 do mês SEGUINTE, então início e fim caíam no
+  // mesmo dia e o mês inteiro sumia do relatório.
+  const hoje = hojeEmBrasilia()
   let inicio = isData(sp.de) ? sp.de : `${hoje.slice(0, 7)}-01`
   let fim = isData(sp.ate) ? sp.ate : hoje
   if (inicio > fim) [inicio, fim] = [fim, inicio]
