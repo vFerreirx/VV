@@ -911,7 +911,9 @@ function EscolherMaquinaDialog({
           <DialogTitle>Em qual máquina?</DialogTitle>
           <DialogDescription>
             A OP {ordemNumero} entra em produção na máquina escolhida.
-            {dados?.estacaoNome ? ` Estação ${dados.estacaoNome}.` : ''}
+            {/* Sem prefixo "Estação": o nome cadastrado já costuma ser
+                "Estação 1", e sairia "Estação Estação 1". */}
+            {dados?.estacaoNome ? ` Máquinas da ${dados.estacaoNome}.` : ''}
           </DialogDescription>
         </DialogHeader>
 
