@@ -1,0 +1,108 @@
+import 'server-only'
+
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+
+import { db } from '@/lib/db'
+import { estacaoOperadores, estacoes, users } from '@/lib/db/schema'
+
+// Quem é de qual estação.
+//
+// Uma estação tem ATÉ 3 operadores (o limite é do Zod, não do banco) e um
+// operador pertence a UMA estação — essa metade da regra é do banco, via
+// `UNIQUE (operador_id)` na migration 50. É dela que sai o singular de
+// `estacaoDoOperador`: a consulta pode devolver no máximo uma linha, e é por
+// isso que o kanban pode juntar OP -> responsável -> estação sem duplicar
+// card.
+//
+// ⚠️ Tanto `estacoes` quanto `users` usam SOFT DELETE, então o ON DELETE
+// CASCADE da tabela quase nunca dispara — apagar na tela é UPDATE. Toda
+// leitura aqui filtra `deleted_at IS NULL` dos dois lados, e quem apaga o
+// vínculo de verdade é `excluirEstacaoAction`. Sem isso um operador ficaria
+// preso a uma estação fantasma e o UNIQUE nunca deixaria ele entrar noutra.
+
+export type EstacaoDoOperador = { id: string; nome: string; cor: string | null }
+
+/** A estação viva do operador, ou null se ele não está em nenhuma. */
+export async function estacaoDoOperador(
+  operadorId: string,
+): Promise<EstacaoDoOperador | null> {
+  const [row] = await db
+    .select({ id: estacoes.id, nome: estacoes.nome, cor: estacoes.cor })
+    .from(estacaoOperadores)
+    .innerJoin(estacoes, eq(estacoes.id, estacaoOperadores.estacaoId))
+    .where(
+      and(
+        eq(estacaoOperadores.operadorId, operadorId),
+        isNull(estacoes.deletedAt),
+      ),
+    )
+    .limit(1)
+  return row ?? null
+}
+
+export type OperadorDaEstacao = { id: string; nome: string }
+
+/**
+ * Operadores de várias estações de uma vez, agrupados por estacaoId.
+ * Uma consulta pra lista inteira — nada de N+1.
+ */
+export async function operadoresPorEstacao(
+  estacaoIds: string[],
+): Promise<Map<string, OperadorDaEstacao[]>> {
+  const mapa = new Map<string, OperadorDaEstacao[]>()
+  if (estacaoIds.length === 0) return mapa
+
+  const rows = await db
+    .select({
+      estacaoId: estacaoOperadores.estacaoId,
+      id: users.id,
+      nome: users.nome,
+    })
+    .from(estacaoOperadores)
+    .innerJoin(users, eq(users.id, estacaoOperadores.operadorId))
+    .where(
+      and(
+        inArray(estacaoOperadores.estacaoId, estacaoIds),
+        isNull(users.deletedAt),
+      ),
+    )
+    .orderBy(asc(users.nome))
+
+  for (const r of rows) {
+    const lista = mapa.get(r.estacaoId) ?? []
+    lista.push({ id: r.id, nome: r.nome })
+    mapa.set(r.estacaoId, lista)
+  }
+  return mapa
+}
+
+export type VinculoDeOperador = {
+  operadorId: string
+  estacaoId: string
+  estacaoNome: string
+}
+
+/**
+ * Em que estação VIVA cada um destes operadores já está. Serve pra recusar
+ * com "Fulano já está na estação X" antes de o UNIQUE do banco estourar com
+ * erro cru na cara do usuário.
+ */
+export async function vinculosDeOperadores(
+  operadorIds: string[],
+): Promise<VinculoDeOperador[]> {
+  if (operadorIds.length === 0) return []
+  return db
+    .select({
+      operadorId: estacaoOperadores.operadorId,
+      estacaoId: estacoes.id,
+      estacaoNome: estacoes.nome,
+    })
+    .from(estacaoOperadores)
+    .innerJoin(estacoes, eq(estacoes.id, estacaoOperadores.estacaoId))
+    .where(
+      and(
+        inArray(estacaoOperadores.operadorId, operadorIds),
+        isNull(estacoes.deletedAt),
+      ),
+    )
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { Ban, Moon, Pencil, Plus, Sun, Trash2 } from 'lucide-react'
+import { Ban, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -33,7 +33,10 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { ESTACAO_CORES } from '@/lib/validators/estacoes'
+import {
+  ESTACAO_CORES,
+  MAX_OPERADORES_POR_ESTACAO,
+} from '@/lib/validators/estacoes'
 
 type Props = {
   estacoes: EstacaoComDetalhes[]
@@ -102,17 +105,13 @@ export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
                 </div>
               </div>
 
-              <div className="space-y-1.5 text-sm">
-                <div className="flex items-center gap-2">
-                  <Sun className="text-amber-500 size-4 shrink-0" />
-                  <span className="text-muted-foreground">Dia:</span>
-                  <span>{e.operadorDiaNome ?? '—'}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Moon className="size-4 shrink-0 text-indigo-400" />
-                  <span className="text-muted-foreground">Noite:</span>
-                  <span>{e.operadorNoiteNome ?? '—'}</span>
-                </div>
+              <div className="flex items-start gap-2 text-sm">
+                <Users className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+                {e.operadores.length === 0 ? (
+                  <span className="text-muted-foreground">Sem operadores</span>
+                ) : (
+                  <span>{e.operadores.map((o) => o.nome).join(' · ')}</span>
+                )}
               </div>
 
               <div className="flex flex-wrap gap-1">
@@ -202,11 +201,13 @@ function EstacaoBody({
 
   const [nome, setNome] = useState(estacao?.nome ?? '')
   const [cor, setCor] = useState<string | undefined>(estacao?.cor ?? undefined)
-  const [operadorDiaId, setOperadorDiaId] = useState(
-    estacao?.operadorDiaId ?? 'nenhum',
-  )
-  const [operadorNoiteId, setOperadorNoiteId] = useState(
-    estacao?.operadorNoiteId ?? 'nenhum',
+  // Três slots, sem turno. 'nenhum' = slot vazio — o Select do design system
+  // não aceita value vazio, então é o mesmo sentinela que o Zod já descarta.
+  const [operadorSlots, setOperadorSlots] = useState<string[]>(() =>
+    Array.from(
+      { length: MAX_OPERADORES_POR_ESTACAO },
+      (_, i) => estacao?.operadorIds[i] ?? 'nenhum',
+    ),
   )
   const [maquinaIds, setMaquinaIds] = useState<string[]>(
     estacao?.maquinaIds ?? [],
@@ -220,6 +221,24 @@ function EstacaoBody({
     [operadores],
   )
 
+  function definirSlot(indice: number, valor: string) {
+    setOperadorSlots((prev) =>
+      prev.map((atual, i) => (i === indice ? valor : atual)),
+    )
+  }
+
+  // Um operador só pode ocupar um slot. Desabilitar é melhor que deixar
+  // escolher e recusar depois no Zod.
+  function jaEmOutroSlot(operadorId: string, indice: number) {
+    return operadorSlots.some((v, i) => i !== indice && v === operadorId)
+  }
+
+  // E só pode estar numa estação — o UNIQUE do banco garante isso. Aqui é só
+  // pra tela não oferecer o que a action vai recusar.
+  function deOutraEstacao(o: OperadorOpcao) {
+    return o.estacaoAtualId !== null && o.estacaoAtualId !== estacao?.id
+  }
+
   function toggleMaquina(id: string) {
     setMaquinaIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
@@ -231,9 +250,8 @@ function EstacaoBody({
       const input = {
         nome,
         cor,
-        operadorDiaId: operadorDiaId === 'nenhum' ? undefined : operadorDiaId,
-        operadorNoiteId:
-          operadorNoiteId === 'nenhum' ? undefined : operadorNoiteId,
+        // Slots vazios somem; a ordem dos escolhidos não significa nada.
+        operadorIds: operadorSlots.filter((v) => v !== 'nenhum'),
         maquinaIds,
       }
       const result = estacao
@@ -254,7 +272,7 @@ function EstacaoBody({
       <DialogHeader>
         <DialogTitle>{isEdit ? 'Editar estação' : 'Nova estação'}</DialogTitle>
         <DialogDescription>
-          Defina a cor, os operadores de dia e noite, e as máquinas do grupo.
+          Defina a cor, quem opera a estação e as máquinas do grupo.
         </DialogDescription>
       </DialogHeader>
 
@@ -305,53 +323,69 @@ function EstacaoBody({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="est-dia" className="flex items-center gap-1.5">
-              <Sun className="text-amber-500 size-4" /> Operador de dia
-            </Label>
-            <Select
-              items={operadoresItems}
-              value={operadorDiaId}
-              onValueChange={(v) => v && setOperadorDiaId(v)}
-              disabled={isPending}
-            >
-              <SelectTrigger id="est-dia" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="nenhum">Nenhum</SelectItem>
-                {operadores.map((o) => (
-                  <SelectItem key={o.id} value={o.id}>
-                    {o.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="est-noite" className="flex items-center gap-1.5">
-              <Moon className="size-4 text-indigo-400" /> Operador de noite
-            </Label>
-            <Select
-              items={operadoresItems}
-              value={operadorNoiteId}
-              onValueChange={(v) => v && setOperadorNoiteId(v)}
-              disabled={isPending}
-            >
-              <SelectTrigger id="est-noite" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="nenhum">Nenhum</SelectItem>
-                {operadores.map((o) => (
-                  <SelectItem key={o.id} value={o.id}>
-                    {o.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="space-y-1.5">
+          <Label className="flex items-center gap-1.5">
+            <Users className="text-muted-foreground size-4" /> Operadores da
+            estação
+          </Label>
+
+          {operadores.length === 0 ? (
+            // Estado vazio explícito. Sem isto o admin abre, vê três selects
+            // com só "Nenhum" dentro e conclui que a tela quebrou — hoje não
+            // existe NENHUM usuário com cargo operador cadastrado.
+            <div className="rounded-lg border border-dashed p-3 text-sm">
+              <p className="font-medium">Nenhum operador cadastrado ainda.</p>
+              <p className="text-muted-foreground mt-1">
+                Os operadores da estação saem dos usuários com cargo
+                “Operador”. Crie um em{' '}
+                <a href="/usuarios" className="underline underline-offset-2">
+                  Usuários
+                </a>{' '}
+                e volte aqui. Dá pra salvar a estação sem operador e vincular
+                depois.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {operadorSlots.map((valor, i) => (
+                <div key={i} className="space-y-1.5">
+                  <Label
+                    htmlFor={`est-op-${i}`}
+                    className="text-muted-foreground text-xs font-normal"
+                  >
+                    {i === MAX_OPERADORES_POR_ESTACAO - 1
+                      ? `Operador ${i + 1} (opcional)`
+                      : `Operador ${i + 1}`}
+                  </Label>
+                  <Select
+                    items={operadoresItems}
+                    value={valor}
+                    onValueChange={(v) => v && definirSlot(i, v)}
+                    disabled={isPending}
+                  >
+                    <SelectTrigger id={`est-op-${i}`} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="nenhum">Nenhum</SelectItem>
+                      {operadores.map((o) => (
+                        <SelectItem
+                          key={o.id}
+                          value={o.id}
+                          disabled={jaEmOutroSlot(o.id, i) || deOutraEstacao(o)}
+                        >
+                          {o.nome}
+                          {deOutraEstacao(o)
+                            ? ` — já está na ${o.estacaoAtualNome}`
+                            : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="space-y-1.5">
