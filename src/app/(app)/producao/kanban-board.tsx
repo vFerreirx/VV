@@ -34,9 +34,21 @@ import { toast } from 'sonner'
 import type { KanbanCardData } from './actions'
 import { OpDetailSheet } from './op-detail-sheet'
 import { QuickOrdemDialog } from './quick-ordem-dialog'
-import type { ProdutoComVariacoesParaForm } from '@/app/(app)/ordens/actions'
+import type {
+  MaquinasParaPegar,
+  ProdutoComVariacoesParaForm,
+} from '@/app/(app)/ordens/actions'
 import { Button } from '@/components/ui/button'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  listarMaquinasParaPegar,
   mudarStatusOrdemAction,
   pegarOrdemAction,
   soltarOrdemAction,
@@ -818,9 +830,13 @@ function KanbanCard({
     disabled: !podeMover || isPending,
   })
 
-  // Operador só move a OP que é dele; manager move qualquer uma.
+  // O operador move qualquer OP da ESTAÇÃO dele, não só a que pegou — e a
+  // query do servidor só entrega OP da fila ou da estação dele, então "tem
+  // máquina" já basta pra saber que é da estação. OP da fila (sem máquina)
+  // fica de fora de propósito: pra ela o caminho é "Pegar pra mim", que é
+  // quem escolhe a máquina. Espelha `operadorPodeAgirNaOrdem` no servidor.
   const podeMoverEsta =
-    podeMover && (!isOperador || ordem.responsavelId === currentUserId)
+    podeMover && (!isOperador || ordem.maquinaId !== null)
 
   // Quando arrastando, escondemos o card original (DragOverlay mostra a cópia).
   return (
@@ -847,6 +863,7 @@ function KanbanCard({
       <KanbanCardContent
         ordem={ordem}
         currentUserId={currentUserId}
+        isOperador={isOperador}
         podeMoverEsta={podeMoverEsta}
         onMover={onMover}
       />
@@ -854,22 +871,140 @@ function KanbanCard({
   )
 }
 
+// Escolha da máquina ao pegar uma OP da fila.
+//
+// É CONVENIÊNCIA, não a regra: quem valida máquina existe / é da estação /
+// está livre é `pegarOrdemAction` no servidor. Aqui só evitamos oferecer o
+// que vai ser recusado.
+function EscolherMaquinaDialog({
+  ordemNumero,
+  isPending,
+  onEscolher,
+  onClose,
+}: {
+  ordemNumero: string
+  isPending: boolean
+  onEscolher: (maquinaId: string) => void
+  onClose: () => void
+}) {
+  const [dados, setDados] = useState<MaquinasParaPegar | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    let vivo = true
+    listarMaquinasParaPegar().then((r) => {
+      if (!vivo) return
+      if (r.success) setDados(r.data ?? null)
+      else setErro(r.error)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  const carregando = dados === null && erro === null
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Em qual máquina?</DialogTitle>
+          <DialogDescription>
+            A OP {ordemNumero} entra em produção na máquina escolhida.
+            {dados?.estacaoNome ? ` Estação ${dados.estacaoNome}.` : ''}
+          </DialogDescription>
+        </DialogHeader>
+
+        {carregando && (
+          <p className="text-muted-foreground py-6 text-center text-sm">
+            Carregando máquinas…
+          </p>
+        )}
+
+        {/* O caso "operador sem estação" chega aqui como erro da action, com
+            a mensagem explicando o que fazer — nunca um erro genérico. */}
+        {erro && (
+          <p className="text-destructive py-6 text-center text-sm">{erro}</p>
+        )}
+
+        {dados && dados.maquinas.length === 0 && (
+          <p className="text-muted-foreground py-6 text-center text-sm">
+            Nenhuma máquina vinculada
+            {dados.estacaoNome ? ` à estação ${dados.estacaoNome}` : ''}. Fale
+            com o admin pra vincular as máquinas em Estações.
+          </p>
+        )}
+
+        {dados && dados.maquinas.length > 0 && (
+          <div className="grid max-h-[50vh] grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
+            {dados.maquinas.map((m) => {
+              // Duas OPs na mesma máquina não existe no mundo físico.
+              const ocupada = m.ocupadaPorOp !== null
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  disabled={ocupada || isPending}
+                  onClick={() => onEscolher(m.id)}
+                  className={cn(
+                    'flex flex-col items-start rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                    ocupada
+                      ? 'text-muted-foreground cursor-not-allowed opacity-60'
+                      : 'hover:border-primary hover:bg-primary/5',
+                  )}
+                >
+                  <span className="font-medium">{m.codigo}</span>
+                  <span className="text-muted-foreground text-xs">
+                    {ocupada ? `Ocupada — OP ${m.ocupadaPorOp}` : m.nome}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // Botão "Pegar pra mim" / "Soltar" (fluxo puxado).
 function PegarSoltar({
   ordem,
   currentUserId,
+  isOperador,
 }: {
   ordem: KanbanCardData
   currentUserId: string
+  isOperador: boolean
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const [escolhendoMaquina, setEscolhendoMaquina] = useState(false)
   const semDono = !ordem.responsavelId
   const meu = ordem.responsavelId === currentUserId
 
-  function agir(fn: typeof pegarOrdemAction) {
+  function pegar(maquinaId?: string) {
     startTransition(async () => {
-      const result = await fn(ordem.id)
+      const result = await pegarOrdemAction(ordem.id, maquinaId)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setEscolhendoMaquina(false)
+      toast.success(result.message ?? 'Pronto')
+      router.refresh()
+    })
+  }
+
+  function soltar() {
+    startTransition(async () => {
+      const result = await soltarOrdemAction(ordem.id)
       if (!result.success) {
         toast.error(result.error)
         return
@@ -879,36 +1014,64 @@ function PegarSoltar({
     })
   }
 
-  // OP de outra pessoa: não mostra ação (só o nome no rodapé).
-  if (!semDono && !meu) return null
+  // "Pegar pra mim" é ação de OPERADOR. Admin e gerente mantêm a permissão
+  // na action, mas o botão não aparece pra eles.
+  const podePegar = semDono && isOperador
+  // Soltar: o dono, ou qualquer operador da estação — o colega precisa poder
+  // devolver a OP pra fila. Como o servidor só entrega OP da fila ou da
+  // estação dele, "tem máquina" já quer dizer "é da estação dele".
+  const podeSoltar =
+    !semDono && (meu || (isOperador && ordem.maquinaId !== null))
+
+  if (!podePegar && !podeSoltar) return null
 
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        agir(semDono ? pegarOrdemAction : soltarOrdemAction)
-      }}
-      disabled={isPending}
-      className={cn(
-        'mt-1 flex w-full items-center justify-center gap-1.5 rounded border py-1 text-[11px] font-medium transition-colors disabled:opacity-60',
-        semDono
-          ? 'border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground'
-          : 'border-border text-muted-foreground hover:bg-muted',
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          if (podePegar) {
+            // OP que já tem máquina não pergunta de novo — a máquina dela é
+            // a resposta.
+            if (ordem.maquinaId) pegar()
+            else setEscolhendoMaquina(true)
+          } else {
+            soltar()
+          }
+        }}
+        disabled={isPending}
+        className={cn(
+          'mt-1 flex w-full items-center justify-center gap-1.5 rounded border py-1 text-[11px] font-medium transition-colors disabled:opacity-60',
+          podePegar
+            ? 'border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground'
+            : 'border-border text-muted-foreground hover:bg-muted',
+        )}
+      >
+        {podePegar ? (
+          <>
+            <Hand className="size-3" />
+            Pegar pra mim
+          </>
+        ) : (
+          <>
+            <Undo2 className="size-3" />
+            Soltar
+          </>
+        )}
+      </button>
+
+      {escolhendoMaquina && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <EscolherMaquinaDialog
+            ordemNumero={ordem.numero}
+            isPending={isPending}
+            onEscolher={(maquinaId) => pegar(maquinaId)}
+            onClose={() => setEscolhendoMaquina(false)}
+          />
+        </div>
       )}
-    >
-      {semDono ? (
-        <>
-          <Hand className="size-3" />
-          Pegar pra mim
-        </>
-      ) : (
-        <>
-          <Undo2 className="size-3" />
-          Soltar
-        </>
-      )}
-    </button>
+    </>
   )
 }
 
@@ -917,12 +1080,14 @@ function KanbanCardContent({
   ordem,
   dragging,
   currentUserId,
+  isOperador,
   podeMoverEsta,
   onMover,
 }: {
   ordem: KanbanCardData
   dragging?: boolean
   currentUserId?: string
+  isOperador?: boolean
   podeMoverEsta?: boolean
   onMover?: (id: string, status: (typeof statusValues)[number]) => void
 }) {
@@ -1074,7 +1239,11 @@ function KanbanCardContent({
       )}
 
       {currentUserId && (
-        <PegarSoltar ordem={ordem} currentUserId={currentUserId} />
+        <PegarSoltar
+          ordem={ordem}
+          currentUserId={currentUserId}
+          isOperador={isOperador ?? false}
+        />
       )}
     </article>
   )

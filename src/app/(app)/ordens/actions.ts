@@ -8,6 +8,7 @@ import {
   ilike,
   inArray,
   isNull,
+  ne,
   or,
   sql,
 } from 'drizzle-orm'
@@ -23,6 +24,7 @@ import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { db } from '@/lib/db'
 import {
   condicaoDeVisaoDoOperador,
+  estacaoDoOperador,
   operadorPodeAgirNaOrdem,
 } from '@/lib/db/estacao-operadores'
 import {
@@ -670,7 +672,160 @@ export async function mudarStatusOrdemAction(
 const uuidRe =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export async function pegarOrdemAction(id: string): Promise<ActionResult> {
+// Máquina de uma estação, com quem está nela agora.
+export type MaquinaParaPegar = {
+  id: string
+  codigo: string
+  nome: string
+  // Número da OP que está EM PRODUÇÃO nesta máquina, ou null se está livre.
+  ocupadaPorOp: string | null
+}
+
+export type MaquinasParaPegar = {
+  estacaoNome: string | null
+  maquinas: MaquinaParaPegar[]
+}
+
+/**
+ * As máquinas que o usuário pode escolher ao pegar uma OP.
+ *
+ * Operador: só as da estação dele. Admin/gerente não têm estação, então
+ * recebem todas as vivas — o botão "Pegar pra mim" nem aparece pra eles, mas
+ * a permissão continua existindo.
+ *
+ * O left join não pode duplicar linha de máquina: o índice único
+ * `ordens_producao_maquina_em_producao_uidx` (migration 50) garante no máximo
+ * uma OP em produção por máquina.
+ */
+export async function listarMaquinasParaPegar(): Promise<
+  ActionResult<MaquinasParaPegar>
+> {
+  const user = await requireAuth()
+  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
+    return { success: false, error: 'Sem permissão no kanban' }
+  }
+
+  let estacaoNome: string | null = null
+  let filtroDeEstacao
+  if (user.role === 'operador') {
+    const estacao = await estacaoDoOperador(user.id)
+    if (!estacao) {
+      return {
+        success: false,
+        error: 'Você não está em nenhuma estação — fale com o admin',
+      }
+    }
+    estacaoNome = estacao.nome
+    filtroDeEstacao = eq(maquinas.estacaoId, estacao.id)
+  }
+
+  const rows = await db
+    .select({
+      id: maquinas.id,
+      codigo: maquinas.codigo,
+      nome: maquinas.nome,
+      ocupadaPorOp: ordensProducao.numero,
+    })
+    .from(maquinas)
+    .leftJoin(
+      ordensProducao,
+      and(
+        eq(ordensProducao.maquinaId, maquinas.id),
+        // "Ocupada" é `em_producao`, e não "status ativo": é o único status
+        // em que a OP está FISICAMENTE na máquina. Com "ativo", a OP parada
+        // em pronto_envio seguiria segurando a máquina e, com o tempo, todas
+        // ficariam ocupadas sem ninguém produzindo — o sistema travaria
+        // sozinho. Mover pra pronto_envio libera.
+        eq(ordensProducao.status, 'em_producao'),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
+    .where(and(isNull(maquinas.deletedAt), filtroDeEstacao))
+    .orderBy(asc(maquinas.codigo))
+
+  return {
+    success: true,
+    data: {
+      estacaoNome,
+      maquinas: rows.map((r) => ({
+        id: r.id,
+        codigo: r.codigo,
+        nome: r.nome,
+        ocupadaPorOp: r.ocupadaPorOp ?? null,
+      })),
+    },
+  }
+}
+
+/**
+ * Revalida a máquina no SERVIDOR. O diálogo do cliente é conveniência: quem
+ * decide é isto aqui. Devolve a mensagem de erro, ou null se está tudo certo.
+ */
+async function validarMaquinaParaOrdem(
+  maquinaId: string,
+  estacaoId: string | null,
+  ordemId: string,
+): Promise<string | null> {
+  if (!uuidRe.test(maquinaId)) return 'Máquina inválida'
+
+  const [maquina] = await db
+    .select({ id: maquinas.id, codigo: maquinas.codigo })
+    .from(maquinas)
+    .where(
+      and(
+        eq(maquinas.id, maquinaId),
+        isNull(maquinas.deletedAt),
+        estacaoId ? eq(maquinas.estacaoId, estacaoId) : undefined,
+      ),
+    )
+    .limit(1)
+  if (!maquina) {
+    return estacaoId
+      ? 'Essa máquina não é da sua estação'
+      : 'Máquina não encontrada'
+  }
+
+  const [ocupada] = await db
+    .select({ numero: ordensProducao.numero })
+    .from(ordensProducao)
+    .where(
+      and(
+        eq(ordensProducao.maquinaId, maquinaId),
+        eq(ordensProducao.status, 'em_producao'),
+        isNull(ordensProducao.deletedAt),
+        ne(ordensProducao.id, ordemId),
+      ),
+    )
+    .limit(1)
+  if (ocupada) {
+    return `A máquina ${maquina.codigo} já está com a OP ${ocupada.numero}`
+  }
+  return null
+}
+
+// A checagem acima tem janela entre o SELECT e o UPDATE. Quem fecha de
+// verdade é o índice único do banco; isto só traduz o 23505 pra português.
+function ehConflitoDeMaquina(erro: unknown): boolean {
+  if (typeof erro !== 'object' || erro === null) return false
+  const e = erro as { code?: string; constraint_name?: string }
+  return (
+    e.code === '23505' &&
+    e.constraint_name === 'ordens_producao_maquina_em_producao_uidx'
+  )
+}
+
+/**
+ * "Pegar pra mim" — fluxo puxado. Só pra OP SEM responsável.
+ *
+ * ESCOLHER MÁQUINA É OBRIGATÓRIO quando a OP ainda não tem uma: é isso que
+ * torna verdadeira a premissa do item C (OP em produção sempre tem máquina,
+ * logo sempre tem estação). Se a OP já tem máquina, não pergunta de novo —
+ * a máquina dela é a resposta.
+ */
+export async function pegarOrdemAction(
+  id: string,
+  maquinaId?: string,
+): Promise<ActionResult> {
   const user = await requireAuth()
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
 
@@ -683,6 +838,7 @@ export async function pegarOrdemAction(id: string): Promise<ActionResult> {
       id: ordensProducao.id,
       status: ordensProducao.status,
       responsavelId: ordensProducao.responsavelId,
+      maquinaId: ordensProducao.maquinaId,
       dataRealInicio: ordensProducao.dataRealInicio,
     })
     .from(ordensProducao)
@@ -694,36 +850,72 @@ export async function pegarOrdemAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Essa OP já foi pega por outro operador' }
   }
 
+  // Só o OPERADOR é preso à estação. Admin e gerente não têm estação e
+  // continuam podendo interagir — o botão é que some pra eles na tela.
+  let estacaoId: string | null = null
+  if (user.role === 'operador') {
+    const estacao = await estacaoDoOperador(user.id)
+    if (!estacao) {
+      return {
+        success: false,
+        error: 'Você não está em nenhuma estação — fale com o admin',
+      }
+    }
+    estacaoId = estacao.id
+  }
+
+  const maquinaEscolhida = atual.maquinaId ?? maquinaId ?? null
+  if (!maquinaEscolhida) {
+    return { success: false, error: 'Escolha uma máquina pra pegar a OP' }
+  }
+  const erroDaMaquina = await validarMaquinaParaOrdem(
+    maquinaEscolhida,
+    estacaoId,
+    id,
+  )
+  if (erroDaMaquina) return { success: false, error: erroDaMaquina }
+
   // Ao pegar a OP, ela já entra em produção se ainda estava na fila
   // (registra o evento no kanban e marca o início real da produção).
   const entraEmProducao =
     atual.status === 'programado' ||
     atual.status === 'aguardando_materia_prima'
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(ordensProducao)
-      .set(
-        entraEmProducao
-          ? {
-              responsavelId: user.id,
-              status: 'em_producao',
-              dataRealInicio: atual.dataRealInicio ?? new Date(),
-            }
-          : { responsavelId: user.id },
-      )
-      .where(eq(ordensProducao.id, id))
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(ordensProducao)
+        .set({
+          responsavelId: user.id,
+          maquinaId: maquinaEscolhida,
+          ...(entraEmProducao
+            ? {
+                status: 'em_producao' as const,
+                dataRealInicio: atual.dataRealInicio ?? new Date(),
+              }
+            : {}),
+        })
+        .where(eq(ordensProducao.id, id))
 
-    if (entraEmProducao) {
-      await tx.insert(eventosKanban).values({
-        ordemId: id,
-        statusAnterior: atual.status,
-        statusNovo: 'em_producao',
-        usuarioId: user.id,
-        observacao: 'Entrou em produção ao ser pega pelo operador',
-      })
+      if (entraEmProducao) {
+        await tx.insert(eventosKanban).values({
+          ordemId: id,
+          statusAnterior: atual.status,
+          statusNovo: 'em_producao',
+          usuarioId: user.id,
+          observacao: 'Entrou em produção ao ser pega pelo operador',
+        })
+      }
+    })
+  } catch (erro) {
+    if (ehConflitoDeMaquina(erro)) {
+      return {
+        success: false,
+        error: 'Alguém pegou essa máquina agora mesmo. Escolha outra.',
+      }
     }
-  })
+    throw erro
+  }
 
   revalidatePath('/producao')
   revalidatePath('/ordens')
