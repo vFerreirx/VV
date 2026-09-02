@@ -51,8 +51,8 @@ export function FabricaTabs({
       <div>
         <h1 className="text-2xl font-semibold">Fábrica</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Máquinas da fábrica e as estações (grupos com operador de dia e
-          noite).
+          Máquinas da fábrica e as estações (grupos de máquinas com até três
+          operadores).
         </p>
       </div>
 

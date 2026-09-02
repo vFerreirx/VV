@@ -8,6 +8,7 @@ import { db } from '@/lib/db'
 import { condicaoDeVisaoDoOperador } from '@/lib/db/estacao-operadores'
 import {
   apontamentosProducao,
+  estacaoOperadores,
   estacoes,
   eventosKanban,
   maquinas,
@@ -157,13 +158,22 @@ export async function listarOrdensProducao(
       estMaq,
       and(eq(estMaq.id, maquinas.estacaoId), isNull(estMaq.deletedAt)),
     )
+    // Estacao pelo RESPONSAVEL, via estacao_operadores. Antes isto casava
+    // com operador_dia_id/operador_noite_id, que viraram legado no item B e
+    // nunca mais recebem escrita — o fallback tinha parado de funcionar em
+    // silencio pra toda estacao cadastrada na tela nova.
+    //
+    // Duas leftJoin encadeadas, e nao uma com OR: e o
+    // `UNIQUE (operador_id)` que garante no maximo UMA linha aqui. Sem ele o
+    // card duplicaria na coluna.
+    .leftJoin(
+      estacaoOperadores,
+      eq(estacaoOperadores.operadorId, ordensProducao.responsavelId),
+    )
     .leftJoin(
       estResp,
       and(
-        or(
-          eq(estResp.operadorDiaId, ordensProducao.responsavelId),
-          eq(estResp.operadorNoiteId, ordensProducao.responsavelId),
-        ),
+        eq(estResp.id, estacaoOperadores.estacaoId),
         isNull(estResp.deletedAt),
       ),
     )
