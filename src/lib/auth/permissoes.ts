@@ -50,7 +50,10 @@ export type Nivel = 'total' | 'ver' | 'proprio' | 'nenhum'
 export const NIVEL_INFO: Record<Nivel, { label: string; descricao: string }> = {
   total: { label: 'Total', descricao: 'Ver, criar, editar e excluir' },
   ver: { label: 'Só ver', descricao: 'Apenas leitura, sem alterar' },
-  proprio: { label: 'O que é dele', descricao: 'Age só na OP que pegou pra si' },
+  proprio: {
+    label: 'O que é da estação dele',
+    descricao: 'Age nas OPs das máquinas da estação dele',
+  },
   nenhum: { label: 'Sem acesso', descricao: 'Não aparece no menu' },
 }
 

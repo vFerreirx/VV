@@ -5,6 +5,7 @@ import { alias } from 'drizzle-orm/pg-core'
 
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { condicaoDeVisaoDoOperador } from '@/lib/db/estacao-operadores'
 import {
   apontamentosProducao,
   estacoes,
@@ -77,15 +78,12 @@ export async function listarOrdensProducao(
     ne(ordensProducao.status, 'enviado'),
   ]
 
-  // OP pega fica privada SÓ entre operadores: cada operador vê as livres
-  // (na fila) e as que pegou. Os demais cargos veem tudo.
+  // O operador enxerga a fila comum + a estação dele. A regra mora em
+  // src/lib/db/estacao-operadores.ts porque ela vale IGUAL aqui e na lista
+  // de /ordens — eram duas cópias da versão antiga, e divergir faria a OP
+  // aparecer no board e sumir da lista. Os demais cargos veem tudo.
   if (user.role === 'operador') {
-    conditions.push(
-      or(
-        isNull(ordensProducao.responsavelId),
-        eq(ordensProducao.responsavelId, user.id),
-      )!,
-    )
+    conditions.push(await condicaoDeVisaoDoOperador(user.id))
   }
 
   if (filtros.q && filtros.q.trim().length > 0) {

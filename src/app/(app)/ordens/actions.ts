@@ -22,6 +22,10 @@ import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { db } from '@/lib/db'
 import {
+  condicaoDeVisaoDoOperador,
+  operadorPodeAgirNaOrdem,
+} from '@/lib/db/estacao-operadores'
+import {
   apontamentosProducao,
   eventosKanban,
   maquinas,
@@ -50,8 +54,11 @@ import {
   type OrdensFiltros,
 } from '@/lib/validators/ordens'
 
+// `assumiu` = a OP mudou de dono nesta ação. A tela usa isso pra avisar o
+// operador que a OP agora é dele — troca silenciosa de dono é como o colega
+// descobre do pior jeito que a OP não é mais dele.
 export type ActionResult<T = undefined> =
-  | { success: true; data?: T; message?: string }
+  | { success: true; data?: T; message?: string; assumiu?: boolean }
   | { success: false; error: string }
 
 // -----------------------------------------------------------------
@@ -89,14 +96,12 @@ export async function listarOrdens(
 
   const conditions = [isNull(ordensProducao.deletedAt)]
 
-  // OP pega fica privada SÓ entre operadores; demais cargos veem tudo.
+  // O operador enxerga a fila comum + a estação dele. A regra mora em
+  // src/lib/db/estacao-operadores.ts porque ela vale IGUAL aqui e na lista
+  // de /ordens — eram duas cópias da versão antiga, e divergir faria a OP
+  // aparecer no board e sumir da lista. Os demais cargos veem tudo.
   if (user.role === 'operador') {
-    conditions.push(
-      or(
-        isNull(ordensProducao.responsavelId),
-        eq(ordensProducao.responsavelId, user.id),
-      )!,
-    )
+    conditions.push(await condicaoDeVisaoDoOperador(user.id))
   }
   if (f.q && f.q.length > 0) {
     conditions.push(
@@ -568,13 +573,15 @@ export async function mudarStatusOrdemAction(
   if (!podeEscrever(nivelKanban)) {
     return { success: false, error: 'Sem permissão pra mover OPs no kanban' }
   }
-  if (user.role === 'operador' && atual.responsavelId !== user.id) {
-    return {
-      success: false,
-      error: atual.responsavelId
-        ? 'Essa OP é de outro operador'
-        : 'Pegue a OP pra você antes de mover',
+  // O operador age em qualquer OP da estação dele, não só na que pegou —
+  // e ao agir ele VIRA o responsável (ver `assumiu` abaixo).
+  let assumiu = false
+  if (user.role === 'operador') {
+    const permissao = await operadorPodeAgirNaOrdem(user.id, atual.maquinaId)
+    if (!permissao.pode) {
+      return { success: false, error: permissao.erro }
     }
+    assumiu = atual.responsavelId !== user.id
   }
 
   if (atual.status === data.status) {
@@ -586,6 +593,15 @@ export async function mudarStatusOrdemAction(
       .update(ordensProducao)
       .set({
         status: data.status,
+        // A OP SEGUE O OPERADOR QUE MEXEU POR ÚLTIMO. É assim que a virada de
+        // turno fica registrada sozinha: o operador 1 sai no meio, o 2
+        // continua, e a OP passa a mostrar o 2.
+        //
+        // ADMIN E GERENTE NÃO TOMAM A OP: `assumiu` só fica true pra
+        // role === 'operador'. Eles interagem, a interação vai pro
+        // eventos_kanban, mas a posse continua do chão da estação — é o que
+        // mantém o relatório dizendo quem estava na máquina.
+        ...(assumiu ? { responsavelId: user.id } : {}),
         dataRealInicio:
           atual.dataRealInicio === null && data.status === 'em_producao'
             ? new Date()
@@ -644,7 +660,7 @@ export async function mudarStatusOrdemAction(
   revalidatePath(`/ordens/${id}`)
   revalidatePath('/producao')
   revalidatePath('/estoque')
-  return { success: true, message: 'Status atualizado' }
+  return { success: true, message: 'Status atualizado', assumiu }
 }
 
 // -----------------------------------------------------------------
@@ -728,20 +744,33 @@ export async function soltarOrdemAction(id: string): Promise<ActionResult> {
   }
 
   const [atual] = await db
-    .select({ id: ordensProducao.id, responsavelId: ordensProducao.responsavelId })
+    .select({
+      id: ordensProducao.id,
+      responsavelId: ordensProducao.responsavelId,
+      maquinaId: ordensProducao.maquinaId,
+    })
     .from(ordensProducao)
     .where(and(eq(ordensProducao.id, id), isNull(ordensProducao.deletedAt)))
     .limit(1)
   if (!atual) return { success: false, error: 'OP não encontrada' }
 
-  // Só o próprio responsável ou um gerente pode soltar.
-  if (
+  // O operador solta qualquer OP da estação dele — inclusive a que o colega
+  // pegou. Gerente e admin soltam qualquer uma.
+  if (user.role === 'operador') {
+    const permissao = await operadorPodeAgirNaOrdem(user.id, atual.maquinaId)
+    if (!permissao.pode) {
+      return { success: false, error: permissao.erro }
+    }
+  } else if (
+    !isManagerRole(user.role) &&
     atual.responsavelId &&
-    atual.responsavelId !== user.id &&
-    !isManagerRole(user.role)
+    atual.responsavelId !== user.id
   ) {
     return { success: false, error: 'Só quem pegou pode soltar' }
   }
+
+  // SOLTAR NÃO TOMA A OP. É a exceção à regra do "a OP segue quem mexeu" —
+  // esta ação existe justamente pra LIMPAR o responsável.
 
   await db
     .update(ordensProducao)
@@ -822,6 +851,7 @@ export async function apontarProducaoAction(
     .select({
       id: ordensProducao.id,
       responsavelId: ordensProducao.responsavelId,
+      maquinaId: ordensProducao.maquinaId,
     })
     .from(ordensProducao)
     .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
@@ -831,8 +861,15 @@ export async function apontarProducaoAction(
   if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
     return { success: false, error: 'Sem permissão pra apontar produção' }
   }
-  const pode = isManagerRole(user.role) || op.responsavelId === user.id
-  if (!pode) {
+  // Mesma regra do mover: é da estação dele, e apontar TOMA a OP.
+  let assumiu = false
+  if (user.role === 'operador') {
+    const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
+    if (!permissao.pode) {
+      return { success: false, error: permissao.erro }
+    }
+    assumiu = op.responsavelId !== user.id
+  } else if (!isManagerRole(user.role) && op.responsavelId !== user.id) {
     return { success: false, error: 'Pegue a OP pra você antes de apontar' }
   }
 
@@ -847,9 +884,17 @@ export async function apontarProducaoAction(
   })
 
   revalidatePath('/producao')
+  // Admin e gerente apontam sem tomar a OP — a posse fica com o operador.
+  if (assumiu) {
+    await db
+      .update(ordensProducao)
+      .set({ responsavelId: user.id })
+      .where(eq(ordensProducao.id, ordemId))
+  }
+
   revalidatePath('/dashboard')
   revalidatePath(`/ordens/${ordemId}`)
-  return { success: true, message: 'Apontamento registrado' }
+  return { success: true, message: 'Apontamento registrado', assumiu }
 }
 
 // -----------------------------------------------------------------

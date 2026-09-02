@@ -245,6 +245,11 @@ export function KanbanBoard({
         toast.error(result.error)
         return
       }
+      // A troca de dono nunca pode ser silenciosa: é assim que o colega
+      // descobre do pior jeito que a OP não é mais dele.
+      if (result.assumiu) {
+        toast.info('A OP agora está com você')
+      }
       if (opts?.semDesfazer) {
         toast.success('Movida pra ' + STATUS_LABEL_CURTO[novoStatus])
       } else {

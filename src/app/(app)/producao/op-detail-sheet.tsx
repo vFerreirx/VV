@@ -145,6 +145,10 @@ function DetalheBody({
         return
       }
       toast.success(result.message ?? 'Apontado')
+      // Apontar também toma a OP quando quem aponta é operador da estação.
+      if (result.assumiu) {
+        toast.info('A OP agora está com você')
+      }
       setQtdProduzida('')
       setQtdRefugo('')
       setApontarOpen(false)

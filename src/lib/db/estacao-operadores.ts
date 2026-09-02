@@ -1,9 +1,15 @@
 import 'server-only'
 
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
-import { estacaoOperadores, estacoes, users } from '@/lib/db/schema'
+import {
+  estacaoOperadores,
+  estacoes,
+  maquinas,
+  ordensProducao,
+  users,
+} from '@/lib/db/schema'
 
 // Quem é de qual estação.
 //
@@ -105,4 +111,100 @@ export async function vinculosDeOperadores(
         isNull(estacoes.deletedAt),
       ),
     )
+}
+
+// -----------------------------------------------------------------
+// A regra de VISÃO do operador
+// -----------------------------------------------------------------
+// O operador enxerga:
+//   (a) toda OP SEM MÁQUINA — a fila comum, onde ficam 'programado' e
+//       'aguardando_materia_prima'; e
+//   (b) toda OP cuja máquina pertence à estação dele, em QUALQUER status,
+//       inclusive as que o colega pegou.
+// Admin e gerente_producao não passam por aqui — veem tudo, sem filtro.
+//
+// ⚠️ Isto é um WHERE, nunca um JOIN, e a diferença não é estilo: join com
+// `estacao_operadores` multiplicaria a linha da OP por operador da estação e
+// o card apareceria duplicado no board. Where filtra sem multiplicar.
+//
+// ⚠️ E roda no SERVIDOR. Filtrar no cliente mandaria a fábrica inteira pro
+// navegador do operador e só esconderia — isso é vazamento, não filtro.
+export async function condicaoDeVisaoDoOperador(
+  operadorId: string,
+): Promise<SQL> {
+  const estacao = await estacaoDoOperador(operadorId)
+  return or(
+    isNull(ordensProducao.maquinaId),
+    // Operador sem estação enxerga só a fila. Ele também não consegue pegar
+    // OP nenhuma (ver pegarOrdemAction) — a tela explica o porquê.
+    estacao
+      ? inArray(
+          ordensProducao.maquinaId,
+          db
+            .select({ id: maquinas.id })
+            .from(maquinas)
+            .where(
+              and(
+                eq(maquinas.estacaoId, estacao.id),
+                isNull(maquinas.deletedAt),
+              ),
+            ),
+        )
+      : sql`false`,
+  )!
+}
+
+// -----------------------------------------------------------------
+// A regra de AÇÃO do operador
+// -----------------------------------------------------------------
+export type PermissaoDoOperador =
+  | { pode: true; estacaoId: string }
+  | { pode: false; erro: string }
+
+/**
+ * O operador age em QUALQUER OP da estação dele — não só na que ele pegou.
+ * O motivo é de chão de fábrica: o turno acaba com a OP no meio e o colega
+ * precisa conseguir terminar.
+ *
+ * "Da estação dele" é pela MÁQUINA da OP, não pelo responsável. OP sem
+ * máquina é recusada de propósito: é isso que fecha a porta dos fundos entre
+ * os itens C e D — sem esta recusa, o operador arrastaria uma OP da fila
+ * direto pra 'em_producao' pelo kanban e ela entraria em produção sem
+ * máquina nenhuma, furando o "escolher máquina é obrigatório" e quebrando a
+ * premissa de que OP em produção sempre tem estação.
+ *
+ * Só vale pra `role === 'operador'`. Admin e gerente não passam por aqui.
+ */
+export async function operadorPodeAgirNaOrdem(
+  operadorId: string,
+  ordemMaquinaId: string | null,
+): Promise<PermissaoDoOperador> {
+  const estacao = await estacaoDoOperador(operadorId)
+  if (!estacao) {
+    return {
+      pode: false,
+      erro: 'Você não está em nenhuma estação — fale com o admin',
+    }
+  }
+  if (!ordemMaquinaId) {
+    return {
+      pode: false,
+      erro: 'Essa OP ainda não tem máquina. Use "Pegar pra mim" pra escolher uma e começar.',
+    }
+  }
+  const [maquina] = await db
+    .select({ id: maquinas.id })
+    .from(maquinas)
+    .where(
+      and(
+        eq(maquinas.id, ordemMaquinaId),
+        eq(maquinas.estacaoId, estacao.id),
+        isNull(maquinas.deletedAt),
+      ),
+    )
+    .limit(1)
+  if (!maquina) {
+    return { pode: false, erro: 'Essa OP é de outra estação' }
+  }
+  return { pode: true, estacaoId: estacao.id }
 }
