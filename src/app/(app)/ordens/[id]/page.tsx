@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { listarProdutosParaOrdem, obterOrdem } from '../actions'
+import { HistoricoDaOp } from './historico-op'
 import {
   OrdemForm,
   type OrdemFormDefaults,
@@ -111,6 +112,8 @@ export default async function EditarOrdemPage({
       </Card>
 
       <OrdemForm defaults={defaults} produtos={produtos} />
+
+      <HistoricoDaOp ordemId={ordem.id} />
     </div>
   )
 }

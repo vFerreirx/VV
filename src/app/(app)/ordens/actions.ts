@@ -12,6 +12,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm'
+import { alias } from 'drizzle-orm/pg-core'
 import { revalidatePath } from 'next/cache'
 
 import {
@@ -54,6 +55,7 @@ import {
   type OrdemRapidaInput,
   type OrdemInput,
   type OrdensFiltros,
+  type statusValues,
 } from '@/lib/validators/ordens'
 
 // `assumiu` = a OP mudou de dono nesta ação. A tela usa isso pra avisar o
@@ -663,6 +665,96 @@ export async function mudarStatusOrdemAction(
   revalidatePath('/producao')
   revalidatePath('/estoque')
   return { success: true, message: 'Status atualizado', assumiu }
+}
+
+// -----------------------------------------------------------------
+// Histórico da OP (leitura pura — nenhuma tabela nova)
+// -----------------------------------------------------------------
+// `eventos_kanban` grava desde sempre usuario_id, status_anterior,
+// status_novo, observacao e created_at a cada movimento — são 9 pontos no
+// código escrevendo nela. E até aqui NADA no sistema lia isso pra exibir: a
+// única leitura era um MAX(created_at) em producao/actions.ts pra calcular
+// tempo parado na etapa. Era uma trilha de auditoria completa e invisível.
+//
+// Os apontamentos entram na MESMA linha do tempo porque também têm autor e
+// hora; separados, cada metade conta metade da história.
+//
+// É isto que responde "o admin/gerente mexeu nessa OP?" — justamente o caso
+// que o item C deixa acontecer sem trocar o responsável.
+
+export type ItemDoHistorico = {
+  em: Date
+  autorNome: string | null
+} & (
+  | {
+      tipo: 'status'
+      statusAnterior: (typeof statusValues)[number] | null
+      statusNovo: (typeof statusValues)[number]
+      observacao: string | null
+    }
+  | {
+      tipo: 'apontamento'
+      produzida: number
+      refugo: number
+    }
+)
+
+export async function historicoDaOrdem(
+  ordemId: string,
+): Promise<ItemDoHistorico[]> {
+  await requireAuth()
+  if (!uuidRe.test(ordemId)) return []
+
+  const autor = alias(users, 'autor_do_evento')
+
+  const [eventos, apontamentos] = await Promise.all([
+    db
+      .select({
+        em: eventosKanban.createdAt,
+        autorNome: autor.nome,
+        statusAnterior: eventosKanban.statusAnterior,
+        statusNovo: eventosKanban.statusNovo,
+        observacao: eventosKanban.observacao,
+      })
+      .from(eventosKanban)
+      .leftJoin(autor, eq(autor.id, eventosKanban.usuarioId))
+      .where(eq(eventosKanban.ordemId, ordemId)),
+    db
+      .select({
+        em: apontamentosProducao.createdAt,
+        autorNome: users.nome,
+        produzida: apontamentosProducao.quantidadeProduzida,
+        refugo: apontamentosProducao.quantidadeRefugo,
+      })
+      .from(apontamentosProducao)
+      .leftJoin(users, eq(users.id, apontamentosProducao.operadorId))
+      .where(eq(apontamentosProducao.ordemId, ordemId)),
+  ])
+
+  const itens: ItemDoHistorico[] = [
+    ...eventos.map(
+      (e): ItemDoHistorico => ({
+        tipo: 'status',
+        em: e.em,
+        autorNome: e.autorNome ?? null,
+        statusAnterior: e.statusAnterior,
+        statusNovo: e.statusNovo,
+        observacao: e.observacao,
+      }),
+    ),
+    ...apontamentos.map(
+      (a): ItemDoHistorico => ({
+        tipo: 'apontamento',
+        em: a.em,
+        autorNome: a.autorNome ?? null,
+        produzida: a.produzida,
+        refugo: a.refugo,
+      }),
+    ),
+  ]
+
+  // Cronológica INVERSA: o que aconteceu por último aparece primeiro.
+  return itens.sort((a, b) => b.em.getTime() - a.em.getTime())
 }
 
 // -----------------------------------------------------------------
