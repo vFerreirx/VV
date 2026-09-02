@@ -12,6 +12,15 @@ export const usernameSchema = z
   .max(40, 'Usuário muito longo (máximo 40 caracteres)')
   .regex(usernameRegex, 'Use apenas letras, números, ponto, hífen ou underscore')
 
+// Mínimo de senha NOVA. Vale só pra quem está definindo/trocando senha —
+// aqui, no cadastro de usuário e no reset do admin (src/lib/validators/
+// usuarios.ts). Se mudar, mude nos três: são a mesma política.
+//
+// O `loginSchema` abaixo continua em `min(1)` DE PROPÓSITO. Ele valida quem
+// está entrando, não quem está definindo: subir o mínimo lá trancaria na
+// porta todo mundo que já tem senha curta, sem nem tentar autenticar.
+export const SENHA_MIN = 12
+
 export const loginSchema = z.object({
   usuario: usernameSchema,
   senha: z.string().min(1, 'Informe a senha'),
@@ -33,7 +42,7 @@ export type AtualizarPerfilInput = z.infer<typeof atualizarPerfilSchema>
 export const alterarSenhaSchema = z
   .object({
     senhaAtual: z.string().min(1, 'Informe a senha atual'),
-    novaSenha: z.string().min(6, 'Nova senha precisa de ao menos 6 caracteres'),
+    novaSenha: z.string().min(SENHA_MIN, `Nova senha precisa de ao menos ${SENHA_MIN} caracteres`),
     confirmacao: z.string().min(1, 'Confirme a nova senha'),
   })
   .refine((d) => d.novaSenha === d.confirmacao, {

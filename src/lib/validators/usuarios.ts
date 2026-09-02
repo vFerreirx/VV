@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { usernameSchema } from './auth'
+import { SENHA_MIN, usernameSchema } from './auth'
 
 export const userRoleValues = [
   'admin',
@@ -26,7 +26,7 @@ export const criarUsuarioSchema = z.object({
   username: usernameSchema,
   telefone: stringOpt(20),
   role: z.enum(userRoleValues),
-  senha: z.string().min(6, 'Senha precisa de ao menos 6 caracteres'),
+  senha: z.string().min(SENHA_MIN, `Senha precisa de ao menos ${SENHA_MIN} caracteres`),
 })
 
 export type CriarUsuarioInput = z.input<typeof criarUsuarioSchema>
@@ -49,7 +49,7 @@ export type AtualizarUsuarioInput = z.input<typeof atualizarUsuarioSchema>
 // -----------------------------------------------------------------
 
 export const resetSenhaSchema = z.object({
-  novaSenha: z.string().min(6, 'Senha precisa de ao menos 6 caracteres'),
+  novaSenha: z.string().min(SENHA_MIN, `Senha precisa de ao menos ${SENHA_MIN} caracteres`),
 })
 
 export type ResetSenhaInput = z.input<typeof resetSenhaSchema>
