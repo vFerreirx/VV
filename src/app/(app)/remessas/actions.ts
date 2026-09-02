@@ -15,20 +15,21 @@ import {
   users,
   variacoesProduto,
 } from '@/lib/db/schema'
-import { STATUS_KANBAN, statusValues } from '@/lib/validators/ordens'
+import {
+  STATUS_KANBAN,
+  type StatusKanban,
+  type statusValues,
+} from '@/lib/validators/ordens'
 
 // Quantos dias (ou menos) faltando pro prazo já viram "em risco" (amarelo),
 // enquanto a remessa não estiver pronta. Confirmado com o usuário.
 const RISCO_DIAS = 2
 
-// STATUS_KANBAN é tipado como (typeof statusValues)[number][] (perde a
-// literal narrowing pro TS), mas em runtime só tem essas 6 etapas — cast
-// local pra type-check nas contagens por etapa.
-export type EtapaKanban = Exclude<
-  (typeof statusValues)[number],
-  'enviado' | 'cancelado'
->
-const ETAPAS_KANBAN = STATUS_KANBAN as EtapaKanban[]
+// Era uma TERCEIRA cópia da lista de etapas do kanban, montada por subtração
+// (`Exclude<..., 'enviado' | 'cancelado'>`) e com um cast por cima. Agora é
+// só o alias: STATUS_KANBAN já vem estreito, então tirar uma coluna do board
+// quebra o build aqui em vez de deixar a tela contando etapa inexistente.
+export type EtapaKanban = StatusKanban
 
 export type EtapaContagem = {
   status: EtapaKanban
@@ -122,12 +123,6 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
       emProducao: sql<number>`count(*) filter (
         where ${ordensProducao.status} = 'em_producao'
       )::int`,
-      acabamento: sql<number>`count(*) filter (
-        where ${ordensProducao.status} = 'acabamento'
-      )::int`,
-      embalagem: sql<number>`count(*) filter (
-        where ${ordensProducao.status} = 'embalagem'
-      )::int`,
       prontoEnvio: sql<number>`count(*) filter (
         where ${ordensProducao.status} = 'pronto_envio'
       )::int`,
@@ -159,15 +154,13 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
     aguardando_materia_prima: 'aguardandoMateriaPrima',
     programado: 'programado',
     em_producao: 'emProducao',
-    acabamento: 'acabamento',
-    embalagem: 'embalagem',
     pronto_envio: 'prontoEnvio',
   } as const satisfies Record<EtapaKanban, string>
 
   return rows
     .filter((r) => r.pendentes > 0)
     .map((r): RemessaAberta => {
-      const etapas: EtapaContagem[] = ETAPAS_KANBAN.map((status) => ({
+      const etapas: EtapaContagem[] = STATUS_KANBAN.map((status) => ({
         status,
         count: r[contagemPorEtapa[status] as keyof typeof r] as number,
       }))

@@ -30,7 +30,11 @@ import {
   users,
   variacoesProduto,
 } from '@/lib/db/schema'
-import { type canalValues, type statusValues } from '@/lib/validators/ordens'
+import {
+  STATUS_KANBAN,
+  type canalValues,
+  type statusValues,
+} from '@/lib/validators/ordens'
 
 // O instante em que o mês corrente COMEÇOU em Brasília.
 //
@@ -121,16 +125,10 @@ export async function obterKPIs(): Promise<DashboardKPIs> {
       and(isNull(maquinas.deletedAt), eq(maquinas.status, 'operando')),
     )
 
-  // Distribuição visual (somente estados ativos do kanban).
-  const STATUS_KANBAN_ATIVO: (typeof statusValues)[number][] = [
-    'aguardando_materia_prima',
-    'programado',
-    'em_producao',
-    'acabamento',
-    'embalagem',
-    'pronto_envio',
-  ]
-  const distribuicaoStatus = STATUS_KANBAN_ATIVO.map((s) => ({
+  // Distribuição visual (somente estados ativos do kanban). Importa a lista
+  // do board em vez de manter cópia: eram duas, e esta ia divergir calada no
+  // dia em que o board mudasse — que é hoje.
+  const distribuicaoStatus = STATUS_KANBAN.map((s) => ({
     status: s,
     total: distribuicaoMap.get(s) ?? 0,
   }))

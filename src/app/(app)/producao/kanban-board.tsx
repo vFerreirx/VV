@@ -46,18 +46,24 @@ import { PRIORIDADE_BADGE } from '@/lib/prioridade'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import {
+  ehStatusKanban,
+  indiceNoKanban,
   PRIORIDADE_LABEL,
   STATUS_KANBAN,
   STATUS_LABEL_CURTO,
   statusValues,
+  type StatusKanban,
 } from '@/lib/validators/ordens'
 
 // -----------------------------------------------------------------
 // Estilos por status (header e borda da coluna)
 // -----------------------------------------------------------------
 
+// Indexado por StatusKanban (não pela união das 8): assim o TypeScript cobra
+// estilo pra toda coluna do board e recusa estilo de coluna que não existe
+// mais. Foi isso que apagou acabamento/embalagem daqui.
 export const COLUMN_STYLES: Record<
-  (typeof statusValues)[number],
+  StatusKanban,
   { header: string; bar: string }
 > = {
   aguardando_materia_prima: {
@@ -72,31 +78,21 @@ export const COLUMN_STYLES: Record<
     header: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
     bar: 'bg-emerald-500',
   },
-  acabamento: {
-    header: 'bg-cyan-600/10 text-cyan-700 dark:text-cyan-300',
-    bar: 'bg-cyan-600',
-  },
-  embalagem: {
-    header: 'bg-violet-500/10 text-violet-700 dark:text-violet-300',
-    bar: 'bg-violet-500',
-  },
   pronto_envio: {
     header: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
     bar: 'bg-amber-500',
   },
-  enviado: {
-    header: 'bg-emerald-700/10 text-emerald-800 dark:text-emerald-400',
-    bar: 'bg-emerald-700',
-  },
-  cancelado: { header: '', bar: '' }, // não usado no kanban
 }
 
-// Limite de WIP (work-in-progress) por etapa. null = sem limite.
-// Ajuste os números conforme a capacidade real de cada etapa.
-const WIP_LIMITES: Partial<Record<(typeof statusValues)[number], number>> = {
-  em_producao: 18,
-  acabamento: 12,
-  embalagem: 12,
+// Limite de WIP (work-in-progress) por etapa. Ausente = sem limite.
+//
+// 48 = 24 (capacidade de máquina depois das 6 novas, TC-19 a TC-24) + os 12
+// do acabamento + os 12 da embalagem. As duas etapas saíram do board, mas o
+// trabalho continua no chão de fábrica: a OP que antes seguia pra acabamento
+// agora fica em `em_producao` até estar pronta pra envio, e o limite tem que
+// caber as três.
+const WIP_LIMITES: Partial<Record<StatusKanban, number>> = {
+  em_producao: 48,
 }
 
 // A partir de quanto tempo parado na etapa o card é destacado (3 dias).
@@ -234,7 +230,7 @@ export function KanbanBoard({
   ) {
     const ordem = items.find((o) => o.id === ordemId)
     if (!ordem || ordem.status === novoStatus) return
-    if (!STATUS_KANBAN.includes(novoStatus)) return
+    if (!ehStatusKanban(novoStatus)) return
     const statusAnterior = ordem.status
 
     startTransition(async () => {
@@ -381,7 +377,7 @@ function KanbanColumn({
   onMover,
   onAbrirDetalhe,
 }: {
-  status: (typeof statusValues)[number]
+  status: StatusKanban
   ordens: KanbanCardData[]
   podeMover: boolean
   isOperador: boolean
@@ -926,7 +922,7 @@ function KanbanCardContent({
   onMover?: (id: string, status: (typeof statusValues)[number]) => void
 }) {
   const tempo = tempoNaEtapa(ordem.desdeStatus)
-  const idx = STATUS_KANBAN.indexOf(ordem.status)
+  const idx = indiceNoKanban(ordem.status)
   const proximo =
     idx >= 0 && idx < STATUS_KANBAN.length - 1 ? STATUS_KANBAN[idx + 1] : null
   const variacao = [ordem.variacaoCor, ordem.variacaoTamanho]
@@ -937,7 +933,7 @@ function KanbanCardContent({
   // Barra de progresso só faz sentido a partir de em_producao — antes disso
   // a produção nem começou.
   const emEtapaProdutiva =
-    STATUS_KANBAN.indexOf(ordem.status) >= STATUS_KANBAN.indexOf('em_producao')
+    indiceNoKanban(ordem.status) >= indiceNoKanban('em_producao')
   const pctProduzido =
     ordem.quantidade > 0
       ? Math.min(100, Math.round((ordem.produzido / ordem.quantidade) * 100))

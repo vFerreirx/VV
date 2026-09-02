@@ -59,6 +59,7 @@ import {
   STATUS_LABEL_CURTO,
   canalValues,
   prioridadeValues,
+  STATUS_FILTRAVEIS,
   statusValues,
   type OrdensFiltros,
 } from '@/lib/validators/ordens'
@@ -209,7 +210,11 @@ export function OrdensList({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos status</SelectItem>
-              {statusValues.map((s) => (
+              {/* STATUS_FILTRAVEIS, não statusValues: acabamento e
+                  embalagem saíram do fluxo e não são mais escolhíveis. O
+                  STATUS_BADGE acima mantém as 8 entradas — ele desenha o
+                  que já existe, inclusive OP antiga. */}
+              {STATUS_FILTRAVEIS.map((s) => (
                 <SelectItem key={s} value={s}>
                   {STATUS_LABEL_CURTO[s]}
                 </SelectItem>

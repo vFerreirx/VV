@@ -239,11 +239,43 @@ export const STATUS_LABEL_CURTO: Record<
 
 // Ordem do fluxo do kanban. Cancelado e enviado (concluído) ficam de fora —
 // a OP enviada sai do board e vai pra "Concluídas" em Ordens.
-export const STATUS_KANBAN: (typeof statusValues)[number][] = [
+//
+// ⚠️ ACABAMENTO E EMBALAGEM SAÍRAM DO BOARD, mas continuam no enum do
+// Postgres e nos dois STATUS_LABEL acima. Não é descuido: o `eventos_kanban`
+// já tem passagem registrada por 'acabamento', e o Postgres não remove valor
+// de enum sem recriar o tipo. A regra é: os dois somem de tudo que é
+// ESCOLHÍVEL e sobrevivem só no que LÊ histórico.
+//
+// O `as const` dá o tipo `StatusKanban` abaixo, e é ele que faz o TypeScript
+// RECUSAR coluna sem estilo — ou estilo de coluna que não existe mais. Antes
+// a lista era `statusValues[number][]`, larga demais pra provar qualquer
+// coisa, e cada consumidor resolvia com um cast próprio.
+export const STATUS_KANBAN = [
   'aguardando_materia_prima',
   'programado',
   'em_producao',
-  'acabamento',
-  'embalagem',
   'pronto_envio',
-]
+] as const satisfies readonly (typeof statusValues)[number][]
+
+export type StatusKanban = (typeof STATUS_KANBAN)[number]
+
+// Status que dá pra ESCOLHER num filtro: as colunas do board mais os dois
+// terminais. Acabamento e embalagem ficam de fora por não serem escolhíveis.
+export const STATUS_FILTRAVEIS = [
+  ...STATUS_KANBAN,
+  'enviado',
+  'cancelado',
+] as const satisfies readonly (typeof statusValues)[number][]
+
+// STATUS_KANBAN é tupla de 4 literais; `ordem.status` é a união das 8.
+// `includes`/`indexOf` da tupla estreita não aceitam a união larga, e sem
+// estes helpers cada chamador escreveria o próprio cast. Um lugar só.
+export function ehStatusKanban(
+  status: (typeof statusValues)[number],
+): status is StatusKanban {
+  return (STATUS_KANBAN as readonly string[]).includes(status)
+}
+
+export function indiceNoKanban(status: (typeof statusValues)[number]): number {
+  return (STATUS_KANBAN as readonly string[]).indexOf(status)
+}

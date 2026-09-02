@@ -32,8 +32,6 @@ const STATUS_BAR_COLOR: Record<EtapaKanban, string> = {
   aguardando_materia_prima: 'bg-zinc-500',
   programado: 'bg-blue-500',
   em_producao: 'bg-emerald-500',
-  acabamento: 'bg-cyan-600',
-  embalagem: 'bg-violet-500',
   pronto_envio: 'bg-amber-500',
 }
 
