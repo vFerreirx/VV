@@ -162,7 +162,7 @@ export const AREAS: Area[] = [
     key: 'estacoes',
     secao: 'Fábrica',
     label: 'Estações',
-    descricao: 'Grupos de máquinas com operador dia/noite.',
+    descricao: 'Grupos de máquinas com até três operadores.',
     href: '/estacoes',
     editavel: false,
     nivelPadrao: padrao({ [G]: 'total' }),
