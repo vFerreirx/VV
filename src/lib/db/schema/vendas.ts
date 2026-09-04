@@ -108,7 +108,15 @@ export const vendasPedidos = pgTable(
       .references(() => orcamentos.id, { onDelete: 'cascade' }),
     numero: integer().notNull(),
     cliente: text().notNull(),
-    quantidade: integer().notNull().default(0),
+    // ⚠️ UNIDADES, NÃO VENDAS — e o nome é o que impede a troca.
+    //
+    // `vendasMarketplace.quantidade` conta VENDAS (a coluna da tela se chama
+    // "Vendas": uma conta do ML com 196 no dia teve 196 PEDIDOS). Aqui são as
+    // PEÇAS do pedido. Um pedido é UMA venda, de quantas peças for — a linha
+    // espelho conta LINHAS desta tabela, nunca soma esta coluna
+    // (src/lib/vendas/lancamento-pedido.ts). As duas colunas já se chamaram
+    // `quantidade` e a soma errada passou no type-check.
+    unidades: integer().notNull().default(0),
     // NOT NULL com default '0', ao contrário do faturamento das outras duas:
     // aqui o valor é sempre calculado dos itens, nunca "não informado".
     faturamento: numeric({ precision: 12, scale: 2 }).notNull().default('0'),

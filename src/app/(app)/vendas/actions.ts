@@ -41,7 +41,8 @@ export type VendaPedidoLinha = {
   orcamentoId: string
   numero: number
   cliente: string
-  quantidade: number
+  /** PEÇAS do pedido — nunca vendas. Cada pedido vale UMA venda no dia. */
+  unidades: number
   faturamento: string
 }
 
@@ -88,7 +89,7 @@ export async function obterVendaDoDia(data: string): Promise<VendaDia | null> {
         orcamentoId: vendasPedidos.orcamentoId,
         numero: vendasPedidos.numero,
         cliente: vendasPedidos.cliente,
-        quantidade: vendasPedidos.quantidade,
+        unidades: vendasPedidos.unidades,
         faturamento: vendasPedidos.faturamento,
       })
       .from(vendasPedidos)

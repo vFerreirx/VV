@@ -391,7 +391,7 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
                         {p.cliente}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {p.quantidade}
+                        {p.unidades}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {formatarReais(p.faturamento)}
@@ -404,8 +404,11 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
             <p className="text-muted-foreground mt-2 text-xs">
               Lançados automaticamente quando o pedido foi marcado como
               finalizado — valor dos produtos menos o desconto, sem o frete.
-              Já estão somados na linha &ldquo;Pedidos finalizados&rdquo; da
-              tabela acima; não são um valor a mais.
+              Cada pedido conta como UMA venda, de quantas peças for: os{' '}
+              {vendaDoDia!.pedidos.length} pedido(s) acima são{' '}
+              {vendaDoDia!.pedidos.length} na coluna Vendas. Já estão somados
+              na linha &ldquo;Pedidos finalizados&rdquo; da tabela; não são um
+              valor a mais.
             </p>
           </div>
         )}
@@ -546,7 +549,10 @@ function EditarDialog({
   // sem campo aqui. Só valem enquanto a data não muda: mudando o dia, o que
   // será preservado é o lançamento do OUTRO dia, que esta tela não conhece.
   const pedidos = dataEdit === data ? (venda?.pedidos ?? []) : []
-  const pedidosQtd = pedidos.reduce((s, p) => s + p.quantidade, 0)
+  // UMA VENDA POR PEDIDO, de quantas peças for — é `length`, não a soma de
+  // `unidades`. Os campos acima também são vendas, então os dois somam na
+  // mesma unidade de medida. Ver src/lib/vendas/lancamento-pedido.ts.
+  const pedidosQtd = pedidos.length
   const pedidosFat = pedidos.reduce((s, p) => s + Number(p.faturamento), 0)
 
   function salvar() {
@@ -672,9 +678,9 @@ function EditarDialog({
           <div className="text-sm leading-tight">
             {pedidos.length > 0 && (
               <div className="text-muted-foreground text-xs">
-                inclui {pedidos.length} pedido(s) finalizado(s):{' '}
+                inclui {pedidos.length} pedido(s) finalizado(s) ={' '}
                 <span className="tabular-nums">
-                  {pedidosQtd} un · {formatarReais(pedidosFat || null)}
+                  {pedidosQtd} venda(s) · {formatarReais(pedidosFat || null)}
                 </span>{' '}
                 — lançados pelo pedido, não editáveis aqui
               </div>

@@ -27,8 +27,21 @@
 // ─────────────────────────────────────────────────────────────────────────
 //
 // VALOR = produtos − desconto, SEM FRETE. Frete é repasse à transportadora;
-// somá-lo infla o faturamento do dia. QUANTIDADE = soma das quantidades dos
-// itens. Tudo em CENTAVOS INTEIROS, com os helpers de src/lib/total-pedido.ts.
+// somá-lo infla o faturamento do dia. Tudo em CENTAVOS INTEIROS, com os
+// helpers de src/lib/total-pedido.ts.
+//
+// ⚠️ UM PEDIDO É UMA VENDA, de quantas peças for.
+//
+// `vendas_marketplace.quantidade` conta VENDAS — a coluna da tela se chama
+// "Vendas", e uma conta do Mercado Livre com 196 no dia teve 196 PEDIDOS, não
+// 196 peças. Então a linha espelho conta LINHAS de `vendas_pedidos`, uma por
+// pedido, e NUNCA soma as peças: um pedido de 86 peças entraria no dia como
+// 86 vendas e o número da tela viraria outra coisa.
+//
+// As peças continuam guardadas, em `vendas_pedidos.unidades` — nome próprio
+// justamente porque as duas colunas já se chamaram `quantidade`, e a soma
+// errada passa no type-check e some no meio de um total plausível. É o
+// detalhe por pedido que a tela de vendas mostra.
 //
 // DIA = o dia em que foi finalizado, no fuso de BRASÍLIA
 // (`hojeEmBrasilia()`, nunca `new Date()` do servidor: a Vercel roda em UTC e
@@ -144,7 +157,7 @@ export async function sincronizarVendaDoPedido(
     .from(orcamentoItens)
     .where(eq(orcamentoItens.orcamentoId, orcamentoId))
 
-  const quantidade = itens.reduce((s, it) => s + it.quantidade, 0)
+  const unidades = itens.reduce((s, it) => s + it.quantidade, 0)
   const mercadoria = itens.reduce(
     (s, it) => s + it.quantidade * Number(it.precoUnitario),
     0,
@@ -168,7 +181,7 @@ export async function sincronizarVendaDoPedido(
         vendaId,
         numero: pedido.numero,
         cliente: pedido.cliente,
-        quantidade,
+        unidades,
         faturamento: reais(centavos),
       })
       .where(eq(vendasPedidos.id, lancado.id))
@@ -178,7 +191,7 @@ export async function sincronizarVendaDoPedido(
       orcamentoId,
       numero: pedido.numero,
       cliente: pedido.cliente,
-      quantidade,
+      unidades,
       faturamento: reais(centavos),
     })
   }
@@ -213,12 +226,13 @@ async function garantirVendaDoDia(tx: Tx, dia: string): Promise<string> {
 /**
  * Refaz os dois números derivados do dia, nesta ordem:
  *
- *   1. a linha ESPELHO 'atacado_pedidos' = soma de `vendas_pedidos` do dia;
+ *   1. a linha ESPELHO 'atacado_pedidos' = quantos PEDIDOS o dia tem (uma
+ *      venda por pedido, ver o cabeçalho) e a soma do faturamento deles;
  *   2. `vendas.quantidade` / `vendas.faturamento` = soma de TODAS as contas,
  *      que é o que as actions de vendas já fazem hoje.
  *
- * SOMA ZERO APAGA A LINHA ESPELHO em vez de gravar zero: uma conta zerada na
- * tabela por marketplace afirma "não vendemos nada por aqui hoje", e a
+ * NENHUM PEDIDO APAGA A LINHA ESPELHO em vez de gravar zero: uma conta zerada
+ * na tabela por marketplace afirma "não vendemos nada por aqui hoje", e a
  * afirmação aqui seria falsa — não houve pedido nenhum. Mesma regra do frete
  * e do desconto no documento do pedido (src/lib/total-pedido.ts).
  */
@@ -230,15 +244,17 @@ async function recalcularDia(tx: Tx, dia: string): Promise<void> {
     .limit(1)
   if (!venda) return
 
+  // `count(*)`, não `sum(unidades)`: um pedido é uma venda. As peças ficam em
+  // `vendas_pedidos.unidades` e não entram aqui — ver o cabeçalho.
   const [somaPedidos] = await tx
     .select({
-      quantidade: sql<number>`coalesce(sum(${vendasPedidos.quantidade}), 0)::int`,
+      pedidos: sql<number>`count(*)::int`,
       faturamento: sql<string>`coalesce(sum(${vendasPedidos.faturamento}), 0)`,
     })
     .from(vendasPedidos)
     .where(eq(vendasPedidos.vendaId, venda.id))
 
-  const qtdPedidos = somaPedidos?.quantidade ?? 0
+  const qtdPedidos = somaPedidos?.pedidos ?? 0
   const fatPedidos = Number(somaPedidos?.faturamento ?? 0)
 
   const espelho = and(
