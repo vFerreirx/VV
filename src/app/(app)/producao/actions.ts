@@ -48,6 +48,11 @@ export type KanbanCardData = {
   estacaoCor: string | null
   estacaoNome: string | null
   produzido: number
+  // Peças perdidas, somadas dos apontamentos. Irmã de `produzido` e vinda da
+  // mesma tabela — o painel do operador mostra as duas juntas, porque "142
+  // de 300 prontas" sem o refugo ao lado esconde a diferença entre uma OP
+  // rendendo bem e uma OP queimando material.
+  refugo: number
   dataPrevistaFim: Date | null
   atrasada: boolean
   // Quando a OP entrou no status atual (pra mostrar "tempo na etapa").
@@ -137,6 +142,15 @@ export async function listarOrdensProducao(
         FROM ${apontamentosProducao}
         WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
       )`,
+      // Espelha a subquery de cima, inclusive o `"ordens_producao"."id"`
+      // qualificado à mão — sem isso o Postgres correlaciona com o `id` da
+      // própria subquery e o refugo sai sempre 0, igual ao bug que o
+      // comentário acima descreve.
+      refugo: sql<number>`(
+        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeRefugo}), 0)::int
+        FROM ${apontamentosProducao}
+        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+      )`,
       // Última entrada no status atual (pra calcular tempo na etapa).
       desdeStatus: sql<string | null>`(
         SELECT MAX(${eventosKanban.createdAt})
@@ -205,6 +219,7 @@ export async function listarOrdensProducao(
       estacaoCorResp,
       estacaoNomeResp,
       produzido,
+      refugo,
       desdeStatus,
     }) => ({
       id: op.id,
@@ -231,6 +246,7 @@ export async function listarOrdensProducao(
       estacaoCor: estacaoCorMaq ?? estacaoCorResp ?? null,
       estacaoNome: estacaoNomeMaq ?? estacaoNomeResp ?? null,
       produzido: produzido ?? 0,
+      refugo: refugo ?? 0,
       dataPrevistaFim: op.dataPrevistaFim,
       atrasada:
         op.dataPrevistaFim !== null &&
