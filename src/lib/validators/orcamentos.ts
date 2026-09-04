@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { FORMAS_PAGAMENTO } from '@/lib/pagamento'
+
 // Preço unitário obrigatório (>= 0), aceita vírgula. Guardado como string
 // (numeric).
 const preco = z
@@ -77,6 +79,29 @@ export const orcamentoSchema = z.object({
     .refine(
       (v) => v === null || (!Number.isNaN(Number(v)) && Number(v) >= 0),
       'Valor de frete inválido',
+    )
+    .optional(),
+  // PAGAMENTO COMBINADO. As duas opcionais, e vazio vira `null` —
+  // "não informado", que é o que faz o documento não dizer nada sobre
+  // pagamento nem imprimir linha de desconto. Ver src/lib/pagamento.ts e
+  // src/lib/total-pedido.ts.
+  pagamentoForma: z
+    .union([z.enum(FORMAS_PAGAMENTO), z.literal(''), z.null(), z.undefined()])
+    .transform((v) => (v == null || v === '' ? null : v))
+    .optional(),
+  // Percentual, não reais: é o percentual que fica gravado (snapshot), e o
+  // dinheiro sai derivado da mercadoria na leitura. Guardado como string,
+  // igual ao `preco` acima, porque a coluna é numeric(5,2).
+  descontoPercentual: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((v) =>
+      v == null || String(v).trim() === '' ? null : String(v).replace(',', '.'),
+    )
+    .refine(
+      (v) =>
+        v === null ||
+        (!Number.isNaN(Number(v)) && Number(v) >= 0 && Number(v) <= 100),
+      'Desconto inválido (0 a 100%)',
     )
     .optional(),
   itens: z.array(orcamentoItemSchema).min(1, 'Adicione ao menos um item'),

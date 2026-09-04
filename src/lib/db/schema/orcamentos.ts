@@ -12,7 +12,7 @@ import {
 } from 'drizzle-orm/pg-core'
 
 import { compradores } from './compradores'
-import { orcamentoStatusEnum } from './enums'
+import { orcamentoStatusEnum, pagamentoFormaEnum } from './enums'
 import { kits } from './kits'
 import { produtos } from './produtos'
 
@@ -67,6 +67,21 @@ export const orcamentos = pgTable(
     freteValor: numeric({ precision: 12, scale: 2 }),
     fretePrazoDias: integer(),
     freteCotadoEm: timestamp({ withTimezone: true }),
+
+    // PAGAMENTO COMBINADO — snapshot, irmão do bloco de frete acima e do
+    // `preco_unitario` do item: é o que foi acertado com o cliente, não a
+    // política de desconto de hoje. Mudar o percentual praticado não pode
+    // reescrever sozinho um pedido já salvo.
+    //
+    // As duas colunas são OPCIONAIS e sem default: "não informado" é a
+    // ausência. Pedido antigo não afirma forma nenhuma, e desconto nulo é o
+    // que faz a linha não sair no documento (ver src/lib/total-pedido.ts).
+    //
+    // O que se grava é o PERCENTUAL, nunca o valor em reais — esse é sempre
+    // derivado da mercadoria, pelo mesmo motivo de não haver coluna de
+    // total. E ele morde SÓ os produtos: frete é custo repassado.
+    pagamentoForma: pagamentoFormaEnum(),
+    descontoPercentual: numeric({ precision: 5, scale: 2 }),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })

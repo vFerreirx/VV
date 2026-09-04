@@ -27,7 +27,13 @@ import {
 } from '@/lib/pedido-status'
 import { catalogoVazio, chavePeso, type CatalogoPesos } from '@/lib/peso'
 import { montarCatalogoSeparacao, type CatalogoSeparacao } from '@/lib/separacao'
-import { freteEmCentavos, totalComFrete } from '@/lib/total-pedido'
+import { ehFormaPagamento, type FormaPagamento } from '@/lib/pagamento'
+import {
+  descontoEmCentavos,
+  freteEmCentavos,
+  totalComFrete,
+  totalFinal,
+} from '@/lib/total-pedido'
 import { chave, chaveKit, decimalParaCentavos, tabelaVazia, type TabelaDePrecos } from '@/lib/preco'
 import { orcamentoSchema, type OrcamentoInput } from '@/lib/validators/orcamentos'
 
@@ -42,13 +48,19 @@ export type ActionResult<T = undefined> =
 // `total` é A MERCADORIA — soma de quantidade × preço dos itens, e só. Não
 // mude o sentido dele: é o que a cotação de frete usa pro valor declarado e o
 // que o romaneio imprime. Quem quer o valor que o cliente paga usa
-// `totalComFrete`, que é DERIVADO na leitura (não tem coluna no banco).
-// A regra inteira vive em src/lib/total-pedido.ts.
+// `totalFinal`; a coluna Total da lista usa `totalComFrete` (sem desconto).
+// Os três são DERIVADOS na leitura — nenhum tem coluna no banco, e o que se
+// grava do desconto é o PERCENTUAL. A regra inteira vive em
+// src/lib/total-pedido.ts.
 
 export type OrcamentoListItem = Orcamento & {
   itensCount: number
   total: number
   totalComFrete: number
+  /** Quanto o desconto tira, em reais. 0 quando não há percentual. */
+  desconto: number
+  /** Mercadoria − desconto + frete: o que o cliente paga. */
+  totalFinal: number
   /** Peças marcadas como faltantes na via de separação (0 = nenhuma). */
   faltantes: number
 }
@@ -57,6 +69,8 @@ export type OrcamentoComItens = Orcamento & {
   itens: OrcamentoItem[]
   total: number
   totalComFrete: number
+  desconto: number
+  totalFinal: number
 }
 
 export async function listarOrcamentos(): Promise<OrcamentoListItem[]> {
@@ -104,6 +118,8 @@ export async function listarOrcamentos(): Promise<OrcamentoListItem[]> {
       itensCount: m.get(o.id)?.itens ?? 0,
       total,
       totalComFrete: totalComFrete(total, o.freteValor),
+      desconto: descontoEmCentavos(total, o.descontoPercentual) / 100,
+      totalFinal: totalFinal(total, o.freteValor, o.descontoPercentual),
       faltantes: f.get(o.id) ?? 0,
     }
   })
@@ -125,7 +141,14 @@ export async function obterOrcamento(id: string): Promise<OrcamentoComItens | nu
     .orderBy(asc(orcamentoItens.createdAt))
 
   const total = itens.reduce((s, it) => s + it.quantidade * Number(it.precoUnitario), 0)
-  return { ...o, itens, total, totalComFrete: totalComFrete(total, o.freteValor) }
+  return {
+    ...o,
+    itens,
+    total,
+    totalComFrete: totalComFrete(total, o.freteValor),
+    desconto: descontoEmCentavos(total, o.descontoPercentual) / 100,
+    totalFinal: totalFinal(total, o.freteValor, o.descontoPercentual),
+  }
 }
 
 export type OrcamentoParaRomaneio = OrcamentoComItens & {
@@ -354,6 +377,10 @@ export async function criarOrcamentoAction(
         // sem prazo, sem `cotadoEm`). É essa ausência que a tela lê pra dizer
         // "informado à mão" em vez de "cotado" — ver `procedenciaLimpa`.
         freteValor: data.freteValor ?? null,
+        // PAGAMENTO COMBINADO. Nulo é "não informado" e é o caso comum —
+        // ver src/lib/pagamento.ts.
+        pagamentoForma: data.pagamentoForma ?? null,
+        descontoPercentual: data.descontoPercentual ?? null,
       })
       .returning({ id: orcamentos.id })
 
@@ -425,6 +452,11 @@ export async function atualizarOrcamentoAction(
         compradorId: data.compradorId ?? null,
         observacao: data.observacao ?? null,
         freteValor: data.freteValor ?? null,
+        // FORA do `procedenciaLimpa`: pagamento e cotação são coisas
+        // independentes. Trocar de Pix pra boleto não desfaz a cotação que
+        // produziu o frete, e mexer no desconto muito menos.
+        pagamentoForma: data.pagamentoForma ?? null,
+        descontoPercentual: data.descontoPercentual ?? null,
         ...(trocouOFrete ? procedenciaLimpa : {}),
       })
       .where(eq(orcamentos.id, id))
@@ -498,4 +530,61 @@ export async function mudarStatusOrcamentoAction(
     success: true,
     message: `Marcado como ${ROTULO_STATUS[destino].toLowerCase()}`,
   }
+}
+
+// Define a FORMA DE PAGAMENTO e o DESCONTO À VISTA do pedido (painel da tela
+// do pedido). Irmã da `mudarStatusOrcamentoAction` acima: ação pontual, fora
+// do diálogo de edição — quem já combinou o pagamento não precisa reabrir o
+// pedido inteiro pra registrar isso.
+//
+// `null` nos dois campos é LIMPAR (voltar a "não informado"), e é operação
+// legítima: alguém marcou Pix por engano e desmarca.
+//
+// O `ehFormaPagamento` daqui não é redundante com o tipo do parâmetro: server
+// action recebe o que o cliente mandar, e `FormaPagamento` é promessa de
+// compilação, não do runtime. O mesmo vale pro percentual — a faixa 0–100 é
+// validada aqui e no CHECK do banco (51_pagamento_pedido.sql).
+export async function definirPagamentoAction(
+  id: string,
+  pagamento: {
+    forma: FormaPagamento | null
+    descontoPercentual: string | number | null
+  },
+): Promise<ActionResult> {
+  await requireAreaEscrita('vendas')
+
+  if (pagamento.forma !== null && !ehFormaPagamento(pagamento.forma)) {
+    return { success: false, error: 'Forma de pagamento inválida' }
+  }
+
+  // Vazio vira null — "sem desconto" —, nunca zero gravado: é a AUSÊNCIA que
+  // faz a linha não sair no documento.
+  const bruto =
+    pagamento.descontoPercentual == null ||
+    String(pagamento.descontoPercentual).trim() === ''
+      ? null
+      : Number(String(pagamento.descontoPercentual).replace(',', '.'))
+
+  if (bruto !== null && (!Number.isFinite(bruto) || bruto < 0 || bruto > 100)) {
+    return { success: false, error: 'Desconto inválido (0 a 100%)' }
+  }
+
+  const [atual] = await db
+    .select({ id: orcamentos.id })
+    .from(orcamentos)
+    .where(and(eq(orcamentos.id, id), isNull(orcamentos.deletedAt)))
+    .limit(1)
+  if (!atual) return { success: false, error: 'Pedido não encontrado' }
+
+  await db
+    .update(orcamentos)
+    .set({
+      pagamentoForma: pagamento.forma,
+      descontoPercentual: bruto === null ? null : bruto.toFixed(2),
+    })
+    .where(eq(orcamentos.id, id))
+
+  revalidatePath('/pedidos')
+  revalidatePath(`/pedidos/${id}`)
+  return { success: true, message: 'Pagamento salvo no pedido' }
 }

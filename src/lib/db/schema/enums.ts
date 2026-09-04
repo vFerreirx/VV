@@ -71,6 +71,19 @@ export const movimentacaoTipoEnum = pgEnum('movimentacao_tipo', [
   'devolucao',
 ])
 
+// Forma de pagamento combinada no pedido. OPCIONAL na tabela: "não
+// informado" é a AUSÊNCIA (null), não um valor daqui — pedido antigo não
+// afirma forma nenhuma. A ordem é a ordem interna do enum no Postgres
+// (`supabase/sql/51_pagamento_pedido.sql`) e precisa bater com
+// `FORMAS_PAGAMENTO` em src/lib/pagamento.ts, que é onde mora a regra e a
+// ordem de exibição.
+export const pagamentoFormaEnum = pgEnum('pagamento_forma', [
+  'pix',
+  'cartao',
+  'boleto',
+  'cheque',
+])
+
 // Status do pedido. Qualquer um vira qualquer outro — a ordem aqui NÃO é
 // fluxo, é só a ordem interna do enum no Postgres
 // (`supabase/sql/41_orcamento_status.sql` e `42_orcamento_status_cancelado.sql`),

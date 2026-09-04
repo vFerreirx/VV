@@ -7,6 +7,7 @@ import { listarFaltantes } from '../faltantes-actions'
 import { obterSituacaoFrete } from '../frete-actions'
 import { FretePainel } from './frete-painel'
 import { OrcamentoDoc } from './orcamento-doc'
+import { PagamentoPainel } from './pagamento-painel'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
@@ -74,6 +75,17 @@ export default async function OrcamentoPage({
         empresa={empresa}
         pesos={pesos}
         faltantes={faltantes.reduce((s, f) => s + f.quantidade, 0)}
+      />
+      {/* Entre o documento e o frete: é o que foi COMBINADO com o cliente
+          (forma e desconto), enquanto o painel abaixo cota o custo do envio.
+          O desconto sai daqui e não encosta no frete. */}
+      <PagamentoPainel
+        orcamentoId={orcamento.id}
+        totalMercadoria={orcamento.total}
+        freteValor={orcamento.freteValor}
+        forma={orcamento.pagamentoForma}
+        descontoPercentual={orcamento.descontoPercentual}
+        podeEditar={podeEditar}
       />
       <FretePainel
         orcamentoId={orcamento.id}

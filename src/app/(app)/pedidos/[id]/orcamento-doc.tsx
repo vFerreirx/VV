@@ -32,7 +32,8 @@ import {
   formatarKg,
   type ResumoPeso,
 } from '@/lib/peso'
-import { temFrete } from '@/lib/total-pedido'
+import { ROTULO_FORMA } from '@/lib/pagamento'
+import { temDesconto, temFrete } from '@/lib/total-pedido'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 function reais(v: number): string {
@@ -55,6 +56,18 @@ export function OrcamentoDoc({
 }) {
   const aviso = avisoSemPeso(pesos.itensSemPeso)
   const comFrete = temFrete(orcamento.freteValor)
+  const comDesconto = temDesconto(orcamento.descontoPercentual)
+  // O rodapé vira NOTA DISCRIMINADA quando existe qualquer linha entre o
+  // subtotal e o total. Sem desconto e sem frete ele continua sendo a linha
+  // única "Total" de sempre.
+  const comLinhaExtra = comDesconto || comFrete
+  // "Desconto Pix (5%)" quando a forma é pix; sem forma pix o desconto
+  // existe do mesmo jeito, e cravar "Pix" ali seria afirmar um meio de
+  // pagamento que ninguém escolheu.
+  const rotuloDesconto = `Desconto${
+    orcamento.pagamentoForma === 'pix' ? ' Pix' : ''
+  } (${Number(orcamento.descontoPercentual)
+    .toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%)`
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 print:space-y-4">
@@ -122,6 +135,14 @@ export function OrcamentoDoc({
               locale: ptBR,
             })}
           </div>
+          {/* SÓ QUANDO INFORMADA. Sem forma escolhida o documento não diz
+              nada sobre pagamento — "Pagamento — não informado" seria uma
+              linha a explicar numa via que vai pro cliente. */}
+          {orcamento.pagamentoForma && (
+            <div className="text-muted-foreground mt-1">
+              Pagamento — {ROTULO_FORMA[orcamento.pagamentoForma]}
+            </div>
+          )}
         </div>
       </div>
 
@@ -192,17 +213,25 @@ export function OrcamentoDoc({
               </TableRow>
             ))}
           </TableBody>
-          {/* FORMATO DE NOTA quando há frete: subtotal dos produtos, frete e
-              total. É o papel que vai pro cliente — um total maior que a soma
-              dos itens, sem a linha que explica, gera ligação.
+          {/* FORMATO DE NOTA quando há desconto ou frete: subtotal dos
+              produtos, as linhas que explicam, e o total. É o papel que vai
+              pro cliente — um total diferente da soma dos itens, sem a linha
+              que explica, gera ligação.
 
-              SEM FRETE INFORMADO A LINHA NÃO SAI, e o rodapé volta a ser o de
-              sempre (uma linha "Total"). "Frete R$ 0,00" seria uma afirmação
-              — leria como "por nossa conta" —, e ninguém disse isso. */}
+              O QUE NÃO FOI INFORMADO NÃO SAI, e sem nenhuma das duas o rodapé
+              volta a ser o de sempre (uma linha "Total"). "Frete R$ 0,00"
+              leria como "por nossa conta" e "Desconto R$ 0,00" como
+              "negociamos e não houve" — duas afirmações que ninguém fez.
+
+              CADA LINHA DAQUI TEM AS CINCO CÉLULAS, com a de peso
+              `print:hidden`: a coluna de peso é só de tela (ver o colgroup
+              lá em cima), e uma célula a menos desalinha a nota inteira. */}
           <TableFooter>
             <TableRow>
-              <TableCell className={comFrete ? 'font-medium' : 'font-semibold'}>
-                {comFrete ? 'Subtotal produtos' : 'Total'}
+              <TableCell
+                className={comLinhaExtra ? 'font-medium' : 'font-semibold'}
+              >
+                {comLinhaExtra ? 'Subtotal produtos' : 'Total'}
               </TableCell>
               <TableCell className="text-right font-semibold tabular-nums">
                 {orcamento.itens
@@ -215,7 +244,7 @@ export function OrcamentoDoc({
               <TableCell />
               <TableCell
                 className={
-                  comFrete
+                  comLinhaExtra
                     ? 'text-right tabular-nums'
                     : 'text-right text-base font-semibold tabular-nums'
                 }
@@ -223,27 +252,41 @@ export function OrcamentoDoc({
                 {reais(orcamento.total)}
               </TableCell>
             </TableRow>
+            {/* Desconto ANTES do frete, e negativo: ele mordeu o subtotal
+                logo acima e não encosta no frete logo abaixo. A ordem das
+                linhas é a própria conta. */}
+            {comDesconto && (
+              <TableRow>
+                <TableCell className="font-medium">{rotuloDesconto}</TableCell>
+                <TableCell />
+                <TableCell className="print:hidden" />
+                <TableCell />
+                <TableCell className="text-right tabular-nums">
+                  −{reais(orcamento.desconto)}
+                </TableCell>
+              </TableRow>
+            )}
             {comFrete && (
-              <>
-                <TableRow>
-                  <TableCell className="font-medium">Frete</TableCell>
-                  <TableCell />
-                  <TableCell className="print:hidden" />
-                  <TableCell />
-                  <TableCell className="text-right tabular-nums">
-                    {reais(Number(orcamento.freteValor))}
-                  </TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-semibold">Total</TableCell>
-                  <TableCell />
-                  <TableCell className="print:hidden" />
-                  <TableCell />
-                  <TableCell className="text-right text-base font-semibold tabular-nums">
-                    {reais(orcamento.totalComFrete)}
-                  </TableCell>
-                </TableRow>
-              </>
+              <TableRow>
+                <TableCell className="font-medium">Frete</TableCell>
+                <TableCell />
+                <TableCell className="print:hidden" />
+                <TableCell />
+                <TableCell className="text-right tabular-nums">
+                  {reais(Number(orcamento.freteValor))}
+                </TableCell>
+              </TableRow>
+            )}
+            {comLinhaExtra && (
+              <TableRow>
+                <TableCell className="font-semibold">Total</TableCell>
+                <TableCell />
+                <TableCell className="print:hidden" />
+                <TableCell />
+                <TableCell className="text-right text-base font-semibold tabular-nums">
+                  {reais(orcamento.totalFinal)}
+                </TableCell>
+              </TableRow>
             )}
           </TableFooter>
         </Table>

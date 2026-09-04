@@ -31,7 +31,13 @@ import {
 import type { CompradorOpcao } from '../clientes/actions'
 import type { KitComItens } from '../kits/actions'
 import type { ProdutoComVariacoesParaForm } from '../ordens/actions'
-import { freteEmCentavos, temFrete, totalComFrete } from '@/lib/total-pedido'
+import {
+  descontoEmCentavos,
+  freteEmCentavos,
+  temDesconto,
+  temFrete,
+  totalFinal,
+} from '@/lib/total-pedido'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -78,6 +84,12 @@ import {
 } from '@/lib/kit-tamanhos'
 import { ehExcecao, ROTULO_STATUS, statusAlcancaveis, type StatusPedido } from '@/lib/pedido-status'
 import { centavosParaMoeda, precoDeKit, precoDeProduto, type TabelaDePrecos } from '@/lib/preco'
+import {
+  DESCONTO_PIX_PADRAO,
+  FORMAS_PAGAMENTO,
+  ROTULO_FORMA,
+  type FormaPagamento,
+} from '@/lib/pagamento'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 
 type Props = {
@@ -297,7 +309,12 @@ export function OrcamentosView({
                         <TableCell className="text-right tabular-nums">{o.itensCount}</TableCell>
                         {/* COM frete, e sem coluna separada pra ele — foi
                             decidido assim. `o.total` (mercadoria) continua
-                            existindo pra quem precisa dele. */}
+                            existindo pra quem precisa dele.
+
+                            E SEM O DESCONTO, também de propósito: esta coluna
+                            é `totalComFrete` e não `o.totalFinal`. Não é bug
+                            — o documento do pedido é que mostra o que o
+                            cliente paga. */}
                         <TableCell className="text-right font-medium tabular-nums">
                           {reais(o.totalComFrete)}
                         </TableCell>
@@ -466,6 +483,17 @@ function OrcamentoDialog({
   // (na tela do pedido) é ATALHO — a cotação escolhida preenche esta mesma
   // coluna, e digitar por cima é o caso normal, não uma exceção.
   const [frete, setFrete] = useState(dados?.freteValor ? decimalParaMoeda(dados.freteValor) : '')
+  // PAGAMENTO COMBINADO. Os dois opcionais: `null`/'' é "não informado", que
+  // é o que faz o documento não dizer nada sobre pagamento nem imprimir linha
+  // de desconto. Ver src/lib/pagamento.ts.
+  const [pagamentoForma, setPagamentoForma] = useState<FormaPagamento | null>(
+    dados?.pagamentoForma ?? null,
+  )
+  const [desconto, setDesconto] = useState(
+    dados?.descontoPercentual == null
+      ? ''
+      : String(Number(dados.descontoPercentual)).replace('.', ','),
+  )
   const [itens, setItens] = useState<LinhaItem[]>(() =>
     dados
       ? dados.itens.map((it) => ({
@@ -511,9 +539,23 @@ function OrcamentoDialog({
     0,
   )
   // `total` continua sendo A MERCADORIA; o que o cliente paga é derivado.
-  // Mesma regra do servidor — src/lib/total-pedido.ts.
+  // Mesma regra do servidor — src/lib/total-pedido.ts. O número daqui tem que
+  // ser o MESMO do documento: um total no diálogo diferente do total impresso
+  // é o tipo de divergência que só aparece na frente do cliente.
   const freteDecimal = moedaParaDecimal(frete)
-  const totalGeral = totalComFrete(total, freteDecimal)
+  const descontoDecimal = desconto === '' ? null : desconto.replace(',', '.')
+  const descontoReais = descontoEmCentavos(total, descontoDecimal) / 100
+  const totalGeral = totalFinal(total, freteDecimal, descontoDecimal)
+
+  // Escolher Pix sugere o desconto padrão SÓ COM O CAMPO VAZIO, e trocar de
+  // forma nunca apaga o que já foi digitado: quem negociou 7% no Pix, ou 5%
+  // no boleto, não pode ver a tela desfazer isso.
+  function escolherForma(f: FormaPagamento | null) {
+    setPagamentoForma(f)
+    if (f === 'pix' && desconto.trim() === '') {
+      setDesconto(String(DESCONTO_PIX_PADRAO))
+    }
+  }
 
   // O valor gravado veio de uma cotação enquanto a procedência estiver lá E o
   // campo ainda mostrar aquele mesmo número. Editou, virou digitado — e a
@@ -549,6 +591,9 @@ function OrcamentoDialog({
         // Campo vazio vira null — "sem frete informado", que é o que faz a
         // linha não sair no documento do cliente. Nunca zero.
         freteValor: freteDecimal || null,
+        // Mesma regra: vazio vira null — "não informado" —, nunca zero.
+        pagamentoForma,
+        descontoPercentual: descontoDecimal,
         itens: itensLimpos,
       }
       const result = isEdit
@@ -790,12 +835,73 @@ function OrcamentoDialog({
                 />
               </div>
             </div>
-            {/* Discriminado: um total maior que a soma dos itens sem
-                explicação vira ligação do cliente. */}
+            {/* PAGAMENTO COMBINADO, ao lado do frete porque é a mesma
+                pergunta: quanto o cliente paga, e como. Escolher Pix sugere
+                os 5% quando o campo está vazio — e só nesse caso. */}
+            <div className="space-y-1.5">
+              <Label htmlFor="orc-pagamento" className="text-xs">
+                Pagamento <span className="text-muted-foreground font-normal">(opcional)</span>
+              </Label>
+              <Select
+                // O token `SEM` é o "não informado": o Base UI precisa de uma
+                // string, e a ausência é o valor `null` que vai pro banco.
+                value={pagamentoForma ?? SEM}
+                onValueChange={(v) => {
+                  if (!v) return
+                  escolherForma(v === SEM ? null : (v as FormaPagamento))
+                }}
+                disabled={isPending}
+              >
+                <SelectTrigger id="orc-pagamento" className="h-9 w-36">
+                  <SelectValue placeholder="Não informado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={SEM}>Não informado</SelectItem>
+                  {FORMAS_PAGAMENTO.map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {ROTULO_FORMA[f]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="orc-desconto" className="text-xs">
+                Desconto <span className="text-muted-foreground font-normal">(opcional)</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  id="orc-desconto"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={desconto}
+                  onChange={(e) =>
+                    setDesconto(e.target.value.replace(/[^\d,.]/g, '').replace('.', ','))
+                  }
+                  disabled={isPending}
+                  className="h-9 w-24 pr-7 text-right tabular-nums"
+                />
+                <span className="text-muted-foreground pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs">
+                  %
+                </span>
+              </div>
+            </div>
+            {/* Discriminado: um total diferente da soma dos itens sem
+                explicação vira ligação do cliente. E é o MESMO número do
+                documento — se divergirem, a divergência aparece na frente do
+                cliente. */}
             <div className="pb-1 text-sm leading-tight">
               <div className="text-muted-foreground text-xs">
                 {totalUnidades.toLocaleString('pt-BR')} un · produtos{' '}
                 <span className="tabular-nums">{reais(total)}</span>
+                {temDesconto(descontoDecimal) && (
+                  <>
+                    {' · desconto '}
+                    <span className="tabular-nums text-emerald-700 dark:text-emerald-400">
+                      −{reais(descontoReais)} ({desconto}%)
+                    </span>
+                  </>
+                )}
                 {temFrete(freteDecimal) && (
                   <>
                     {' · frete '}
