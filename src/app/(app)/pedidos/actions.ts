@@ -27,6 +27,7 @@ import {
 } from '@/lib/pedido-status'
 import { catalogoVazio, chavePeso, type CatalogoPesos } from '@/lib/peso'
 import { montarCatalogoSeparacao, type CatalogoSeparacao } from '@/lib/separacao'
+import { sincronizarVendaDoPedido } from '@/lib/vendas/lancamento-pedido'
 import { ehFormaPagamento, type FormaPagamento } from '@/lib/pagamento'
 import {
   descontoEmCentavos,
@@ -353,6 +354,13 @@ export async function listarPrecosRecentes(): Promise<Record<string, string>> {
 // Criar / atualizar / excluir
 // -----------------------------------------------------------------
 
+// A venda do dia mudou por tabela: as duas telas que a leem precisam
+// recarregar. Fica junto porque três actions repetem o par.
+function revalidarVendas() {
+  revalidatePath('/vendas')
+  revalidatePath('/relatorios')
+}
+
 export async function criarOrcamentoAction(
   input: OrcamentoInput,
 ): Promise<ActionResult<{ id: string }>> {
@@ -444,7 +452,7 @@ export async function atualizarOrcamentoAction(
     freteCepDestino: null,
   }
 
-  await db.transaction(async (tx) => {
+  const diaAfetado = await db.transaction(async (tx) => {
     await tx
       .update(orcamentos)
       .set({
@@ -475,10 +483,21 @@ export async function atualizarOrcamentoAction(
         kitComponentes: it.componentes ?? null,
       })),
     )
+
+    // O pedido FINALIZADO já virou venda do dia. Editar preço ou quantidade
+    // tem que refletir lá — senão o número do dia fica desatualizado em
+    // silêncio, que é pior do que não lançar.
+    //
+    // `criar: false`: editar ATUALIZA um lançamento existente, nunca cria um.
+    // Um pedido finalizado ANTES desta funcionalidade não tem lançamento, e
+    // criar um aqui o dataria de HOJE — venda de setembro caindo em outubro
+    // porque alguém corrigiu uma descrição. Quem cria é a mudança de status.
+    return sincronizarVendaDoPedido(tx, id, { criar: false })
   })
 
   revalidatePath('/pedidos')
   revalidatePath(`/pedidos/${id}`)
+  if (diaAfetado) revalidarVendas()
   return { success: true, message: 'Pedido atualizado' }
 }
 
@@ -491,9 +510,21 @@ export async function excluirOrcamentoAction(id: string): Promise<ActionResult> 
     .limit(1)
   if (!atual) return { success: false, error: 'Pedido não encontrado' }
 
-  await db.update(orcamentos).set({ deletedAt: new Date() }).where(eq(orcamentos.id, id))
+  // Transação porque são duas escritas que não podem ficar meio feitas:
+  // excluir o pedido e tirar a venda dele do dia. Um pedido excluído que
+  // continuasse somando no faturamento é o pior dos dois estados.
+  const diaAfetado = await db.transaction(async (tx) => {
+    await tx
+      .update(orcamentos)
+      .set({ deletedAt: new Date() })
+      .where(eq(orcamentos.id, id))
+    // `criar: false` pela mesma razão da edição: excluir só REMOVE lançamento
+    // que já existe. Nunca cria.
+    return sincronizarVendaDoPedido(tx, id, { criar: false })
+  })
 
   revalidatePath('/pedidos')
+  if (diaAfetado) revalidarVendas()
   return { success: true, message: 'Pedido excluído' }
 }
 
@@ -523,12 +554,29 @@ export async function mudarStatusOrcamentoAction(
   const recusa = erroDeTransicao(atual.status, destino)
   if (recusa) return { success: false, error: recusa }
 
-  await db.update(orcamentos).set({ status: destino }).where(eq(orcamentos.id, id))
+  // É AQUI QUE A VENDA ENTRA. Transação porque o status e o lançamento
+  // contam a mesma história: um pedido gravado como finalizado sem a venda do
+  // dia (ou o contrário) seria uma divergência que só apareceria no
+  // fechamento do mês.
+  const diaAfetado = await db.transaction(async (tx) => {
+    await tx
+      .update(orcamentos)
+      .set({ status: destino })
+      .where(eq(orcamentos.id, id))
+    return sincronizarVendaDoPedido(tx, id)
+  })
 
   revalidatePath('/pedidos')
+  revalidatePath(`/pedidos/${id}`)
+  if (diaAfetado) revalidarVendas()
+
+  const rotulo = ROTULO_STATUS[destino].toLowerCase()
   return {
     success: true,
-    message: `Marcado como ${ROTULO_STATUS[destino].toLowerCase()}`,
+    message:
+      destino === 'finalizado' && diaAfetado
+        ? `Marcado como ${rotulo} — venda lançada no dia`
+        : `Marcado como ${rotulo}`,
   }
 }
 

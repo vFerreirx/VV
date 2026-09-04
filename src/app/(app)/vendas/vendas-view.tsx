@@ -7,6 +7,7 @@ import {
   Pencil,
   Plus,
 } from 'lucide-react'
+import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Fragment, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -34,10 +35,12 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 import {
   CONTAS_MARKETPLACE,
   MARKETPLACE_LABEL,
   MARKETPLACES_AGRUPADOS,
+  contaEhManual,
   marketplaceDaConta,
   type ContaKey,
   type Marketplace,
@@ -350,6 +353,63 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
           </div>
         )}
 
+        {/* PEDIDOS FINALIZADOS — o DETALHE da linha "Vendas Atacado /
+            Pedidos finalizados" da tabela acima, não uma soma a mais. As
+            duas são o mesmo dinheiro visto de dois jeitos; somar as duas
+            contaria a venda duas vezes. A frase abaixo diz isso na tela
+            porque o leitor não tem como saber olhando os números.
+
+            Só leitura: quem escreve estas linhas é o pedido, ao ser marcado
+            como finalizado (src/lib/vendas/lancamento-pedido.ts). */}
+        {(vendaDoDia?.pedidos.length ?? 0) > 0 && (
+          <div className="mt-6 border-t pt-4">
+            <div className="text-muted-foreground mb-2 text-xs tracking-wide uppercase">
+              Pedidos finalizados
+            </div>
+            <div className="overflow-x-auto rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Pedido</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead className="text-right">Unidades</TableHead>
+                    <TableHead className="text-right">Valor</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {vendaDoDia!.pedidos.map((p) => (
+                    <TableRow key={p.orcamentoId}>
+                      <TableCell className="font-medium tabular-nums">
+                        <Link
+                          href={`/pedidos/${p.orcamentoId}`}
+                          className="hover:underline"
+                        >
+                          nº {formatarNumeroPedido(p.numero)}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {p.cliente}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {p.quantidade}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatarReais(p.faturamento)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-muted-foreground mt-2 text-xs">
+              Lançados automaticamente quando o pedido foi marcado como
+              finalizado — valor dos produtos menos o desconto, sem o frete.
+              Já estão somados na linha &ldquo;Pedidos finalizados&rdquo; da
+              tabela acima; não são um valor a mais.
+            </p>
+          </div>
+        )}
+
         {vendaDoDia?.observacao && (
           <p className="text-muted-foreground mt-4 text-sm">
             {vendaDoDia.observacao}
@@ -446,8 +506,14 @@ function EditarDialog({
   if (open && abertoPara !== data) {
     setAbertoPara(data)
     setDataEdit(data)
+    // SÓ AS CONTAS MANUAIS entram nos campos. A linha espelho dos pedidos
+    // finalizados ('atacado_pedidos') não tem input nenhum aqui — carregá-la
+    // faria o total do rodapé contar um valor que não aparece em campo
+    // algum, e o `salvar()` a devolveria pra uma action que a descarta.
+    // Ela entra no total logo abaixo, como linha própria e não editável.
     const init: Record<string, CampoConta> = {}
     for (const c of venda?.contas ?? []) {
+      if (!contaEhManual(c.conta)) continue
       init[c.conta] = {
         q: c.quantidade ? String(c.quantidade) : '',
         f: decimalParaMoeda(c.faturamento),
@@ -474,6 +540,14 @@ function EditarDialog({
     (s, v) => s + Number(moedaParaDecimal(v.f) ?? 0),
     0,
   )
+
+  // Os pedidos finalizados do dia sobrevivem a este salvamento (a action
+  // preserva a linha espelho), então eles fazem parte do total do dia mesmo
+  // sem campo aqui. Só valem enquanto a data não muda: mudando o dia, o que
+  // será preservado é o lançamento do OUTRO dia, que esta tela não conhece.
+  const pedidos = dataEdit === data ? (venda?.pedidos ?? []) : []
+  const pedidosQtd = pedidos.reduce((s, p) => s + p.quantidade, 0)
+  const pedidosFat = pedidos.reduce((s, p) => s + Number(p.faturamento), 0)
 
   function salvar() {
     const contas = Object.entries(valores)
@@ -595,13 +669,26 @@ function EditarDialog({
         </div>
 
         <DialogFooter className="flex-row items-center justify-between border-t p-6 sm:justify-between">
-          <div className="text-sm">
-            <span className="text-muted-foreground">Total: </span>
-            <span className="font-semibold tabular-nums">{totalQtd} vendas</span>
-            <span className="text-muted-foreground"> · </span>
-            <span className="font-semibold tabular-nums">
-              {formatarReais(totalFat || null)}
-            </span>
+          <div className="text-sm leading-tight">
+            {pedidos.length > 0 && (
+              <div className="text-muted-foreground text-xs">
+                inclui {pedidos.length} pedido(s) finalizado(s):{' '}
+                <span className="tabular-nums">
+                  {pedidosQtd} un · {formatarReais(pedidosFat || null)}
+                </span>{' '}
+                — lançados pelo pedido, não editáveis aqui
+              </div>
+            )}
+            <div>
+              <span className="text-muted-foreground">Total: </span>
+              <span className="font-semibold tabular-nums">
+                {totalQtd + pedidosQtd} vendas
+              </span>
+              <span className="text-muted-foreground"> · </span>
+              <span className="font-semibold tabular-nums">
+                {formatarReais(totalFat + pedidosFat || null)}
+              </span>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose} disabled={isPending}>

@@ -11,6 +11,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
+import { orcamentos } from './orcamentos'
 import { users } from './users'
 
 // Resumo de vendas POR DIA: total de unidades vendidas + faturamento do
@@ -78,3 +79,53 @@ export const vendasMarketplace = pgTable(
 
 export type VendaMarketplace = typeof vendasMarketplace.$inferSelect
 export type NewVendaMarketplace = typeof vendasMarketplace.$inferInsert
+
+// PEDIDOS FINALIZADOS lançados como venda do dia — o DETALHE, uma linha por
+// pedido, com o número dele.
+//
+// Existe separada de `vendasMarketplace` por dois motivos que se somam:
+// aquela tabela é apagada e regravada inteira a cada salvamento manual do dia
+// (ver vendas/actions.ts), e a chave dela é (venda, conta), sem lugar pro
+// número do pedido.
+//
+// O DINHEIRO não está aqui: ele entra no total do dia pela linha ESPELHO em
+// `vendasMarketplace`, na conta 'atacado_pedidos', que é a soma destas
+// linhas. As duas são o MESMO dinheiro visto de dois jeitos — somar as duas
+// contaria a venda duas vezes. A regra inteira vive em
+// src/lib/vendas/lancamento-pedido.ts.
+//
+// `numero` e `cliente` são SNAPSHOT: a venda de setembro não pode mudar de
+// nome porque alguém corrigiu o cadastro do cliente em outubro.
+export const vendasPedidos = pgTable(
+  'vendas_pedidos',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    vendaId: uuid()
+      .notNull()
+      .references(() => vendas.id, { onDelete: 'cascade' }),
+    orcamentoId: uuid()
+      .notNull()
+      .references(() => orcamentos.id, { onDelete: 'cascade' }),
+    numero: integer().notNull(),
+    cliente: text().notNull(),
+    quantidade: integer().notNull().default(0),
+    // NOT NULL com default '0', ao contrário do faturamento das outras duas:
+    // aqui o valor é sempre calculado dos itens, nunca "não informado".
+    faturamento: numeric({ precision: 12, scale: 2 }).notNull().default('0'),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => sql`now()`),
+  },
+  (table) => [
+    index('vendas_pedidos_venda_idx').on(table.vendaId),
+    // Um pedido nunca lança duas vezes — é o que torna re-finalizar
+    // idempotente.
+    uniqueIndex('vendas_pedidos_orcamento_uidx').on(table.orcamentoId),
+  ],
+)
+
+export type VendaPedido = typeof vendasPedidos.$inferSelect
+export type NewVendaPedido = typeof vendasPedidos.$inferInsert

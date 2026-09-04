@@ -31,6 +31,22 @@ export const CONTAS_MARKETPLACE = [
   { key: 'temu', marketplace: 'temu', label: 'Temu' },
   { key: 'amazon', marketplace: 'amazon', label: 'Amazon' },
   { key: 'atacado_5', marketplace: 'vendas_atacado', label: 'Conta 5' },
+  // A CONTA AUTOMÁTICA dos pedidos finalizados. `ativo: false` a esconde do
+  // formulário manual e da resolução do CSV (ver `contaEhManual` abaixo):
+  // ninguém digita nela, quem escreve é
+  // src/lib/vendas/lancamento-pedido.ts.
+  //
+  // NO FIM DO ARRAY de propósito: a tendência colore as contas pelo ÍNDICE
+  // daqui (`CORES[i % CORES.length]` em
+  // src/components/charts/marketplace-tendencia.tsx), então inserir no meio
+  // trocaria a cor de todas as contas seguintes de um gráfico que as pessoas
+  // já leem de cor.
+  {
+    key: 'atacado_pedidos',
+    marketplace: 'vendas_atacado',
+    label: 'Pedidos finalizados',
+    ativo: false,
+  },
 ] as const satisfies ReadonlyArray<{
   key: string
   marketplace: Marketplace
@@ -49,6 +65,24 @@ export function marketplaceDaConta(key: string): Marketplace | null {
   return CONTAS_MARKETPLACE.find((c) => c.key === key)?.marketplace ?? null
 }
 
+/**
+ * A conta aceita lançamento à MÃO?
+ *
+ * `ativo: false` marca conta que só o sistema escreve — hoje a
+ * 'atacado_pedidos', alimentada pelos pedidos finalizados. A distinção mora
+ * aqui e é consultada nos TRÊS lugares que precisam dela: o formulário do
+ * dia (agrupamento abaixo), a resolução de conta do CSV
+ * (src/lib/vendas/importar-csv.ts) e o filtro da action que salva o dia.
+ * Se divergirem, ou a conta automática aparece pra digitação, ou uma
+ * importação que hoje funciona para de resolver.
+ */
+export function contaEhManual(key: string): boolean {
+  const c = CONTAS_MARKETPLACE.find((x) => x.key === key) as
+    | { ativo?: boolean }
+    | undefined
+  return c !== undefined && c.ativo !== false
+}
+
 // Marketplaces/contas ATIVOS pro registro manual (esconde contas inativas,
 // como a Amazon, e marketplaces que ficaram sem nenhuma conta ativa).
 export const MARKETPLACES_AGRUPADOS = (
@@ -58,7 +92,7 @@ export const MARKETPLACES_AGRUPADOS = (
     marketplace: m,
     label: MARKETPLACE_LABEL[m],
     contas: CONTAS_MARKETPLACE.filter(
-      (c) => c.marketplace === m && (c as { ativo?: boolean }).ativo !== false,
+      (c) => c.marketplace === m && contaEhManual(c.key),
     ),
   }))
   .filter((g) => g.contas.length > 0)

@@ -8,6 +8,7 @@
 import {
   CONTAS_MARKETPLACE,
   MARKETPLACE_LABEL,
+  contaEhManual,
   type ContaKey,
   type Marketplace,
 } from '@/lib/validators/vendas'
@@ -146,7 +147,17 @@ function resolverConta(
     alerta: discorda ? `${discorda} — entrou em ${rotuloConta(conta)}` : null,
   })
 
-  const candidatos = CONTAS_MARKETPLACE.filter((c) => c.marketplace === mk)
+  // SÓ AS CONTAS MANUAIS entram como candidatas. A 'atacado_pedidos' é
+  // escrita pelo sistema (pedidos finalizados) e não pode ser destino de
+  // linha de CSV — mas o motivo de o filtro existir é outro, e mais sutil:
+  // sem ele, `vendas_atacado` deixaria de ter conta ÚNICA, o atalho logo
+  // abaixo pararia de valer e "Vendas Atacado / <qualquer texto>", que hoje
+  // resolve direto pra Conta 5, passaria a exigir "Conta N" no arquivo.
+  // Importação que funciona hoje quebraria por causa de uma conta que o
+  // usuário nem vê.
+  const candidatos = CONTAS_MARKETPLACE.filter(
+    (c) => c.marketplace === mk && contaEhManual(c.key),
+  )
   // Marketplaces de conta única (tiktok/temu): casa direto.
   if (candidatos.length === 1) return aceita(candidatos[0].key)
   if (candidatos.length > 1) {

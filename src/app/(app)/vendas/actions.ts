@@ -1,18 +1,20 @@
 'use server'
 
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull, ne } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { vendas, vendasMarketplace } from '@/lib/db/schema'
+import { vendas, vendasMarketplace, vendasPedidos } from '@/lib/db/schema'
 import {
+  contaEhManual,
   marketplaceDaConta,
   vendaDiaSchema,
   type VendaDiaInput,
 } from '@/lib/validators/vendas'
+import { CONTA_PEDIDOS } from '@/lib/vendas/lancamento-pedido'
 import { parseVendasCSV, type ResultadoImport } from '@/lib/vendas/importar-csv'
 
 export type ActionResult<T = undefined> =
@@ -28,6 +30,21 @@ export type VendaContaLinha = {
   faturamento: string | null
 }
 
+/**
+ * Um pedido finalizado lançado no dia.
+ *
+ * ⚠️ É O DETALHE da linha 'atacado_pedidos' que já está em `contas`, não uma
+ * parcela a mais: as duas são o MESMO dinheiro visto de dois jeitos. Somar as
+ * duas conta a venda duas vezes. Ver src/lib/vendas/lancamento-pedido.ts.
+ */
+export type VendaPedidoLinha = {
+  orcamentoId: string
+  numero: number
+  cliente: string
+  quantidade: number
+  faturamento: string
+}
+
 export type VendaDia = {
   id: string
   data: string
@@ -35,6 +52,7 @@ export type VendaDia = {
   faturamento: string | null
   observacao: string | null
   contas: VendaContaLinha[]
+  pedidos: VendaPedidoLinha[]
 }
 
 // -----------------------------------------------------------------
@@ -56,16 +74,29 @@ export async function obterVendaDoDia(data: string): Promise<VendaDia | null> {
     .limit(1)
   if (!row) return null
 
-  const contas = await db
-    .select({
-      conta: vendasMarketplace.conta,
-      quantidade: vendasMarketplace.quantidade,
-      faturamento: vendasMarketplace.faturamento,
-    })
-    .from(vendasMarketplace)
-    .where(eq(vendasMarketplace.vendaId, row.id))
+  const [contas, pedidos] = await Promise.all([
+    db
+      .select({
+        conta: vendasMarketplace.conta,
+        quantidade: vendasMarketplace.quantidade,
+        faturamento: vendasMarketplace.faturamento,
+      })
+      .from(vendasMarketplace)
+      .where(eq(vendasMarketplace.vendaId, row.id)),
+    db
+      .select({
+        orcamentoId: vendasPedidos.orcamentoId,
+        numero: vendasPedidos.numero,
+        cliente: vendasPedidos.cliente,
+        quantidade: vendasPedidos.quantidade,
+        faturamento: vendasPedidos.faturamento,
+      })
+      .from(vendasPedidos)
+      .where(eq(vendasPedidos.vendaId, row.id))
+      .orderBy(vendasPedidos.numero),
+  ])
 
-  return { ...row, contas }
+  return { ...row, contas, pedidos }
 }
 
 // Últimos N dias com venda registrada (pra lista de referência).
@@ -83,7 +114,7 @@ export async function listarVendasRecentes(limit = 14): Promise<VendaDia[]> {
     .where(isNull(vendas.deletedAt))
     .orderBy(desc(vendas.data))
     .limit(limit)
-  return linhas.map((l) => ({ ...l, contas: [] }))
+  return linhas.map((l) => ({ ...l, contas: [], pedidos: [] }))
 }
 
 // -----------------------------------------------------------------
@@ -105,7 +136,13 @@ export async function salvarVendaDiaAction(
   const d = parsed.data
 
   // Só guarda contas com alguma venda (quantidade ou faturamento).
+  //
+  // A conta AUTOMÁTICA ('atacado_pedidos') é descartada aqui: o formulário
+  // não a mostra, mas a action recebe o que o cliente mandar, e um insert
+  // nela colidiria com o único (venda_id, conta) da linha espelho que o
+  // delete logo abaixo preserva de propósito.
   const contas = d.contas
+    .filter((c) => contaEhManual(c.conta))
     .map((c) => {
       const marketplace = marketplaceDaConta(c.conta)
       return marketplace
@@ -122,11 +159,13 @@ export async function salvarVendaDiaAction(
         c !== null && (c.quantidade > 0 || c.faturamento !== null),
     )
 
-  // Totais do dia = soma das contas.
+  // Totais do dia = soma das contas DIGITADAS mais a linha espelho dos
+  // pedidos finalizados, que este formulário não edita e nem vê. A soma dela
+  // entra dentro da transação, logo abaixo, porque só lá se sabe se o dia já
+  // existe.
   const totalQuantidade = contas.reduce((s, c) => s + c.quantidade, 0)
   const somaFaturamento = contas.reduce((s, c) => s + Number(c.faturamento ?? 0), 0)
   const temFaturamento = contas.some((c) => c.faturamento !== null)
-  const totalFaturamento = temFaturamento ? somaFaturamento.toFixed(2) : null
 
   await db.transaction(async (tx) => {
     const [existente] = await tx
@@ -135,13 +174,45 @@ export async function salvarVendaDiaAction(
       .where(and(eq(vendas.data, d.data), isNull(vendas.deletedAt)))
       .limit(1)
 
+    // A LINHA ESPELHO DOS PEDIDOS SOBREVIVE AO SALVAMENTO MANUAL.
+    //
+    // Ela é escrita por src/lib/vendas/lancamento-pedido.ts a partir dos
+    // pedidos finalizados do dia, e não tem representação no formulário. O
+    // delete abaixo a exclui e o total a soma de volta — sem as duas coisas,
+    // salvar o dia à mão zerava as vendas dos pedidos em silêncio.
+    const espelho = existente
+      ? (
+          await tx
+            .select({
+              quantidade: vendasMarketplace.quantidade,
+              faturamento: vendasMarketplace.faturamento,
+            })
+            .from(vendasMarketplace)
+            .where(
+              and(
+                eq(vendasMarketplace.vendaId, existente.id),
+                eq(vendasMarketplace.conta, CONTA_PEDIDOS),
+              ),
+            )
+            .limit(1)
+        )[0]
+      : undefined
+
+    const qtdEspelho = espelho?.quantidade ?? 0
+    const fatEspelho = Number(espelho?.faturamento ?? 0)
+    const totalQtd = totalQuantidade + qtdEspelho
+    const totalFaturamento =
+      temFaturamento || espelho !== undefined
+        ? (somaFaturamento + fatEspelho).toFixed(2)
+        : null
+
     let vendaId: string
     if (existente) {
       vendaId = existente.id
       await tx
         .update(vendas)
         .set({
-          quantidade: totalQuantidade,
+          quantidade: totalQtd,
           faturamento: totalFaturamento,
           observacao: d.observacao ?? null,
           usuarioId: user.id,
@@ -149,13 +220,18 @@ export async function salvarVendaDiaAction(
         .where(eq(vendas.id, vendaId))
       await tx
         .delete(vendasMarketplace)
-        .where(eq(vendasMarketplace.vendaId, vendaId))
+        .where(
+          and(
+            eq(vendasMarketplace.vendaId, vendaId),
+            ne(vendasMarketplace.conta, CONTA_PEDIDOS),
+          ),
+        )
     } else {
       const [nova] = await tx
         .insert(vendas)
         .values({
           data: d.data,
-          quantidade: totalQuantidade,
+          quantidade: totalQtd,
           faturamento: totalFaturamento,
           observacao: d.observacao ?? null,
           usuarioId: user.id,
@@ -228,6 +304,11 @@ export async function importarVendasCSVAction(
   await db.transaction(async (tx) => {
     for (const dia of dias) {
       const contas = dia.contas
+        // A conta automática dos pedidos não vem de arquivo nenhum — o
+        // parser nem a resolve (ver `contaEhManual` em importar-csv.ts). O
+        // filtro aqui é o cinto: sem ele, um CSV forjado colidiria com a
+        // linha espelho que o delete abaixo preserva.
+        .filter((c) => contaEhManual(c.conta))
         .map((c) => {
           const marketplace = marketplaceDaConta(c.conta)
           return marketplace
@@ -246,17 +327,42 @@ export async function importarVendasCSVAction(
       if (contas.length === 0) continue
       totalContas += contas.length
 
-      const totalQtd = contas.reduce((s, c) => s + c.quantidade, 0)
+      const somaQtd = contas.reduce((s, c) => s + c.quantidade, 0)
       const temFat = contas.some((c) => Number(c.faturamento) > 0)
-      const totalFat = temFat
-        ? contas.reduce((s, c) => s + Number(c.faturamento), 0).toFixed(2)
-        : null
+      const somaFat = contas.reduce((s, c) => s + Number(c.faturamento), 0)
 
       const [existente] = await tx
         .select({ id: vendas.id })
         .from(vendas)
         .where(and(eq(vendas.data, dia.data), isNull(vendas.deletedAt)))
         .limit(1)
+
+      // Mesma regra do salvamento manual: a linha espelho dos pedidos
+      // finalizados não vem do arquivo, sobrevive ao delete e volta pro
+      // total. Ver src/lib/vendas/lancamento-pedido.ts.
+      const espelho = existente
+        ? (
+            await tx
+              .select({
+                quantidade: vendasMarketplace.quantidade,
+                faturamento: vendasMarketplace.faturamento,
+              })
+              .from(vendasMarketplace)
+              .where(
+                and(
+                  eq(vendasMarketplace.vendaId, existente.id),
+                  eq(vendasMarketplace.conta, CONTA_PEDIDOS),
+                ),
+              )
+              .limit(1)
+          )[0]
+        : undefined
+
+      const totalQtd = somaQtd + (espelho?.quantidade ?? 0)
+      const totalFat =
+        temFat || espelho !== undefined
+          ? (somaFat + Number(espelho?.faturamento ?? 0)).toFixed(2)
+          : null
 
       let vendaId: string
       if (existente) {
@@ -271,7 +377,12 @@ export async function importarVendasCSVAction(
           .where(eq(vendas.id, vendaId))
         await tx
           .delete(vendasMarketplace)
-          .where(eq(vendasMarketplace.vendaId, vendaId))
+          .where(
+            and(
+              eq(vendasMarketplace.vendaId, vendaId),
+              ne(vendasMarketplace.conta, CONTA_PEDIDOS),
+            ),
+          )
       } else {
         const [nova] = await tx
           .insert(vendas)
