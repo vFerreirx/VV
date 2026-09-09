@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { CONTA_ATACADO_MANUAL, CONTA_ATACADO_PEDIDOS } from '@/lib/vendas/contas'
+
 // -----------------------------------------------------------------
 // Catálogo de marketplaces e contas
 // -----------------------------------------------------------------
@@ -30,19 +32,18 @@ export const CONTAS_MARKETPLACE = [
   { key: 'tiktok', marketplace: 'tiktok', label: 'TikTok' },
   { key: 'temu', marketplace: 'temu', label: 'Temu' },
   { key: 'amazon', marketplace: 'amazon', label: 'Amazon' },
-  { key: 'atacado_5', marketplace: 'vendas_atacado', label: 'Conta 5' },
+  // Uma conta VISÍVEL, duas origens de gravação. A soma de exibição vive em
+  // vendas/contas.ts; os campos manuais continuam gravando na chave legada.
+  { key: CONTA_ATACADO_MANUAL, marketplace: 'vendas_atacado', label: 'Pedidos finalizados' },
   // A CONTA AUTOMÁTICA dos pedidos finalizados. `ativo: false` a esconde do
   // formulário manual e da resolução do CSV (ver `contaEhManual` abaixo):
   // ninguém digita nela, quem escreve é
   // src/lib/vendas/lancamento-pedido.ts.
   //
-  // NO FIM DO ARRAY de propósito: a tendência colore as contas pelo ÍNDICE
-  // daqui (`CORES[i % CORES.length]` em
-  // src/components/charts/marketplace-tendencia.tsx), então inserir no meio
-  // trocaria a cor de todas as contas seguintes de um gráfico que as pessoas
-  // já leem de cor.
+  // O catálogo guarda as duas origens para a validação das actions. As
+  // leituras do diário, mensal e tendência consolidam ambas na chave abaixo.
   {
-    key: 'atacado_pedidos',
+    key: CONTA_ATACADO_PEDIDOS,
     marketplace: 'vendas_atacado',
     label: 'Pedidos finalizados',
     ativo: false,

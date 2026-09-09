@@ -20,7 +20,6 @@ import {
   type OrcamentoItem,
 } from '@/lib/db/schema'
 import {
-  ehStatusPedido,
   erroDeTransicao,
   ROTULO_STATUS,
   type StatusPedido,
@@ -36,7 +35,11 @@ import {
   totalFinal,
 } from '@/lib/total-pedido'
 import { chave, chaveKit, decimalParaCentavos, tabelaVazia, type TabelaDePrecos } from '@/lib/preco'
-import { orcamentoSchema, type OrcamentoInput } from '@/lib/validators/orcamentos'
+import {
+  mudarStatusPedidoSchema,
+  orcamentoSchema,
+  type OrcamentoInput,
+} from '@/lib/validators/orcamentos'
 
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
@@ -532,39 +535,53 @@ export async function excluirOrcamentoAction(id: string): Promise<ActionResult> 
 // quem decide o que vale é src/lib/pedido-status.ts — o mesmo módulo que monta
 // o menu na tela, pra que ela nunca ofereça algo que aqui é recusado.
 //
-// O `ehStatusPedido` daqui não é redundante com o tipo do parâmetro: server
-// action recebe o que o cliente mandar, e `destino: StatusPedido` é promessa
-// de compilação, não do runtime.
+// Finalizar exige a data confirmada na tela. A validação também acontece aqui:
+// uma chamada direta sem data não pode lançar dinheiro em hoje por omissão.
 export async function mudarStatusOrcamentoAction(
   id: string,
   destino: StatusPedido,
+  dataVenda?: string,
 ): Promise<ActionResult> {
   await requireAreaEscrita('vendas')
-  if (!ehStatusPedido(destino)) {
-    return { success: false, error: 'Status inválido' }
+  const parsed = mudarStatusPedidoSchema.safeParse({ id, destino, dataVenda })
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos' }
   }
-
-  const [atual] = await db
-    .select({ id: orcamentos.id, status: orcamentos.status })
-    .from(orcamentos)
-    .where(and(eq(orcamentos.id, id), isNull(orcamentos.deletedAt)))
-    .limit(1)
-  if (!atual) return { success: false, error: 'Pedido não encontrado' }
-
-  const recusa = erroDeTransicao(atual.status, destino)
-  if (recusa) return { success: false, error: recusa }
+  const data = parsed.data
 
   // É AQUI QUE A VENDA ENTRA. Transação porque o status e o lançamento
   // contam a mesma história: um pedido gravado como finalizado sem a venda do
   // dia (ou o contrário) seria uma divergência que só apareceria no
   // fechamento do mês.
-  const diaAfetado = await db.transaction(async (tx) => {
+  const resultado = await db.transaction(async (tx) => {
+    // A confirmação pode chegar de duas abas. Conferir o status com a linha
+    // travada faz a segunda enxergar a primeira e impede lançar duas vezes.
+    const [atual] = await tx
+      .select({ id: orcamentos.id, status: orcamentos.status })
+      .from(orcamentos)
+      .where(and(eq(orcamentos.id, data.id), isNull(orcamentos.deletedAt)))
+      .limit(1)
+      .for('update')
+    if (!atual) return { success: false, error: 'Pedido não encontrado' } as const
+
+    const recusa = erroDeTransicao(atual.status, data.destino)
+    if (recusa) return { success: false, error: recusa } as const
+
     await tx
       .update(orcamentos)
-      .set({ status: destino })
-      .where(eq(orcamentos.id, id))
-    return sincronizarVendaDoPedido(tx, id)
+      .set({ status: data.destino })
+      .where(eq(orcamentos.id, data.id))
+    const dia = await sincronizarVendaDoPedido(
+      tx,
+      data.id,
+      data.destino === 'finalizado'
+        ? { criar: true, dataVenda: data.dataVenda }
+        : { criar: false },
+    )
+    return { success: true, dia } as const
   })
+  if (!resultado.success) return resultado
+  const diaAfetado = resultado.dia
 
   revalidatePath('/pedidos')
   revalidatePath(`/pedidos/${id}`)
@@ -575,7 +592,7 @@ export async function mudarStatusOrcamentoAction(
     success: true,
     message:
       destino === 'finalizado' && diaAfetado
-        ? `Marcado como ${rotulo} — venda lançada no dia`
+        ? `Marcado como ${rotulo} — venda registrada em ${diaAfetado.split('-').reverse().join('/')}`
         : `Marcado como ${rotulo}`,
   }
 }
@@ -624,15 +641,21 @@ export async function definirPagamentoAction(
     .limit(1)
   if (!atual) return { success: false, error: 'Pedido não encontrado' }
 
-  await db
-    .update(orcamentos)
-    .set({
-      pagamentoForma: pagamento.forma,
-      descontoPercentual: bruto === null ? null : bruto.toFixed(2),
-    })
-    .where(eq(orcamentos.id, id))
+  const diaAfetado = await db.transaction(async (tx) => {
+    await tx
+      .update(orcamentos)
+      .set({
+        pagamentoForma: pagamento.forma,
+        descontoPercentual: bruto === null ? null : bruto.toFixed(2),
+      })
+      .where(eq(orcamentos.id, id))
+    // O painel altera o mesmo desconto da edição completa: a venda precisa
+    // acompanhar o valor, mantendo a data escolhida e sem criar venda legada.
+    return sincronizarVendaDoPedido(tx, id, { criar: false })
+  })
 
   revalidatePath('/pedidos')
   revalidatePath(`/pedidos/${id}`)
+  if (diaAfetado) revalidarVendas()
   return { success: true, message: 'Pagamento salvo no pedido' }
 }

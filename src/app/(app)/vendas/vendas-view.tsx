@@ -35,6 +35,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { somarContasParaExibicao } from '@/lib/vendas/contas'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 import {
   CONTAS_MARKETPLACE,
@@ -129,12 +130,12 @@ const ORDEM_CONTA: Record<string, number> = Object.fromEntries(
 // Agrupa as contas do dia por marketplace (na ordem do catálogo), com
 // subtotal por marketplace — mesmo formato da aba Mensal.
 function agruparContasDoDia(venda: VendaDia | null) {
-  const linhas = (venda?.contas ?? []).map((c) => ({
-    conta: c.conta,
-    marketplace: marketplaceDaConta(c.conta),
-    quantidade: c.quantidade,
-    faturamento: Number(c.faturamento ?? 0),
-  }))
+  const linhas = somarContasParaExibicao(
+    (venda?.contas ?? []).map((c) => ({
+      ...c,
+      marketplace: marketplaceDaConta(c.conta) ?? '',
+    })),
+  ).map((c) => ({ ...c, faturamento: Number(c.faturamento ?? 0) }))
   return ORDEM_MK.map((mk) => {
     const contas = linhas
       .filter((c) => c.marketplace === mk)
@@ -353,11 +354,9 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
           </div>
         )}
 
-        {/* PEDIDOS FINALIZADOS — o DETALHE da linha "Vendas Atacado /
-            Pedidos finalizados" da tabela acima, não uma soma a mais. As
-            duas são o mesmo dinheiro visto de dois jeitos; somar as duas
-            contaria a venda duas vezes. A frase abaixo diz isso na tela
-            porque o leitor não tem como saber olhando os números.
+        {/* DETALHE dos pedidos que compõem parte da conta "Pedidos
+            finalizados". A conta também pode conter vendas manuais; este
+            bloco não é uma segunda parcela a somar no total.
 
             Só leitura: quem escreve estas linhas é o pedido, ao ser marcado
             como finalizado (src/lib/vendas/lancamento-pedido.ts). */}
@@ -615,6 +614,12 @@ function EditarDialog({
           {MARKETPLACES_AGRUPADOS.map((grupo) => (
             <div key={grupo.marketplace} className="space-y-2">
               <div className="text-sm font-semibold">{grupo.label}</div>
+              {grupo.marketplace === 'vendas_atacado' && (
+                <p className="text-muted-foreground text-xs">
+                  Informe somente vendas ainda não lançadas por um pedido. Os
+                  pedidos finalizados são somados automaticamente a esta conta.
+                </p>
+              )}
               <div className="space-y-2">
                 {grupo.contas.map((conta) => {
                   const v = valores[conta.key] ?? { q: '', f: '' }

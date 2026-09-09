@@ -75,6 +75,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import { cn } from '@/lib/utils'
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   chaveDeTamanhos,
   componentesVariaveis,
@@ -1555,6 +1556,9 @@ function StatusBadge({
   podeEditar: boolean
 }) {
   const [isPending, startTransition] = useTransition()
+  const [confirmandoFinalizacao, setConfirmandoFinalizacao] = useState(false)
+  const [dataVenda, setDataVenda] = useState('')
+  const [erroFinalizacao, setErroFinalizacao] = useState<string | null>(null)
   const atual = orcamento.status
   // Mesma função que a action usa pra validar — a tela nunca oferece um
   // destino que o servidor vai recusar.
@@ -1564,20 +1568,40 @@ function StatusBadge({
   const etapas = opcoes.filter((s) => !ehExcecao(s))
   const excecoes = opcoes.filter((s) => ehExcecao(s))
 
-  function mudarPara(destino: StatusPedido) {
+  function mudarPara(destino: StatusPedido, dia?: string) {
     startTransition(async () => {
-      const result = await mudarStatusOrcamentoAction(orcamento.id, destino)
-      if (!result.success) {
-        toast.error(result.error)
-        return
+      try {
+        const result = await mudarStatusOrcamentoAction(orcamento.id, destino, dia)
+        if (!result.success) {
+          if (destino === 'finalizado') setErroFinalizacao(result.error)
+          else toast.error(result.error)
+          return
+        }
+        setConfirmandoFinalizacao(false)
+        toast.success(result.message ?? 'Atualizado')
+      } catch {
+        const erro = 'Não foi possível confirmar a alteração. Atualize a lista para conferir o pedido antes de tentar novamente.'
+        if (destino === 'finalizado') setErroFinalizacao(erro)
+        else toast.error(erro)
       }
-      toast.success(result.message ?? 'Atualizado')
     })
+  }
+
+  function escolherStatus(destino: StatusPedido) {
+    if (destino === 'finalizado') {
+      // Abrir a pergunta não altera o pedido. O dia é sugerido NO CLIQUE,
+      // porque a lista pode ter ficado aberta desde antes da meia-noite.
+      setDataVenda(hojeEmBrasilia())
+      setErroFinalizacao(null)
+      setConfirmandoFinalizacao(true)
+      return
+    }
+    mudarPara(destino)
   }
 
   function Item({ s }: { s: StatusPedido }) {
     return (
-      <DropdownMenuItem onClick={() => mudarPara(s)}>
+      <DropdownMenuItem onClick={() => escolherStatus(s)}>
         <span className={cn('size-2 rounded-full', ESTILO_STATUS[s].ponto)} aria-hidden />
         {ROTULO_STATUS[s]}
       </DropdownMenuItem>
@@ -1593,29 +1617,93 @@ function StatusBadge({
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        disabled={isPending}
-        title="Mudar status do pedido"
-        className={cn(
-          PILULA,
-          'inline-flex items-center gap-0.5 transition-colors',
-          ESTILO_STATUS[atual].pilula,
-          isPending ? 'opacity-60' : 'hover:opacity-70',
-        )}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          disabled={isPending}
+          title="Mudar status do pedido"
+          className={cn(
+            PILULA,
+            'inline-flex items-center gap-0.5 transition-colors',
+            ESTILO_STATUS[atual].pilula,
+            isPending ? 'opacity-60' : 'hover:opacity-70',
+          )}
+        >
+          {ROTULO_STATUS[atual]}
+          <ChevronDown className="size-3 opacity-60" aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-auto">
+          {etapas.map((s) => (
+            <Item key={s} s={s} />
+          ))}
+          {etapas.length > 0 && excecoes.length > 0 && <DropdownMenuSeparator />}
+          {excecoes.map((s) => (
+            <Item key={s} s={s} />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <Dialog
+        open={confirmandoFinalizacao}
+        disablePointerDismissal
+        onOpenChange={(open) => {
+          // Durante a gravação, fechar pareceria cancelar algo que o servidor
+          // já está confirmando. Antes de confirmar, fechar só descarta a escolha.
+          if (!isPending) setConfirmandoFinalizacao(open)
+        }}
       >
-        {ROTULO_STATUS[atual]}
-        <ChevronDown className="size-3 opacity-60" aria-hidden />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-auto">
-        {etapas.map((s) => (
-          <Item key={s} s={s} />
-        ))}
-        {etapas.length > 0 && excecoes.length > 0 && <DropdownMenuSeparator />}
-        {excecoes.map((s) => (
-          <Item key={s} s={s} />
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <DialogContent showCloseButton={!isPending}>
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (isPending) return
+              setErroFinalizacao(null)
+              mudarPara('finalizado', dataVenda)
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>
+                Finalizar pedido nº {formatarNumeroPedido(orcamento.numero)}
+              </DialogTitle>
+              <DialogDescription>Em qual data registrar esta venda?</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor={`data-venda-${orcamento.id}`}>Data da venda</Label>
+              <Input
+                id={`data-venda-${orcamento.id}`}
+                type="date"
+                required
+                value={dataVenda}
+                disabled={isPending}
+                aria-invalid={erroFinalizacao !== null}
+                aria-describedby={erroFinalizacao ? `erro-finalizacao-${orcamento.id}` : undefined}
+                onChange={(event) => {
+                  setDataVenda(event.target.value)
+                  setErroFinalizacao(null)
+                }}
+              />
+              {erroFinalizacao && (
+                <p id={`erro-finalizacao-${orcamento.id}`} role="alert" className="text-destructive text-sm">
+                  {erroFinalizacao}
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending}
+                onClick={() => setConfirmandoFinalizacao(false)}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" loading={isPending} disabled={isPending || !dataVenda}>
+                Confirmar finalização
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

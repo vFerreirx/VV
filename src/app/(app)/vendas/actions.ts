@@ -255,6 +255,7 @@ export async function salvarVendaDiaAction(
   })
 
   revalidatePath('/vendas')
+  revalidatePath('/relatorios')
   return { success: true, message: 'Vendas do dia salvas' }
 }
 
@@ -270,6 +271,7 @@ export async function excluirVendaDiaAction(
     .where(and(eq(vendas.id, id), isNull(vendas.deletedAt)))
 
   revalidatePath('/vendas')
+  revalidatePath('/relatorios')
   return { success: true, message: 'Registro removido' }
 }
 
@@ -410,6 +412,7 @@ export async function importarVendasCSVAction(
   })
 
   revalidatePath('/vendas')
+  revalidatePath('/relatorios')
   return {
     success: true,
     data: { dias: dias.length, contas: totalContas },

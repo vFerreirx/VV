@@ -5,6 +5,7 @@ import { and, eq, gte, isNull, lt, lte, sql } from 'drizzle-orm'
 import { requireArea } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { vendas, vendasMarketplace } from '@/lib/db/schema'
+import { contaParaExibicao, somarContasParaExibicao } from '@/lib/vendas/contas'
 
 export type RelatorioMensal = {
   inicio: string
@@ -94,10 +95,15 @@ export async function obterRelatorioPeriodo(
       dias: num(aggVendas[0]?.dias),
       ticketMedio: unidades > 0 ? faturamento / unidades : 0,
     },
-    porConta: porContaRows.map((r) => ({
+    porConta: somarContasParaExibicao(porContaRows.map((r) => ({
       conta: r.conta,
       marketplace: r.marketplace,
-      unidades: num(r.unidades),
+      quantidade: num(r.unidades),
+      faturamento: r.faturamento,
+    }))).map((r) => ({
+      conta: r.conta,
+      marketplace: r.marketplace,
+      unidades: r.quantidade,
       faturamento: num(r.faturamento),
     })),
     porDia: porDiaRows.map((r) => ({
@@ -155,18 +161,23 @@ export async function obterTendenciaPeriodo(
     )
     .groupBy(vendas.data, vendasMarketplace.conta)
 
-  // data -> conta -> valor ; e total por conta
+  // Consolida a mesma conta visível do diário/mensal. Duas origens no mesmo
+  // dia precisam SOMAR: atribuir direto perderia a primeira delas no gráfico.
+  // Faturamento fica em centavos até a montagem final dos pontos.
+  const escala = metrica === 'faturamento' ? 100 : 1
   const porDia = new Map<string, Record<string, number>>()
   const totalPorConta = new Map<string, number>()
   for (const r of rows) {
-    const v = num(r.valor)
+    const conta = contaParaExibicao(r.conta)
+    const v = Math.round(num(r.valor) * escala)
     if (!porDia.has(r.data)) porDia.set(r.data, {})
-    porDia.get(r.data)![r.conta] = v
-    totalPorConta.set(r.conta, (totalPorConta.get(r.conta) ?? 0) + v)
+    const dia = porDia.get(r.data)!
+    dia[conta] = (dia[conta] ?? 0) + v
+    totalPorConta.set(conta, (totalPorConta.get(conta) ?? 0) + v)
   }
 
   const contas = [...totalPorConta.entries()]
-    .map(([key, total]) => ({ key, total }))
+    .map(([key, total]) => ({ key, total: total / escala }))
     .sort((a, b) => b.total - a.total)
 
   // Enumera todos os dias do período (preenchendo zeros).
@@ -177,7 +188,7 @@ export async function obterTendenciaPeriodo(
     const [, mm, dd] = iso.split('-')
     const doDia = porDia.get(iso) ?? {}
     const ponto: PontoTendencia = { label: `${dd}/${mm}` }
-    for (const c of contas) ponto[c.key] = doDia[c.key] ?? 0
+    for (const c of contas) ponto[c.key] = (doDia[c.key] ?? 0) / escala
     pontos.push(ponto)
     cur.setDate(cur.getDate() + 1)
   }

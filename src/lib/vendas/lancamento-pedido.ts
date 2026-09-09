@@ -43,13 +43,15 @@
 // errada passa no type-check e some no meio de um total plausível. É o
 // detalhe por pedido que a tela de vendas mostra.
 //
-// DIA = o dia em que foi finalizado, no fuso de BRASÍLIA
-// (`hojeEmBrasilia()`, nunca `new Date()` do servidor: a Vercel roda em UTC e
-// finalizar às 21h30 cairia no dia seguinte — ver src/lib/dia-brasil.ts).
+// DIA = a data ESCOLHIDA ao confirmar a finalização. A tela sugere hoje em
+// BRASÍLIA (`hojeEmBrasilia()`), mas quem confirma pode registrar a venda em
+// outro dia. Aqui a data já vem validada pela action, como 'YYYY-MM-DD'.
 //
 // E o dia NÃO MUDA depois. Editar em outubro um pedido finalizado em setembro
 // atualiza o valor da venda de SETEMBRO; mover o dinheiro de mês porque
 // alguém corrigiu um preço reescreveria um fechamento já conferido.
+// Sair de finalizado remove o lançamento; ao finalizar novamente, a tela
+// pede outra escolha. Não existe registro separado da primeira data.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // SEM 'use server' DE PROPÓSITO
@@ -60,7 +62,6 @@
 
 import { and, eq, isNull, sql } from 'drizzle-orm'
 
-import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import type { db as Db } from '@/lib/db'
 import {
   orcamentoItens,
@@ -70,12 +71,19 @@ import {
   vendasPedidos,
 } from '@/lib/db/schema'
 import { descontoEmCentavos } from '@/lib/total-pedido'
+import { CONTA_ATACADO_PEDIDOS } from '@/lib/vendas/contas'
 
 /** A transação do Drizzle — o único jeito de chamar a sincronização. */
 type Tx = Parameters<Parameters<typeof Db.transaction>[0]>[0]
 
+// Criar exige uma data explícita; atualizar não recebe data. Isso impede que
+// uma edição comum, ou um chamador novo, lance dinheiro em "hoje" por omissão.
+type OpcoesLancamento =
+  | { criar: true; dataVenda: string }
+  | { criar: false; dataVenda?: never }
+
 /** A conta ESPELHO. Escrita só por aqui; ver src/lib/validators/vendas.ts. */
-export const CONTA_PEDIDOS = 'atacado_pedidos'
+export const CONTA_PEDIDOS = CONTA_ATACADO_PEDIDOS
 const MARKETPLACE_PEDIDOS = 'vendas_atacado'
 
 const reais = (centavos: number) => (centavos / 100).toFixed(2)
@@ -103,7 +111,7 @@ const reais = (centavos: number) => (centavos / 100).toFixed(2)
 export async function sincronizarVendaDoPedido(
   tx: Tx,
   orcamentoId: string,
-  { criar = true }: { criar?: boolean } = {},
+  { criar, dataVenda }: OpcoesLancamento,
 ): Promise<string | null> {
   const [pedido] = await tx
     .select({
@@ -167,8 +175,10 @@ export async function sincronizarVendaDoPedido(
     Math.round(mercadoria * 100) -
     descontoEmCentavos(mercadoria, pedido.descontoPercentual)
 
-  // O dia do lançamento existente vence o de hoje — ver o cabeçalho.
-  const dia = lancado?.dia ?? hojeEmBrasilia()
+  // Uma correção preserva o dia do lançamento; só o lançamento novo usa a
+  // escolha da finalização. Mudar `vendas.data` moveria TODAS as contas do dia.
+  const dia = lancado?.dia ?? dataVenda
+  if (!dia) throw new Error('Data da venda não informada')
   const vendaId = await garantirVendaDoDia(tx, dia)
 
   if (lancado) {

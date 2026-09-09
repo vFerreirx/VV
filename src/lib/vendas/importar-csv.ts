@@ -152,7 +152,9 @@ function resolverConta(
   // linha de CSV — mas o motivo de o filtro existir é outro, e mais sutil:
   // sem ele, `vendas_atacado` deixaria de ter conta ÚNICA, o atalho logo
   // abaixo pararia de valer e "Vendas Atacado / <qualquer texto>", que hoje
-  // resolve direto pra Conta 5, passaria a exigir "Conta N" no arquivo.
+  // resolve para a origem manual de "Pedidos finalizados", passaria a exigir
+  // "Conta N" no arquivo. Tanto arquivos antigos (Conta 5) quanto novos
+  // (Pedidos finalizados) continuam resolvendo para essa mesma origem manual.
   // Importação que funciona hoje quebraria por causa de uma conta que o
   // usuário nem vê.
   const candidatos = CONTAS_MARKETPLACE.filter(

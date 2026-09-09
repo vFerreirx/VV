@@ -1,6 +1,26 @@
 import { z } from 'zod'
 
 import { FORMAS_PAGAMENTO } from '@/lib/pagamento'
+import { STATUS_PEDIDO } from '@/lib/pedido-status'
+
+// Finalizar registra dinheiro num dia escolhido, não necessariamente hoje.
+// A data é obrigatória só nessa transição e continua sendo texto de calendário:
+// transformá-la em instante faria o fuso deslocar o dia. `iso.date` também
+// recusa datas impossíveis (como 31/02), que uma regex de formato aceitaria.
+const statusPedidoSchema = z.enum(STATUS_PEDIDO)
+export const mudarStatusPedidoSchema = z.discriminatedUnion('destino', [
+  z.object({
+    id: z.string().uuid('Pedido inválido'),
+    destino: z.literal('finalizado'),
+    dataVenda: z.iso
+      .date({ error: 'Informe uma data válida para registrar a venda' })
+      .refine((dia) => !dia.startsWith('0000-'), 'Informe um ano válido'),
+  }),
+  z.object({
+    id: z.string().uuid('Pedido inválido'),
+    destino: statusPedidoSchema.exclude(['finalizado']),
+  }),
+])
 
 // Preço unitário obrigatório (>= 0), aceita vírgula. Guardado como string
 // (numeric).
