@@ -25,6 +25,7 @@ import {
 } from './actions'
 import { DiariasBloco } from './diarias-bloco'
 import type { ListaDiarias } from './diarias-actions'
+import { BotaoFixarTarefa, PipTarefaProvider } from './tarefa-pip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -85,6 +86,15 @@ export function TarefasView({
   const [mostrarConcluidas, setMostrarConcluidas] = useState(false)
 
   return (
+    // O provider ENVOLVE A TELA INTEIRA porque o botão de fixar aparece em
+    // duas árvores diferentes — a linha da tarefa aqui e a da diária dentro
+    // do DiariasBloco. Ele recebe pendentes E concluídas juntas: é a lista de
+    // onde a janela reencontra o item a cada render, e uma tarefa concluída
+    // pela própria janela precisa continuar sendo encontrada logo depois.
+    <PipTarefaProvider
+      tarefas={[...pendentes, ...concluidas]}
+      diarias={diarias.diarias}
+    >
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Tarefas</h1>
@@ -168,6 +178,7 @@ export function TarefasView({
       )}
       <ExcluirDialog tarefa={excluindo} onClose={() => setExcluindo(null)} />
     </div>
+    </PipTarefaProvider>
   )
 }
 
@@ -483,6 +494,9 @@ function LinhaTarefa({
       </div>
 
       <div className="flex shrink-0 gap-1">
+        {/* Primeiro da zona de ações: fixar é o que se faz ANTES de executar
+            a tarefa, editar e excluir são manutenção do cadastro. */}
+        <BotaoFixarTarefa tipo="tarefa" id={t.id} titulo={t.titulo} />
         <Button
           size="icon-sm"
           variant="ghost"

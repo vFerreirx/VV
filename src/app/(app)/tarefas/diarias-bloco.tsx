@@ -14,6 +14,7 @@ import {
   type DiariaComContexto,
   type ListaDiarias,
 } from './diarias-actions'
+import { BotaoFixarTarefa } from './tarefa-pip'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -261,6 +262,14 @@ function LinhaDiaria({ diaria: d }: { diaria: DiariaComContexto }) {
             {horaEmBrasilia(new Date(d.concluidaEm!))}
           </p>
         )}
+      </div>
+
+      {/* A linha da diária não tinha zona de ações — editar e excluir moram
+          na lista "Todas as diárias", lá embaixo. Ela nasce aqui com o único
+          botão que precisa estar onde a rotina é LIDA: a rotina do dia é
+          executada no marketplace, não nesta tela. */}
+      <div className="flex shrink-0 gap-1">
+        <BotaoFixarTarefa tipo="diaria" id={d.id} titulo={d.titulo} />
       </div>
     </div>
   )
