@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { TeclaNumerica } from '@/components/ui/tecla-numerica'
 import {
   ehDestaque,
   PRIORIDADE_BADGE,
@@ -41,6 +42,10 @@ import {
 } from '@/lib/producao/conclusao'
 import { estadoDaMaquina } from '@/lib/producao/estado-maquina'
 import { confirmacaoAntesDeIniciar } from '@/lib/producao/inicio-da-op'
+import {
+  RelogioDeInatividade,
+  TrocarOperadorBotao,
+} from './troca-operador'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { STATUS_LABEL } from '@/lib/validators/maquinas'
@@ -121,6 +126,11 @@ type Props = {
   contagens: ContagensDaEstacao
   /** Nível do kanban permite agir? Só esconde botão — a action é que decide. */
   podeAgir: boolean
+  /**
+   * O operador logado já criou PIN? Booleano, NUNCA o hash — este é um
+   * componente de cliente, e o que entra aqui vai pro navegador.
+   */
+  temPin: boolean
 }
 
 /** O que ele reconhece de longe, sem o nome do produto: "Terracota · King". */
@@ -140,6 +150,7 @@ export function PainelOperador({
   maquinas,
   contagens,
   podeAgir,
+  temPin,
 }: Props) {
   const router = useRouter()
   const [iniciando, setIniciando] = useState<MaquinaDaEstacao | null>(null)
@@ -203,8 +214,13 @@ export function PainelOperador({
     <div className="space-y-4">
       {/* Cabeçalho: quem sou, onde estou, quanto da estação está rodando.
           Tudo numa faixa só — ele lê isso uma vez ao chegar, não é o
-          conteúdo da tela, e cada linha aqui é um cartão a menos à vista. */}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b pb-3">
+          conteúdo da tela, e cada linha aqui é um cartão a menos à vista.
+
+          ⚠️ `sticky`: o NOME não pode sair da tela. Num tablet compartilhado,
+          "quem está logado" é a informação que decide se o registro vai sair
+          no nome certo — e ela não serve pra nada se só aparece quando a
+          grade está rolada até o topo. */}
+      <div className="bg-background sticky top-0 z-30 flex flex-wrap items-center gap-x-4 gap-y-2 border-b py-3">
         <h1 className="text-xl font-semibold">
           {nomeOperador}
           <span className="text-muted-foreground font-normal"> · </span>
@@ -219,7 +235,13 @@ export function PainelOperador({
         {/* OS DOIS ACESSOS SEPARADOS. A fila e as terminadas saíram da área
             principal — aqui elas viram contador, e o contador não empurra
             nada pra baixo por mais que a fila cresça. */}
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap gap-2">
+          {/* TROCAR OPERADOR fica AQUI, colado no nome, e não no rodapé da
+              sidebar como o "Sair". A troca de turno é a ação mais frequente
+              desta tela depois de concluir uma OP; enterrá-la atrás de um
+              menu é o que fazia o operador da noite registrar no nome do
+              operador do dia. */}
+          <TrocarOperadorBotao temPin={temPin} />
           <Button
             variant="outline"
             className="h-11 text-base"
@@ -265,6 +287,8 @@ export function PainelOperador({
           onClose={() => setIniciando(null)}
         />
       )}
+      <RelogioDeInatividade />
+
       {concluindo && (
         <ConcluirDialog
           op={concluindo.op}
@@ -1007,19 +1031,19 @@ function ConcluirDialog({
 
         <div className="grid grid-cols-3 gap-2">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((d) => (
-            <Tecla key={d} onClick={() => digitar(d)} disabled={isPending}>
+            <TeclaNumerica key={d} onClick={() => digitar(d)} disabled={isPending}>
               {d}
-            </Tecla>
+            </TeclaNumerica>
           ))}
-          <Tecla onClick={limpar} disabled={isPending} aria-label="Limpar">
+          <TeclaNumerica onClick={limpar} disabled={isPending} aria-label="Limpar">
             C
-          </Tecla>
-          <Tecla onClick={() => digitar('0')} disabled={isPending}>
+          </TeclaNumerica>
+          <TeclaNumerica onClick={() => digitar('0')} disabled={isPending}>
             0
-          </Tecla>
-          <Tecla onClick={apagar} disabled={isPending} aria-label="Apagar">
+          </TeclaNumerica>
+          <TeclaNumerica onClick={apagar} disabled={isPending} aria-label="Apagar">
             <Delete className="size-7" />
-          </Tecla>
+          </TeclaNumerica>
         </div>
 
         {erro && <Erro>{erro}</Erro>}
@@ -1085,29 +1109,6 @@ function CampoNumero({
 
 // 64px de lado, com foco visível: o tablet da estação pode ter teclado
 // acoplado, e quem navega por Tab precisa ver onde está.
-function Tecla({
-  children,
-  onClick,
-  disabled,
-  'aria-label': ariaLabel,
-}: {
-  children: React.ReactNode
-  onClick: () => void
-  disabled?: boolean
-  'aria-label'?: string
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      className="bg-muted hover:bg-muted/70 focus-visible:ring-ring active:bg-muted/50 flex h-16 items-center justify-center rounded-xl text-2xl font-semibold disabled:opacity-50 focus-visible:ring-4 focus-visible:outline-none"
-    >
-      {children}
-    </button>
-  )
-}
 
 // Erro de action, sempre DENTRO do diálogo e em tipo grande — nunca num
 // toast atrás dele.

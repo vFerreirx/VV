@@ -1443,7 +1443,32 @@ export async function concluirProducaoAction(
         })
       }
 
-      resumo = resumoDaConclusao(input.produzida, input.refugo, conclusao)
+      // QUEM COMEÇOU, quando não foi quem está terminando. O
+      // `eventos_kanban` é o único lugar que ainda sabe disso: o apontamento
+      // é um só, no nome de quem concluiu, então sem esta linha a passagem
+      // de turno some — a OP que o colega rodou seis horas sai inteira no
+      // nome de quem apertou o botão. Ver o comentário de `resumoDaConclusao`.
+      const [inicio] = await tx
+        .select({ nome: users.nome, usuarioId: eventosKanban.usuarioId })
+        .from(eventosKanban)
+        .leftJoin(users, eq(users.id, eventosKanban.usuarioId))
+        .where(
+          and(
+            eq(eventosKanban.ordemId, ordemId),
+            eq(eventosKanban.statusNovo, 'em_producao'),
+          ),
+        )
+        .orderBy(desc(eventosKanban.createdAt))
+        .limit(1)
+      const iniciadaPor =
+        inicio && inicio.usuarioId !== user.id ? inicio.nome : null
+
+      resumo = resumoDaConclusao(
+        input.produzida,
+        input.refugo,
+        conclusao,
+        iniciadaPor,
+      )
       await tx.insert(eventosKanban).values({
         ordemId,
         statusAnterior: 'em_producao',

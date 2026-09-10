@@ -1,5 +1,13 @@
 import { sql } from 'drizzle-orm'
-import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import {
+  boolean,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+} from 'drizzle-orm/pg-core'
 
 import { userRoleEnum } from './enums'
 
@@ -23,6 +31,12 @@ export const users = pgTable(
     cor: text(),
     ativo: boolean().notNull().default(true),
     maquinaAtualId: uuid(),
+    // Troca rápida no tablet da estação — ver supabase/sql/54_pin_operador.sql.
+    // NULL = sem PIN, entra só por senha. Guardamos o HASH, nunca o número, e
+    // ele NUNCA sai numa consulta que alimente componente de cliente.
+    pinHash: text(),
+    pinTentativas: integer().notNull().default(0),
+    pinBloqueadoAte: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
       .notNull()

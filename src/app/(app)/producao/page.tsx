@@ -78,6 +78,8 @@ export default async function ProducaoPage({
         maquinas={visao.maquinas}
         contagens={contagens}
         podeAgir={podeMover}
+        // Booleano, nunca o hash — o painel é componente de cliente.
+        temPin={user.pinHash !== null}
       />
     )
   }

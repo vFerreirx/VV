@@ -98,16 +98,32 @@ export function erroDeQuantidade(
  * O texto que fica no `eventos_kanban`. É onde o gerente lê o que aconteceu
  * antes de mandar a OP pra 'enviado' — por isso diz o total contra a meta, e
  * não só o que entrou agora.
+ *
+ * ⚠️ QUEM REGISTROU NÃO É QUEM PRODUZIU, e desde que o registro passou a ser
+ * feito só no fim isso ficou invisível. Existe UM apontamento, no nome de
+ * quem concluiu: se o teste1 roda a OP seis horas e o teste2 conclui, as 30
+ * peças saem todas no teste2.
+ *
+ * NÃO DÁ PRA RATEAR, e inventar um rateio seria pior que não ter — o sistema
+ * não sabe quantas peças saíram em cada turno, e essa é a consequência
+ * aceita de "registrar só no fim". O que dá é NOMEAR A PASSAGEM: o
+ * `eventos_kanban` sabe quem iniciou, e dizer isso na mesma linha devolve a
+ * pergunta respondível no lugar onde o gerente confere.
+ *
+ * `iniciadaPor` só entra quando é OUTRA pessoa. Numa OP que a mesma pessoa
+ * começou e terminou, "iniciada por ela mesma" é ruído.
  */
 export function resumoDaConclusao(
   produzida: number,
   refugo: number,
   { meta, jaRegistrado }: Conclusao,
+  iniciadaPor?: string | null,
 ): string {
   const total = jaRegistrado + produzida
   const falta = meta - total
   const partes = [`Concluída com ${total} de ${meta} peças`]
   if (falta > 0) partes.push(`(${falta} a menos)`)
   if (refugo > 0) partes.push(`· ${refugo} refugo`)
+  if (iniciadaPor) partes.push(`· iniciada por ${iniciadaPor}`)
   return partes.join(' ')
 }

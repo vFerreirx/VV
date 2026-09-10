@@ -208,3 +208,19 @@ test('o resumo do historico diz o TOTAL contra a meta', () => {
     'Concluída com 30 de 30 peças',
   )
 })
+
+test('a passagem de turno vai NOMEADA no historico', () => {
+  // Quem registrou nao e quem produziu: o registro e um so, no fim, no nome
+  // de quem concluiu. Ratear seria inventar; nomear a passagem, nao.
+  assert.equal(
+    resumoDaConclusao(30, 0, calcularConclusao(30, 0), 'teste1'),
+    'Concluída com 30 de 30 peças · iniciada por teste1',
+  )
+})
+
+test('mesma pessoa comecando e terminando nao vira ruido', () => {
+  assert.equal(
+    resumoDaConclusao(30, 0, calcularConclusao(30, 0), null),
+    'Concluída com 30 de 30 peças',
+  )
+})
