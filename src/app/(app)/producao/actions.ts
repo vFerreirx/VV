@@ -1,9 +1,21 @@
 'use server'
 
-import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
 import { requireArea, requireAuth } from '@/lib/auth/require-auth'
+import { PRIORIDADE_NIVEIS, type PrioridadeNivel } from '@/lib/prioridade'
 import { db } from '@/lib/db'
 import {
   condicaoDeVisaoDoOperador,
@@ -22,7 +34,13 @@ import {
   variacoesProduto,
   type EventoKanban,
 } from '@/lib/db/schema'
+import {
+  destinoDaOrdem,
+  type DestinoNaEstacao,
+  type StatusDaOrdem,
+} from '@/lib/producao/destino-da-ordem'
 import type { MaquinaStatus } from '@/lib/producao/estado-maquina'
+import { STATUS_QUE_INICIAM } from '@/lib/producao/inicio-da-op'
 import { canalValues, statusValues } from '@/lib/validators/ordens'
 
 // -----------------------------------------------------------------
@@ -411,6 +429,346 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
               observacoes: r.opObservacoes,
             },
     })),
+  }
+}
+
+// -----------------------------------------------------------------
+// A FILA DE UMA MÁQUINA — o diálogo de "Iniciar produção"
+// -----------------------------------------------------------------
+//
+// A única consulta desta tela que PAGINA de verdade, no SQL. As outras
+// respondem "quantas?" ou listam o que já está na estação; esta é a que o
+// operador percorre procurando, e é a que cresce sem limite.
+//
+// ⚠️ A MÁQUINA VEM POR PARÂMETRO E É VALIDADA CONTRA A ESTAÇÃO DELE. A
+// estação, nunca — sai do usuário autenticado. Sem a validação, mandar um
+// `maquinaId` de fora viraria um jeito de ler a fila da estação alheia por
+// chamada direta à action (o arquivo é 'use server': ela é endpoint).
+//
+// O filtro de status vem de `STATUS_QUE_INICIAM`, a MESMA lista que
+// `pegarOrdemAction` aceita. Divergir aqui produz um de dois estragos: a
+// tela oferece o que o servidor recusa (toque que só dá erro), ou o servidor
+// aceita o que a tela nunca mostra.
+
+const OPS_POR_PAGINA = 20
+
+export type OpParaIniciar = {
+  id: string
+  numero: string
+  status: StatusDaOrdem
+  prioridade: PrioridadeNivel
+  produtoNome: string
+  variacaoCor: string | null
+  variacaoModelo: string | null
+  variacaoTamanho: string | null
+  quantidade: number
+  observacoes: string | null
+}
+
+export type PaginaDeOps = {
+  ops: OpParaIniciar[]
+  total: number
+  temMais: boolean
+}
+
+export async function listarOpsParaIniciar(
+  maquinaId: string,
+  filtros: { q?: string; pagina?: number } = {},
+): Promise<PaginaDeOps> {
+  const user = await requireArea('kanban')
+
+  const estacao = await estacaoDoOperador(user.id)
+  if (!estacao) return { ops: [], total: 0, temMais: false }
+
+  // A máquina precisa ser DESTA estação. `listarMaquinasDaEstacao` só
+  // desenha cartões daqui, mas esta função não pode confiar na tela.
+  const [maquina] = await db
+    .select({ id: maquinas.id })
+    .from(maquinas)
+    .where(
+      and(
+        eq(maquinas.id, maquinaId),
+        eq(maquinas.estacaoId, estacao.id),
+        isNull(maquinas.deletedAt),
+      ),
+    )
+    .limit(1)
+  if (!maquina) return { ops: [], total: 0, temMais: false }
+
+  const pagina = Math.max(1, filtros.pagina ?? 1)
+  const termo = filtros.q?.trim() ?? ''
+
+  const conditions = [
+    isNull(ordensProducao.deletedAt),
+    inArray(ordensProducao.status, STATUS_QUE_INICIAM),
+    // SEM DONO. OP que já é de alguém não se "inicia" de novo — e
+    // `pegarOrdemAction` recusaria, então oferecê-la seria um toque que só
+    // devolve erro. Ela continua visível na consulta "Fila".
+    isNull(ordensProducao.responsavelId),
+    // SEM MÁQUINA, ou já apontada PRA ESTA. Uma OP destinada à TC-05
+    // iniciaria na TC-05 mesmo tocada aqui, porque `pegarOrdemAction` usa
+    // `atual.maquinaId ?? maquinaId` — e o operador veria este cartão
+    // continuar livre sem entender por quê.
+    or(
+      isNull(ordensProducao.maquinaId),
+      eq(ordensProducao.maquinaId, maquinaId),
+    )!,
+  ]
+  if (termo.length > 0) {
+    conditions.push(
+      or(
+        ilike(ordensProducao.numero, `%${termo}%`),
+        ilike(produtos.nome, `%${termo}%`),
+        ilike(produtos.sku, `%${termo}%`),
+      )!,
+    )
+  }
+
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(ordensProducao)
+    .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
+    .where(and(...conditions))
+
+  const rows = await db
+    .select({
+      id: ordensProducao.id,
+      numero: ordensProducao.numero,
+      status: ordensProducao.status,
+      prioridade: ordensProducao.prioridade,
+      quantidade: ordensProducao.quantidade,
+      observacoes: ordensProducao.observacoes,
+      produtoNome: produtos.nome,
+      variacaoCor: variacoesProduto.cor,
+      variacaoModelo: variacoesProduto.modelo,
+      variacaoTamanho: variacoesProduto.tamanho,
+    })
+    .from(ordensProducao)
+    .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
+    .leftJoin(
+      variacoesProduto,
+      eq(variacoesProduto.id, ordensProducao.variacaoId),
+    )
+    .where(and(...conditions))
+    // A MESMA ORDEM DO KANBAN, e de propósito: o enum `ordem_prioridade` é
+    // declarado baixa < normal < alta < urgente, então DESC traz urgente
+    // primeiro sem CASE nenhum. Prazo em ASC deixa NULL por último, que é o
+    // que se quer — OP sem prazo não fura fila de OP com prazo.
+    .orderBy(
+      desc(ordensProducao.prioridade),
+      asc(ordensProducao.dataPrevistaFim),
+    )
+    .limit(OPS_POR_PAGINA)
+    .offset((pagina - 1) * OPS_POR_PAGINA)
+
+  return {
+    ops: rows.map((r) => ({
+      id: r.id,
+      numero: r.numero,
+      status: r.status,
+      prioridade: r.prioridade,
+      produtoNome: r.produtoNome,
+      variacaoCor: r.variacaoCor ?? null,
+      variacaoModelo: r.variacaoModelo ?? null,
+      variacaoTamanho: r.variacaoTamanho ?? null,
+      quantidade: r.quantidade,
+      observacoes: r.observacoes,
+    })),
+    total,
+    temMais: pagina * OPS_POR_PAGINA < total,
+  }
+}
+
+// -----------------------------------------------------------------
+// OS DOIS CONTADORES E AS DUAS CONSULTAS — fila e terminadas
+// -----------------------------------------------------------------
+//
+// ⚠️ POR QUE NÃO É `listarOrdensProducao()` DIRETO. Era: a tela do operador
+// carregava a lista COMPLETA — 25 colunas, 7 joins e três subqueries
+// correlacionadas por linha — pra depois usar dois números dela. A área
+// visível não crescia com a fila (esse era o ponto da Fase 1), mas os DADOS
+// cresciam: com cem OPs esperando, cem linhas caras a cada render de uma
+// tela que mostra dois contadores.
+//
+// Agora a leitura é em dois tempos, e o caro só acontece quando alguém pede:
+//
+//   1. uma consulta MAGRA (cinco colunas, zero join, zero subquery) que
+//      responde "quais OPs, em que status, em que máquina" — é dela que
+//      saem os contadores;
+//   2. os campos de exibição só pra PÁGINA que o operador abriu, no máximo
+//      OPS_POR_PAGINA linhas.
+//
+// ⚠️ E O BUCKET CONTINUA SENDO `destinoDaOrdem`, em TypeScript, e não um
+// WHERE equivalente em SQL. Escrever a regra de novo em SQL é exatamente o
+// que a Fase 1 tirou do caminho: seriam duas cópias, e a que diverge some
+// com OP da tela sem erro nenhum. A consulta magra existe pra que dê pra
+// aplicar a regra única sem pagar caro por isso.
+
+type OrdemMagra = {
+  id: string
+  status: StatusDaOrdem
+  maquinaId: string | null
+  prioridade: PrioridadeNivel
+  dataPrevistaFim: Date | null
+}
+
+/** As OPs que o operador enxerga, agrupadas pelo destino na tela dele. */
+async function opsPorDestino(
+  userId: string,
+): Promise<Map<DestinoNaEstacao, OrdemMagra[]>> {
+  const estacao = await estacaoDoOperador(userId)
+
+  // As máquinas da estação. É o que decide `estaNumaMaquinaDaEstacao` sem
+  // adivinhação: sem esta lista, "está no cartão?" viraria a inferência
+  // "em_producao e tem máquina", que só é verdade por causa de um filtro
+  // que mora noutro arquivo.
+  const idsDeMaquinas = estacao
+    ? new Set(
+        (
+          await db
+            .select({ id: maquinas.id })
+            .from(maquinas)
+            .where(
+              and(
+                eq(maquinas.estacaoId, estacao.id),
+                isNull(maquinas.deletedAt),
+              ),
+            )
+        ).map((m) => m.id),
+      )
+    : new Set<string>()
+
+  const rows = await db
+    .select({
+      id: ordensProducao.id,
+      status: ordensProducao.status,
+      maquinaId: ordensProducao.maquinaId,
+      prioridade: ordensProducao.prioridade,
+      dataPrevistaFim: ordensProducao.dataPrevistaFim,
+    })
+    .from(ordensProducao)
+    .where(
+      and(
+        isNull(ordensProducao.deletedAt),
+        await condicaoDeVisaoDoOperador(userId),
+      ),
+    )
+
+  const porDestino = new Map<DestinoNaEstacao, OrdemMagra[]>()
+  for (const r of rows) {
+    // No cartão da máquina só entra a OP EM PRODUÇÃO — o mesmo recorte do
+    // índice único da migration 50 e do LEFT JOIN de
+    // `listarMaquinasDaEstacao`. Uma OP `pronto_envio` que ainda carrega a
+    // máquina antiga não está mais lá.
+    const naMaquina =
+      r.status === 'em_producao' &&
+      r.maquinaId !== null &&
+      idsDeMaquinas.has(r.maquinaId)
+    const destino = destinoDaOrdem(r.status, naMaquina)
+    const lista = porDestino.get(destino) ?? []
+    lista.push(r)
+    porDestino.set(destino, lista)
+  }
+  return porDestino
+}
+
+// A mesma ordem do kanban e do diálogo de iniciar: urgente primeiro, depois
+// o prazo mais apertado. Aqui é em TypeScript porque o bucket também é.
+function ordenarComoOKanban(a: OrdemMagra, b: OrdemMagra): number {
+  const p =
+    PRIORIDADE_NIVEIS.indexOf(b.prioridade) -
+    PRIORIDADE_NIVEIS.indexOf(a.prioridade)
+  if (p !== 0) return p
+  // Sem prazo vai por último, como o NULLS LAST do ASC no Postgres.
+  const prazoA = a.dataPrevistaFim?.getTime() ?? Infinity
+  const prazoB = b.dataPrevistaFim?.getTime() ?? Infinity
+  return prazoA - prazoB
+}
+
+export type ContagensDaEstacao = { fila: number; terminadas: number }
+
+export async function contarOpsDaEstacao(): Promise<ContagensDaEstacao> {
+  const user = await requireArea('kanban')
+  const porDestino = await opsPorDestino(user.id)
+  return {
+    fila: porDestino.get('fila')?.length ?? 0,
+    terminadas: porDestino.get('terminadas')?.length ?? 0,
+  }
+}
+
+export type OpDaConsulta = OpParaIniciar & { maquinaCodigo: string | null }
+
+export type PaginaDaConsulta = {
+  ops: OpDaConsulta[]
+  total: number
+  temMais: boolean
+}
+
+/** Uma página da fila ou das terminadas — só leitura, fora da área principal. */
+export async function listarOpsDaEstacao(
+  destino: 'fila' | 'terminadas',
+  pagina = 1,
+): Promise<PaginaDaConsulta> {
+  const user = await requireArea('kanban')
+
+  const todas = (await opsPorDestino(user.id)).get(destino) ?? []
+  todas.sort(ordenarComoOKanban)
+
+  const inicio = Math.max(0, pagina - 1) * OPS_POR_PAGINA
+  const daPagina = todas.slice(inicio, inicio + OPS_POR_PAGINA)
+  if (daPagina.length === 0) {
+    return { ops: [], total: todas.length, temMais: false }
+  }
+
+  // Os campos de exibição só pras linhas desta página. `inArray` não
+  // preserva ordem, então a ordenação volta pelo índice logo abaixo.
+  const ordemDoId = new Map(daPagina.map((o, i) => [o.id, i]))
+  const rows = await db
+    .select({
+      id: ordensProducao.id,
+      numero: ordensProducao.numero,
+      status: ordensProducao.status,
+      prioridade: ordensProducao.prioridade,
+      quantidade: ordensProducao.quantidade,
+      observacoes: ordensProducao.observacoes,
+      produtoNome: produtos.nome,
+      variacaoCor: variacoesProduto.cor,
+      variacaoModelo: variacoesProduto.modelo,
+      variacaoTamanho: variacoesProduto.tamanho,
+      maquinaCodigo: maquinas.codigo,
+    })
+    .from(ordensProducao)
+    .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
+    .leftJoin(
+      variacoesProduto,
+      eq(variacoesProduto.id, ordensProducao.variacaoId),
+    )
+    .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
+    .where(
+      inArray(
+        ordensProducao.id,
+        daPagina.map((o) => o.id),
+      ),
+    )
+
+  return {
+    ops: rows
+      .sort((a, b) => ordemDoId.get(a.id)! - ordemDoId.get(b.id)!)
+      .map((r) => ({
+        id: r.id,
+        numero: r.numero,
+        status: r.status,
+        prioridade: r.prioridade,
+        produtoNome: r.produtoNome,
+        variacaoCor: r.variacaoCor ?? null,
+        variacaoModelo: r.variacaoModelo ?? null,
+        variacaoTamanho: r.variacaoTamanho ?? null,
+        quantidade: r.quantidade,
+        observacoes: r.observacoes,
+        maquinaCodigo: r.maquinaCodigo ?? null,
+      })),
+    total: todas.length,
+    temMais: inicio + daPagina.length < todas.length,
   }
 }
 

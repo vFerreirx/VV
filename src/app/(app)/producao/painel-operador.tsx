@@ -1,11 +1,21 @@
 'use client'
 
-import { Delete, TriangleAlert } from 'lucide-react'
+import { Delete, Search, TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-import type { KanbanCardData, MaquinaDaEstacao, OpNaMaquina } from './actions'
+import {
+  listarOpsDaEstacao,
+  listarOpsParaIniciar,
+  type ContagensDaEstacao,
+  type MaquinaDaEstacao,
+  type OpDaConsulta,
+  type OpNaMaquina,
+  type OpParaIniciar,
+  type PaginaDaConsulta,
+  type PaginaDeOps,
+} from './actions'
 import {
   apontarProducaoAction,
   mudarStatusOrdemAction,
@@ -19,7 +29,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import {
+  ehDestaque,
+  PRIORIDADE_BADGE,
+  PRIORIDADE_LABEL,
+  type PrioridadeNivel,
+} from '@/lib/prioridade'
 import { estadoDaMaquina } from '@/lib/producao/estado-maquina'
+import { confirmacaoAntesDeIniciar } from '@/lib/producao/inicio-da-op'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import { STATUS_LABEL } from '@/lib/validators/maquinas'
@@ -92,10 +110,12 @@ type Props = {
   estacaoNome: string | null
   /** As máquinas da estação, já ordenadas por código. A tela é esta lista. */
   maquinas: MaquinaDaEstacao[]
-  /** Fila: o que não é de ninguém. Fora da área principal, só consulta. */
-  fila: KanbanCardData[]
-  /** Saíram da máquina e esperam o gerente. Fora da área principal. */
-  terminadas: KanbanCardData[]
+  /**
+   * Quantas na fila e quantas terminadas — DOIS NÚMEROS, não duas listas.
+   * O conteúdo delas é buscado quando o operador abre, e não a cada render:
+   * quem só olha a estação não paga pela fila de cem OPs.
+   */
+  contagens: ContagensDaEstacao
   /** Nível do kanban permite agir? Só esconde botão — a action é que decide. */
   podeAgir: boolean
 }
@@ -115,8 +135,7 @@ export function PainelOperador({
   nomeOperador,
   estacaoNome,
   maquinas,
-  fila,
-  terminadas,
+  contagens,
   podeAgir,
 }: Props) {
   const router = useRouter()
@@ -204,14 +223,14 @@ export function PainelOperador({
             className="h-11 text-base"
             onClick={() => setConsultando('fila')}
           >
-            Fila ({fila.length})
+            Fila ({contagens.fila})
           </Button>
           <Button
             variant="outline"
             className="h-11 text-base"
             onClick={() => setConsultando('terminadas')}
           >
-            Terminadas ({terminadas.length})
+            Terminadas ({contagens.terminadas})
           </Button>
         </div>
       </div>
@@ -242,7 +261,6 @@ export function PainelOperador({
       {iniciando && (
         <IniciarProducaoDialog
           maquina={iniciando}
-          fila={fila}
           onClose={() => setIniciando(null)}
         />
       )}
@@ -258,17 +276,9 @@ export function PainelOperador({
       )}
       {consultando && (
         <ConsultaDialog
-          titulo={consultando === 'fila' ? 'Fila' : 'Terminadas'}
-          descricao={
-            consultando === 'fila'
-              ? 'OPs esperando pra começar. Pra iniciar uma, toque em "Iniciar produção" na máquina.'
-              : 'Saíram da máquina e esperam o gerente concluir.'
-          }
-          ordens={consultando === 'fila' ? fila : terminadas}
-          vazio={
-            consultando === 'fila'
-              ? 'Nada na fila no momento.'
-              : 'Nenhuma OP esperando o gerente.'
+          destino={consultando}
+          total={
+            consultando === 'fila' ? contagens.fila : contagens.terminadas
           }
           onClose={() => setConsultando(null)}
         />
@@ -425,47 +435,127 @@ function CorpoOcupada({
 
 // A MÁQUINA VEM DO CARTÃO, e não é perguntada de novo: ele tocou no cartão da
 // TC-02, a OP vai pra TC-02. É o inverso do fluxo antigo (escolher a OP e
-// depois a máquina), e é o que faz a tela seguir a estação física.
+// depois a máquina), e é o que faz a tela seguir a estação física. O código
+// dela fica no título e volta no passo de confirmação — a pergunta "em qual
+// máquina mesmo?" nunca precisa ser feita.
 //
-// ⚠️ SÓ APARECEM AS OPs QUE PODEM COMEÇAR NESTA MÁQUINA: sem responsável, e
-// sem máquina ou já apontadas pra esta. O motivo é que `pegarOrdemAction` usa
-// `atual.maquinaId ?? maquinaId` — uma OP já destinada à TC-05 iniciaria na
-// TC-05 mesmo tocada aqui, e o operador veria a máquina continuar livre sem
-// entender por quê. Elas seguem visíveis na consulta "Fila".
+// ⚠️ QUEM DECIDE O QUE APARECE É O SERVIDOR, `listarOpsParaIniciar`. Esta
+// tela não filtra nada: filtrar aqui exigiria carregar a fila inteira pro
+// tablet pra esconder a maior parte dela, que é vazamento com aparência de
+// filtro. E a lista do servidor é a MESMA que `pegarOrdemAction` aceita
+// (`STATUS_QUE_INICIAM`), então o que ele vê é o que ele consegue iniciar.
 //
-// Lista simples de propósito: busca, carregamento em partes, prioridade,
-// observações e a regra de matéria-prima são a Fase 2.
+// ─────────────────────────────────────────────────────────────────────────
+// QUANDO PERGUNTA ANTES, E QUANDO NÃO PERGUNTA
+// ─────────────────────────────────────────────────────────────────────────
+//
+// O caso comum é UM TOQUE: escolheu a OP, começou. O passo de confirmação
+// aparece só quando há o que ler antes:
+//
+//   - a OP tem OBSERVAÇÃO. É o campo onde o gerente escreve "usar o fio do
+//     lote velho" ou "cliente pediu barra dupla". Mostrar num rodapé de
+//     linha, em letra pequena, junto de mais dez OPs, é o mesmo que não
+//     mostrar;
+//   - a OP está AGUARDANDO MATÉRIA-PRIMA. Aí a pergunta é literal e a
+//     resposta vira linha no histórico — ver src/lib/producao/inicio-da-op.ts.
+//
+// Sem nenhum dos dois, não há passo nenhum. Um diálogo de confirmação que
+// aparece sempre vira um botão a mais que ninguém lê.
 function IniciarProducaoDialog({
   maquina,
-  fila,
   onClose,
 }: {
   maquina: MaquinaDaEstacao
-  fila: KanbanCardData[]
   onClose: () => void
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const [termo, setTermo] = useState('')
+  const [pagina, setPagina] = useState<PaginaDeOps | null>(null)
+  const [ops, setOps] = useState<OpParaIniciar[]>([])
+  const [paginaAtual, setPaginaAtual] = useState(1)
+  const [buscando, setBuscando] = useState(true)
+  const [confirmando, setConfirmando] = useState<OpParaIniciar | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
-  const candidatas = fila.filter(
-    (o) => o.maquinaId === null || o.maquinaId === maquina.id,
-  )
+  // BUSCA COM DEBOUNCE, mesmo padrão do global-search: 200ms. Sem ele, cada
+  // tecla vira uma consulta, e num tablet a digitação é lenta o bastante pra
+  // isso virar dez consultas por palavra.
+  //
+  // Toda mudança de termo VOLTA PRA PÁGINA 1 e descarta o que estava
+  // acumulado — senão o "Carregar mais" da busca anterior emendaria
+  // resultados de duas buscas diferentes na mesma lista.
+  //
+  // `setBuscando` fica DENTRO do timeout, e não no corpo do efeito: o React
+  // recusa setState sincrono ali (cascata de renders), e de quebra o
+  // "Buscando..." deixa de piscar a cada tecla — ele aparece quando a busca
+  // sai de verdade.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setBuscando(true)
+      listarOpsParaIniciar(maquina.id, { q: termo, pagina: 1 })
+        .then((r) => {
+          setPagina(r)
+          setOps(r.ops)
+          setPaginaAtual(1)
+        })
+        .finally(() => setBuscando(false))
+    }, 200)
+    return () => clearTimeout(t)
+  }, [termo, maquina.id])
 
-  function iniciar(ordemId: string) {
+  function carregarMais() {
+    const proxima = paginaAtual + 1
+    setBuscando(true)
+    listarOpsParaIniciar(maquina.id, { q: termo, pagina: proxima })
+      .then((r) => {
+        setPagina(r)
+        setOps((atuais) => [...atuais, ...r.ops])
+        setPaginaAtual(proxima)
+      })
+      .finally(() => setBuscando(false))
+  }
+
+  // Um toque quando não há o que ler antes; passo de confirmação quando há.
+  function escolher(op: OpParaIniciar) {
+    setErro(null)
+    if (op.observacoes || confirmacaoAntesDeIniciar(op.status)) {
+      setConfirmando(op)
+      return
+    }
+    iniciar(op, false)
+  }
+
+  function iniciar(op: OpParaIniciar, materiaPrimaConfirmada: boolean) {
     setErro(null)
     startTransition(async () => {
-      const r = await pegarOrdemAction(ordemId, maquina.id)
+      const r = await pegarOrdemAction(op.id, maquina.id, {
+        materiaPrimaConfirmada,
+      })
       if (!r.success) {
         // A MENSAGEM FICA NO DIÁLOGO, em tipo grande. Num toast ela
         // apareceria atrás do diálogo aberto e sumiria antes de ele ler.
         setErro(r.error)
+        setConfirmando(null)
         return
       }
       toast.success(r.message ?? 'OP em produção')
       router.refresh()
       onClose()
     })
+  }
+
+  if (confirmando) {
+    return (
+      <ConfirmarInicioDialog
+        op={confirmando}
+        maquina={maquina}
+        isPending={isPending}
+        erro={erro}
+        onConfirmar={() => iniciar(confirmando, true)}
+        onVoltar={() => setConfirmando(null)}
+      />
+    )
   }
 
   return (
@@ -480,31 +570,87 @@ function IniciarProducaoDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {candidatas.length === 0 ? (
-          <p className="text-muted-foreground py-8 text-center text-lg">
-            Nenhuma OP disponível pra esta máquina. Fale com o gerente.
-          </p>
-        ) : (
-          <div className="max-h-[50vh] space-y-2 overflow-y-auto">
-            {candidatas.map((op) => (
-              <button
-                key={op.id}
-                type="button"
-                disabled={isPending}
-                onClick={() => iniciar(op.id)}
-                className="hover:border-primary hover:bg-primary/5 focus-visible:ring-ring w-full rounded-xl border-2 p-3 text-left focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
-              >
+        {/* Busca por número da OP ou produto. Alvo de 48px como o do cartão:
+            aqui ele digita pouco, e o teclado do tablet cobre o resto. */}
+        <div className="relative">
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2" />
+          <Input
+            value={termo}
+            onChange={(e) => setTermo(e.target.value)}
+            placeholder="Buscar por OP ou produto"
+            className="h-12 pl-10 text-base"
+            autoFocus={false}
+          />
+        </div>
+
+        <div className="max-h-[50vh] space-y-2 overflow-y-auto">
+          {ops.map((op) => (
+            <button
+              key={op.id}
+              type="button"
+              disabled={isPending}
+              onClick={() => escolher(op)}
+              className="hover:border-primary hover:bg-primary/5 focus-visible:ring-ring w-full rounded-xl border-2 p-3 text-left focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+            >
+              <div className="flex items-start justify-between gap-2">
                 <div className="text-xl font-semibold">{op.produtoNome}</div>
-                {variacaoDe(op) && (
-                  <div className="text-lg">{variacaoDe(op)}</div>
-                )}
-                <div className="text-muted-foreground text-sm tabular-nums">
-                  {op.numero} · {op.quantidade} peças
+                <SeloDePrioridade prioridade={op.prioridade} />
+              </div>
+              {variacaoDe(op) && (
+                <div className="text-lg">{variacaoDe(op)}</div>
+              )}
+              <div className="text-muted-foreground text-sm tabular-nums">
+                {op.numero} · {op.quantidade} peças
+              </div>
+              {/* AVISOS DO QUE VEM DEPOIS. Não é o texto da observação — é o
+                  aviso de que existe uma, pra ele saber que o toque vai
+                  abrir uma leitura em vez de começar direto. */}
+              {(op.observacoes ||
+                confirmacaoAntesDeIniciar(op.status) !== null) && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {confirmacaoAntesDeIniciar(op.status) !== null && (
+                    <span className="rounded bg-amber-500/15 px-2 py-0.5 text-sm text-amber-700 dark:text-amber-400">
+                      Aguardando matéria-prima
+                    </span>
+                  )}
+                  {op.observacoes && (
+                    <span className="bg-muted text-muted-foreground rounded px-2 py-0.5 text-sm">
+                      Tem observação
+                    </span>
+                  )}
                 </div>
-              </button>
-            ))}
-          </div>
-        )}
+              )}
+            </button>
+          ))}
+
+          {ops.length === 0 && !buscando && (
+            <p className="text-muted-foreground py-8 text-center text-lg">
+              {termo
+                ? `Nenhuma OP encontrada pra "${termo}".`
+                : 'Nenhuma OP disponível pra esta máquina. Fale com o gerente.'}
+            </p>
+          )}
+
+          {buscando && (
+            <p className="text-muted-foreground py-4 text-center text-base">
+              Buscando…
+            </p>
+          )}
+
+          {/* CARREGAMENTO EM PARTES. 20 por vez: a lista inteira num tablet
+              é rolagem infinita, e o que ele procura está quase sempre no
+              topo — a ordem é a mesma do kanban, urgente primeiro. */}
+          {pagina?.temMais && !buscando && (
+            <Button
+              variant="outline"
+              className="h-12 w-full text-base"
+              onClick={carregarMais}
+              disabled={isPending}
+            >
+              Carregar mais ({ops.length} de {pagina.total})
+            </Button>
+          )}
+        </div>
 
         {erro && <Erro>{erro}</Erro>}
 
@@ -521,6 +667,99 @@ function IniciarProducaoDialog({
   )
 }
 
+// O passo de leitura antes de começar. Existe só quando há o que ler — ver o
+// comentário do diálogo acima.
+function ConfirmarInicioDialog({
+  op,
+  maquina,
+  isPending,
+  erro,
+  onConfirmar,
+  onVoltar,
+}: {
+  op: OpParaIniciar
+  maquina: MaquinaDaEstacao
+  isPending: boolean
+  erro: string | null
+  onConfirmar: () => void
+  onVoltar: () => void
+}) {
+  const pergunta = confirmacaoAntesDeIniciar(op.status)
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onVoltar()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-2xl">{op.produtoNome}</DialogTitle>
+          {/* A MÁQUINA REAPARECE AQUI. Ele escolheu o cartão faz três toques
+              e já leu uma lista inteira desde então; confirmar sem ver o
+              destino é onde a OP vai parar na máquina errada. */}
+          <DialogDescription className="text-base">
+            {variacaoDe(op) && `${variacaoDe(op)} · `}
+            {op.quantidade} peças · vai pra máquina {maquina.codigo}
+          </DialogDescription>
+        </DialogHeader>
+
+        {op.observacoes && (
+          <div className="border-primary/40 bg-primary/5 rounded-lg border-2 p-3">
+            <p className="text-muted-foreground text-sm font-medium">
+              Observação do gerente
+            </p>
+            <p className="mt-1 text-lg">{op.observacoes}</p>
+          </div>
+        )}
+
+        {/* A PERGUNTA DA MATÉRIA-PRIMA. Ela é o botão: "Sim, o fio está aqui"
+            é uma resposta, "Confirmar" não é. A resposta vira linha no
+            histórico com o nome de quem respondeu. */}
+        {pergunta && (
+          <p className="border-destructive/40 bg-destructive/5 rounded-lg border-2 p-3 text-lg font-medium">
+            {pergunta}
+          </p>
+        )}
+
+        {erro && <Erro>{erro}</Erro>}
+
+        <Button
+          className="h-16 text-xl"
+          loading={isPending}
+          disabled={isPending}
+          onClick={onConfirmar}
+        >
+          {pergunta
+            ? 'Sim, o fio está aqui — iniciar'
+            : `Iniciar na ${maquina.codigo}`}
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-12"
+          onClick={onVoltar}
+          disabled={isPending}
+        >
+          Voltar
+        </Button>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// Selo de prioridade. Só alta e urgente ganham um — a regra é do
+// `ehDestaque` em src/lib/prioridade.ts: um selo em cada linha vira ruído, e
+// o ruído esconde justamente o urgente.
+function SeloDePrioridade({ prioridade }: { prioridade: PrioridadeNivel }) {
+  if (!ehDestaque(prioridade)) return null
+  return (
+    <span
+      className={cn(
+        'shrink-0 rounded px-2 py-0.5 text-sm font-medium',
+        PRIORIDADE_BADGE[prioridade],
+      )}
+    >
+      {PRIORIDADE_LABEL[prioridade]}
+    </span>
+  )
+}
+
 // -----------------------------------------------------------------
 // Consulta: fila e terminadas (fora da área principal)
 // -----------------------------------------------------------------
@@ -528,51 +767,108 @@ function IniciarProducaoDialog({
 // SÓ LEITURA. A fila responde "quanto tem pra fazer" e as terminadas
 // respondem "o que eu já entreguei" — nenhuma das duas age. Quem inicia é o
 // cartão da máquina, que é onde a decisão tem contexto.
+//
+// ⚠️ CARREGA AO ABRIR, e não junto com a página. O contador do botão vem de
+// um COUNT barato; a lista só é buscada quando alguém toca. Numa tela que o
+// operador deixa aberta o turno inteiro, a fila de cem OPs não pode entrar
+// no custo de cada render.
 function ConsultaDialog({
-  titulo,
-  descricao,
-  ordens,
-  vazio,
+  destino,
+  total,
   onClose,
 }: {
-  titulo: string
-  descricao: string
-  ordens: KanbanCardData[]
-  vazio: string
+  destino: 'fila' | 'terminadas'
+  total: number
   onClose: () => void
 }) {
+  const [ops, setOps] = useState<OpDaConsulta[]>([])
+  const [pagina, setPagina] = useState<PaginaDaConsulta | null>(null)
+  const [paginaAtual, setPaginaAtual] = useState(1)
+  const [carregando, setCarregando] = useState(true)
+
+  useEffect(() => {
+    let vivo = true
+    listarOpsDaEstacao(destino, 1)
+      .then((r) => {
+        if (!vivo) return
+        setPagina(r)
+        setOps(r.ops)
+      })
+      .finally(() => vivo && setCarregando(false))
+    return () => {
+      vivo = false
+    }
+  }, [destino])
+
+  function carregarMais() {
+    const proxima = paginaAtual + 1
+    setCarregando(true)
+    listarOpsDaEstacao(destino, proxima)
+      .then((r) => {
+        setPagina(r)
+        setOps((atuais) => [...atuais, ...r.ops])
+        setPaginaAtual(proxima)
+      })
+      .finally(() => setCarregando(false))
+  }
+
+  const ehFila = destino === 'fila'
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-2xl">
-            {titulo} ({ordens.length})
+            {ehFila ? 'Fila' : 'Terminadas'} ({total})
           </DialogTitle>
           <DialogDescription className="text-base">
-            {descricao}
+            {ehFila
+              ? 'OPs esperando pra começar. Pra iniciar uma, toque em "Iniciar produção" na máquina.'
+              : 'Saíram da máquina e esperam o gerente concluir.'}
           </DialogDescription>
         </DialogHeader>
 
-        {ordens.length === 0 ? (
-          <p className="text-muted-foreground py-8 text-center text-lg">
-            {vazio}
-          </p>
-        ) : (
-          <div className="max-h-[55vh] space-y-2 overflow-y-auto">
-            {ordens.map((op) => (
-              <div key={op.id} className="rounded-xl border p-3">
+        <div className="max-h-[55vh] space-y-2 overflow-y-auto">
+          {ops.map((op) => (
+            <div key={op.id} className="rounded-xl border p-3">
+              <div className="flex items-start justify-between gap-2">
                 <div className="text-lg font-semibold">{op.produtoNome}</div>
-                {variacaoDe(op) && (
-                  <div className="text-base">{variacaoDe(op)}</div>
-                )}
-                <div className="text-muted-foreground text-sm tabular-nums">
-                  {op.numero} · {op.quantidade} peças
-                  {op.maquinaCodigo && ` · ${op.maquinaCodigo}`}
-                </div>
+                <SeloDePrioridade prioridade={op.prioridade} />
               </div>
-            ))}
-          </div>
-        )}
+              {variacaoDe(op) && (
+                <div className="text-base">{variacaoDe(op)}</div>
+              )}
+              <div className="text-muted-foreground text-sm tabular-nums">
+                {op.numero} · {op.quantidade} peças
+                {op.maquinaCodigo && ` · ${op.maquinaCodigo}`}
+              </div>
+            </div>
+          ))}
+
+          {ops.length === 0 && !carregando && (
+            <p className="text-muted-foreground py-8 text-center text-lg">
+              {ehFila
+                ? 'Nada na fila no momento.'
+                : 'Nenhuma OP esperando o gerente.'}
+            </p>
+          )}
+
+          {carregando && (
+            <p className="text-muted-foreground py-4 text-center text-base">
+              Carregando…
+            </p>
+          )}
+
+          {pagina?.temMais && !carregando && (
+            <Button
+              variant="outline"
+              className="h-12 w-full text-base"
+              onClick={carregarMais}
+            >
+              Carregar mais ({ops.length} de {pagina.total})
+            </Button>
+          )}
+        </div>
 
         <Button variant="ghost" className="h-14 text-lg" onClick={onClose}>
           Fechar

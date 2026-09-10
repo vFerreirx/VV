@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 import {
+  contarOpsDaEstacao,
   listarMaquinasDaEstacao,
   listarOrdensProducao,
   type KanbanFiltros,
@@ -16,7 +17,6 @@ import {
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
-import { destinoDaOrdem } from '@/lib/producao/destino-da-ordem'
 import { canalValues } from '@/lib/validators/ordens'
 
 export const metadata: Metadata = { title: 'Produção — Vanvest' }
@@ -53,40 +53,30 @@ export default async function ProducaoPage({
   //   - `listarMaquinasDaEstacao` desenha a tela: N máquinas, N cartões.
   //     Nove na Estação 1, sete na Estação 2 — com a fila vazia ou com cem
   //     OPs esperando.
-  //   - `listarOrdensProducao` alimenta só o que fica FORA da área
-  //     principal: a fila (consulta) e as terminadas (consulta), atrás de
-  //     botão com contador. Ela já devolve apenas o que o operador pode ver
-  //     (`condicaoDeVisaoDoOperador`).
+  //   - `contarOpsDaEstacao` devolve DOIS NÚMEROS, e só. É o que fica fora
+  //     da área principal: a fila e as terminadas, atrás de botão com
+  //     contador.
   //
-  // A OP em produção vem pendurada na máquina, então ela NÃO é particionada
+  // ⚠️ E OS NÚMEROS SÃO NÚMEROS, não `.length` de uma lista carregada. Esta
+  // página chegou a buscar a lista COMPLETA de OPs visíveis — 25 colunas, 7
+  // joins, três subqueries correlacionadas por linha — pra usar dois totais
+  // dela. A tela não crescia, os dados sim. Quem abre a fila paga por ela;
+  // quem só olha a estação, não.
+  //
+  // A OP em produção vem pendurada na máquina, então ela nem passa por
   // aqui — o cartão da máquina já é o lugar dela.
   if (user.role === 'operador') {
-    const [visao, ordens] = await Promise.all([
+    const [visao, contagens] = await Promise.all([
       listarMaquinasDaEstacao(),
-      listarOrdensProducao(),
+      contarOpsDaEstacao(),
     ])
-
-    // A PARTIÇÃO É EXAUSTIVA, e quem prova isso é `destinoDaOrdem` — um
-    // switch sem `default` que não compila se um status novo do enum ficar
-    // sem lugar na estação. O porquê está escrito lá
-    // (src/lib/producao/destino-da-ordem.ts): OP que não cai em destino
-    // nenhum some da tela sem erro, sem aviso e sem log.
-    //
-    // Aqui em cima sobra só o "está na máquina?", que a tela sabe responder
-    // e a regra pura não: depende de quais máquinas são desta estação.
-    const idsNasMaquinas = new Set(
-      visao.maquinas.map((m) => m.op?.id).filter((id) => id !== undefined),
-    )
-    const destino = (o: (typeof ordens)[number]) =>
-      destinoDaOrdem(o.status, idsNasMaquinas.has(o.id))
 
     return (
       <PainelOperador
         nomeOperador={user.nome}
         estacaoNome={visao.estacao?.nome ?? null}
         maquinas={visao.maquinas}
-        fila={ordens.filter((o) => destino(o) === 'fila')}
-        terminadas={ordens.filter((o) => destino(o) === 'terminadas')}
+        contagens={contagens}
         podeAgir={podeMover}
       />
     )

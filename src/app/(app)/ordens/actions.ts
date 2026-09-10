@@ -46,11 +46,18 @@ import {
 } from '@/lib/db/schema'
 import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
 import {
+  confirmacaoAntesDeIniciar,
+  OBSERVACAO_DE_MATERIA_PRIMA,
+  observacaoDeMaquinaAtribuida,
+  podeIniciar,
+} from '@/lib/producao/inicio-da-op'
+import {
   apontamentoSchema,
   mudarStatusOrdemSchema,
   ordemRapidaSchema,
   ordemSchema,
   ordensFiltrosSchema,
+  STATUS_LABEL_CURTO,
   type ApontamentoInput,
   type MudarStatusOrdemInput,
   type OrdemRapidaInput,
@@ -854,12 +861,14 @@ export async function listarMaquinasParaPegar(): Promise<
  * Revalida a máquina no SERVIDOR. O diálogo do cliente é conveniência: quem
  * decide é isto aqui. Devolve a mensagem de erro, ou null se está tudo certo.
  */
+type MaquinaValidada = { erro: string } | { erro: null; codigo: string }
+
 async function validarMaquinaParaOrdem(
   maquinaId: string,
   estacaoId: string | null,
   ordemId: string,
-): Promise<string | null> {
-  if (!uuidRe.test(maquinaId)) return 'Máquina inválida'
+): Promise<MaquinaValidada> {
+  if (!uuidRe.test(maquinaId)) return { erro: 'Máquina inválida' }
 
   const [maquina] = await db
     .select({
@@ -877,9 +886,11 @@ async function validarMaquinaParaOrdem(
     )
     .limit(1)
   if (!maquina) {
-    return estacaoId
-      ? 'Essa máquina não é da sua estação'
-      : 'Máquina não encontrada'
+    return {
+      erro: estacaoId
+        ? 'Essa máquina não é da sua estação'
+        : 'Máquina não encontrada',
+    }
   }
 
   // MÁQUINA EM MANUTENÇÃO OU DESATIVADA NÃO RECEBE OP, e a regra é a mesma
@@ -896,7 +907,9 @@ async function validarMaquinaParaOrdem(
   // faz é PÔR EM PRODUÇÃO agora.
   const impedimento = motivoDeImpedimento(maquina.status)
   if (impedimento) {
-    return `A máquina ${maquina.codigo} ${impedimento} e não pode receber OP`
+    return {
+      erro: `A máquina ${maquina.codigo} ${impedimento} e não pode receber OP`,
+    }
   }
 
   const [ocupada] = await db
@@ -912,13 +925,16 @@ async function validarMaquinaParaOrdem(
     )
     .limit(1)
   if (ocupada) {
-    return `A máquina ${maquina.codigo} já está com a OP ${ocupada.numero}`
+    return {
+      erro: `A máquina ${maquina.codigo} já está com a OP ${ocupada.numero}`,
+    }
   }
-  return null
+  return { erro: null, codigo: maquina.codigo }
 }
 
-// A checagem acima tem janela entre o SELECT e o UPDATE. Quem fecha de
-// verdade é o índice único do banco; isto só traduz o 23505 pra português.
+// DUAS OPs NA MESMA MÁQUINA: a checagem acima tem janela entre o SELECT e o
+// UPDATE. Quem fecha de verdade é o índice único do banco; isto só traduz o
+// 23505 pra português.
 function ehConflitoDeMaquina(erro: unknown): boolean {
   if (typeof erro !== 'object' || erro === null) return false
   const e = erro as { code?: string; constraint_name?: string }
@@ -928,6 +944,21 @@ function ehConflitoDeMaquina(erro: unknown): boolean {
   )
 }
 
+// A MESMA OP EM DUAS MÁQUINAS — o outro lado, que o índice único NÃO pega.
+//
+// teste1 toca em Iniciar na TC-01 e escolhe a OP-2026-0042; teste2, no mesmo
+// segundo, toca na TC-02 e escolhe a MESMA OP. Os dois SELECT leem
+// `responsavel_id = null`; as duas máquinas são diferentes e estão livres,
+// então as duas validações passam; os dois UPDATE gravam. Uma linha só, o
+// último vence — e OS DOIS RECEBEM "sucesso". Um dos operadores anda até a
+// máquina dele e não tem nada lá.
+//
+// O índice único não ajuda aqui: ele impede duas OPs numa máquina, e isto é
+// uma OP em duas máquinas. Quem fecha é o UPDATE condicional lá embaixo, que
+// exige a OP ainda estar como foi lida. Zero linhas de volta = alguém
+// chegou antes, e aí a resposta é uma recusa, não um sucesso falso.
+class ConflitoDeOrdem extends Error {}
+
 /**
  * "Pegar pra mim" — fluxo puxado. Só pra OP SEM responsável.
  *
@@ -935,10 +966,15 @@ function ehConflitoDeMaquina(erro: unknown): boolean {
  * torna verdadeira a premissa do item C (OP em produção sempre tem máquina,
  * logo sempre tem estação). Se a OP já tem máquina, não pergunta de novo —
  * a máquina dela é a resposta.
+ *
+ * `materiaPrimaConfirmada` é a resposta do operador à pergunta de
+ * `confirmacaoAntesDeIniciar` (src/lib/producao/inicio-da-op.ts). Só o
+ * OPERADOR precisa dela; ver o comentário lá sobre por que o gerente não.
  */
 export async function pegarOrdemAction(
   id: string,
   maquinaId?: string,
+  opcoes: { materiaPrimaConfirmada?: boolean } = {},
 ): Promise<ActionResult> {
   const user = await requireAuth()
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
@@ -964,6 +1000,33 @@ export async function pegarOrdemAction(
     return { success: false, error: 'Essa OP já foi pega por outro operador' }
   }
 
+  // STATUS QUE PODE ENTRAR NUMA MÁQUINA. A lista mora em
+  // src/lib/producao/inicio-da-op.ts, a mesma que a consulta usa pra montar
+  // o que aparece no diálogo — assim a tela nunca oferece o que a action
+  // recusa, nem a action aceita o que a tela nunca mostraria (esta função é
+  // um endpoint: dá pra chamá-la sem passar por tela nenhuma).
+  //
+  // Na prática isto barra `acabamento` em diante: pegar uma OP que já saiu
+  // da máquina não tem o que significar — a máquina foi liberada de
+  // propósito quando ela virou pronto_envio.
+  if (!podeIniciar(atual.status)) {
+    return {
+      success: false,
+      error: `OP em "${STATUS_LABEL_CURTO[atual.status]}" não entra em máquina`,
+    }
+  }
+
+  // A CONFIRMAÇÃO DA MATÉRIA-PRIMA, exigida no SERVIDOR e não só na tela.
+  // Só pro operador — o porquê está em inicio-da-op.ts.
+  const precisaConfirmar =
+    user.role === 'operador' && confirmacaoAntesDeIniciar(atual.status) !== null
+  if (precisaConfirmar && !opcoes.materiaPrimaConfirmada) {
+    return {
+      success: false,
+      error: 'Confirme a matéria-prima antes de iniciar esta OP',
+    }
+  }
+
   // Só o OPERADOR é preso à estação. Admin e gerente não têm estação e
   // continuam podendo interagir — o botão é que some pra eles na tela.
   let estacaoId: string | null = null
@@ -982,22 +1045,38 @@ export async function pegarOrdemAction(
   if (!maquinaEscolhida) {
     return { success: false, error: 'Escolha uma máquina pra pegar a OP' }
   }
-  const erroDaMaquina = await validarMaquinaParaOrdem(
+  const maquinaValidada = await validarMaquinaParaOrdem(
     maquinaEscolhida,
     estacaoId,
     id,
   )
-  if (erroDaMaquina) return { success: false, error: erroDaMaquina }
+  if (maquinaValidada.erro !== null) {
+    return { success: false, error: maquinaValidada.erro }
+  }
 
   // Ao pegar a OP, ela já entra em produção se ainda estava na fila
   // (registra o evento no kanban e marca o início real da produção).
-  const entraEmProducao =
-    atual.status === 'programado' ||
-    atual.status === 'aguardando_materia_prima'
+  const entraEmProducao = atual.status !== 'em_producao'
+
+  // A observação do evento diz O QUE ACONTECEU, e os dois casos são
+  // diferentes: a OP normal ENTRA em produção; a que já estava em produção
+  // sem máquina só GANHA a máquina. Antes o segundo caso não gerava evento
+  // nenhum, então a OP mudava de lugar no chão de fábrica e o histórico
+  // ficava mudo.
+  const observacao = entraEmProducao
+    ? opcoes.materiaPrimaConfirmada && precisaConfirmar
+      ? OBSERVACAO_DE_MATERIA_PRIMA
+      : 'Entrou em produção ao ser pega pelo operador'
+    : observacaoDeMaquinaAtribuida(maquinaValidada.codigo)
 
   try {
     await db.transaction(async (tx) => {
-      await tx
+      // ⚠️ UPDATE CONDICIONAL, e é o que impede a mesma OP de ser "pega" por
+      // dois operadores em máquinas diferentes. O WHERE repete o que o
+      // SELECT lá em cima leu: se responsável, máquina ou status mudaram
+      // nesse meio-tempo, nenhuma linha volta e a operação inteira é
+      // desfeita. Ver o comentário de ConflitoDeOrdem.
+      const gravadas = await tx
         .update(ordensProducao)
         .set({
           responsavelId: user.id,
@@ -1009,19 +1088,38 @@ export async function pegarOrdemAction(
               }
             : {}),
         })
-        .where(eq(ordensProducao.id, id))
+        .where(
+          and(
+            eq(ordensProducao.id, id),
+            isNull(ordensProducao.deletedAt),
+            eq(ordensProducao.status, atual.status),
+            atual.responsavelId === null
+              ? isNull(ordensProducao.responsavelId)
+              : eq(ordensProducao.responsavelId, atual.responsavelId),
+            atual.maquinaId === null
+              ? isNull(ordensProducao.maquinaId)
+              : eq(ordensProducao.maquinaId, atual.maquinaId),
+          ),
+        )
+        .returning({ id: ordensProducao.id })
 
-      if (entraEmProducao) {
-        await tx.insert(eventosKanban).values({
-          ordemId: id,
-          statusAnterior: atual.status,
-          statusNovo: 'em_producao',
-          usuarioId: user.id,
-          observacao: 'Entrou em produção ao ser pega pelo operador',
-        })
-      }
+      if (gravadas.length === 0) throw new ConflitoDeOrdem()
+
+      await tx.insert(eventosKanban).values({
+        ordemId: id,
+        statusAnterior: atual.status,
+        statusNovo: entraEmProducao ? 'em_producao' : atual.status,
+        usuarioId: user.id,
+        observacao,
+      })
     })
   } catch (erro) {
+    if (erro instanceof ConflitoDeOrdem) {
+      return {
+        success: false,
+        error: 'Outro operador pegou essa OP agora mesmo. Escolha outra.',
+      }
+    }
     if (ehConflitoDeMaquina(erro)) {
       return {
         success: false,
@@ -1037,7 +1135,7 @@ export async function pegarOrdemAction(
     success: true,
     message: entraEmProducao
       ? 'OP é sua e entrou em produção'
-      : 'OP é sua agora',
+      : `OP é sua, na máquina ${maquinaValidada.codigo}`,
   }
 }
 
