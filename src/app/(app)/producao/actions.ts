@@ -3,9 +3,12 @@
 import { and, asc, desc, eq, ilike, isNull, ne, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
-import { requireAuth } from '@/lib/auth/require-auth'
+import { requireArea, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { condicaoDeVisaoDoOperador } from '@/lib/db/estacao-operadores'
+import {
+  condicaoDeVisaoDoOperador,
+  estacaoDoOperador,
+} from '@/lib/db/estacao-operadores'
 import {
   apontamentosProducao,
   estacaoOperadores,
@@ -19,6 +22,7 @@ import {
   variacoesProduto,
   type EventoKanban,
 } from '@/lib/db/schema'
+import type { MaquinaStatus } from '@/lib/producao/estado-maquina'
 import { canalValues, statusValues } from '@/lib/validators/ordens'
 
 // -----------------------------------------------------------------
@@ -258,6 +262,156 @@ export async function listarOrdensProducao(
       observacoes: op.observacoes,
     }),
   )
+}
+
+// -----------------------------------------------------------------
+// A ESTAÇÃO VISTA POR MÁQUINA — a tela do operador
+// -----------------------------------------------------------------
+//
+// `listarOrdensProducao` acima devolve ORDENS. Esta devolve MÁQUINAS, e a
+// diferença é o desenho inteiro da tela do operador: uma lista de OPs cresce
+// com a fila (100 OPs esperando = 100 cards), uma lista de máquinas não —
+// são 9 na Estação 1 e 7 na Estação 2, hoje e com a fila cheia.
+//
+// A OP vem PENDURADA na máquina, e só a que está `em_producao`. É o mesmo
+// recorte do índice único `ordens_producao_maquina_em_producao_uidx`
+// (migration 50), então o LEFT JOIN não tem como duplicar a linha da máquina:
+// existe no máximo uma OP em produção por máquina, garantido pelo banco.
+//
+// ⚠️ A ESTAÇÃO É RESOLVIDA AQUI, do usuário autenticado — nunca recebida por
+// parâmetro. Este arquivo é 'use server': um `estacaoId` vindo de fora seria
+// aceito de qualquer cliente e leria as máquinas (e as OPs) da estação
+// alheia. Quem pergunta só pode receber a própria.
+
+export type OpNaMaquina = {
+  id: string
+  numero: string
+  produtoNome: string
+  variacaoCor: string | null
+  variacaoModelo: string | null
+  variacaoTamanho: string | null
+  /** A META da OP, em peças — o que a tela mostra como "Meta: X peças". */
+  quantidade: number
+  /**
+   * Já registrado em apontamentos. No fluxo novo isto é 0 até a conclusão;
+   * fica aqui pra OP legada, que tem apontamento e não pode perder o número.
+   */
+  produzido: number
+  refugo: number
+  responsavelId: string | null
+  responsavelNome: string | null
+  observacoes: string | null
+}
+
+export type MaquinaDaEstacao = {
+  id: string
+  codigo: string
+  nome: string
+  status: MaquinaStatus
+  /** A OP em produção nesta máquina, ou null. No máximo uma — ver acima. */
+  op: OpNaMaquina | null
+}
+
+export type VisaoDaEstacao = {
+  estacao: { id: string; nome: string } | null
+  maquinas: MaquinaDaEstacao[]
+}
+
+export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
+  // `requireArea`, e não `requireAuth`: o arquivo é 'use server', então esta
+  // função é um endpoint mesmo só sendo chamada pela página — e a página já
+  // exige a área. Sem isto, quem tem 'kanban' em `nenhum` teria a tela
+  // fechada e a leitura aberta, que é a porta dos fundos exata que
+  // /permissoes promete não existir.
+  const user = await requireArea('kanban')
+
+  const estacao = await estacaoDoOperador(user.id)
+  // Sem estação não há máquinas pra mostrar — e a tela vira o aviso, não uma
+  // grade vazia. Admin e gerente também caem aqui (não têm estação), mas
+  // nenhum dos dois usa esta visão: eles vão pro kanban.
+  if (!estacao) return { estacao: null, maquinas: [] }
+
+  const rows = await db
+    .select({
+      id: maquinas.id,
+      codigo: maquinas.codigo,
+      nome: maquinas.nome,
+      status: maquinas.status,
+      opId: ordensProducao.id,
+      opNumero: ordensProducao.numero,
+      opQuantidade: ordensProducao.quantidade,
+      opObservacoes: ordensProducao.observacoes,
+      opResponsavelId: ordensProducao.responsavelId,
+      responsavelNome: users.nome,
+      produtoNome: produtos.nome,
+      variacaoCor: variacoesProduto.cor,
+      variacaoModelo: variacoesProduto.modelo,
+      variacaoTamanho: variacoesProduto.tamanho,
+      // Mesma correlação qualificada à mão de `listarOrdensProducao`, e pelo
+      // mesmo motivo: sem `"ordens_producao"."id"` explícito o Postgres
+      // correlaciona com o `id` da própria subquery e o total sai sempre 0.
+      produzido: sql<number>`(
+        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)::int
+        FROM ${apontamentosProducao}
+        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+      )`,
+      refugo: sql<number>`(
+        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeRefugo}), 0)::int
+        FROM ${apontamentosProducao}
+        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+      )`,
+    })
+    .from(maquinas)
+    .leftJoin(
+      ordensProducao,
+      and(
+        eq(ordensProducao.maquinaId, maquinas.id),
+        // SÓ `em_producao` — o mesmo predicado do índice único. É o único
+        // status em que a OP está FISICAMENTE na máquina; `pronto_envio`
+        // libera de propósito, senão as máquinas iriam ficando "ocupadas"
+        // sem ninguém produzindo e a estação travaria sozinha.
+        eq(ordensProducao.status, 'em_producao'),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
+    .leftJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
+    .leftJoin(
+      variacoesProduto,
+      eq(variacoesProduto.id, ordensProducao.variacaoId),
+    )
+    .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
+    .where(and(eq(maquinas.estacaoId, estacao.id), isNull(maquinas.deletedAt)))
+    // POSIÇÃO ESTÁVEL. O cartão da TC-01 é sempre o primeiro, ocupada ou
+    // livre: quem trabalha aqui aprende a estação pela posição, e uma grade
+    // que se reordena quando uma OP começa obriga a reler tudo toda vez.
+    .orderBy(asc(maquinas.codigo))
+
+  return {
+    estacao: { id: estacao.id, nome: estacao.nome },
+    maquinas: rows.map((r) => ({
+      id: r.id,
+      codigo: r.codigo,
+      nome: r.nome,
+      status: r.status,
+      op:
+        r.opId === null
+          ? null
+          : {
+              id: r.opId,
+              numero: r.opNumero!,
+              produtoNome: r.produtoNome ?? '—',
+              variacaoCor: r.variacaoCor ?? null,
+              variacaoModelo: r.variacaoModelo ?? null,
+              variacaoTamanho: r.variacaoTamanho ?? null,
+              quantidade: r.opQuantidade!,
+              produzido: r.produzido ?? 0,
+              refugo: r.refugo ?? 0,
+              responsavelId: r.opResponsavelId,
+              responsavelNome: r.responsavelNome ?? null,
+              observacoes: r.opObservacoes,
+            },
+    })),
+  }
 }
 
 // -----------------------------------------------------------------

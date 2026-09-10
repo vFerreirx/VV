@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 import {
+  listarMaquinasDaEstacao,
   listarOrdensProducao,
   type KanbanFiltros,
 } from './actions'
@@ -15,7 +16,7 @@ import {
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
-import { estacaoDoOperador } from '@/lib/db/estacao-operadores'
+import { destinoDaOrdem } from '@/lib/producao/destino-da-ordem'
 import { canalValues } from '@/lib/validators/ordens'
 
 export const metadata: Metadata = { title: 'Produção — Vanvest' }
@@ -39,37 +40,53 @@ export default async function ProducaoPage({
   //
   // O kanban é tela de quem PLANEJA — quatro colunas, arrastar card,
   // filtros, pastas de remessa, contador de limite. Quem está na máquina
-  // precisa de tela de quem PRODUZ: o que é meu, o que dá pra pegar, e dois
-  // botões grandes.
+  // precisa de tela de quem PRODUZ: a ESTAÇÃO como ela é fisicamente, uma
+  // máquina por cartão.
   //
   // `return` antes de tudo, e não um ternário lá embaixo, pra que o caminho
   // do gerente continue exatamente o que era: os filtros, o cabeçalho e o
-  // board não sabem que esta bifurcação existe. Cada ramo faz UMA busca —
-  // o operador não tem filtro, então nem monta `KanbanFiltros`.
+  // board não sabem que esta bifurcação existe.
   //
-  // `listarOrdensProducao` JÁ devolve só o que ele pode ver
-  // (`condicaoDeVisaoDoOperador`: a fila sem máquina + as OPs das máquinas
-  // da estação dele). Aqui é só particionar o que voltou.
+  // ⚠️ A ÁREA PRINCIPAL NÃO CRESCE COM A FILA, e é por isso que são DUAS
+  // buscas com papéis diferentes:
+  //
+  //   - `listarMaquinasDaEstacao` desenha a tela: N máquinas, N cartões.
+  //     Nove na Estação 1, sete na Estação 2 — com a fila vazia ou com cem
+  //     OPs esperando.
+  //   - `listarOrdensProducao` alimenta só o que fica FORA da área
+  //     principal: a fila (consulta) e as terminadas (consulta), atrás de
+  //     botão com contador. Ela já devolve apenas o que o operador pode ver
+  //     (`condicaoDeVisaoDoOperador`).
+  //
+  // A OP em produção vem pendurada na máquina, então ela NÃO é particionada
+  // aqui — o cartão da máquina já é o lugar dela.
   if (user.role === 'operador') {
-    const [ordens, estacao] = await Promise.all([
+    const [visao, ordens] = await Promise.all([
+      listarMaquinasDaEstacao(),
       listarOrdensProducao(),
-      estacaoDoOperador(user.id),
     ])
+
+    // A PARTIÇÃO É EXAUSTIVA, e quem prova isso é `destinoDaOrdem` — um
+    // switch sem `default` que não compila se um status novo do enum ficar
+    // sem lugar na estação. O porquê está escrito lá
+    // (src/lib/producao/destino-da-ordem.ts): OP que não cai em destino
+    // nenhum some da tela sem erro, sem aviso e sem log.
+    //
+    // Aqui em cima sobra só o "está na máquina?", que a tela sabe responder
+    // e a regra pura não: depende de quais máquinas são desta estação.
+    const idsNasMaquinas = new Set(
+      visao.maquinas.map((m) => m.op?.id).filter((id) => id !== undefined),
+    )
+    const destino = (o: (typeof ordens)[number]) =>
+      destinoDaOrdem(o.status, idsNasMaquinas.has(o.id))
 
     return (
       <PainelOperador
         nomeOperador={user.nome}
-        estacaoNome={estacao?.nome ?? null}
-        minhas={ordens.filter((o) => o.responsavelId === user.id)}
-        livres={ordens.filter((o) => o.responsavelId === null)}
-        // O TERCEIRO GRUPO: OP das máquinas da estação dele que um COLEGA
-        // pegou. Não é "minha" nem "livre", e some se a tela só tiver duas
-        // listas — mas ele PODE agir nela, de propósito: o turno acaba com a
-        // OP no meio e o colega precisa conseguir terminar (a regra está em
-        // `operadorPodeAgirNaOrdem`, src/lib/db/estacao-operadores.ts).
-        daEstacao={ordens.filter(
-          (o) => o.responsavelId !== null && o.responsavelId !== user.id,
-        )}
+        estacaoNome={visao.estacao?.nome ?? null}
+        maquinas={visao.maquinas}
+        fila={ordens.filter((o) => destino(o) === 'fila')}
+        terminadas={ordens.filter((o) => destino(o) === 'terminadas')}
         podeAgir={podeMover}
       />
     )

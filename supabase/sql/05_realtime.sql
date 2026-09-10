@@ -15,4 +15,18 @@ BEGIN
   EXCEPTION WHEN duplicate_object THEN
     NULL;
   END;
+
+  -- maquinas: a tela do operador é uma grade de MÁQUINAS, e o cartão precisa
+  -- das DUAS tabelas pra saber em que pé está. A OP diz se a máquina está
+  -- ocupada; a máquina diz se está indisponível (manutenção/desativada).
+  --
+  -- Sem esta linha o `.on('postgres_changes', ... table: 'maquinas')` do
+  -- painel-operador.tsx assina, conecta e NUNCA recebe evento — falha muda,
+  -- sem erro no console: marcar uma máquina como manutenção não apagaria o
+  -- cartão no tablet do operador que está de pé na frente dela.
+  BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.maquinas;
+  EXCEPTION WHEN duplicate_object THEN
+    NULL;
+  END;
 END $$;

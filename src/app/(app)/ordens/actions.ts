@@ -44,6 +44,7 @@ import {
   type User,
   type VariacaoProduto,
 } from '@/lib/db/schema'
+import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
 import {
   apontamentoSchema,
   mudarStatusOrdemSchema,
@@ -861,7 +862,11 @@ async function validarMaquinaParaOrdem(
   if (!uuidRe.test(maquinaId)) return 'Máquina inválida'
 
   const [maquina] = await db
-    .select({ id: maquinas.id, codigo: maquinas.codigo })
+    .select({
+      id: maquinas.id,
+      codigo: maquinas.codigo,
+      status: maquinas.status,
+    })
     .from(maquinas)
     .where(
       and(
@@ -875,6 +880,23 @@ async function validarMaquinaParaOrdem(
     return estacaoId
       ? 'Essa máquina não é da sua estação'
       : 'Máquina não encontrada'
+  }
+
+  // MÁQUINA EM MANUTENÇÃO OU DESATIVADA NÃO RECEBE OP, e a regra é a mesma
+  // que apaga o cartão do operador — `motivoDeImpedimento`, em
+  // src/lib/producao/estado-maquina.ts. Aqui é o lado que VALE: o cartão só
+  // esconde o botão, e o kanban do gerente chega nesta mesma action por
+  // outro caminho.
+  //
+  // ⚠️ Vale pra TODO MUNDO, admin incluído, e não é descuido de permissão: o
+  // impedimento é FÍSICO, não hierárquico. A máquina está desmontada — quem
+  // pode mais não faz a peça sair dela. Planejar continua livre: criar e
+  // editar OP não passam por aqui, então o gerente segue podendo deixar uma
+  // OP apontada pra máquina que volta da manutenção amanhã. O que ele não
+  // faz é PÔR EM PRODUÇÃO agora.
+  const impedimento = motivoDeImpedimento(maquina.status)
+  if (impedimento) {
+    return `A máquina ${maquina.codigo} ${impedimento} e não pode receber OP`
   }
 
   const [ocupada] = await db
