@@ -17,8 +17,7 @@ import {
   type PaginaDeOps,
 } from './actions'
 import {
-  apontarProducaoAction,
-  mudarStatusOrdemAction,
+  concluirProducaoAction,
   pegarOrdemAction,
 } from '@/app/(app)/ordens/actions'
 import { Button } from '@/components/ui/button'
@@ -36,6 +35,10 @@ import {
   PRIORIDADE_LABEL,
   type PrioridadeNivel,
 } from '@/lib/prioridade'
+import {
+  calcularConclusao,
+  erroDeQuantidade,
+} from '@/lib/producao/conclusao'
 import { estadoDaMaquina } from '@/lib/producao/estado-maquina'
 import { confirmacaoAntesDeIniciar } from '@/lib/producao/inicio-da-op'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
@@ -71,7 +74,7 @@ import { STATUS_LABEL } from '@/lib/validators/maquinas'
 //
 // O QUE ESTA TELA NÃO TEM, e a ausência é o desenho: arrastar, colunas,
 // filtros, chips, agrupamento, histórico, ícone sem rótulo, nada que dependa
-// de hover. Botão é verbo — "Iniciar produção", "Apontar", "Terminei" — e
+// de hover. Botão é verbo — "Iniciar produção", "Concluir produção" — e
 // nunca um ícone sozinho: no cartão estreito de duas colunas o rótulo
 // encurta, mas não vira desenho pra adivinhar.
 //
@@ -140,8 +143,7 @@ export function PainelOperador({
 }: Props) {
   const router = useRouter()
   const [iniciando, setIniciando] = useState<MaquinaDaEstacao | null>(null)
-  const [apontando, setApontando] = useState<OpNaMaquina | null>(null)
-  const [terminando, setTerminando] = useState<{
+  const [concluindo, setConcluindo] = useState<{
     op: OpNaMaquina
     maquinaCodigo: string
   } | null>(null)
@@ -249,9 +251,8 @@ export function PainelOperador({
               maquina={m}
               podeAgir={podeAgir}
               onIniciar={() => setIniciando(m)}
-              onApontar={() => m.op && setApontando(m.op)}
-              onTerminar={() =>
-                m.op && setTerminando({ op: m.op, maquinaCodigo: m.codigo })
+              onConcluir={() =>
+                m.op && setConcluindo({ op: m.op, maquinaCodigo: m.codigo })
               }
             />
           ))}
@@ -264,14 +265,11 @@ export function PainelOperador({
           onClose={() => setIniciando(null)}
         />
       )}
-      {apontando && (
-        <ApontarDialog op={apontando} onClose={() => setApontando(null)} />
-      )}
-      {terminando && (
-        <TerminarDialog
-          op={terminando.op}
-          maquinaCodigo={terminando.maquinaCodigo}
-          onClose={() => setTerminando(null)}
+      {concluindo && (
+        <ConcluirDialog
+          op={concluindo.op}
+          maquinaCodigo={concluindo.maquinaCodigo}
+          onClose={() => setConcluindo(null)}
         />
       )}
       {consultando && (
@@ -295,14 +293,12 @@ function CartaoMaquina({
   maquina: m,
   podeAgir,
   onIniciar,
-  onApontar,
-  onTerminar,
+  onConcluir,
 }: {
   maquina: MaquinaDaEstacao
   podeAgir: boolean
   onIniciar: () => void
-  onApontar: () => void
-  onTerminar: () => void
+  onConcluir: () => void
 }) {
   const estado = estadoDaMaquina(m.status, m.op !== null)
 
@@ -331,8 +327,7 @@ function CartaoMaquina({
         <CorpoOcupada
           op={m.op}
           podeAgir={podeAgir}
-          onApontar={onApontar}
-          onTerminar={onTerminar}
+          onConcluir={onConcluir}
         />
       )}
 
@@ -365,13 +360,11 @@ function CartaoMaquina({
 function CorpoOcupada({
   op,
   podeAgir,
-  onApontar,
-  onTerminar,
+  onConcluir,
 }: {
   op: OpNaMaquina
   podeAgir: boolean
-  onApontar: () => void
-  onTerminar: () => void
+  onConcluir: () => void
 }) {
   return (
     <>
@@ -411,17 +404,17 @@ function CorpoOcupada({
         {op.responsavelNome && ` · com ${op.responsavelNome}`}
       </div>
 
+      {/* UM BOTÃO SÓ, e não é economia de espaço.
+          Eram dois — "Apontar" e "Terminei" —, cada um numa action e numa
+          transação. Com os dois, o operador conseguia criar sem querer dois
+          estados que a tela dele não desfaz: apontou e a tela caiu antes de
+          terminar (número gravado, máquina ainda ocupada), ou terminou sem
+          apontar (máquina livre, número que nunca existiu). Com um, o gesto
+          é o do mundo físico: acabou, registra e sai da máquina. */}
       {podeAgir && (
-        <div className="mt-auto flex gap-2 pt-3">
-          <Button className="h-12 flex-1 text-base" onClick={onApontar}>
-            Apontar
-          </Button>
-          <Button
-            variant="outline"
-            className="h-12 flex-1 text-base"
-            onClick={onTerminar}
-          >
-            Terminei
+        <div className="mt-auto pt-3">
+          <Button className="h-12 w-full text-base" onClick={onConcluir}>
+            Concluir produção
           </Button>
         </div>
       )}
@@ -879,41 +872,74 @@ function ConsultaDialog({
 }
 
 // -----------------------------------------------------------------
-// Apontar produção
+// Concluir produção — o registro e o fim, num gesto só
 // -----------------------------------------------------------------
+
+// ⚠️ O NÚMERO JÁ VEM PREENCHIDO, MAS NADA É GRAVADO SEM O TOQUE. A meta é a
+// sugestão, e o botão CARREGA O NÚMERO ("Concluir com 30 peças boas"): ele
+// não confirma "ok", confirma o valor que vai ficar no banco. É o que separa
+// "poupar digitação" de "assumir que fez tudo" — no caso normal, em que
+// saiu a OP inteira, ele lê o número e toca uma vez.
+//
+// ⚠️ O TETO É A META DO GERENTE (src/lib/producao/conclusao.ts). O teclado
+// RECUSA o dígito que passaria do limite, em vez de aceitar e reclamar
+// depois: número errado que aparece na tela por um instante é número que
+// alguém pode confirmar sem reler. Refugo não tem teto — peça perdida não é
+// produção.
+//
+// ⚠️ E O QUE JÁ FOI REGISTRADO NÃO CONTA DE NOVO. Numa OP que já tem
+// apontamento (legado, ou o gerente pelo sheet), o sugerido e o teto são o
+// QUE FALTA, com o "já registradas: X" à vista pra explicar por que o número
+// não é a meta cheia.
+//
+// A confirmação é um diálogo e não um toast-com-desfazer: toque acidental no
+// tablet é comum — a mão encosta na tela ao apoiar — e desfazer exigiria ler
+// rápido uma tarja que some. Aqui a pergunta espera.
 
 type Campo = 'produzida' | 'refugo'
 
-function ApontarDialog({
+function ConcluirDialog({
   op,
+  maquinaCodigo,
   onClose,
 }: {
   op: OpNaMaquina
+  maquinaCodigo: string
   onClose: () => void
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const conclusao = calcularConclusao(op.quantidade, op.produzido)
   const [ativo, setAtivo] = useState<Campo>('produzida')
   const [valores, setValores] = useState<Record<Campo, string>>({
-    produzida: '',
+    // Já preenchido com o que falta — no fluxo novo, a meta inteira.
+    produzida: String(conclusao.restante),
     refugo: '',
   })
   const [erro, setErro] = useState<string | null>(null)
 
-  const faltam = Math.max(0, op.quantidade - op.produzido)
+  const produzida = Number(valores.produzida || 0)
+  const refugo = Number(valores.refugo || 0)
 
-  // TECLADO PRÓPRIO NA TELA, e não o do tablet: o teclado do sistema cobre
-  // metade da tela, some sozinho e às vezes nem abre quando há teclado
-  // físico acoplado. Aqui a tecla é sempre a mesma, sempre no mesmo lugar.
+  // TECLADO PRÓPRIO NA TELA, e não o do tablet: o do sistema cobre metade da
+  // tela, some sozinho e às vezes nem abre quando há teclado físico
+  // acoplado. Aqui a tecla é sempre a mesma, sempre no mesmo lugar.
   function digitar(d: string) {
     setErro(null)
     setValores((v) => {
-      const atual = v[ativo]
-      // 4 dígitos é mais do que qualquer OP real, e trava o zero à esquerda
-      // infinito de quem apoia o dedo na tecla.
-      if (atual.length >= 4) return v
-      const novo = (atual + d).replace(/^0+(?=\d)/, '')
-      return { ...v, [ativo]: novo }
+      const novoTexto = (v[ativo] + d).replace(/^0+(?=\d)/, '')
+      if (novoTexto.length > 4) return v
+      // O TETO BARRA O DÍGITO. Passar do limite não chega a virar valor na
+      // tela: é a diferença entre "não dá pra digitar isso" e "digitou e
+      // depois toma um erro", e a segunda deixa o número errado à vista.
+      if (ativo === 'produzida' && Number(novoTexto) > conclusao.restante) {
+        setErro(
+          erroDeQuantidade(Number(novoTexto), refugo, conclusao) ??
+            'Quantidade acima da meta',
+        )
+        return v
+      }
+      return { ...v, [ativo]: novoTexto }
     })
   }
   function apagar() {
@@ -925,21 +951,17 @@ function ApontarDialog({
     setValores((v) => ({ ...v, [ativo]: '' }))
   }
 
-  function salvar() {
+  function concluir() {
     setErro(null)
     startTransition(async () => {
-      const r = await apontarProducaoAction(op.id, {
-        produzida: valores.produzida === '' ? 0 : valores.produzida,
-        refugo: valores.refugo === '' ? 0 : valores.refugo,
-      })
+      const r = await concluirProducaoAction(op.id, { produzida, refugo })
       if (!r.success) {
-        // A MENSAGEM FICA NO DIÁLOGO, em tipo grande. A validação que recusa
-        // apontamento zerado já existe no Zod; num toast, ela apareceria
-        // atrás do diálogo aberto e sumiria antes de ele ler.
         setErro(r.error)
         return
       }
-      toast.success(r.message ?? 'Apontamento registrado')
+      // Inclui o caso "já estava concluída" (reenvio depois de queda de
+      // conexão), que a action devolve como sucesso de propósito.
+      toast.success(r.message ?? 'Produção concluída')
       router.refresh()
       onClose()
     })
@@ -950,18 +972,27 @@ function ApontarDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-2xl">{op.produtoNome}</DialogTitle>
+          {/* MÁQUINA, OP E META na mesma linha: é o que ele confere antes de
+              gravar, e some do cartão no instante seguinte. */}
           <DialogDescription className="text-base">
             {variacaoDe(op) && `${variacaoDe(op)} · `}
-            faltam {faltam}
+            {op.numero} · máquina {maquinaCodigo} · meta {op.quantidade}
           </DialogDescription>
         </DialogHeader>
+
+        {conclusao.jaRegistrado > 0 && (
+          <p className="text-muted-foreground text-base tabular-nums">
+            já registradas: {conclusao.jaRegistrado} · falta{' '}
+            {conclusao.restante}
+          </p>
+        )}
 
         {/* Dois campos, um ativo por vez. O destaque é BORDA GROSSA + anel,
             não só cor: no galpão a tela leva sol de lado, e diferença de
             matiz some. */}
         <div className="grid grid-cols-2 gap-3">
           <CampoNumero
-            rotulo="Prontas"
+            rotulo="Peças boas"
             valor={valores.produzida}
             ativo={ativo === 'produzida'}
             onSelecionar={() => setAtivo('produzida')}
@@ -993,13 +1024,20 @@ function ApontarDialog({
 
         {erro && <Erro>{erro}</Erro>}
 
+        {/* A MÁQUINA LIBERA AQUI, e ele precisa saber pra onde a OP vai — no
+            toque seguinte ela some do cartão. */}
+        <p className="text-muted-foreground text-center text-sm">
+          A máquina {maquinaCodigo} fica livre e a OP vai pra
+          &ldquo;Terminadas&rdquo;, esperando o gerente.
+        </p>
+
         <Button
           className="h-16 text-xl"
           loading={isPending}
           disabled={isPending}
-          onClick={salvar}
+          onClick={concluir}
         >
-          Salvar
+          Concluir com {produzida} {produzida === 1 ? 'peça boa' : 'peças boas'}
         </Button>
         <Button
           variant="ghost"
@@ -1007,7 +1045,7 @@ function ApontarDialog({
           onClick={onClose}
           disabled={isPending}
         >
-          Cancelar
+          Voltar
         </Button>
       </DialogContent>
     </Dialog>
@@ -1068,78 +1106,6 @@ function Tecla({
     >
       {children}
     </button>
-  )
-}
-
-// -----------------------------------------------------------------
-// Terminei
-// -----------------------------------------------------------------
-
-// CONFIRMAÇÃO, e não o toast-com-desfazer do kanban. Toque acidental no
-// tablet é comum — a mão encosta na tela ao apoiar —, e desfazer exige ler
-// rápido uma tarja que some. Aqui a pergunta espera.
-function TerminarDialog({
-  op,
-  maquinaCodigo,
-  onClose,
-}: {
-  op: OpNaMaquina
-  maquinaCodigo: string
-  onClose: () => void
-}) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-  const [erro, setErro] = useState<string | null>(null)
-
-  function confirmar() {
-    setErro(null)
-    startTransition(async () => {
-      const r = await mudarStatusOrdemAction(op.id, { status: 'pronto_envio' })
-      if (!r.success) {
-        setErro(r.error)
-        return
-      }
-      toast.success(r.message ?? 'OP pronta pro envio')
-      router.refresh()
-      onClose()
-    })
-  }
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">
-            Terminou a OP {op.numero}?
-          </DialogTitle>
-          {/* ONDE ELA VAI PARAR. A OP sai da máquina e some do cartão — sem
-              esta frase ele não saberia onde procurar depois. */}
-          <DialogDescription className="text-lg">
-            A máquina {maquinaCodigo} fica livre e a OP vai pra
-            &ldquo;Terminadas&rdquo;, esperando o gerente concluir.
-          </DialogDescription>
-        </DialogHeader>
-
-        {erro && <Erro>{erro}</Erro>}
-
-        <Button
-          className="h-16 text-xl"
-          loading={isPending}
-          disabled={isPending}
-          onClick={confirmar}
-        >
-          Sim, terminei
-        </Button>
-        <Button
-          variant="ghost"
-          className="h-12"
-          onClick={onClose}
-          disabled={isPending}
-        >
-          Voltar
-        </Button>
-      </DialogContent>
-    </Dialog>
   )
 }
 

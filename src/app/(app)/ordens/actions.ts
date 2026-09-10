@@ -46,6 +46,11 @@ import {
 } from '@/lib/db/schema'
 import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
 import {
+  calcularConclusao,
+  erroDeQuantidade,
+  resumoDaConclusao,
+} from '@/lib/producao/conclusao'
+import {
   confirmacaoAntesDeIniciar,
   OBSERVACAO_DE_MATERIA_PRIMA,
   observacaoDeMaquinaAtribuida,
@@ -1299,6 +1304,185 @@ export async function apontarProducaoAction(
   revalidatePath('/dashboard')
   revalidatePath(`/ordens/${ordemId}`)
   return { success: true, message: 'Apontamento registrado', assumiu }
+}
+
+// -----------------------------------------------------------------
+// CONCLUIR PRODUÇÃO — o registro e o fim da OP, numa transação só
+// -----------------------------------------------------------------
+//
+// Substitui, no fluxo do operador, o par "Apontar produção" + "Terminei".
+// Eram duas actions e duas transações independentes, e é isso que o gesto
+// único conserta: dava pra apontar e a tela cair antes do terminar (número
+// gravado, máquina ainda ocupada), ou terminar sem apontar (máquina livre,
+// número que nunca existiu). Nenhum dos dois estados é recuperável pela
+// tela do operador, e os dois são fáceis de criar sem querer.
+//
+// ⚠️ A MÁQUINA LIBERA PORQUE O STATUS MUDOU, e as duas coisas estão na mesma
+// transação. O índice único `ordens_producao_maquina_em_producao_uidx` só
+// cobre `em_producao`, então sair pra `pronto_envio` solta a máquina — se o
+// UPDATE não gravar, nada solta e nada foi registrado.
+//
+// ⚠️ IDEMPOTÊNCIA SEM COLUNA NOVA. O UPDATE exige `status = 'em_producao'`.
+// Toque duplo, reenvio depois de queda de conexão e dois operadores na
+// mesma OP caem todos no mesmo lugar: zero linhas, transação desfeita,
+// NENHUM apontamento duplicado. Nenhuma migration, nenhuma chave de
+// idempotência guardada.
+//
+// ⚠️ E O CONFLITO NÃO É ERRO — é informação. Quando a conexão cai DEPOIS de
+// salvar, o operador aperta de novo; um "falhou" ali seria mentira sobre uma
+// operação que deu certo, e ele registraria de novo por outro caminho. Por
+// isso a recusa por "já concluída" volta como `success: true` com aviso,
+// e não como erro.
+//
+// ⚠️ NÃO FINALIZA NADA COMERCIAL. Vai pra `pronto_envio`, não pra
+// `enviado` — quem gera `movimentacoes_estoque` é a passagem pra 'enviado',
+// que continua sendo do gerente. (E `ordens_producao` não tem ligação
+// nenhuma com orçamento ou pedido, então não há o que disparar.)
+
+export type ConclusaoInput = { produzida: number; refugo: number }
+
+export async function concluirProducaoAction(
+  ordemId: string,
+  input: ConclusaoInput,
+): Promise<ActionResult> {
+  const user = await requireAuth()
+  if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
+
+  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
+    return { success: false, error: 'Sem permissão pra concluir produção' }
+  }
+
+  const [op] = await db
+    .select({
+      id: ordensProducao.id,
+      status: ordensProducao.status,
+      quantidade: ordensProducao.quantidade,
+      responsavelId: ordensProducao.responsavelId,
+      maquinaId: ordensProducao.maquinaId,
+    })
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
+    .limit(1)
+  if (!op) return { success: false, error: 'OP não encontrada' }
+
+  // Já concluída antes desta chamada — o caso do reenvio. Responde a
+  // verdade ("já está pronta") em vez de um erro que assusta.
+  if (op.status !== 'em_producao') {
+    return concluidaAntes(op.status)
+  }
+
+  // Mesma regra do mover e do apontar: é da estação dele, e concluir TOMA a
+  // OP — a virada de turno fica registrada sozinha.
+  let assumiu = false
+  if (user.role === 'operador') {
+    const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
+    if (!permissao.pode) return { success: false, error: permissao.erro }
+    assumiu = op.responsavelId !== user.id
+  } else if (!isManagerRole(user.role) && op.responsavelId !== user.id) {
+    return { success: false, error: 'Pegue a OP pra você antes de concluir' }
+  }
+
+  try {
+    let resumo = ''
+    await db.transaction(async (tx) => {
+      // ⚠️ O UPDATE CONDICIONAL VEM PRIMEIRO, E A ORDEM IMPORTA.
+      //
+      // Ele é o cadeado de tudo: idempotência, corrida entre operadores e
+      // "libera a máquina só quando salvar". Mas está aqui em cima por outro
+      // motivo, que custou um teste pra aparecer: com a validação de
+      // quantidade na frente, DOIS OPERADORES CONCLUINDO A MESMA OP faziam o
+      // segundo ler `jaRegistrado` já com as peças do primeiro, cair em
+      // `restante = 0` e levar "o máximo agora é 0" — uma reclamação sobre
+      // teto pra um problema que é de corrida. A mensagem certa é "já estava
+      // concluída", e só o UPDATE sabe disso.
+      //
+      // Quem perde a corrida sai por aqui e nem chega a ser validado.
+      const gravadas = await tx
+        .update(ordensProducao)
+        .set({
+          status: 'pronto_envio' as const,
+          ...(assumiu ? { responsavelId: user.id } : {}),
+        })
+        .where(
+          and(
+            eq(ordensProducao.id, ordemId),
+            isNull(ordensProducao.deletedAt),
+            eq(ordensProducao.status, 'em_producao'),
+          ),
+        )
+        .returning({ id: ordensProducao.id })
+      if (gravadas.length === 0) throw new ConflitoDeOrdem()
+
+      // O JÁ REGISTRADO É LIDO AQUI DENTRO, e não lá em cima: é ele que
+      // define o teto, e um apontamento do gerente entrando entre a leitura
+      // e a gravação deixaria o teto velho passar por cima da meta. Recusar
+      // aqui desfaz o UPDATE junto — é a mesma transação.
+      const [{ jaRegistrado }] = await tx
+        .select({
+          jaRegistrado: sql<number>`COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)::int`,
+        })
+        .from(apontamentosProducao)
+        .where(eq(apontamentosProducao.ordemId, ordemId))
+
+      const conclusao = calcularConclusao(op.quantidade, jaRegistrado)
+      const erro = erroDeQuantidade(input.produzida, input.refugo, conclusao)
+      if (erro) throw new QuantidadeRecusada(erro)
+
+      // Apontamento de 0 e 0 não vira linha: é o caso da OP que já tinha o
+      // total registrado antes. Uma linha zerada só sujaria o histórico.
+      if (input.produzida > 0 || input.refugo > 0) {
+        const agora = new Date()
+        await tx.insert(apontamentosProducao).values({
+          ordemId,
+          maquinaId: op.maquinaId,
+          operadorId: user.id,
+          inicio: agora,
+          fim: agora,
+          quantidadeProduzida: input.produzida,
+          quantidadeRefugo: input.refugo,
+        })
+      }
+
+      resumo = resumoDaConclusao(input.produzida, input.refugo, conclusao)
+      await tx.insert(eventosKanban).values({
+        ordemId,
+        statusAnterior: 'em_producao',
+        statusNovo: 'pronto_envio',
+        usuarioId: user.id,
+        observacao: resumo,
+      })
+    })
+
+    revalidatePath('/producao')
+    revalidatePath('/dashboard')
+    revalidatePath(`/ordens/${ordemId}`)
+    return { success: true, message: resumo, assumiu }
+  } catch (erro) {
+    if (erro instanceof QuantidadeRecusada) {
+      return { success: false, error: erro.message }
+    }
+    if (erro instanceof ConflitoDeOrdem) {
+      // Alguém concluiu entre o SELECT e o UPDATE. Mesma resposta do
+      // reenvio: a OP está pronta, e dizer "erro" seria mentira.
+      return concluidaAntes('pronto_envio')
+    }
+    throw erro
+  }
+}
+
+// A quantidade recusada pelo teto. Classe própria pra desfazer a transação
+// levando a frase de `erroDeQuantidade` junto — ela explica o teto com os
+// números daquela OP, e um erro genérico perderia isso.
+class QuantidadeRecusada extends Error {}
+
+function concluidaAntes(status: (typeof statusValues)[number]): ActionResult {
+  return {
+    success: true,
+    message:
+      status === 'pronto_envio'
+        ? 'Essa OP já estava concluída'
+        : `Essa OP já saiu da máquina (${STATUS_LABEL_CURTO[status]})`,
+  }
 }
 
 // -----------------------------------------------------------------

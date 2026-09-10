@@ -10,6 +10,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
+import {
+  calcularConclusao,
+  erroDeQuantidade,
+  resumoDaConclusao,
+} from './conclusao.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
 import { estadoDaMaquina, motivoDeImpedimento } from './estado-maquina.ts'
 import {
@@ -131,4 +136,75 @@ test('status que nem inicia não faz pergunta nenhuma', () => {
   // antes de a action recusá-la por status — pergunta sem consequência.
   assert.equal(confirmacaoAntesDeIniciar('pronto_envio'), null)
   assert.equal(confirmacaoAntesDeIniciar('cancelado'), null)
+})
+
+// -----------------------------------------------------------------
+// Concluir a produção
+// -----------------------------------------------------------------
+
+test('sem registro anterior, o sugerido e o teto sao a meta', () => {
+  const c = calcularConclusao(30, 0)
+  assert.equal(c.restante, 30)
+  assert.equal(erroDeQuantidade(30, 0, c), null)
+})
+
+test('NAO passa da meta do gerente', () => {
+  const c = calcularConclusao(30, 0)
+  assert.equal(
+    erroDeQuantidade(31, 0, c),
+    'A OP é de 30 peças. Não dá pra registrar mais que isso.',
+  )
+})
+
+test('refugo NAO entra no teto', () => {
+  // Fio ruim pode queimar mais peças do que a meta inteira. Tampar o refugo
+  // faria o operador arredondar pra baixo pra conseguir salvar.
+  const c = calcularConclusao(30, 0)
+  assert.equal(erroDeQuantidade(30, 99, c), null)
+})
+
+test('com registro anterior, o teto e o que FALTA', () => {
+  const c = calcularConclusao(30, 12)
+  assert.equal(c.restante, 18)
+  assert.equal(erroDeQuantidade(18, 0, c), null)
+  assert.equal(
+    erroDeQuantidade(19, 0, c),
+    'A OP é de 30 peças e 12 já foram registradas — o máximo agora é 18',
+  )
+})
+
+test('OP que ja passou da meta sugere zero, e zero e valido', () => {
+  const c = calcularConclusao(30, 45)
+  assert.equal(c.restante, 0)
+  assert.equal(erroDeQuantidade(0, 0, c), null)
+  assert.equal(erroDeQuantidade(1, 0, c) !== null, true)
+})
+
+test('abaixo da meta conclui', () => {
+  const c = calcularConclusao(30, 0)
+  assert.equal(erroDeQuantidade(27, 0, c), null)
+})
+
+test('numero quebrado ou negativo nao passa', () => {
+  const c = calcularConclusao(30, 0)
+  assert.equal(erroDeQuantidade(-1, 0, c), 'Quantidade inválida')
+  assert.equal(erroDeQuantidade(1.5, 0, c), 'Quantidade inválida')
+  assert.equal(erroDeQuantidade(1, -2, c), 'Refugo inválido')
+})
+
+test('o resumo do historico diz o TOTAL contra a meta', () => {
+  assert.equal(
+    resumoDaConclusao(30, 0, calcularConclusao(30, 0)),
+    'Concluída com 30 de 30 peças',
+  )
+  assert.equal(
+    resumoDaConclusao(27, 2, calcularConclusao(30, 0)),
+    'Concluída com 27 de 30 peças (3 a menos) · 2 refugo',
+  )
+  // Com registro anterior o total soma os dois, senao o gerente leria "18 de
+  // 30" numa OP que ficou completa.
+  assert.equal(
+    resumoDaConclusao(18, 0, calcularConclusao(30, 12)),
+    'Concluída com 30 de 30 peças',
+  )
 })
