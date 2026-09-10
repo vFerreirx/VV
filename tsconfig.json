@@ -11,6 +11,10 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    // Permite `import ... from './x.ts'`, que o runner embutido do Node
+    // (--experimental-strip-types) EXIGE nos testes de regra pura. Só
+    // permite; não muda emissão nenhuma, porque o projeto é noEmit.
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
