@@ -5,6 +5,7 @@ import {
   asc,
   desc,
   eq,
+  gte,
   ilike,
   inArray,
   isNull,
@@ -1490,6 +1491,181 @@ export async function concluirProducaoAction(
       // Alguém concluiu entre o SELECT e o UPDATE. Mesma resposta do
       // reenvio: a OP está pronta, e dizer "erro" seria mentira.
       return concluidaAntes('pronto_envio')
+    }
+    throw erro
+  }
+}
+
+// -----------------------------------------------------------------
+// DESFAZER A CONCLUSÃO — o caminho de volta do operador
+// -----------------------------------------------------------------
+//
+// O erro que se comete no tablet é "fiz isso agora e foi errado": toquei sem
+// querer, concluí a OP da máquina vizinha, confirmei os números
+// pré-preenchidos sem ler. Todos se resolvem voltando atrás, e nenhum se
+// resolve editando número.
+//
+// ⚠️ POR ISSO É DESFAZER, E NÃO EDITAR. Ajustar quantidade horas depois é
+// CONFERÊNCIA, e conferência é do gerente — que já tem `apontarProducaoAction`
+// sem teto no detalhe da OP. Um segundo fluxo numérico na tela do operador
+// devolveria a ambiguidade que a Fase 3 tirou: "registrar" e "terminar"
+// voltariam a ser duas coisas na cabeça dele, com uma delas chamada
+// "corrigir".
+//
+// ─────────────────────────────────────────────────────────────────────────
+// DUAS GUARDAS DE ESTADO REAL, E NENHUMA DE RELÓGIO
+// ─────────────────────────────────────────────────────────────────────────
+//
+//   1. A OP ainda tem que estar em `pronto_envio`. Se o gerente já moveu,
+//      não há mais volta pelo tablet — quem está adiante na esteira decide.
+//   2. A máquina tem que estar LIVRE. Se alguém já iniciou outra OP na
+//      TC-02, o mundo físico andou: tem peça na máquina agora.
+//
+// ⚠️ E NÃO HÁ JANELA DE TEMPO, de propósito. Um "só nos primeiros 15
+// minutos" seria um terceiro guarda arbitrário, que recusa sem conseguir
+// explicar por quê. As duas condições acima SÃO o mundo real, e toda recusa
+// delas tem uma frase que o operador entende e pode agir sobre.
+//
+// ⚠️ O APONTAMENTO É APAGADO, e isso é decisão, não descuido. Manter o
+// número errado inflaria a produção do dia — que é justamente o dado que
+// alguém vai olhar. O RASTRO FICA NO `eventos_kanban`, com quem desfez,
+// quando e qual era o número: o histórico não mente, só o total deixa de
+// contar o que não foi produzido. (`apontamentos_producao` não é imobilizado
+// — quem tem esse desenho é `movimentacoes_fio`; este aqui nasceu com
+// `updatedAt`.)
+
+export async function desfazerConclusaoAction(
+  ordemId: string,
+): Promise<ActionResult> {
+  const user = await requireAuth()
+  if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
+
+  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
+    return { success: false, error: 'Sem permissão pra desfazer' }
+  }
+
+  const [op] = await db
+    .select({
+      id: ordensProducao.id,
+      numero: ordensProducao.numero,
+      status: ordensProducao.status,
+      maquinaId: ordensProducao.maquinaId,
+    })
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
+    .limit(1)
+  if (!op) return { success: false, error: 'OP não encontrada' }
+
+  if (op.status !== 'pronto_envio') {
+    return {
+      success: false,
+      error: `O gerente já moveu essa OP (${STATUS_LABEL_CURTO[op.status]}). Fale com ele.`,
+    }
+  }
+  if (!op.maquinaId) {
+    return { success: false, error: 'Essa OP não tem máquina pra voltar' }
+  }
+
+  if (user.role === 'operador') {
+    const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
+    if (!permissao.pode) return { success: false, error: permissao.erro }
+  }
+
+  // A MÁQUINA TEM QUE ESTAR LIVRE. O índice único pegaria isso no UPDATE,
+  // mas com um 23505 traduzido genérico; aqui dá pra dizer QUAL OP ocupou.
+  const [ocupada] = await db
+    .select({ numero: ordensProducao.numero, codigo: maquinas.codigo })
+    .from(ordensProducao)
+    .innerJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
+    .where(
+      and(
+        eq(ordensProducao.maquinaId, op.maquinaId),
+        eq(ordensProducao.status, 'em_producao'),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
+    .limit(1)
+  if (ocupada) {
+    return {
+      success: false,
+      error: `A máquina ${ocupada.codigo} já está com a OP ${ocupada.numero}. Fale com o gerente.`,
+    }
+  }
+
+  try {
+    let desfeito = 0
+    await db.transaction(async (tx) => {
+      // Mesmo UPDATE condicional das outras: se alguém mexeu entre o SELECT
+      // e agora, zero linhas e nada acontece.
+      const gravadas = await tx
+        .update(ordensProducao)
+        .set({ status: 'em_producao' as const })
+        .where(
+          and(
+            eq(ordensProducao.id, ordemId),
+            isNull(ordensProducao.deletedAt),
+            eq(ordensProducao.status, 'pronto_envio'),
+          ),
+        )
+        .returning({ id: ordensProducao.id })
+      if (gravadas.length === 0) throw new ConflitoDeOrdem()
+
+      // QUAIS APONTAMENTOS SÃO DA CONCLUSÃO: os criados de lá pra cá. Achar
+      // pelo evento é preciso; "o último apontamento" seria um chute que
+      // erraria se o gerente tivesse lançado algo depois.
+      const [conclusao] = await tx
+        .select({ em: eventosKanban.createdAt })
+        .from(eventosKanban)
+        .where(
+          and(
+            eq(eventosKanban.ordemId, ordemId),
+            eq(eventosKanban.statusNovo, 'pronto_envio'),
+          ),
+        )
+        .orderBy(desc(eventosKanban.createdAt))
+        .limit(1)
+
+      if (conclusao) {
+        const apagados = await tx
+          .delete(apontamentosProducao)
+          .where(
+            and(
+              eq(apontamentosProducao.ordemId, ordemId),
+              gte(apontamentosProducao.createdAt, conclusao.em),
+            ),
+          )
+          .returning({ q: apontamentosProducao.quantidadeProduzida })
+        desfeito = apagados.reduce((soma, a) => soma + a.q, 0)
+      }
+
+      await tx.insert(eventosKanban).values({
+        ordemId,
+        statusAnterior: 'pronto_envio',
+        statusNovo: 'em_producao',
+        usuarioId: user.id,
+        observacao: `Conclusão desfeita — o registro de ${desfeito} peças foi cancelado`,
+      })
+    })
+
+    revalidatePath('/producao')
+    revalidatePath('/dashboard')
+    revalidatePath(`/ordens/${ordemId}`)
+    return {
+      success: true,
+      message: `OP ${op.numero} voltou pra máquina`,
+    }
+  } catch (erro) {
+    if (erro instanceof ConflitoDeOrdem) {
+      return {
+        success: false,
+        error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.',
+      }
+    }
+    if (ehConflitoDeMaquina(erro)) {
+      return {
+        success: false,
+        error: 'A máquina foi ocupada agora mesmo. Fale com o gerente.',
+      }
     }
     throw erro
   }

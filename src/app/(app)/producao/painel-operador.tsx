@@ -18,6 +18,7 @@ import {
 } from './actions'
 import {
   concluirProducaoAction,
+  desfazerConclusaoAction,
   pegarOrdemAction,
 } from '@/app/(app)/ordens/actions'
 import { Button } from '@/components/ui/button'
@@ -798,10 +799,12 @@ function ConsultaDialog({
   total: number
   onClose: () => void
 }) {
+  const router = useRouter()
   const [ops, setOps] = useState<OpDaConsulta[]>([])
   const [pagina, setPagina] = useState<PaginaDaConsulta | null>(null)
   const [paginaAtual, setPaginaAtual] = useState(1)
   const [carregando, setCarregando] = useState(true)
+  const [recarga, setRecarga] = useState(0)
 
   useEffect(() => {
     let vivo = true
@@ -810,12 +813,21 @@ function ConsultaDialog({
         if (!vivo) return
         setPagina(r)
         setOps(r.ops)
+        setPaginaAtual(1)
       })
       .finally(() => vivo && setCarregando(false))
     return () => {
       vivo = false
     }
-  }, [destino])
+  }, [destino, recarga])
+
+  // Depois de desfazer, a lista tem que deixar de mostrar a OP como
+  // terminada — e a grade atrás precisa mostrar a máquina ocupada de novo.
+  function recarregar() {
+    setCarregando(true)
+    setRecarga((n) => n + 1)
+    router.refresh()
+  }
 
   function carregarMais() {
     const proxima = paginaAtual + 1
@@ -859,6 +871,29 @@ function ConsultaDialog({
                 {op.numero} · {op.quantidade} peças
                 {op.maquinaCodigo && ` · ${op.maquinaCodigo}`}
               </div>
+
+              {/* A CONFIRMAÇÃO QUE O TOAST NÃO GUARDA. "Será que salvou?" é a
+                  pergunta que traz o operador aqui, e a resposta é a hora, o
+                  número e o nome — não só a OP na lista. */}
+              {ehFila === false && op.concluidaEm && (
+                <div className="mt-2 border-t pt-2">
+                  <p className="text-base tabular-nums">
+                    {op.produzido} peças
+                    {op.refugo > 0 && ` · ${op.refugo} refugo`}
+                    {' · '}
+                    {hora(op.concluidaEm)}
+                    {op.concluidaPor && ` · ${op.concluidaPor}`}
+                  </p>
+                  {op.resumo && (
+                    <p className="text-muted-foreground mt-0.5 text-sm">
+                      {op.resumo}
+                    </p>
+                  )}
+                  {op.podeDesfazer && (
+                    <BotaoDesfazer op={op} onFeito={recarregar} />
+                  )}
+                </div>
+              )}
             </div>
           ))}
 
@@ -922,6 +957,24 @@ function ConsultaDialog({
 
 type Campo = 'produzida' | 'refugo'
 
+// Chaveado pela OP: dois cartões abertos em sequência não misturam número.
+function chaveDoRascunho(ordemId: string): string {
+  return `vv_conclusao_${ordemId}`
+}
+
+// ⚠️ TODA LEITURA E ESCRITA DE RASCUNHO É ENVOLVIDA EM try/catch. Em aba
+// anônima, com armazenamento bloqueado ou com o JSON corrompido, o
+// localStorage LANÇA — e rascunho é conveniência: nunca pode impedir o
+// diálogo de abrir nem a conclusão de salvar.
+function lerRascunho(chave: string): Record<Campo, string> | null {
+  try {
+    const salvo = localStorage.getItem(chave)
+    return salvo ? (JSON.parse(salvo) as Record<Campo, string>) : null
+  } catch {
+    return null
+  }
+}
+
 function ConcluirDialog({
   op,
   maquinaCodigo,
@@ -935,12 +988,51 @@ function ConcluirDialog({
   const [isPending, startTransition] = useTransition()
   const conclusao = calcularConclusao(op.quantidade, op.produzido)
   const [ativo, setAtivo] = useState<Campo>('produzida')
-  const [valores, setValores] = useState<Record<Campo, string>>({
-    // Já preenchido com o que falta — no fluxo novo, a meta inteira.
-    produzida: String(conclusao.restante),
-    refugo: '',
-  })
+  const chave = chaveDoRascunho(op.id)
+  // A leitura do rascunho acontece na INICIALIZAÇÃO do estado, e não num
+  // efeito: setState síncrono dentro de efeito é cascata de render (o React
+  // recusa), e aqui isso apareceria como o campo piscando do sugerido pro
+  // guardado. Este diálogo só monta depois de um toque, então não há
+  // hidratação pra divergir.
+  const [valores, setValores] = useState<Record<Campo, string>>(
+    () =>
+      lerRascunho(chave) ?? {
+        // Sem rascunho: já preenchido com o que falta — no fluxo novo, a
+        // meta inteira.
+        produzida: String(conclusao.restante),
+        refugo: '',
+      },
+  )
+  const [restaurado] = useState(() => lerRascunho(chave) !== null)
   const [erro, setErro] = useState<string | null>(null)
+
+  // ⚠️ O RASCUNHO SOBREVIVE AO FECHAMENTO — e não é capricho de UX.
+  //
+  // Três coisas apagam o que ele digitou sem ele mandar: o toque acidental
+  // fora do diálogo (a mão encosta na tela ao apoiar), o F5, e o LOGOFF POR
+  // INATIVIDADE de 30 minutos, que a Fase 4 acabou de construir. O terceiro é
+  // o pior: Server Actions passam pelo proxy, então a sessão expirada vira
+  // redirect pro login com os números perdidos.
+  //
+  // Guardar em localStorage resolve os três de uma vez, e é melhor que um
+  // "tem certeza que quer fechar?": aquele protege contra o toque e não
+  // protege contra os outros dois — e ainda cobra um toque a mais de quem só
+  // queria sair.
+  //
+  // Chaveado pela OP: dois cartões abertos em sequência não misturam número.
+
+  function guardar(v: Record<Campo, string>) {
+    try {
+      localStorage.setItem(chave, JSON.stringify(v))
+    } catch {
+      // Sem localStorage o diálogo continua funcionando; só não lembra.
+    }
+  }
+  function esquecer() {
+    try {
+      localStorage.removeItem(chave)
+    } catch {}
+  }
 
   const produzida = Number(valores.produzida || 0)
   const refugo = Number(valores.refugo || 0)
@@ -963,16 +1055,26 @@ function ConcluirDialog({
         )
         return v
       }
-      return { ...v, [ativo]: novoTexto }
+      const novo = { ...v, [ativo]: novoTexto }
+      guardar(novo)
+      return novo
     })
   }
   function apagar() {
     setErro(null)
-    setValores((v) => ({ ...v, [ativo]: v[ativo].slice(0, -1) }))
+    setValores((v) => {
+      const novo = { ...v, [ativo]: v[ativo].slice(0, -1) }
+      guardar(novo)
+      return novo
+    })
   }
   function limpar() {
     setErro(null)
-    setValores((v) => ({ ...v, [ativo]: '' }))
+    setValores((v) => {
+      const novo = { ...v, [ativo]: '' }
+      guardar(novo)
+      return novo
+    })
   }
 
   function concluir() {
@@ -980,12 +1082,19 @@ function ConcluirDialog({
     startTransition(async () => {
       const r = await concluirProducaoAction(op.id, { produzida, refugo })
       if (!r.success) {
+        // O RASCUNHO FICA. A falha é o momento em que ele mais precisa do
+        // número preservado — é o que ele vai reenviar.
         setErro(r.error)
         return
       }
+      esquecer()
       // Inclui o caso "já estava concluída" (reenvio depois de queda de
       // conexão), que a action devolve como sucesso de propósito.
-      toast.success(r.message ?? 'Produção concluída')
+      //
+      // 8 segundos, e não os ~4 do padrão: esta é a confirmação de que o
+      // trabalho do turno foi gravado, com o número. Ele precisa conseguir
+      // ler — e se perder, "Terminadas" tem a mesma frase guardada.
+      toast.success(r.message ?? 'Produção concluída', { duration: 8000 })
       router.refresh()
       onClose()
     })
@@ -1003,6 +1112,14 @@ function ConcluirDialog({
             {op.numero} · máquina {maquinaCodigo} · meta {op.quantidade}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Volta a dizer o que estava escrito quando ele saiu, pra que o
+            número na tela não pareça sugestão do sistema. */}
+        {restaurado && (
+          <p className="border-primary/40 bg-primary/5 rounded-lg border-2 p-2 text-center text-base">
+            Recuperamos o que você tinha digitado.
+          </p>
+        )}
 
         {conclusao.jaRegistrado > 0 && (
           <p className="text-muted-foreground text-base tabular-nums">
@@ -1120,5 +1237,94 @@ function Erro({ children }: { children: React.ReactNode }) {
     >
       {children}
     </p>
+  )
+}
+
+// Hora sem data: a lista é das últimas conclusões, todas de hoje na prática.
+// "14:32" é o que ele compara com a memória dele; "10/09/2026 14:32" é ruído
+// que empurra o número importante pra fora da linha.
+function hora(d: Date): string {
+  return new Date(d).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+// DESFAZER, COM CONFIRMAÇÃO. Voltar a OP pra máquina é ação com consequência
+// física — alguém pode estar prestes a montar outra coisa ali —, e o botão
+// fica numa lista onde o dedo passa rolando. A pergunta espera.
+//
+// O botão só aparece quando as DUAS guardas da action já passam (OP ainda em
+// pronto_envio, máquina livre). Quem recusa de verdade continua sendo o
+// servidor: entre o render e o toque, o mundo pode ter andado.
+function BotaoDesfazer({
+  op,
+  onFeito,
+}: {
+  op: OpDaConsulta
+  onFeito: () => void
+}) {
+  const [confirmando, setConfirmando] = useState(false)
+  const [isPending, startTransition] = useTransition()
+  const [erro, setErro] = useState<string | null>(null)
+
+  function desfazer() {
+    setErro(null)
+    startTransition(async () => {
+      const r = await desfazerConclusaoAction(op.id)
+      if (!r.success) {
+        setErro(r.error)
+        return
+      }
+      toast.success(r.message ?? 'Conclusão desfeita', { duration: 8000 })
+      setConfirmando(false)
+      onFeito()
+    })
+  }
+
+  if (!confirmando) {
+    return (
+      <>
+        <Button
+          variant="outline"
+          className="mt-2 h-11 w-full text-base"
+          onClick={() => setConfirmando(true)}
+        >
+          Desfazer conclusão
+        </Button>
+        {erro && (
+          <p className="text-destructive mt-2 text-base font-medium">{erro}</p>
+        )}
+      </>
+    )
+  }
+
+  return (
+    <div className="border-destructive/40 bg-destructive/5 mt-2 space-y-2 rounded-lg border-2 p-3">
+      <p className="text-base font-medium">
+        A OP volta pra máquina {op.maquinaCodigo} e o registro de{' '}
+        {op.produzido} peças é cancelado.
+      </p>
+      {erro && <p className="text-destructive text-base font-medium">{erro}</p>}
+      <div className="flex gap-2">
+        <Button
+          variant="destructive"
+          className="h-12 flex-1 text-base"
+          loading={isPending}
+          disabled={isPending}
+          onClick={desfazer}
+        >
+          Sim, desfazer
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-12 flex-1 text-base"
+          onClick={() => setConfirmando(false)}
+          disabled={isPending}
+        >
+          Não
+        </Button>
+      </div>
+    </div>
   )
 }

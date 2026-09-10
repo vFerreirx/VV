@@ -696,7 +696,26 @@ export async function contarOpsDaEstacao(): Promise<ContagensDaEstacao> {
   }
 }
 
-export type OpDaConsulta = OpParaIniciar & { maquinaCodigo: string | null }
+// A consulta de "Terminadas" É a lista de últimas conclusões — e não um
+// terceiro botão no cabeçalho. Ela já responde "o que eu entreguei"; faltava
+// dizer QUANDO, QUANTO e QUEM, que é a mesma informação que responde "será
+// que salvou mesmo?" depois que o toast sumiu. Duas perguntas, uma lista.
+export type OpDaConsulta = OpParaIniciar & {
+  maquinaCodigo: string | null
+  /** Só preenchido em 'terminadas'. */
+  concluidaEm: Date | null
+  concluidaPor: string | null
+  /** O texto que a conclusão gravou: total, diferença, refugo, quem iniciou. */
+  resumo: string | null
+  produzido: number
+  refugo: number
+  /**
+   * A OP ainda está em `pronto_envio` E a máquina dela está livre? As duas
+   * guardas de `desfazerConclusaoAction`, calculadas aqui pra que o botão
+   * não apareça só pra devolver erro. Quem recusa de verdade é a action.
+   */
+  podeDesfazer: boolean
+}
 
 export type PaginaDaConsulta = {
   ops: OpDaConsulta[]
@@ -712,7 +731,29 @@ export async function listarOpsDaEstacao(
   const user = await requireArea('kanban')
 
   const todas = (await opsPorDestino(user.id)).get(destino) ?? []
-  todas.sort(ordenarComoOKanban)
+
+  // AS CONCLUSÕES VÊM DO HISTÓRICO, e ordenam a lista. "Terminadas" ordenada
+  // por prioridade responderia "o que é mais urgente do que já saiu da
+  // máquina", que não é pergunta de ninguém. Por hora de conclusão, a de
+  // cima é a que ele acabou de fazer — que é o que ele foi conferir.
+  const conclusoes =
+    destino === 'terminadas'
+      ? await conclusoesDe(todas.map((o) => o.id))
+      : new Map<string, DadosDaConclusao>()
+
+  if (destino === 'terminadas') {
+    todas.sort((a, b) => {
+      const ta = conclusoes.get(a.id)?.em?.getTime() ?? 0
+      const tb = conclusoes.get(b.id)?.em?.getTime() ?? 0
+      return tb - ta
+    })
+  } else {
+    todas.sort(ordenarComoOKanban)
+  }
+
+  // Máquinas ocupadas agora — a segunda guarda do desfazer.
+  const maquinasOcupadas =
+    destino === 'terminadas' ? await idsDeMaquinasOcupadas() : new Set<string>()
 
   const inicio = Math.max(0, pagina - 1) * OPS_POR_PAGINA
   const daPagina = todas.slice(inicio, inicio + OPS_POR_PAGINA)
@@ -735,7 +776,18 @@ export async function listarOpsDaEstacao(
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
+      maquinaId: ordensProducao.maquinaId,
       maquinaCodigo: maquinas.codigo,
+      produzido: sql<number>`(
+        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)::int
+        FROM ${apontamentosProducao}
+        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+      )`,
+      refugo: sql<number>`(
+        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeRefugo}), 0)::int
+        FROM ${apontamentosProducao}
+        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+      )`,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -754,22 +806,89 @@ export async function listarOpsDaEstacao(
   return {
     ops: rows
       .sort((a, b) => ordemDoId.get(a.id)! - ordemDoId.get(b.id)!)
-      .map((r) => ({
-        id: r.id,
-        numero: r.numero,
-        status: r.status,
-        prioridade: r.prioridade,
-        produtoNome: r.produtoNome,
-        variacaoCor: r.variacaoCor ?? null,
-        variacaoModelo: r.variacaoModelo ?? null,
-        variacaoTamanho: r.variacaoTamanho ?? null,
-        quantidade: r.quantidade,
-        observacoes: r.observacoes,
-        maquinaCodigo: r.maquinaCodigo ?? null,
-      })),
+      .map((r) => {
+        const c = conclusoes.get(r.id)
+        return {
+          id: r.id,
+          numero: r.numero,
+          status: r.status,
+          prioridade: r.prioridade,
+          produtoNome: r.produtoNome,
+          variacaoCor: r.variacaoCor ?? null,
+          variacaoModelo: r.variacaoModelo ?? null,
+          variacaoTamanho: r.variacaoTamanho ?? null,
+          quantidade: r.quantidade,
+          observacoes: r.observacoes,
+          maquinaCodigo: r.maquinaCodigo ?? null,
+          concluidaEm: c?.em ?? null,
+          concluidaPor: c?.por ?? null,
+          resumo: c?.resumo ?? null,
+          produzido: r.produzido ?? 0,
+          refugo: r.refugo ?? 0,
+          podeDesfazer:
+            destino === 'terminadas' &&
+            r.status === 'pronto_envio' &&
+            r.maquinaId !== null &&
+            !maquinasOcupadas.has(r.maquinaId),
+        }
+      }),
     total: todas.length,
     temMais: inicio + daPagina.length < todas.length,
   }
+}
+
+type DadosDaConclusao = {
+  em: Date
+  por: string | null
+  resumo: string | null
+}
+
+/** Quem concluiu cada OP, quando, e o que ficou escrito. Uma consulta só. */
+async function conclusoesDe(
+  ids: string[],
+): Promise<Map<string, DadosDaConclusao>> {
+  const mapa = new Map<string, DadosDaConclusao>()
+  if (ids.length === 0) return mapa
+
+  const rows = await db
+    .select({
+      ordemId: eventosKanban.ordemId,
+      em: eventosKanban.createdAt,
+      por: users.nome,
+      resumo: eventosKanban.observacao,
+    })
+    .from(eventosKanban)
+    .leftJoin(users, eq(users.id, eventosKanban.usuarioId))
+    .where(
+      and(
+        inArray(eventosKanban.ordemId, ids),
+        eq(eventosKanban.statusNovo, 'pronto_envio'),
+      ),
+    )
+    .orderBy(desc(eventosKanban.createdAt))
+
+  // Ordenado do mais novo pro mais velho: o primeiro de cada OP é a
+  // conclusão que vale. Uma OP desfeita e concluída de novo tem duas.
+  for (const r of rows) {
+    if (!mapa.has(r.ordemId)) {
+      mapa.set(r.ordemId, { em: r.em, por: r.por, resumo: r.resumo })
+    }
+  }
+  return mapa
+}
+
+/** Máquinas com OP em produção agora — o que impede o desfazer. */
+async function idsDeMaquinasOcupadas(): Promise<Set<string>> {
+  const rows = await db
+    .select({ id: ordensProducao.maquinaId })
+    .from(ordensProducao)
+    .where(
+      and(
+        eq(ordensProducao.status, 'em_producao'),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
+  return new Set(rows.map((r) => r.id).filter((id) => id !== null))
 }
 
 // -----------------------------------------------------------------
