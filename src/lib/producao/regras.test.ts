@@ -17,6 +17,14 @@ import {
 } from './conclusao.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
 import {
+  MOTIVOS_DE_PARADA,
+  abreParada,
+  duracaoEmPalavras,
+  ehMotivoValido,
+  exigeObservacao,
+  rotuloDoMotivo,
+} from './parada-de-maquina.ts'
+import {
   agruparPorModelo,
   destaqueDaVariacao,
   familiaDoProduto,
@@ -516,4 +524,82 @@ test('o grupo do filtro e o MESMO que o do resumo', () => {
   assert.equal(grupoDaSituacao(livre('operando')), 'livre')
   assert.equal(grupoDaSituacao(livre('setup')), 'indisponivel')
   assert.equal(grupoDaSituacao(comOp('desativada')), 'indisponivel')
+})
+
+// -----------------------------------------------------------------
+// Parada de maquina
+// -----------------------------------------------------------------
+
+test('abre parada exatamente nos status que IMPEDEM produzir', () => {
+  // A regra nao tem lista propria: deriva de `motivoDeImpedimento`. Se um
+  // status novo passar a impedir, ele abre parada sozinho — e este teste e
+  // quem prova que as duas respostas continuam sendo a mesma.
+  assert.equal(abreParada('manutencao'), true)
+  assert.equal(abreParada('setup'), true)
+  assert.equal(abreParada('desativada'), true)
+  assert.equal(abreParada('operando'), false)
+  assert.equal(abreParada('parada'), false)
+})
+
+test('os motivos batem com o CHECK do banco', () => {
+  // Copia deliberada de `maquina_paradas_motivo_ck` (57). Divergir faz o
+  // INSERT estourar em producao e chegar na tela como "erro ao salvar".
+  assert.deepEqual(
+    MOTIVOS_DE_PARADA.map((m) => m.valor),
+    [
+      'quebra',
+      'preventiva',
+      'troca_agulha',
+      'falta_fio',
+      'sem_operador',
+      'energia',
+      'outro',
+    ],
+  )
+})
+
+test('so "outro" exige observacao', () => {
+  assert.equal(exigeObservacao('outro'), true)
+  assert.equal(exigeObservacao('quebra'), false)
+})
+
+test('motivo nulo tem rotulo, porque setup e desativacao nao escolhem motivo', () => {
+  // Nulo e caso normal e nao erro — sem isto o historico mostraria uma linha
+  // com um buraco em branco no lugar do motivo.
+  assert.equal(rotuloDoMotivo(null), 'Sem motivo registrado')
+  assert.equal(rotuloDoMotivo('falta_fio'), 'Falta de fio')
+  // Valor fora da lista aparece cru em vez de sumir com a linha.
+  assert.equal(rotuloDoMotivo('eletrica'), 'eletrica')
+  assert.equal(ehMotivoValido('eletrica'), false)
+  assert.equal(ehMotivoValido('quebra'), true)
+})
+
+test('a duracao se mede em minutos e horas, nao em viradas de meia-noite', () => {
+  // O caso que quebra `diasDeCalendario`: 23h50 -> 00h10 e uma parada de 20
+  // minutos, nao de "1 dia".
+  const noite = new Date('2026-09-10T23:50:00Z')
+  const madrugada = new Date('2026-09-11T00:10:00Z')
+  assert.equal(duracaoEmPalavras(noite, madrugada), '20 min')
+})
+
+test('a precisao cai conforme a escala', () => {
+  const t0 = new Date('2026-09-11T08:00:00Z')
+  const em = (ms: number) => new Date(t0.getTime() + ms)
+  assert.equal(duracaoEmPalavras(t0, em(30_000)), 'menos de 1 min')
+  assert.equal(duracaoEmPalavras(t0, em(12 * 60_000)), '12 min')
+  assert.equal(duracaoEmPalavras(t0, em(59 * 60_000)), '59 min')
+  assert.equal(duracaoEmPalavras(t0, em(60 * 60_000)), '1 h')
+  // Quem olha uma parada de 3 horas nao quer os 14 minutos.
+  assert.equal(duracaoEmPalavras(t0, em(3 * 3_600_000 + 14 * 60_000)), '3 h')
+  assert.equal(duracaoEmPalavras(t0, em(23 * 3_600_000)), '23 h')
+  assert.equal(duracaoEmPalavras(t0, em(24 * 3_600_000)), '1 dia')
+  assert.equal(duracaoEmPalavras(t0, em(50 * 3_600_000)), '2 dias')
+})
+
+test('relogio do tablet atrasado nao vira duracao negativa na tela', () => {
+  // O banco recusa gravar fim antes do inicio, mas o cartao calcula contra o
+  // relogio de QUEM ESTA OLHANDO. "-5 min" seria pior que arredondar.
+  const t0 = new Date('2026-09-11T08:00:00Z')
+  const antes = new Date('2026-09-11T07:55:00Z')
+  assert.equal(duracaoEmPalavras(t0, antes), 'menos de 1 min')
 })

@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { VALORES_DE_MOTIVO } from '@/lib/producao/parada-de-maquina'
+
 // Helpers (mesmo padrão de validators/produtos.ts).
 // `.optional()` no fim é essencial: a Server Action do Next descarta valores
 // undefined, então a chave pode chegar AUSENTE ao servidor — sem optional o
@@ -69,6 +71,22 @@ export type MaquinaOutput = z.output<typeof maquinaSchema>
 export const trocarStatusMaquinaSchema = z.object({
   status: z.enum(maquinaStatusValues),
   observacoes: stringOpt(300, 'Observações'),
+
+  // ⚠️ OS CAMPOS DA PARADA VIAJAM JUNTO COM O STATUS, e não numa action
+  // própria. É a mesma regra que o topo de 57_maquina_paradas.sql defende: a
+  // parada é CONSEQUÊNCIA do status. Se fossem duas chamadas, a segunda
+  // poderia falhar sozinha e a máquina ficaria impedida sem parada aberta —
+  // ou pior, com uma parada aberta e o status já de volta.
+  //
+  // Qual dos dois vale depende da direção: ao IMPEDIR, valem `motivo` e
+  // `observacaoAbertura`; ao LIBERAR, vale `observacaoFechamento`. Mandar o
+  // que não se aplica é inofensivo — a action ignora.
+  motivo: z
+    .union([z.enum(VALORES_DE_MOTIVO), z.null(), z.undefined()])
+    .transform((v) => v ?? undefined)
+    .optional(),
+  observacaoAbertura: stringOpt(300, 'Observação'),
+  observacaoFechamento: stringOpt(300, 'Observação'),
 })
 
 export type TrocarStatusMaquinaInput = z.input<typeof trocarStatusMaquinaSchema>

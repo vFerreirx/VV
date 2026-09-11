@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, eq, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { revalidatePath } from 'next/cache'
 
@@ -9,8 +9,10 @@ import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { estacaoDoOperador } from '@/lib/db/estacao-operadores'
+import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import {
   estacoes,
+  maquinaParadas,
   maquinas,
   ordensProducao,
   produtos,
@@ -19,6 +21,8 @@ import {
   type Maquina,
   type User,
 } from '@/lib/db/schema'
+import type { MaquinaStatus } from '@/lib/producao/estado-maquina'
+import { abreParada, type MotivoDeParada } from '@/lib/producao/parada-de-maquina'
 import {
   maquinaSchema,
   maquinasFiltrosSchema,
@@ -31,6 +35,104 @@ import {
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
   | { success: false; error: string }
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+// -----------------------------------------------------------------
+// A parada acompanha o status — sempre, por todos os caminhos
+// -----------------------------------------------------------------
+//
+// ⚠️ TODO CAMINHO QUE ESCREVE `maquinas.status` PASSA POR AQUI. São três:
+// o botão Manutenção do cartão (`trocarStatusAction`), o formulário de
+// cadastro (`atualizarMaquinaAction`, que tem um select com setup/manutenção/
+// desativada) e a exclusão (`excluirMaquinaAction`, que grava 'desativada').
+// Se um deles escrevesse o status por fora, a máquina apareceria "Livre" no
+// cartão com uma parada correndo há dias no histórico — e o relatório de
+// disponibilidade contaria horas que nunca existiram.
+//
+// A regra, em uma linha: EXISTE PARADA ABERTA SE E SOMENTE SE O STATUS
+// IMPEDE PRODUZIR. `abreParada` deriva isso de `motivoDeImpedimento`, a mesma
+// função que pinta o cartão — não há segunda lista pra sair de sincronia.
+//
+// ⚠️ RODA DENTRO DA TRANSAÇÃO da troca de status, e não depois. Se o INSERT
+// da parada falhasse sozinho, a máquina ficaria impedida sem parada aberta:
+// o cartão diria "Em manutenção", o histórico não teria nada, e a próxima
+// liberação não teria o que fechar.
+async function sincronizarParada(
+  tx: Tx,
+  p: {
+    maquinaId: string
+    statusAnterior: MaquinaStatus
+    statusNovo: MaquinaStatus
+    usuarioId: string
+    motivo?: MotivoDeParada
+    observacaoAbertura?: string
+    observacaoFechamento?: string
+  },
+): Promise<void> {
+  const impediaAntes = abreParada(p.statusAnterior)
+  const impedeAgora = abreParada(p.statusNovo)
+
+  // Nada mudou na disponibilidade: nem abre nem fecha. É o caso de re-clicar
+  // no mesmo botão, e também o de trocar só o nome no cadastro.
+  if (!impediaAntes && !impedeAgora) return
+  if (impediaAntes && impedeAgora && p.statusAnterior === p.statusNovo) return
+
+  // FECHA A ABERTA quando a máquina volta a produzir — e TAMBÉM quando passa
+  // de um impedimento pro outro (manutenção -> desativada). O segundo caso
+  // poderia deixar a mesma linha aberta, mas aí o histórico diria "em
+  // manutenção por 3 dias" um período em que a máquina estava desativada. Em
+  // segmentos consecutivos, ele conta o que de fato aconteceu.
+  if (impediaAntes) {
+    await tx
+      .update(maquinaParadas)
+      .set({
+        encerradaEm: new Date(),
+        encerradaPor: p.usuarioId,
+        observacaoFechamento: p.observacaoFechamento ?? null,
+      })
+      .where(
+        and(
+          eq(maquinaParadas.maquinaId, p.maquinaId),
+          isNull(maquinaParadas.encerradaEm),
+        ),
+      )
+  }
+
+  if (!impedeAgora) return
+
+  // A OP que estava rodando na hora. SNAPSHOT: depois ela pode ser concluída
+  // ou movida, e "o que estava preso aqui quando parou" tem uma resposta só.
+  const [op] = await tx
+    .select({ id: ordensProducao.id })
+    .from(ordensProducao)
+    .where(
+      and(
+        eq(ordensProducao.maquinaId, p.maquinaId),
+        eq(ordensProducao.status, 'em_producao'),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
+    .limit(1)
+
+  try {
+    await tx.insert(maquinaParadas).values({
+      maquinaId: p.maquinaId,
+      status: p.statusNovo,
+      motivo: p.motivo ?? null,
+      observacaoAbertura: p.observacaoAbertura ?? null,
+      abertaPor: p.usuarioId,
+      ordemId: op?.id ?? null,
+    })
+  } catch (err) {
+    // 23505 aqui só sai do índice `maquina_paradas_aberta_uidx`: alguém abriu
+    // uma parada nesta máquina no mesmo instante, de outro tablet. O objetivo
+    // — máquina parada COM parada registrada — já está cumprido, e derrubar a
+    // troca de status por causa disso deixaria a máquina rodando na tela com
+    // o operador achando que parou.
+    if (!isUniqueViolation(err)) throw err
+  }
+}
 
 // -----------------------------------------------------------------
 // Listagem
@@ -57,6 +159,12 @@ export type OpDaMaquina = {
 
 export type MaquinaListItem = Maquina & {
   estacaoNome: string | null
+  /**
+   * A parada ABERTA, quando existe — é dela que sai o "há 2 h" no cartão.
+   * Existe se e somente se o status impede produzir; quem garante isso é
+   * `sincronizarParada`, e o índice parcial garante que é no máximo uma.
+   */
+  paradaAberta: { iniciadaEm: Date; motivo: string | null } | null
   /**
    * ⚠️ É DAQUI QUE SAI A OCUPAÇÃO, e não de `status`. A tela passa isto pra
    * `situacaoDaMaquina` (src/lib/producao/estado-maquina.ts), que é a mesma
@@ -99,6 +207,8 @@ export async function listarMaquinas(
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
       responsavelNome: responsavel.nome,
+      paradaIniciadaEm: maquinaParadas.iniciadaEm,
+      paradaMotivo: maquinaParadas.motivo,
     })
     .from(maquinas)
     // ⚠️ NÃO HÁ MAIS JOIN COM `operador_atual_id`. Ele existia pra exibir o
@@ -121,6 +231,16 @@ export async function listarMaquinas(
       eq(variacoesProduto.id, ordensProducao.variacaoId),
     )
     .leftJoin(responsavel, eq(responsavel.id, ordensProducao.responsavelId))
+    // A PARADA ABERTA, pra o cartão dizer HÁ QUANTO TEMPO. Não duplica a
+    // linha da máquina pelo mesmo motivo do join da OP: o índice parcial
+    // `maquina_paradas_aberta_uidx` garante no máximo uma aberta por máquina.
+    .leftJoin(
+      maquinaParadas,
+      and(
+        eq(maquinaParadas.maquinaId, maquinas.id),
+        isNull(maquinaParadas.encerradaEm),
+      ),
+    )
     .where(and(...conditions))
     .orderBy(asc(maquinas.codigo))
 
@@ -140,7 +260,74 @@ export async function listarMaquinas(
             variacaoTamanho: r.variacaoTamanho ?? null,
             responsavelNome: r.responsavelNome ?? null,
           },
+    paradaAberta:
+      r.paradaIniciadaEm === null
+        ? null
+        : { iniciadaEm: r.paradaIniciadaEm, motivo: r.paradaMotivo },
   }))
+}
+
+// -----------------------------------------------------------------
+// Histórico de paradas de UMA máquina
+// -----------------------------------------------------------------
+
+export type ParadaDoHistorico = {
+  id: string
+  status: MaquinaStatus
+  motivo: string | null
+  observacaoAbertura: string | null
+  iniciadaEm: Date
+  abertaPorNome: string | null
+  encerradaEm: Date | null
+  encerradaPorNome: string | null
+  observacaoFechamento: string | null
+  opNumero: string | null
+}
+
+const abriu = alias(users, 'abriu_parada')
+const fechou = alias(users, 'fechou_parada')
+
+/**
+ * A linha do tempo de paradas da máquina, da mais recente pra mais antiga.
+ *
+ * Leitura pura — mesma guarda do resto do arquivo (`requireAuth`), porque a
+ * aba que mostra isto já passou por `requireArea('maquinas')`. É o mesmo
+ * arranjo de `historicoDaOrdem`.
+ *
+ * ⚠️ TETO DE 50. O histórico de uma máquina de anos não cabe num Sheet nem
+ * interessa inteiro: quem abre quer ver o que houve nos últimos dias. Sem
+ * teto, a tela de uma máquina problemática iria ficando mais lenta em
+ * silêncio até alguém reclamar.
+ */
+export async function historicoDeParadas(
+  maquinaId: string,
+): Promise<ParadaDoHistorico[]> {
+  await requireAuth()
+
+  const rows = await db
+    .select({
+      id: maquinaParadas.id,
+      status: maquinaParadas.status,
+      motivo: maquinaParadas.motivo,
+      observacaoAbertura: maquinaParadas.observacaoAbertura,
+      iniciadaEm: maquinaParadas.iniciadaEm,
+      abertaPorNome: abriu.nome,
+      encerradaEm: maquinaParadas.encerradaEm,
+      encerradaPorNome: fechou.nome,
+      observacaoFechamento: maquinaParadas.observacaoFechamento,
+      opNumero: ordensProducao.numero,
+    })
+    .from(maquinaParadas)
+    .leftJoin(abriu, eq(abriu.id, maquinaParadas.abertaPor))
+    .leftJoin(fechou, eq(fechou.id, maquinaParadas.encerradaPor))
+    // Sem `isNull(deletedAt)` na OP de propósito: o snapshot vale mesmo se a
+    // OP foi excluída depois. "O que estava rodando quando parou" não muda.
+    .leftJoin(ordensProducao, eq(ordensProducao.id, maquinaParadas.ordemId))
+    .where(eq(maquinaParadas.maquinaId, maquinaId))
+    .orderBy(desc(maquinaParadas.iniciadaEm))
+    .limit(50)
+
+  return rows
 }
 
 // Lista de operadores ativos (pra usar em selects).
@@ -220,7 +407,7 @@ export async function atualizarMaquinaAction(
   id: string,
   input: MaquinaInput,
 ): Promise<ActionResult> {
-  await requireAreaEscrita('maquinas')
+  const user = await requireAreaEscrita('maquinas')
 
   const parsed = maquinaSchema.safeParse(input)
   if (!parsed.success) {
@@ -231,8 +418,12 @@ export async function atualizarMaquinaAction(
   }
   const data = parsed.data
 
+  // ⚠️ O STATUS ANTERIOR ENTRA NA CONSULTA, e não é detalhe: este formulário
+  // tem um select com setup/manutenção/desativada, então editar o cadastro é
+  // um dos caminhos que impedem e liberam a máquina. Sem saber de onde veio,
+  // não dá pra abrir nem fechar a parada certa.
   const [atual] = await db
-    .select({ id: maquinas.id })
+    .select({ id: maquinas.id, status: maquinas.status })
     .from(maquinas)
     .where(and(eq(maquinas.id, id), isNull(maquinas.deletedAt)))
     .limit(1)
@@ -257,16 +448,29 @@ export async function atualizarMaquinaAction(
   // `operadorAtualId` NÃO entra no `set`, e isso PRESERVA o que está lá.
   // Omitir a coluna é diferente de gravar null: as três máquinas que têm o
   // campo preenchido continuam tendo depois de qualquer edição.
-  await db
-    .update(maquinas)
-    .set({
-      codigo: codigoUpper,
-      nome: data.nome,
-      status: data.status,
-      observacoes: data.observacoes ?? null,
-    })
-    .where(eq(maquinas.id, id))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(maquinas)
+      .set({
+        codigo: codigoUpper,
+        nome: data.nome,
+        status: data.status,
+        observacoes: data.observacoes ?? null,
+      })
+      .where(eq(maquinas.id, id))
 
+    // Sem motivo: o formulário de cadastro não tem diálogo de motivo, e é
+    // por isso que `maquina_paradas.motivo` é nulável. Inventar um aqui
+    // ("preventiva"?) seria pôr no histórico uma escolha que ninguém fez.
+    await sincronizarParada(tx, {
+      maquinaId: id,
+      statusAnterior: atual.status,
+      statusNovo: data.status,
+      usuarioId: user.id,
+    })
+  })
+
+  revalidatePath('/fabrica')
   revalidatePath('/maquinas')
   revalidatePath(`/maquinas/${id}`)
   return { success: true, message: 'Máquina atualizada' }
@@ -333,13 +537,26 @@ export async function trocarStatusAction(
     }
   }
 
-  await db
-    .update(maquinas)
-    .set({
-      status: data.status,
-      observacoes: data.observacoes ?? atual.observacoes,
+  // O status e a parada mudam JUNTOS ou não mudam — ver `sincronizarParada`.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(maquinas)
+      .set({
+        status: data.status,
+        observacoes: data.observacoes ?? atual.observacoes,
+      })
+      .where(eq(maquinas.id, id))
+
+    await sincronizarParada(tx, {
+      maquinaId: id,
+      statusAnterior: atual.status,
+      statusNovo: data.status,
+      usuarioId: user.id,
+      motivo: data.motivo,
+      observacaoAbertura: data.observacaoAbertura,
+      observacaoFechamento: data.observacaoFechamento,
     })
-    .where(eq(maquinas.id, id))
+  })
 
   // ⚠️ A LISTA VIVE EM /fabrica, não em /maquinas — aquela rota só
   // redireciona. Revalidar só /maquinas nunca invalidou a tela que o usuário
@@ -355,10 +572,10 @@ export async function trocarStatusAction(
 // -----------------------------------------------------------------
 
 export async function excluirMaquinaAction(id: string): Promise<ActionResult> {
-  await requireAreaEscrita('maquinas')
+  const user = await requireAreaEscrita('maquinas')
 
   const [atual] = await db
-    .select({ id: maquinas.id, codigo: maquinas.codigo })
+    .select({ id: maquinas.id, codigo: maquinas.codigo, status: maquinas.status })
     .from(maquinas)
     .where(and(eq(maquinas.id, id), isNull(maquinas.deletedAt)))
     .limit(1)
@@ -390,10 +607,27 @@ export async function excluirMaquinaAction(id: string): Promise<ActionResult> {
     }
   }
 
-  await db
-    .update(maquinas)
-    .set({ deletedAt: new Date(), status: 'desativada', operadorAtualId: null })
-    .where(eq(maquinas.id, id))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(maquinas)
+      .set({ deletedAt: new Date(), status: 'desativada', operadorAtualId: null })
+      .where(eq(maquinas.id, id))
+
+    // ⚠️ FECHA A PARADA ABERTA E NÃO ABRE OUTRA. A máquina saiu do chão de
+    // fábrica; ela não "parou por 8 meses" só porque foi excluída. Sem isto,
+    // toda máquina excluída durante uma manutenção ficaria com uma parada
+    // aberta correndo pra sempre, e o histórico dela contaria um tempo de
+    // parada que cresce sozinho.
+    await tx
+      .update(maquinaParadas)
+      .set({ encerradaEm: new Date(), encerradaPor: user.id })
+      .where(
+        and(
+          eq(maquinaParadas.maquinaId, id),
+          isNull(maquinaParadas.encerradaEm),
+        ),
+      )
+  })
 
   revalidatePath('/fabrica')
   revalidatePath('/maquinas')

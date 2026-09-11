@@ -1,8 +1,11 @@
 'use client'
 
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 import {
   ExternalLink,
   Factory,
+  History,
   MoreHorizontal,
   Pencil,
   Power,
@@ -17,8 +20,10 @@ import { toast } from 'sonner'
 
 import {
   excluirMaquinaAction,
+  historicoDeParadas,
   trocarStatusAction,
   type MaquinaListItem,
+  type ParadaDoHistorico,
 } from './actions'
 import { Button } from '@/components/ui/button'
 import {
@@ -38,6 +43,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet'
+import { Textarea } from '@/components/ui/textarea'
+import {
   contarMaquinas,
   grupoDaSituacao,
   situacaoDaMaquina,
@@ -45,6 +58,13 @@ import {
   type GrupoDeMaquina,
   type SituacaoDaMaquina,
 } from '@/lib/producao/estado-maquina'
+import {
+  MOTIVOS_DE_PARADA,
+  duracaoEmPalavras,
+  exigeObservacao,
+  rotuloDoMotivo,
+  type MotivoDeParada,
+} from '@/lib/producao/parada-de-maquina'
 import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -410,6 +430,13 @@ function MaquinaCard({
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  // 'abrir' pergunta o motivo; 'fechar' oferece a observação do que foi
+  // feito. Os dois moram no mesmo diálogo porque são o mesmo gesto visto dos
+  // dois lados.
+  const [dialogoDeParada, setDialogoDeParada] = useState<
+    'abrir' | 'fechar' | null
+  >(null)
+  const [verHistorico, setVerHistorico] = useState(false)
 
   // ⚠️ A MESMA FUNÇÃO DA TELA DO OPERADOR e do seletor do kanban
   // (src/lib/producao/estado-maquina.ts). Enquanto cada tela respondia por
@@ -418,6 +445,7 @@ function MaquinaCard({
   const s = situacaoDaMaquina(maquina.status, maquina.op !== null)
   const emManutencao = s.disponibilidade === 'manutencao'
   const desativada = s.disponibilidade === 'desativada'
+  const desde = useDuracaoDesde(maquina.paradaAberta?.iniciadaEm ?? null)
 
   function definirStatus(novo: 'operando' | 'manutencao' | 'desativada') {
     startTransition(async () => {
@@ -470,6 +498,17 @@ function MaquinaCard({
               )}
             >
               {s.rotulo}
+              {/* ⚠️ O TEMPO ENTRA NA LINHA QUE JÁ EXISTE, não numa nova. O
+                  cartão tem altura padrão (`min-h-44`) calibrada pro cartão
+                  ocupado; uma linha a mais aqui faria a fileira inteira
+                  crescer de novo, que foi o "um card ficou maior que o
+                  outro". */}
+              {desde && (
+                <span className="text-muted-foreground font-normal">
+                  {' · há '}
+                  {desde}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -507,6 +546,10 @@ function MaquinaCard({
                 {desativada ? 'Ativar máquina' : 'Desativar máquina'}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setVerHistorico(true)}>
+                <History />
+                Histórico de paradas
+              </DropdownMenuItem>
               <DropdownMenuItem
                 render={<Link href={`/maquinas/${maquina.id}`} />}
               >
@@ -584,6 +627,11 @@ function MaquinaCard({
               máquina parou agora e alguém precisa registrar —, e enterrá-la
               no menu custaria um toque em cima da urgência. Desativar é
               decisão, não rotina: aquela pode esperar o menu. */}
+          {/* ⚠️ DEIXOU DE SER TOGGLE CEGO. Antes um toque gravava
+              'manutencao' e outro desfazia, sem registrar nada — e era por
+              isso que, depois que a máquina voltava, não sobrava vestígio de
+              que ela tinha parado. Agora o toque abre o diálogo: um segundo
+              toque escolhe o motivo, e é só. */}
           <Button
             size="sm"
             variant={emManutencao ? 'default' : 'outline'}
@@ -591,7 +639,7 @@ function MaquinaCard({
             disabled={isPending}
             aria-pressed={emManutencao}
             onClick={() =>
-              definirStatus(emManutencao ? 'operando' : 'manutencao')
+              setDialogoDeParada(emManutencao ? 'fechar' : 'abrir')
             }
           >
             <Wrench />
@@ -599,8 +647,42 @@ function MaquinaCard({
           </Button>
         </div>
       )}
+
+      <ParadaDialog
+        maquina={maquina}
+        modo={dialogoDeParada}
+        onClose={() => setDialogoDeParada(null)}
+      />
+      <HistoricoSheet
+        maquina={verHistorico ? maquina : null}
+        onClose={() => setVerHistorico(false)}
+      />
     </article>
   )
+}
+
+// ⚠️ SÓ DEPOIS DE MONTAR. O texto sai de `new Date()`, que no servidor é uma
+// hora e no navegador é outra — renderizar na primeira passada daria
+// divergência de hidratação numa linha que muda de minuto em minuto. Começa
+// nulo (o cartão mostra só o rótulo) e aparece logo em seguida.
+//
+// O intervalo de um minuto é o que mantém "há 3 min" honesto sem recarregar:
+// a parada é o único dado desta tela que muda sozinho com o relógio.
+function useDuracaoDesde(inicio: Date | null): string | null {
+  const [texto, setTexto] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!inicio) return
+    const atualizar = () => setTexto(duracaoEmPalavras(inicio, new Date()))
+    const id = setInterval(atualizar, 60_000)
+    atualizar()
+    return () => clearInterval(id)
+  }, [inicio])
+
+  // O descarte é NA LEITURA e não num `setTexto(null)` dentro do efeito:
+  // limpar estado ali é justamente o `set-state-in-effect` que o lint recusa,
+  // e o resultado é o mesmo — máquina sem parada aberta não mostra tempo.
+  return inicio ? texto : null
 }
 
 // O MESMO TÍTULO DAS TELAS DE PEDIDO E DA FILA DO OPERADOR, montado pela
@@ -633,6 +715,280 @@ function TituloDaPeca({
       {t.variacao && <span className="text-muted-foreground"> · {t.variacao}</span>}
     </>
   )
+}
+
+// -----------------------------------------------------------------
+// Registrar e encerrar a parada
+// -----------------------------------------------------------------
+//
+// ⚠️ UM TOQUE PRA ABRIR, UM PRA ESCOLHER — e acabou. O motivo é lista e não
+// campo de texto porque isto é operado de tablet, em pé, com a máquina
+// parada esperando: digitar "quebrou a agulha" trinta vezes por semana é o
+// tipo de atrito que faz o operador simplesmente não registrar, e um
+// histórico com metade das paradas é pior que nenhum.
+//
+// "Outro" é a exceção e pede o texto, porque é o escape — e uma linha "Outro"
+// sem explicação é a que ninguém consegue ler seis meses depois.
+function ParadaDialog({
+  maquina,
+  modo,
+  onClose,
+}: {
+  maquina: MaquinaListItem
+  modo: 'abrir' | 'fechar' | null
+  onClose: () => void
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [motivoOutro, setMotivoOutro] = useState(false)
+  const [texto, setTexto] = useState('')
+
+  function fechar() {
+    setMotivoOutro(false)
+    setTexto('')
+    onClose()
+  }
+
+  function registrar(motivo?: MotivoDeParada) {
+    const obs = texto.trim() === '' ? undefined : texto.trim()
+    startTransition(async () => {
+      const result = await trocarStatusAction(
+        maquina.id,
+        modo === 'abrir'
+          ? { status: 'manutencao', motivo, observacaoAbertura: obs }
+          : // 'operando' significa só APTA — não declara que está
+            // produzindo. Quem diz isso é a OP.
+            { status: 'operando', observacaoFechamento: obs },
+      )
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(modo === 'abrir' ? 'Parada registrada' : 'Máquina liberada')
+      router.refresh()
+      fechar()
+    })
+  }
+
+  const abrindo = modo === 'abrir'
+
+  return (
+    <Dialog open={modo !== null} onOpenChange={(o) => !o && fechar()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {abrindo
+              ? `Por que a ${maquina.codigo} parou?`
+              : `Liberar a ${maquina.codigo}`}
+          </DialogTitle>
+          <DialogDescription>
+            {abrindo
+              ? 'Toque no motivo. A máquina fica marcada como parada até alguém liberar.'
+              : 'A máquina volta a aceitar OP. A observação é opcional.'}
+          </DialogDescription>
+        </DialogHeader>
+
+        {abrindo && !motivoOutro && (
+          // Dois por linha, alvo grande: isto é tocado com o dedo, de pé.
+          <div className="grid grid-cols-2 gap-2">
+            {MOTIVOS_DE_PARADA.map((m) => (
+              <Button
+                key={m.valor}
+                variant="outline"
+                className="h-auto min-h-14 whitespace-normal py-2"
+                disabled={isPending}
+                onClick={() =>
+                  exigeObservacao(m.valor)
+                    ? setMotivoOutro(true)
+                    : registrar(m.valor)
+                }
+              >
+                {m.rotulo}
+              </Button>
+            ))}
+          </div>
+        )}
+
+        {(motivoOutro || !abrindo) && (
+          <Textarea
+            // Foco só quando o texto é OBRIGATÓRIO ("Outro"). No fechamento a
+            // observação é opcional, e abrir o teclado do tablet por cima do
+            // botão "Voltar a produzir" atrapalha quem só queria liberar.
+            autoFocus={motivoOutro}
+            rows={3}
+            value={texto}
+            onChange={(e) => setTexto(e.target.value)}
+            placeholder={
+              abrindo ? 'O que aconteceu?' : 'O que foi feito? (opcional)'
+            }
+          />
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={fechar} disabled={isPending}>
+            Cancelar
+          </Button>
+          {motivoOutro && (
+            <Button
+              loading={isPending}
+              // O CHECK `maquina_paradas_outro_ck` recusaria no banco; o botão
+              // desabilitado explica antes, em vez de virar "erro ao salvar".
+              disabled={isPending || texto.trim() === ''}
+              onClick={() => registrar('outro')}
+            >
+              Registrar parada
+            </Button>
+          )}
+          {!abrindo && (
+            <Button
+              loading={isPending}
+              disabled={isPending}
+              onClick={() => registrar()}
+            >
+              Voltar a produzir
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// -----------------------------------------------------------------
+// Histórico de paradas
+// -----------------------------------------------------------------
+
+function HistoricoSheet({
+  maquina,
+  onClose,
+}: {
+  maquina: MaquinaListItem | null
+  onClose: () => void
+}) {
+  return (
+    <Sheet open={maquina !== null} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+        {/* Só monta o conteúdo quando abre — assim a consulta sai UMA vez, por
+            máquina aberta, e não dezoito vezes ao carregar a tela. */}
+        {maquina && <HistoricoConteudo maquina={maquina} />}
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+function HistoricoConteudo({ maquina }: { maquina: MaquinaListItem }) {
+  const [itens, setItens] = useState<ParadaDoHistorico[] | null>(null)
+
+  useEffect(() => {
+    let vivo = true
+    historicoDeParadas(maquina.id).then((r) => {
+      if (vivo) setItens(r)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [maquina.id])
+
+  return (
+    <>
+      <SheetHeader>
+        <SheetTitle>
+          <span className="tabular-nums">{maquina.codigo}</span>
+          <span className="text-muted-foreground font-normal">
+            {' · '}
+            {maquina.nome}
+          </span>
+        </SheetTitle>
+        <SheetDescription>
+          Cada vez que a máquina parou: por quê, quanto tempo e quem registrou.
+        </SheetDescription>
+      </SheetHeader>
+
+      <div className="px-4 pb-4">
+        {itens === null ? (
+          <p className="text-muted-foreground text-sm">Carregando…</p>
+        ) : itens.length === 0 ? (
+          // ⚠️ O VAZIO PRECISA DIZER QUE É NOVO. Sem esta frase, uma máquina
+          // que quebra toda semana aparece com histórico limpo e a conclusão
+          // natural é "nunca parou" — quando o certo é "ninguém registrou
+          // ainda, porque isto começou agora".
+          <p className="text-muted-foreground text-sm">
+            Nenhuma parada registrada. O registro começou junto com esta tela:
+            paradas anteriores não existem no sistema.
+          </p>
+        ) : (
+          <ol className="space-y-3">
+            {itens.map((p) => (
+              <LinhaDaParada key={p.id} parada={p} />
+            ))}
+          </ol>
+        )}
+      </div>
+    </>
+  )
+}
+
+function LinhaDaParada({ parada }: { parada: ParadaDoHistorico }) {
+  const aberta = parada.encerradaEm === null
+  const duracao = useDuracaoDesde(aberta ? parada.iniciadaEm : null)
+
+  return (
+    <li
+      className={cn(
+        'border-l-2 pl-3 text-sm',
+        aberta ? 'border-orange-500' : 'border-border',
+      )}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+        <span className="font-medium">{rotuloDoMotivo(parada.motivo)}</span>
+        <span className="text-muted-foreground text-xs tabular-nums">
+          {aberta
+            ? duracao && `em aberto · há ${duracao}`
+            : `durou ${duracaoEmPalavras(parada.iniciadaEm, parada.encerradaEm!)}`}
+        </span>
+      </div>
+
+      <div className="text-muted-foreground text-xs tabular-nums">
+        {format(parada.iniciadaEm, "dd/MM/yy 'às' HH:mm", { locale: ptBR })}
+        {/* O status só aparece quando NÃO é manutenção: "Quebra · manutenção"
+            diria duas vezes a mesma coisa. O que interessa distinguir é a
+            parada que veio do cadastro (setup, desativação). */}
+        {parada.status !== 'manutencao' &&
+          ` · ${ROTULO_DO_STATUS[parada.status]}`}
+        {parada.abertaPorNome && ` · ${parada.abertaPorNome}`}
+      </div>
+
+      {parada.observacaoAbertura && (
+        <p className="mt-0.5 text-xs">{parada.observacaoAbertura}</p>
+      )}
+
+      {parada.opNumero && (
+        <p className="text-muted-foreground mt-0.5 text-xs tabular-nums">
+          Com a OP {parada.opNumero} na máquina
+        </p>
+      )}
+
+      {!aberta && (
+        <div className="text-muted-foreground mt-0.5 text-xs">
+          Liberada{parada.encerradaPorNome && ` por ${parada.encerradaPorNome}`}
+          {parada.observacaoFechamento && (
+            <span className="text-foreground">
+              {' — '}
+              {parada.observacaoFechamento}
+            </span>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+// Só os três chegam aqui: o CHECK `maquina_paradas_status_ck` (57) recusa
+// qualquer outro.
+const ROTULO_DO_STATUS: Record<string, string> = {
+  manutencao: 'manutenção',
+  setup: 'setup',
+  desativada: 'desativada',
 }
 
 // -----------------------------------------------------------------
