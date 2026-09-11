@@ -11,18 +11,6 @@ const stringOpt = (max: number, label = 'Texto') =>
     .refine((v) => v === undefined || v.length <= max, `${label} muito longo`)
     .optional()
 
-// uuid opcional — '' / null / ausente significam nenhum operador atribuído.
-const uuidOpt = z
-  .union([z.string(), z.null(), z.undefined()])
-  .transform((v) => (v == null || v === '' ? null : v))
-  .refine(
-    (v) =>
-      v === null ||
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
-    'ID inválido',
-  )
-  .optional()
-
 // -----------------------------------------------------------------
 // Máquina
 // -----------------------------------------------------------------
@@ -62,8 +50,12 @@ export const maquinaSchema = z.object({
   nome: z.string().trim().min(2, 'Nome obrigatório').max(120, 'Nome muito longo'),
   status: z.enum(maquinaStatusValues),
 
-  operadorAtualId: uuidOpt,
-
+  // ⚠️ `operadorAtualId` SAIU DAQUI. A coluna continua no banco (histórico),
+  // mas o app não escreve mais nela: quem responde "este operador manda
+  // nesta máquina" é `estacao_operadores`, e a policy RLS passou a seguir a
+  // estação (56_maquinas_rls_estacao.sql). Enquanto o campo era editável,
+  // preencher um cadastro concedia permissão sem ninguém perceber — e em
+  // produção ele apontava, em três máquinas, pra um usuário APAGADO.
   observacoes: stringOpt(500, 'Observações'),
 })
 

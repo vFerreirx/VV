@@ -2,7 +2,6 @@ import { ArrowLeft } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
-import { listarOperadores } from '../actions'
 import { MaquinaForm } from '@/components/forms/maquina-form'
 import { Button } from '@/components/ui/button'
 import { requireAreaEscrita } from '@/lib/auth/require-auth'
@@ -11,7 +10,6 @@ export const metadata: Metadata = { title: 'Nova máquina — Vanvest' }
 
 export default async function NovaMaquinaPage() {
   await requireAreaEscrita('maquinas')
-  const operadores = await listarOperadores()
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -32,7 +30,7 @@ export default async function NovaMaquinaPage() {
         </div>
       </div>
 
-      <MaquinaForm operadores={operadores} />
+      <MaquinaForm />
     </div>
   )
 }

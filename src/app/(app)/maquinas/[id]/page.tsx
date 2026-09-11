@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import { listarOperadores, obterMaquina } from '../actions'
+import { obterMaquina } from '../actions'
 import {
   MaquinaForm,
   type MaquinaFormDefaults,
@@ -21,10 +21,7 @@ export default async function EditarMaquinaPage({
   await requireAreaEscrita('maquinas')
   const { id } = await params
 
-  const [maquina, operadores] = await Promise.all([
-    obterMaquina(id),
-    listarOperadores(),
-  ])
+  const maquina = await obterMaquina(id)
   if (!maquina) notFound()
 
   const defaults: MaquinaFormDefaults = {
@@ -32,7 +29,6 @@ export default async function EditarMaquinaPage({
     codigo: maquina.codigo,
     nome: maquina.nome,
     status: maquina.status,
-    operadorAtualId: maquina.operadorAtualId,
     observacoes: maquina.observacoes,
   }
 
@@ -52,7 +48,7 @@ export default async function EditarMaquinaPage({
         </div>
       </div>
 
-      <MaquinaForm defaults={defaults} operadores={operadores} />
+      <MaquinaForm defaults={defaults} />
     </div>
   )
 }

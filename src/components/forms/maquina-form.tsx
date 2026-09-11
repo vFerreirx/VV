@@ -22,7 +22,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import type { User } from '@/lib/db/schema'
 import {
   maquinaSchema,
   STATUS_ESCOLHIVEIS,
@@ -31,20 +30,25 @@ import {
   type MaquinaInput,
 } from '@/lib/validators/maquinas'
 
+// ⚠️ SEM `operadorAtualId`. A coluna continua no banco por histórico, mas
+// saiu do formulário e do schema de escrita: quem responde "este operador
+// manda nesta máquina" é `estacao_operadores`, e a policy RLS passou a
+// seguir a estação (56_maquinas_rls_estacao.sql). Enquanto o campo era
+// editável, preencher um cadastro concedia permissão sem ninguém perceber.
 export type MaquinaFormDefaults = {
   id?: string
   codigo: string
   nome: string
   status: (typeof maquinaStatusValues)[number]
-  operadorAtualId: string | null
   observacoes: string | null
 }
 
+// 'parada' como padrão do cadastro novo — vale "apta, e ninguém afirmou que
+// está rodando". Declarar produção é coisa da OP, nunca do formulário.
 const VAZIO: MaquinaFormDefaults = {
   codigo: '',
   nome: '',
   status: 'parada',
-  operadorAtualId: null,
   observacoes: null,
 }
 
@@ -53,19 +57,14 @@ function toFormValues(d: MaquinaFormDefaults): MaquinaInput {
     codigo: d.codigo ?? '',
     nome: d.nome ?? '',
     status: d.status,
-    operadorAtualId: d.operadorAtualId ?? '',
     observacoes: d.observacoes ?? '',
   }
 }
 
-type Operador = Pick<User, 'id' | 'nome' | 'email' | 'role'>
-
 export function MaquinaForm({
   defaults = VAZIO,
-  operadores,
 }: {
   defaults?: MaquinaFormDefaults
-  operadores: Operador[]
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -99,7 +98,6 @@ export function MaquinaForm({
 
   // Operadores válidos pra atribuir = role 'operador' (RLS deixa esses
   // usuários atualizarem a própria máquina).
-  const operadoresFiltered = operadores.filter((o) => o.role === 'operador')
 
   return (
     <form onSubmit={onSubmit} className="space-y-6" noValidate>
@@ -157,41 +155,6 @@ export function MaquinaForm({
             />
           </Field>
 
-          <Field
-            label="Operador atual"
-            id="operadorAtualId"
-            error={errs.operadorAtualId?.message}
-            hint="Apenas usuários com perfil 'Operador' aparecem aqui"
-          >
-            <Controller
-              control={form.control}
-              name="operadorAtualId"
-              render={({ field: ctl }) => (
-                <Select
-                  value={ctl.value || 'nenhum'}
-                  onValueChange={(v) => ctl.onChange(v === 'nenhum' ? '' : v)}
-                  disabled={isPending}
-                >
-                  <SelectTrigger id="operadorAtualId" className="w-full">
-                    <SelectValue placeholder="Selecione…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nenhum">Nenhum</SelectItem>
-                    {operadoresFiltered.length === 0 && (
-                      <div className="text-muted-foreground p-2 text-xs">
-                        Nenhum operador ativo cadastrado.
-                      </div>
-                    )}
-                    {operadoresFiltered.map((o) => (
-                      <SelectItem key={o.id} value={o.id}>
-                        {o.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </Field>
 
           <Field
             label="Observações"

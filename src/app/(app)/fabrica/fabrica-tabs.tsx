@@ -21,6 +21,7 @@ export function FabricaTabs({
   verEstacoes,
   maquinas,
   podeEditarMaquinas,
+  podeVerOrdens,
   estacoes,
   operadores,
   maquinasOpcoes,
@@ -30,6 +31,7 @@ export function FabricaTabs({
   verEstacoes: boolean
   maquinas: MaquinaListItem[]
   podeEditarMaquinas: boolean
+  podeVerOrdens: boolean
   estacoes: EstacaoComDetalhes[]
   operadores: OperadorOpcao[]
   maquinasOpcoes: MaquinaOpcao[]
@@ -96,7 +98,11 @@ export function FabricaTabs({
                     </Button>
                   )}
             </div>
-            <MaquinasGrid maquinas={maquinas} podeEditar={podeEditarMaquinas} />
+            <MaquinasGrid
+              maquinas={maquinas}
+              podeEditar={podeEditarMaquinas}
+              podeVerOrdens={podeVerOrdens}
+            />
           </TabsContent>
         )}
 

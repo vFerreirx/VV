@@ -1,6 +1,14 @@
 'use client'
 
-import { Factory, Pencil, Power, Trash2, Wrench } from 'lucide-react'
+import {
+  ExternalLink,
+  Factory,
+  MoreHorizontal,
+  Pencil,
+  Power,
+  Trash2,
+  Wrench,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
@@ -20,16 +28,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
   situacaoDaMaquina,
   type SituacaoDaMaquina,
 } from '@/lib/producao/estado-maquina'
+import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
 import { cn } from '@/lib/utils'
 
 type Props = {
   maquinas: MaquinaListItem[]
   podeEditar: boolean
+  /**
+   * Quem enxerga a área `ordens` recebe o link pro detalhe da OP. Quem não
+   * enxerga não recebe: `/ordens` tem `requireArea('ordens')`, e oferecer um
+   * link que termina em redirect é pior do que não oferecer.
+   */
+  podeVerOrdens: boolean
 }
 
 // A cor sai do TOM da regra compartilhada, não do status cru. Enquanto era
@@ -66,7 +88,11 @@ function agruparPorEstacao(maquinas: MaquinaListItem[]) {
     }))
 }
 
-export function MaquinasGrid({ maquinas, podeEditar }: Props) {
+export function MaquinasGrid({
+  maquinas,
+  podeEditar,
+  podeVerOrdens,
+}: Props) {
   const [excluindo, setExcluindo] = useState<MaquinaListItem | null>(null)
 
   if (maquinas.length === 0) {
@@ -101,6 +127,7 @@ export function MaquinasGrid({ maquinas, podeEditar }: Props) {
                   key={m.id}
                   maquina={m}
                   podeEditar={podeEditar}
+                  podeVerOrdens={podeVerOrdens}
                   onExcluir={() => setExcluindo(m)}
                 />
               ))}
@@ -121,10 +148,12 @@ export function MaquinasGrid({ maquinas, podeEditar }: Props) {
 function MaquinaCard({
   maquina,
   podeEditar,
+  podeVerOrdens,
   onExcluir,
 }: {
   maquina: MaquinaListItem
   podeEditar: boolean
+  podeVerOrdens: boolean
   onExcluir: () => void
 }) {
   const router = useRouter()
@@ -151,7 +180,17 @@ function MaquinaCard({
   }
 
   return (
-    <article className="vv-lift flex flex-col gap-3 rounded-xl border p-3.5">
+    // ⚠️ ALTURA PADRÃO (`min-h-44`), e não altura livre. A grade estica os
+    // cartões de uma fileira até o mais alto, então UMA máquina com OP fazia
+    // as duas vizinhas crescerem junto e ficarem com um vazio no meio — e as
+    // fileiras sem OP nenhuma ficavam baixinhas. Numa tela cujo trabalho é
+    // varrer 18 cartões procurando o que mudou, tamanho irregular é ruído.
+    //
+    // O número é o do cartão OCUPADO já compacto (cabeçalho + bloco da OP de
+    // duas linhas + botão): o ocupado enche, o livre respira. Se o bloco da
+    // OP crescer, este `min-h` precisa crescer junto — senão a irregularidade
+    // volta em silêncio.
+    <article className="vv-lift flex min-h-44 flex-col gap-3 rounded-xl border p-3.5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-3">
           <span
@@ -183,68 +222,120 @@ function MaquinaCard({
           </div>
         </div>
 
+        {/* ⚠️ EDITAR, DESATIVAR E EXCLUIR SAÍRAM DO CARTÃO pra dentro do
+            menu. O cartão é de CONSULTA — o que se faz aqui o dia inteiro é
+            olhar o que está rodando, não administrar cadastro. Dois ícones
+            soltos ao lado do nome convidavam ao toque errado, e a lixeira
+            ficava a um dedo de distância da informação mais lida da tela. */}
         {podeEditar && (
-          <div className="flex shrink-0 gap-0.5">
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              render={<Link href={`/maquinas/${maquina.id}`} />}
-              aria-label="Editar"
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={`Ações da ${maquina.codigo}`}
+                />
+              }
             >
-              <Pencil />
-            </Button>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={onExcluir}
-              aria-label="Excluir"
-            >
-              <Trash2 className="text-destructive" />
-            </Button>
-          </div>
+              <MoreHorizontal />
+            </DropdownMenuTrigger>
+            {/* ⚠️ `w-auto`: o padrão do DropdownMenuContent é
+                `w-(--anchor-width)` — a largura do GATILHO —, e aqui o
+                gatilho é um botão de ícone de 32px. O menu nascia no piso de
+                128px e "Desativar máquina" quebrava em duas linhas. */}
+            <DropdownMenuContent align="end" className="w-auto whitespace-nowrap">
+              <DropdownMenuItem
+                onClick={() =>
+                  definirStatus(desativada ? 'operando' : 'desativada')
+                }
+                disabled={isPending}
+              >
+                <Power />
+                {desativada ? 'Ativar máquina' : 'Desativar máquina'}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                render={<Link href={`/maquinas/${maquina.id}`} />}
+              >
+                <Pencil />
+                Editar cadastro
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={onExcluir}>
+                <Trash2 />
+                Excluir
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </div>
 
       {/* ⚠️ A OP APARECE MESMO SOB MANUTENÇÃO. Os dois eixos são
-          independentes: a manchete acima diz "Em manutenção", e esta linha
+          independentes: a manchete acima diz "Em manutenção", e este bloco
           diz que há trabalho preso ali dentro. Mostrar só um dos dois manda
           quem olha decidir errado — ou acha que a máquina está livre, ou
-          acha que a OP sumiu. */}
+          acha que a OP sumiu.
+
+          DUAS LINHAS, E ERAM QUATRO. O que saiu: o nome do produto com o
+          modelo colado ("Manta - ACONCHEGO" em cima de "Areia · ACONCHEGO ·
+          Manta" dizia ACONCHEGO e Manta duas vezes cada) e a linha própria
+          do "Ver a OP" — o número virou o link. Cada linha aqui é altura que
+          os 18 cartões pagam. */}
       {maquina.op && (
         <div className="min-w-0 rounded-md border px-2.5 py-2 text-xs">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate font-medium">
-              {maquina.op.produtoNome}
+            <span className="min-w-0 truncate">
+              <TituloDaPeca op={maquina.op} />
             </span>
-            <span className="text-muted-foreground shrink-0 tabular-nums">
-              {maquina.op.numero}
-            </span>
+            {/* O NÚMERO É O LINK, quando a pessoa pode ver a área `ordens`.
+                Vai pra LISTA FILTRADA e não pra /ordens/{id}: aquela rota é
+                `requireRole(['admin','gerente_producao'])` e é a tela de
+                EDIÇÃO — quem tem só `ver` em máquinas bateria num redirect. */}
+            {podeVerOrdens ? (
+              <Link
+                href={`/ordens?q=${encodeURIComponent(maquina.op.numero)}`}
+                className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 tabular-nums underline-offset-2 hover:underline"
+              >
+                {maquina.op.numero}
+                <ExternalLink className="size-3" />
+              </Link>
+            ) : (
+              <span className="text-muted-foreground shrink-0 tabular-nums">
+                {maquina.op.numero}
+              </span>
+            )}
           </div>
-          {variacaoDe(maquina.op) && (
-            <div className="text-muted-foreground truncate">
-              {variacaoDe(maquina.op)}
-            </div>
-          )}
-          <div className="text-muted-foreground mt-0.5 tabular-nums">
+          <div className="text-muted-foreground truncate tabular-nums">
             {maquina.op.quantidade} peças
-            {maquina.op.responsavelNome &&
-              ` · responsável: ${maquina.op.responsavelNome}`}
+            {/* "responsável" é quem PEGOU a OP, não um cadastro de máquina —
+                o campo `operador_atual` que existia aqui apontava, em três
+                máquinas, pra um usuário apagado (56_maquinas_rls_estacao.sql). */}
+            {maquina.op.responsavelNome && ` · ${maquina.op.responsavelNome}`}
           </div>
         </div>
       )}
 
+      {/* ⚠️ `mt-auto` GRUDA A AÇÃO NO RODAPÉ. A grade estica os cartões da
+          mesma fileira até a altura do mais alto (o que tem OP dentro), e sem
+          isto o botão de cada um parava onde o texto dele acabava — três
+          botões em três alturas diferentes na mesma linha, que é o "um card
+          ficou maior que o outro". */}
       {podeEditar && (
-        <div className="flex gap-1.5">
+        <div className="mt-auto flex gap-1.5">
           {/* MANUTENÇÃO é toggle, e SAIR DELA NÃO DECLARA PRODUÇÃO: grava
               'operando', que passou a significar só "apta". A manchete então
               é recalculada da OP — se o trabalho continua lá, volta a "Em
               produção"; se não, "Livre". Antes isto gravava 'operando' com o
               sentido de "está rodando", e a máquina mentia até alguém
               corrigir à mão. */}
+          {/* MANUTENÇÃO FICA VISÍVEL, sozinha. É a ação do dia a dia — a
+              máquina parou agora e alguém precisa registrar —, e enterrá-la
+              no menu custaria um toque em cima da urgência. Desativar é
+              decisão, não rotina: aquela pode esperar o menu. */}
           <Button
             size="sm"
             variant={emManutencao ? 'default' : 'outline'}
-            className="flex-1"
+            className="w-full"
             disabled={isPending}
             aria-pressed={emManutencao}
             onClick={() =>
@@ -254,34 +345,42 @@ function MaquinaCard({
             <Wrench />
             Manutenção
           </Button>
-          <Button
-            size="sm"
-            variant={desativada ? 'default' : 'outline'}
-            className="flex-1"
-            disabled={isPending}
-            aria-pressed={desativada}
-            onClick={() =>
-              definirStatus(desativada ? 'operando' : 'desativada')
-            }
-          >
-            <Power />
-            {desativada ? 'Ativar' : 'Desativar'}
-          </Button>
         </div>
       )}
     </article>
   )
 }
 
-/** "Terracota · King" — o que identifica a peça sem o nome do produto. */
-function variacaoDe(op: {
-  variacaoCor: string | null
-  variacaoModelo: string | null
-  variacaoTamanho: string | null
-}): string {
-  return [op.variacaoCor, op.variacaoModelo, op.variacaoTamanho]
-    .filter(Boolean)
-    .join(' · ')
+// O MESMO TÍTULO DAS TELAS DE PEDIDO E DA FILA DO OPERADOR, montado pela
+// mesma função (`tituloDaOp`, src/lib/producao/rotulo-da-op.ts). A família em
+// negrito porque é o que a peça É; a variação em peso normal.
+//
+// ⚠️ Aqui havia um `variacaoDe` local que juntava cor · modelo · tamanho no
+// braço, e o resultado era "Manta - ACONCHEGO" na linha de cima e "Areia ·
+// ACONCHEGO · Manta" na de baixo — o modelo e o tamanho ditos duas vezes.
+// `tituloDaOp` corta o modelo quando ele já está no nome do produto, e foi
+// escrita justamente pra isso.
+function TituloDaPeca({
+  op,
+}: {
+  op: {
+    produtoNome: string
+    variacaoCor: string | null
+    variacaoModelo: string | null
+    variacaoTamanho: string | null
+  }
+}) {
+  const t = tituloDaOp(op.produtoNome, {
+    cor: op.variacaoCor,
+    modelo: op.variacaoModelo,
+    tamanho: op.variacaoTamanho,
+  })
+  return (
+    <>
+      <span className="font-medium">{t.familia}</span>
+      {t.variacao && <span className="text-muted-foreground"> · {t.variacao}</span>}
+    </>
+  )
 }
 
 // -----------------------------------------------------------------

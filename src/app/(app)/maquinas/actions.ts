@@ -56,8 +56,6 @@ export type OpDaMaquina = {
 }
 
 export type MaquinaListItem = Maquina & {
-  operadorNome: string | null
-  operadorEmail: string | null
   estacaoNome: string | null
   /**
    * ⚠️ É DAQUI QUE SAI A OCUPAÇÃO, e não de `status`. A tela passa isto pra
@@ -92,8 +90,6 @@ export async function listarMaquinas(
   const rows = await db
     .select({
       m: maquinas,
-      operadorNome: users.nome,
-      operadorEmail: users.email,
       estacaoNome: estacoes.nome,
       opId: ordensProducao.id,
       opNumero: ordensProducao.numero,
@@ -105,14 +101,11 @@ export async function listarMaquinas(
       responsavelNome: responsavel.nome,
     })
     .from(maquinas)
-    // ⚠️ FILTRA `deletedAt` DO USUÁRIO. Sem isso a aba exibia "Operador de
-    // Tear" em três máquinas — um usuário APAGADO e inativo, que é o único
-    // `operador_atual` que existe no banco. Nome de gente excluída na tela é
-    // o tipo de erro que ninguém reporta porque parece cadastro velho.
-    .leftJoin(
-      users,
-      and(eq(users.id, maquinas.operadorAtualId), isNull(users.deletedAt)),
-    )
+    // ⚠️ NÃO HÁ MAIS JOIN COM `operador_atual_id`. Ele existia pra exibir o
+    // nome do "operador atual" da máquina — que em produção era, em três
+    // máquinas, um usuário APAGADO. O campo saiu da tela e do schema de
+    // escrita; a coluna fica por histórico (56_maquinas_rls_estacao.sql).
+    // Quem aparece no cartão é o RESPONSÁVEL DA OP, que é outra pergunta.
     .leftJoin(estacoes, eq(estacoes.id, maquinas.estacaoId))
     .leftJoin(
       ordensProducao,
@@ -133,8 +126,6 @@ export async function listarMaquinas(
 
   return rows.map((r) => ({
     ...r.m,
-    operadorNome: r.operadorNome ?? null,
-    operadorEmail: r.operadorEmail ?? null,
     estacaoNome: r.estacaoNome ?? null,
     op:
       r.opId === null
@@ -213,7 +204,6 @@ export async function criarMaquinaAction(
       codigo: codigoUpper,
       nome: data.nome,
       status: data.status,
-      operadorAtualId: data.operadorAtualId,
       observacoes: data.observacoes ?? null,
     })
     .returning({ id: maquinas.id })
@@ -264,13 +254,15 @@ export async function atualizarMaquinaAction(
     }
   }
 
+  // `operadorAtualId` NÃO entra no `set`, e isso PRESERVA o que está lá.
+  // Omitir a coluna é diferente de gravar null: as três máquinas que têm o
+  // campo preenchido continuam tendo depois de qualquer edição.
   await db
     .update(maquinas)
     .set({
       codigo: codigoUpper,
       nome: data.nome,
       status: data.status,
-      operadorAtualId: data.operadorAtualId,
       observacoes: data.observacoes ?? null,
     })
     .where(eq(maquinas.id, id))

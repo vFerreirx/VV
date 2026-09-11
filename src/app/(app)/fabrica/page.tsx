@@ -24,9 +24,13 @@ export default async function FabricaPage({
 }) {
   const user = await requireAuth()
 
-  const [nMaq, nEst] = await Promise.all([
+  const [nMaq, nEst, nOrdens] = await Promise.all([
     nivelDaAreaPara(user.role, 'maquinas'),
     nivelDaAreaPara(user.role, 'estacoes'),
+    // Decide se o cartão da máquina mostra o link pro detalhe da OP. A rota
+    // /ordens tem `requireArea('ordens')`, então oferecer o link a quem não
+    // tem a área terminaria em redirect.
+    nivelDaAreaPara(user.role, 'ordens'),
   ])
   const verMaquinas = nMaq !== 'nenhum'
   const verEstacoes = nEst !== 'nenhum'
@@ -55,6 +59,7 @@ export default async function FabricaPage({
       verEstacoes={verEstacoes}
       maquinas={maquinas}
       podeEditarMaquinas={podeEscrever(nMaq)}
+      podeVerOrdens={nOrdens !== 'nenhum'}
       estacoes={estacoes}
       operadores={operadores}
       maquinasOpcoes={maquinasOpcoes}
