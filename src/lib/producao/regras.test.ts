@@ -25,7 +25,9 @@ import {
   tituloDaOp,
 } from './rotulo-da-op.ts'
 import {
+  contarMaquinas,
   disponibilidadeDe,
+  grupoDaSituacao,
   motivoDeImpedimento,
   situacaoDaMaquina,
 } from './estado-maquina.ts'
@@ -472,4 +474,46 @@ test('o modelo NAO se repete dentro da variacao', () => {
   })
   assert.equal(t.variacao.includes('SIENA'), false)
   assert.equal(t.variacao, 'Areia e Azul Marinho · 45x45')
+})
+
+// -----------------------------------------------------------------
+// O resumo da fábrica
+// -----------------------------------------------------------------
+
+test('a maquina em manutencao COM OP conta UMA vez, em indisponiveis', () => {
+  // A armadilha da fase: ela tem ocupacao E impedimento. Um resumo que
+  // somasse "com OP" e "impedidas" separado contaria ela duas vezes, e o
+  // total estouraria o numero de maquinas da fabrica.
+  const c = contarMaquinas([comOp('manutencao')])
+  assert.deepEqual(c, {
+    emProducao: 0,
+    livres: 0,
+    indisponiveis: 1,
+    total: 1,
+  })
+})
+
+test('os tres baldes somam SEMPRE o total (exaustividade)', () => {
+  // Toda combinacao de status x ocupacao: a soma tem que fechar. Se um
+  // status novo do enum cair fora dos tres, este teste quebra.
+  const todos = ['operando', 'parada', 'setup', 'manutencao', 'desativada'] as const
+  const situacoes = todos.flatMap((st) => [livre(st), comOp(st)])
+  const c = contarMaquinas(situacoes)
+  assert.equal(c.emProducao + c.livres + c.indisponiveis, c.total)
+  assert.equal(c.total, situacoes.length)
+})
+
+test('o resumo da fabrica de hoje: 18 aptas e vazias', () => {
+  // As 18 maquinas vivas estao em 'operando' sem OP nenhuma.
+  const c = contarMaquinas(Array.from({ length: 18 }, () => livre('operando')))
+  assert.deepEqual(c, { emProducao: 0, livres: 18, indisponiveis: 0, total: 18 })
+})
+
+test('o grupo do filtro e o MESMO que o do resumo', () => {
+  // Se fossem duas regras, clicar em "3 indisponiveis" poderia trazer 4
+  // cartoes — e ninguem desconfia de um filtro que traz demais.
+  assert.equal(grupoDaSituacao(comOp('operando')), 'em_producao')
+  assert.equal(grupoDaSituacao(livre('operando')), 'livre')
+  assert.equal(grupoDaSituacao(livre('setup')), 'indisponivel')
+  assert.equal(grupoDaSituacao(comOp('desativada')), 'indisponivel')
 })

@@ -173,3 +173,61 @@ export function situacaoDaMaquina(
     tom: ehProducao ? 'producao' : TOM[disponibilidade],
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// O RESUMO DA FÁBRICA — três baldes, e cada máquina cai em UM
+// ─────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ A ARMADILHA É A MÁQUINA EM MANUTENÇÃO COM OP DENTRO. Ela tem ocupação E
+// impedimento, e um resumo ingênuo — que somasse "com OP" de um lado e
+// "impedidas" de outro — contaria ela DUAS VEZES. O total estouraria o
+// número de máquinas da fábrica, e ninguém desconfiaria de um resumo que
+// soma 19 em 18: parece arredondamento, é dado errado.
+//
+// A regra que resolve: O IMPEDIMENTO DECIDE O BALDE, a ocupação decide o que
+// o cartão mostra. Máquina em manutenção conta em "indisponíveis", tendo
+// trabalho preso dentro ou não — porque a pergunta do resumo é "quantas
+// podem produzir agora?", e a resposta dela é não.
+//
+// `grupoDaSituacao` é a fonte única disso: o resumo conta por ela e o filtro
+// de situação seleciona por ela. Se fossem dois `if` separados, clicar em
+// "3 indisponíveis" poderia trazer 4 cartões.
+
+export type GrupoDeMaquina = 'em_producao' | 'livre' | 'indisponivel'
+
+export function grupoDaSituacao(s: SituacaoDaMaquina): GrupoDeMaquina {
+  if (s.disponibilidade !== 'apta') return 'indisponivel'
+  return s.ocupacao === 'com_op' ? 'em_producao' : 'livre'
+}
+
+export type ContagemDeMaquinas = {
+  emProducao: number
+  livres: number
+  indisponiveis: number
+  /** A soma dos três. Existe pra tornar a exaustividade conferível. */
+  total: number
+}
+
+export function contarMaquinas(
+  situacoes: readonly SituacaoDaMaquina[],
+): ContagemDeMaquinas {
+  const c: ContagemDeMaquinas = {
+    emProducao: 0,
+    livres: 0,
+    indisponiveis: 0,
+    total: situacoes.length,
+  }
+  for (const s of situacoes) {
+    const grupo = grupoDaSituacao(s)
+    if (grupo === 'em_producao') c.emProducao++
+    else if (grupo === 'livre') c.livres++
+    else c.indisponiveis++
+  }
+  return c
+}
+
+export const ROTULO_DO_GRUPO: Record<GrupoDeMaquina, string> = {
+  em_producao: 'Em produção',
+  livre: 'Livres',
+  indisponivel: 'Indisponíveis',
+}

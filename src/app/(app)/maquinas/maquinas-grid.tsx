@@ -7,11 +7,12 @@ import {
   Pencil,
   Power,
   Trash2,
+  TriangleAlert,
   Wrench,
 } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -37,10 +38,15 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { EmptyState } from '@/components/ui/empty-state'
 import {
+  contarMaquinas,
+  grupoDaSituacao,
   situacaoDaMaquina,
+  ROTULO_DO_GRUPO,
+  type GrupoDeMaquina,
   type SituacaoDaMaquina,
 } from '@/lib/producao/estado-maquina'
 import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
+import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
 type Props = {
@@ -94,6 +100,54 @@ export function MaquinasGrid({
   podeVerOrdens,
 }: Props) {
   const [excluindo, setExcluindo] = useState<MaquinaListItem | null>(null)
+  const { estacao, grupo, definir } = useFiltrosNaUrl()
+  const conectado = useAtualizacaoAoVivo()
+
+  // A SITUAÇÃO É CALCULADA UMA VEZ e alimenta resumo, filtro e cartão. Se
+  // cada um chamasse `situacaoDaMaquina` por conta, seriam três leituras da
+  // mesma regra — iguais hoje, e uma delas esquecida amanhã.
+  const comSituacao = useMemo(
+    () =>
+      maquinas.map((m) => ({
+        maquina: m,
+        situacao: situacaoDaMaquina(m.status, m.op !== null),
+      })),
+    [maquinas],
+  )
+
+  // ⚠️ O RESUMO CONTA A FÁBRICA INTEIRA, não o que sobrou do filtro. Filtrar
+  // por "Estação 1" e ver o contador cair daria a impressão de que a fábrica
+  // encolheu — o resumo responde "como está a fábrica", o filtro responde "o
+  // que quero olhar agora".
+  const contagem = useMemo(
+    () => contarMaquinas(comSituacao.map((x) => x.situacao)),
+    [comSituacao],
+  )
+
+  const estacoes = useMemo(
+    () =>
+      Array.from(
+        new Set(maquinas.map((m) => m.estacaoNome ?? SEM_ESTACAO)),
+      ).sort((a, b) =>
+        a === SEM_ESTACAO ? 1 : b === SEM_ESTACAO ? -1 : a.localeCompare(b, 'pt-BR', { numeric: true }),
+      ),
+    [maquinas],
+  )
+
+  const visiveis = useMemo(
+    () =>
+      comSituacao
+        .filter(
+          (x) =>
+            estacao === null ||
+            (x.maquina.estacaoNome ?? SEM_ESTACAO) === estacao,
+        )
+        .filter((x) => grupo === null || grupoDaSituacao(x.situacao) === grupo)
+        .map((x) => x.maquina),
+    // Depende dos VALORES e não de um objeto `filtros`: um objeto novo a
+    // cada render refaria a lista inteira toda vez, sem nada ter mudado.
+    [comSituacao, estacao, grupo],
+  )
 
   if (maquinas.length === 0) {
     return (
@@ -105,39 +159,237 @@ export function MaquinasGrid({
     )
   }
 
-  const grupos = agruparPorEstacao(maquinas)
+  const grupos = agruparPorEstacao(visiveis)
 
   return (
     <>
-      <div className="space-y-6">
-        {grupos.map((g) => (
-          <section key={g.estacao ?? SEM_ESTACAO} className="space-y-2.5">
-            <div className="flex items-baseline gap-2">
-              <h2 className="text-sm font-semibold">
-                {g.estacao ?? 'Sem estação'}
-              </h2>
-              <span className="text-muted-foreground text-xs">
-                {g.maquinas.length}{' '}
-                {g.maquinas.length === 1 ? 'máquina' : 'máquinas'}
-              </span>
-            </div>
-            <div className="vv-stagger grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-              {g.maquinas.map((m) => (
-                <MaquinaCard
-                  key={m.id}
-                  maquina={m}
-                  podeEditar={podeEditar}
-                  podeVerOrdens={podeVerOrdens}
-                  onExcluir={() => setExcluindo(m)}
-                />
+      <div className="space-y-4">
+        {/* RESUMO + FILTROS na mesma faixa: os números SÃO o filtro de
+            situação. Ter um contador "3 indisponíveis" ao lado de um seletor
+            que também diz "indisponíveis" seria a mesma escolha oferecida
+            duas vezes. */}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b pb-3">
+          {(['em_producao', 'livre', 'indisponivel'] as const).map((g) => (
+            <ContadorFiltro
+              key={g}
+              grupo={g}
+              quantidade={
+                g === 'em_producao'
+                  ? contagem.emProducao
+                  : g === 'livre'
+                    ? contagem.livres
+                    : contagem.indisponiveis
+              }
+              ativo={grupo === g}
+              onClick={() => definir({ grupo: grupo === g ? null : g })}
+            />
+          ))}
+
+          {estacoes.length > 1 && (
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant={estacao === null ? 'secondary' : 'ghost'}
+                onClick={() => definir({ estacao: null })}
+              >
+                Todas
+              </Button>
+              {estacoes.map((e) => (
+                <Button
+                  key={e}
+                  size="sm"
+                  variant={estacao === e ? 'secondary' : 'ghost'}
+                  onClick={() => definir({ estacao: estacao === e ? null : e })}
+                >
+                  {e === SEM_ESTACAO ? 'Sem estação' : e}
+                </Button>
               ))}
             </div>
-          </section>
-        ))}
+          )}
+        </div>
+
+        {/* ⚠️ O AVISO DE CONEXÃO EXISTE PRA NÃO MENTIR. Sem ele, um realtime
+            caído deixa a tela parada mostrando dado velho com cara de atual —
+            e numa tela que responde "o que está rodando agora", dado velho é
+            pior que tela vazia. O resto do projeto é silencioso nisso; aqui
+            não. */}
+        {!conectado && (
+          <div className="flex items-start gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+            <TriangleAlert className="mt-px size-3.5 shrink-0" />
+            <span>
+              Sem atualização automática. O que está na tela pode não ser o de
+              agora — recarregue a página.
+            </span>
+          </div>
+        )}
+
+        {grupos.length === 0 ? (
+          // A SAÍDA VEM JUNTO COM O BECO SEM SAÍDA. Filtrar por "em produção"
+          // numa fábrica parada é o caso NORMAL desta tela, e uma tela vazia
+          // sem botão obriga a lembrar qual dos filtros estava ligado.
+          <div className="rounded-md border border-dashed p-6 text-center">
+            <p className="text-muted-foreground text-sm">
+              Nenhuma máquina com esse filtro.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => definir({ estacao: null, grupo: null })}
+            >
+              Ver todas
+            </Button>
+          </div>
+        ) : (
+          grupos.map((g) => (
+            <section key={g.estacao ?? SEM_ESTACAO} className="space-y-2.5">
+              <div className="flex items-baseline gap-2">
+                <h2 className="text-sm font-semibold">
+                  {g.estacao ?? 'Sem estação'}
+                </h2>
+                <span className="text-muted-foreground text-xs">
+                  {g.maquinas.length}{' '}
+                  {g.maquinas.length === 1 ? 'máquina' : 'máquinas'}
+                </span>
+              </div>
+              <div className="vv-stagger grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                {g.maquinas.map((m) => (
+                  <MaquinaCard
+                    key={m.id}
+                    maquina={m}
+                    podeEditar={podeEditar}
+                    podeVerOrdens={podeVerOrdens}
+                    onExcluir={() => setExcluindo(m)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))
+        )}
       </div>
 
       <ExcluirDialog maquina={excluindo} onClose={() => setExcluindo(null)} />
     </>
+  )
+}
+
+// -----------------------------------------------------------------
+// Filtros — moram na URL
+// -----------------------------------------------------------------
+
+// ⚠️ URL E NÃO ESTADO LOCAL: recarregar não perde o filtro, e dá pra mandar
+// o link de "as indisponíveis da Estação 2" pra alguém.
+//
+// Escreve com `window.history.replaceState`, que o Next integra ao router e
+// sincroniza com `useSearchParams` (docs: Native History API). O filtro é
+// aplicado no CLIENTE sobre a lista já carregada — 18 máquinas não pagam uma
+// ida ao servidor por clique —, então `router.push` seria um round-trip sem
+// ganho nenhum.
+//
+// `replaceState` e não `pushState`: filtrar não é navegar. Com push, sair da
+// tela exigiria apertar "voltar" uma vez por clique de filtro.
+type Filtros = { estacao: string | null; grupo: GrupoDeMaquina | null }
+
+const GRUPOS_VALIDOS: readonly GrupoDeMaquina[] = [
+  'em_producao',
+  'livre',
+  'indisponivel',
+]
+
+function useFiltrosNaUrl() {
+  const searchParams = useSearchParams()
+
+  const estacao = searchParams.get('estacao')
+  const grupoBruto = searchParams.get('situacao')
+  // Valor inválido na URL (alguém digitou, ou o enum mudou) vira "sem
+  // filtro" em vez de lista vazia sem explicação.
+  const grupo = GRUPOS_VALIDOS.includes(grupoBruto as GrupoDeMaquina)
+    ? (grupoBruto as GrupoDeMaquina)
+    : null
+
+  function definir(mudanca: Partial<Filtros>) {
+    const params = new URLSearchParams(searchParams.toString())
+    if ('estacao' in mudanca) {
+      if (mudanca.estacao) params.set('estacao', mudanca.estacao)
+      else params.delete('estacao')
+    }
+    if ('grupo' in mudanca) {
+      if (mudanca.grupo) params.set('situacao', mudanca.grupo)
+      else params.delete('situacao')
+    }
+    const qs = params.toString()
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname)
+  }
+
+  return { estacao, grupo, definir }
+}
+
+// -----------------------------------------------------------------
+// Atualização ao vivo
+// -----------------------------------------------------------------
+
+// Escuta as DUAS tabelas que desenham esta tela: `ordens_producao` diz se a
+// máquina está ocupada, `maquinas` diz se está impedida. As duas já estão na
+// publicação `supabase_realtime` (05_realtime.sql) — sem isso o canal
+// conectaria e nunca receberia evento, que é falha muda.
+//
+// Devolve se o canal está VIVO. O `subscribe` entrega o estado, e é dele que
+// sai o aviso: quando cai, a tela diz que parou de atualizar em vez de
+// continuar mostrando o que era verdade dez minutos atrás.
+function useAtualizacaoAoVivo(): boolean {
+  const router = useRouter()
+  const [conectado, setConectado] = useState(true)
+
+  useEffect(() => {
+    const supabase = createBrowserSupabase()
+    const canal = supabase
+      .channel('maquinas-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'ordens_producao' },
+        () => router.refresh(),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'maquinas' },
+        () => router.refresh(),
+      )
+      .subscribe((status) => {
+        setConectado(status === 'SUBSCRIBED')
+      })
+
+    return () => {
+      supabase.removeChannel(canal)
+    }
+  }, [router])
+
+  return conectado
+}
+
+function ContadorFiltro({
+  grupo,
+  quantidade,
+  ativo,
+  onClick,
+}: {
+  grupo: GrupoDeMaquina
+  quantidade: number
+  ativo: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={ativo}
+      className={cn(
+        'flex items-baseline gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition-colors',
+        ativo ? 'border-foreground/30 bg-accent' : 'hover:bg-accent/50',
+      )}
+    >
+      <span className="text-base font-semibold tabular-nums">{quantidade}</span>
+      <span className="text-muted-foreground">{ROTULO_DO_GRUPO[grupo]}</span>
+    </button>
   )
 }
 
