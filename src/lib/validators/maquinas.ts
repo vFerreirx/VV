@@ -35,6 +35,23 @@ export const maquinaStatusValues = [
   'desativada',
 ] as const
 
+// OS STATUS QUE ALGUÉM ESCOLHE NUM FORMULÁRIO.
+//
+// ⚠️ 'operando' e 'parada' ficam DE FORA, e não é omissão. Este campo declara
+// DISPONIBILIDADE — a máquina pode produzir? —, nunca ocupação. Escolher
+// "Operando" à mão era o que fazia a aba Máquinas dizer que as 18 estavam
+// produzindo com a fábrica parada. Quem diz que a máquina está produzindo é a
+// OP, e o rótulo da tela é derivado (src/lib/producao/estado-maquina.ts).
+//
+// Os dois continuam VÁLIDOS no enum e no banco: 'operando' é o valor que as
+// 18 linhas têm e o que o botão "Ativar" grava; 'parada' é histórico. O
+// schema segue aceitando os cinco — isto aqui é só o que a TELA oferece.
+export const STATUS_ESCOLHIVEIS = [
+  'setup',
+  'manutencao',
+  'desativada',
+] as const satisfies readonly (typeof maquinaStatusValues)[number][]
+
 export const maquinaSchema = z.object({
   codigo: z
     .string()

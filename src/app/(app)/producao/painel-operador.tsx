@@ -42,7 +42,7 @@ import {
   calcularConclusao,
   erroDeQuantidade,
 } from '@/lib/producao/conclusao'
-import { estadoDaMaquina } from '@/lib/producao/estado-maquina'
+import { situacaoDaMaquina } from '@/lib/producao/estado-maquina'
 import { confirmacaoAntesDeIniciar } from '@/lib/producao/inicio-da-op'
 import {
   agruparPorModelo,
@@ -55,7 +55,6 @@ import {
 } from './troca-operador'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
-import { STATUS_LABEL } from '@/lib/validators/maquinas'
 
 // ─────────────────────────────────────────────────────────────────────────
 // A TELA DE QUEM PRODUZ — e ela é a ESTAÇÃO, não a fila.
@@ -357,14 +356,24 @@ function CartaoMaquina({
   onIniciar: () => void
   onConcluir: () => void
 }) {
-  const estado = estadoDaMaquina(m.status, m.op !== null)
+  // OS DOIS EIXOS, e não um estado colapsado. A versão anterior escolhia um
+  // vencedor ("ocupada vence indisponível") e escondia a manutenção de uma
+  // máquina que tinha trabalho preso dentro — justamente o caso em que o
+  // operador mais precisa ver as duas coisas.
+  const s = situacaoDaMaquina(m.status, m.op !== null)
+  const impedida = s.disponibilidade !== 'apta'
 
   return (
     <div
       className={cn(
         'flex min-h-24 flex-col rounded-xl border-2 p-2.5',
-        estado === 'ocupada' && 'border-primary/40',
-        estado === 'indisponivel' && 'bg-muted/40 border-dashed opacity-70',
+        s.tom === 'producao' && 'border-primary/40',
+        // ⚠️ IMPEDIDA COM OP NÃO APAGA O CARTÃO. Só a impedida E vazia fica
+        // tracejada e esmaecida: ali não há nada pra ler. Com trabalho
+        // dentro, o cartão continua legível — quem está na frente dela
+        // precisa enxergar a peça, não um retângulo cinza.
+        impedida && s.ocupacao === 'livre' && 'bg-muted/40 border-dashed opacity-70',
+        impedida && s.ocupacao === 'com_op' && 'border-amber-500/50',
       )}
     >
       {/* O CÓDIGO DA MÁQUINA NO TOPO, sempre — é por ele que ele acha o
@@ -376,19 +385,30 @@ function CartaoMaquina({
         <span className="text-base font-semibold tabular-nums">
           {m.codigo}
         </span>
-        {estado === 'indisponivel' && (
-          <span className="text-muted-foreground text-sm">
-            {STATUS_LABEL[m.status]}
-          </span>
-        )}
-        {estado === 'ocupada' && m.op && (
+        {m.op && (
           <span className="text-muted-foreground truncate text-xs tabular-nums">
             {m.op.numero}
           </span>
         )}
       </div>
 
-      {estado === 'ocupada' && m.op && (
+      {/* A MANCHETE DO IMPEDIMENTO, e ela aparece MESMO com OP dentro. É a
+          linha que responde "por que esta máquina está parada se tem peça
+          nela?" — sem ela, o operador ficaria esperando a máquina voltar
+          sozinha. */}
+      {impedida && (
+        <p className="mt-0.5 text-sm font-medium text-amber-700 dark:text-amber-400">
+          {s.rotulo}
+        </p>
+      )}
+
+      {/* O TRABALHO CONTINUA ACESSÍVEL SOB MANUTENÇÃO, de propósito. Entrar
+          em manutenção não conclui, não cancela e não desvincula a OP — ela
+          segue `em_producao` naquela máquina, e o índice único já impede que
+          outra entre ali. O que o operador precisa é poder CONCLUIR o que
+          ficou dentro quando a máquina voltar; esconder o botão prenderia a
+          OP até alguém mexer no cadastro. */}
+      {s.ocupacao === 'com_op' && m.op && (
         <CorpoOcupada
           op={m.op}
           podeAgir={podeAgir}
@@ -396,7 +416,7 @@ function CartaoMaquina({
         />
       )}
 
-      {estado === 'livre' && (
+      {s.aceitaNovaOp && (
         <div className="flex flex-1 flex-col justify-end gap-1.5 pt-1.5">
           <p className="text-muted-foreground text-center text-sm">
             Máquina livre
@@ -409,12 +429,12 @@ function CartaoMaquina({
         </div>
       )}
 
-      {/* INDISPONÍVEL NÃO OFERECE BOTÃO NENHUM. A máquina não pode receber
-          OP, e um botão que só devolve erro é pior do que nenhum botão. */}
-      {estado === 'indisponivel' && (
+      {/* IMPEDIDA E VAZIA NÃO OFERECE BOTÃO NENHUM. A máquina não pode
+          receber OP, e um botão que só devolve erro é pior do que nenhum. */}
+      {impedida && s.ocupacao === 'livre' && (
         <div className="flex flex-1 items-center justify-center pt-1.5">
           <p className="text-muted-foreground text-center text-sm">
-            Máquina indisponível
+            Não pode receber OP agora
           </p>
         </div>
       )}

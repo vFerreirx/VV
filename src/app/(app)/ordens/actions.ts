@@ -785,6 +785,17 @@ export type MaquinaParaPegar = {
   nome: string
   // Número da OP que está EM PRODUÇÃO nesta máquina, ou null se está livre.
   ocupadaPorOp: string | null
+  /**
+   * Por que esta máquina não pode receber OP agora (manutenção, setup,
+   * desativada), ou null.
+   *
+   * ⚠️ Vem de `motivoDeImpedimento`, a MESMA função que
+   * `validarMaquinaParaOrdem` usa pra recusar no servidor. Antes o seletor
+   * só sabia de ocupação: oferecia a máquina em manutenção como se estivesse
+   * livre, e o toque voltava com erro. Oferecer o que o servidor recusa é a
+   * pior forma de erro — parece bug da pessoa, não da tela.
+   */
+  impedimento: string | null
 }
 
 export type MaquinasParaPegar = {
@@ -830,6 +841,7 @@ export async function listarMaquinasParaPegar(): Promise<
       id: maquinas.id,
       codigo: maquinas.codigo,
       nome: maquinas.nome,
+      status: maquinas.status,
       ocupadaPorOp: ordensProducao.numero,
     })
     .from(maquinas)
@@ -858,6 +870,7 @@ export async function listarMaquinasParaPegar(): Promise<
         codigo: r.codigo,
         nome: r.nome,
         ocupadaPorOp: r.ocupadaPorOp ?? null,
+        impedimento: motivoDeImpedimento(r.status),
       })),
     },
   }

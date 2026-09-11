@@ -21,22 +21,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
+import {
+  situacaoDaMaquina,
+  type SituacaoDaMaquina,
+} from '@/lib/producao/estado-maquina'
 import { cn } from '@/lib/utils'
-import { STATUS_LABEL, maquinaStatusValues } from '@/lib/validators/maquinas'
-
-type MaquinaStatus = (typeof maquinaStatusValues)[number]
 
 type Props = {
   maquinas: MaquinaListItem[]
   podeEditar: boolean
 }
 
-const STATUS_DOT: Record<MaquinaStatus, string> = {
-  operando: 'bg-emerald-500',
-  setup: 'bg-blue-500',
-  parada: 'bg-amber-500',
-  manutencao: 'bg-orange-600',
-  desativada: 'bg-muted-foreground',
+// A cor sai do TOM da regra compartilhada, não do status cru. Enquanto era
+// um mapa por status aqui, "operando" pintava de verde 18 máquinas paradas.
+const TOM_DOT: Record<SituacaoDaMaquina['tom'], string> = {
+  producao: 'bg-emerald-500',
+  livre: 'bg-sky-500',
+  atencao: 'bg-orange-500',
+  inativa: 'bg-muted-foreground',
 }
 
 const SEM_ESTACAO = '__sem__'
@@ -128,36 +130,55 @@ function MaquinaCard({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
-  function definirStatus(novo: MaquinaStatus) {
+  // ⚠️ A MESMA FUNÇÃO DA TELA DO OPERADOR e do seletor do kanban
+  // (src/lib/producao/estado-maquina.ts). Enquanto cada tela respondia por
+  // conta própria, esta aqui lia só `maquinas.status` e dizia "Operando" nas
+  // 18 máquinas com a fábrica parada.
+  const s = situacaoDaMaquina(maquina.status, maquina.op !== null)
+  const emManutencao = s.disponibilidade === 'manutencao'
+  const desativada = s.disponibilidade === 'desativada'
+
+  function definirStatus(novo: 'operando' | 'manutencao' | 'desativada') {
     startTransition(async () => {
       const result = await trocarStatusAction(maquina.id, { status: novo })
       if (!result.success) {
         toast.error(result.error)
         return
       }
-      toast.success(STATUS_LABEL[novo])
+      toast.success(result.message ?? 'Situação atualizada')
       router.refresh()
     })
   }
-
-  const emManutencao = maquina.status === 'manutencao'
-  const desligada = maquina.status === 'desativada'
 
   return (
     <article className="vv-lift flex flex-col gap-3 rounded-xl border p-3.5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-3">
           <span
-            className={cn(
-              'size-2.5 shrink-0 rounded-full',
-              STATUS_DOT[maquina.status],
-            )}
-            title={STATUS_LABEL[maquina.status]}
+            className={cn('size-2.5 shrink-0 rounded-full', TOM_DOT[s.tom])}
+            title={s.rotulo}
           />
           <div className="min-w-0">
-            <div className="truncate font-medium">{maquina.nome}</div>
-            <div className="text-muted-foreground text-xs">
-              {STATUS_LABEL[maquina.status]}
+            {/* O CÓDIGO NA FRENTE. A tela do operador identifica a máquina
+                por ele ("TC-07") e esta aqui mostrava só o nome ("Máquina
+                7") — duas telas nomeando o mesmo objeto de jeitos
+                diferentes, com o operador tendo que traduzir. */}
+            <div className="truncate font-medium">
+              <span className="tabular-nums">{maquina.codigo}</span>
+              <span className="text-muted-foreground font-normal">
+                {' · '}
+                {maquina.nome}
+              </span>
+            </div>
+            <div
+              className={cn(
+                'text-xs',
+                s.tom === 'producao' && 'font-medium text-emerald-700 dark:text-emerald-400',
+                s.tom === 'atencao' && 'font-medium text-orange-700 dark:text-orange-400',
+                (s.tom === 'livre' || s.tom === 'inativa') && 'text-muted-foreground',
+              )}
+            >
+              {s.rotulo}
             </div>
           </div>
         </div>
@@ -184,8 +205,42 @@ function MaquinaCard({
         )}
       </div>
 
+      {/* ⚠️ A OP APARECE MESMO SOB MANUTENÇÃO. Os dois eixos são
+          independentes: a manchete acima diz "Em manutenção", e esta linha
+          diz que há trabalho preso ali dentro. Mostrar só um dos dois manda
+          quem olha decidir errado — ou acha que a máquina está livre, ou
+          acha que a OP sumiu. */}
+      {maquina.op && (
+        <div className="min-w-0 rounded-md border px-2.5 py-2 text-xs">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="truncate font-medium">
+              {maquina.op.produtoNome}
+            </span>
+            <span className="text-muted-foreground shrink-0 tabular-nums">
+              {maquina.op.numero}
+            </span>
+          </div>
+          {variacaoDe(maquina.op) && (
+            <div className="text-muted-foreground truncate">
+              {variacaoDe(maquina.op)}
+            </div>
+          )}
+          <div className="text-muted-foreground mt-0.5 tabular-nums">
+            {maquina.op.quantidade} peças
+            {maquina.op.responsavelNome &&
+              ` · responsável: ${maquina.op.responsavelNome}`}
+          </div>
+        </div>
+      )}
+
       {podeEditar && (
         <div className="flex gap-1.5">
+          {/* MANUTENÇÃO é toggle, e SAIR DELA NÃO DECLARA PRODUÇÃO: grava
+              'operando', que passou a significar só "apta". A manchete então
+              é recalculada da OP — se o trabalho continua lá, volta a "Em
+              produção"; se não, "Livre". Antes isto gravava 'operando' com o
+              sentido de "está rodando", e a máquina mentia até alguém
+              corrigir à mão. */}
           <Button
             size="sm"
             variant={emManutencao ? 'default' : 'outline'}
@@ -201,19 +256,32 @@ function MaquinaCard({
           </Button>
           <Button
             size="sm"
-            variant={desligada ? 'default' : 'outline'}
+            variant={desativada ? 'default' : 'outline'}
             className="flex-1"
             disabled={isPending}
-            aria-pressed={desligada}
-            onClick={() => definirStatus(desligada ? 'operando' : 'desativada')}
+            aria-pressed={desativada}
+            onClick={() =>
+              definirStatus(desativada ? 'operando' : 'desativada')
+            }
           >
             <Power />
-            Desligado
+            {desativada ? 'Ativar' : 'Desativar'}
           </Button>
         </div>
       )}
     </article>
   )
+}
+
+/** "Terracota · King" — o que identifica a peça sem o nome do produto. */
+function variacaoDe(op: {
+  variacaoCor: string | null
+  variacaoModelo: string | null
+  variacaoTamanho: string | null
+}): string {
+  return [op.variacaoCor, op.variacaoModelo, op.variacaoTamanho]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 // -----------------------------------------------------------------

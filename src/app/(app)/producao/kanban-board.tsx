@@ -940,24 +940,39 @@ function EscolherMaquinaDialog({
         {dados && dados.maquinas.length > 0 && (
           <div className="grid max-h-[50vh] grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
             {dados.maquinas.map((m) => {
-              // Duas OPs na mesma máquina não existe no mundo físico.
+              // SÃO DOIS MOTIVOS DIFERENTES pra máquina não servir, e a tela
+              // precisa dizer QUAL: ocupada (tem OP rodando — duas na mesma
+              // máquina não existe no mundo físico) ou impedida (manutenção,
+              // setup, desativada).
+              //
+              // ⚠️ O impedimento vem de `motivoDeImpedimento`, a MESMA função
+              // que `validarMaquinaParaOrdem` usa pra recusar no servidor.
+              // Antes este seletor só sabia de ocupação e oferecia a máquina
+              // em manutenção como se estivesse livre — o toque voltava com
+              // erro, e erro em botão que a tela ofereceu parece falha de
+              // quem clicou.
               const ocupada = m.ocupadaPorOp !== null
+              const bloqueada = ocupada || m.impedimento !== null
               return (
                 <button
                   key={m.id}
                   type="button"
-                  disabled={ocupada || isPending}
+                  disabled={bloqueada || isPending}
                   onClick={() => onEscolher(m.id)}
                   className={cn(
                     'flex flex-col items-start rounded-lg border px-3 py-2 text-left text-sm transition-colors',
-                    ocupada
+                    bloqueada
                       ? 'text-muted-foreground cursor-not-allowed opacity-60'
                       : 'hover:border-primary hover:bg-primary/5',
                   )}
                 >
                   <span className="font-medium">{m.codigo}</span>
                   <span className="text-muted-foreground text-xs">
-                    {ocupada ? `Ocupada — OP ${m.ocupadaPorOp}` : m.nome}
+                    {ocupada
+                      ? `Ocupada — OP ${m.ocupadaPorOp}`
+                      : m.impedimento
+                        ? `Indisponível — ${m.impedimento}`
+                        : m.nome}
                   </span>
                 </button>
               )

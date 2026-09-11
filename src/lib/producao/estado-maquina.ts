@@ -1,91 +1,175 @@
-// O ESTADO DA MÁQUINA NA TELA DO OPERADOR — regra pura, sem banco.
+// A SITUAÇÃO DE UMA MÁQUINA — regra pura, sem banco.
 //
-// A tela da estação é uma lista de MÁQUINAS, não de OPs: um cartão por
-// máquina, sempre na mesma posição. Isso só funciona se "em que pé está esta
-// máquina" tiver uma resposta só, e é esta.
+// Quatro telas perguntam "em que pé está esta máquina?" e precisam da MESMA
+// resposta: a aba Máquinas (/fabrica), a tela do operador, o seletor de
+// máquina do kanban e a validação de servidor que autoriza iniciar uma OP.
+// Enquanto cada uma respondia por conta própria, a aba dizia "Operando" nas
+// 18 máquinas com a fábrica parada, e o kanban oferecia máquina que o
+// servidor recusava.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// OCUPADA NÃO SAI DE `maquinas.status` — SAI DA OP
+// SÃO DOIS EIXOS, E COLAPSÁ-LOS PERDE INFORMAÇÃO
 // ─────────────────────────────────────────────────────────────────────────
 //
-// `maquinas.status` tem 'operando', mas ele é CADASTRO: alguém marca na tela
-// de /maquinas e ninguém desmarca. Hoje, em produção, as 18 máquinas vivas
-// estão todas em 'operando' — inclusive as 17 que não têm OP nenhuma. Ler
-// 'operando' como "está produzindo" mostraria a estação inteira ocupada com
-// uma OP só rodando.
+//   OCUPAÇÃO       — existe OP em produção nesta máquina? Sai da OP.
+//   DISPONIBILIDADE — ela está apta a produzir, ou impedida? Sai do cadastro.
+//
+// ⚠️ Os dois são INDEPENDENTES, e a versão anterior deste arquivo escolhia um
+// vencedor ("ocupada vence indisponível"), o que escondia a manutenção de uma
+// máquina que tinha trabalho dentro. O caso que quebra o colapso é justamente
+// esse: máquina EM MANUTENÇÃO COM OP PARADA DENTRO. Quem olha precisa ver as
+// duas coisas — que ela está parada por manutenção, e que tem trabalho preso
+// ali. Mostrar só uma delas manda a pessoa tomar a decisão errada.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// OCUPAÇÃO NÃO SAI DE `maquinas.status`
+// ─────────────────────────────────────────────────────────────────────────
+//
+// `maquinas.status` é CADASTRO: alguém marca numa tela e ninguém desmarca.
+// Hoje, em produção, as 18 máquinas vivas estão TODAS em 'operando' — e há
+// ZERO OPs em produção. Ler 'operando' como "está produzindo" é exatamente o
+// que fazia a aba inteira mentir.
 //
 // Quem responde "está produzindo?" é a OP: existe ordem em `em_producao`
-// nesta máquina? Essa é a mesma verdade que o banco já defende com o índice
-// único `ordens_producao_maquina_em_producao_uidx` (migration 50), que
-// garante NO MÁXIMO UMA — então "a OP da máquina" é sempre singular, e o
-// cartão nunca tem duas.
+// nesta máquina? É a mesma verdade que o banco já defende com o índice único
+// `ordens_producao_maquina_em_producao_uidx` (migration 50), que garante NO
+// MÁXIMO UMA — então "a OP da máquina" é sempre singular.
 //
-// ⚠️ E OCUPADA VENCE INDISPONÍVEL, nesta ordem e não na outra. Máquina
-// rodando uma OP mas marcada 'manutencao' no cadastro mostra a OP. Esconder
-// o trabalho real por causa de um cadastro desatualizado seria mentir pra
-// quem está de pé na frente dela.
+// ⚠️ 'operando' PASSOU A SIGNIFICAR SÓ "APTA A PRODUZIR". Ele continua no
+// enum e nas 18 linhas do banco (nada de migration pra renomear valor em
+// sistema em produção), mas nenhuma tela o exibe: o rótulo é DERIVADO. E
+// ninguém mais escolhe 'operando' num select — o botão da aba se chama
+// "Ativar", que é o que ele de fato declara.
 //
 // ─────────────────────────────────────────────────────────────────────────
-// LIVRE x INDISPONÍVEL
+// O QUE IMPEDE PRODUZIR
 // ─────────────────────────────────────────────────────────────────────────
 //
-// Livre convida ao toque ("Iniciar produção"); indisponível não oferece botão
-// nenhum, porque a máquina não pode receber OP. São visualmente diferentes de
-// propósito: um cartão apagado sem botão responde "não é aqui" sozinho, sem o
-// operador descobrir clicando e levando erro.
+// `manutencao` e `desativada` impedem, e agora `setup` também: setup é troca
+// de configuração da máquina, e começar outra OP no meio disso é o tipo de
+// coisa que só se descobre depois. A diferença entre eles é de DURAÇÃO, e é
+// por isso que têm rótulos e cores diferentes — setup passa em minutos,
+// manutenção em horas, desativada é decisão.
 //
-// ⚠️ E ISSO NÃO É SÓ DESENHO: `validarMaquinaParaOrdem` (ordens/actions.ts)
-// recusa a mesma coisa no servidor, lendo `motivoDeImpedimento` daqui. A
-// regra é UMA. Enquanto ela existia só na tela, esconder o botão era tudo
-// que separava uma OP de entrar numa máquina desmontada — bastava a chamada
-// vir de outro lugar (o kanban do gerente chama a mesma action) pra passar.
-//
-// ⚠️ HOJE 'indisponivel' NÃO APARECE PRA NINGUÉM, e isso não é bug: nenhuma
-// máquina do banco está em 'manutencao' nem 'desativada'. O estado passa a
-// valer no dia em que alguém marcar isso em /maquinas (a tela já tem o botão
-// — `maquinas-grid.tsx`). 'parada' e 'setup' contam como LIVRE: são estados
-// momentâneos de uma máquina que pode receber trabalho agora.
+// ⚠️ A LISTA DE IMPEDIMENTOS E AS FRASES SÃO O MESMO OBJETO de propósito.
+// Enquanto eram duas coisas — um Set aqui e a mensagem lá na action — dava
+// pra acrescentar um status e esquecer o texto, e o operador levava um erro
+// em branco.
 
 import type { maquinaStatusValues } from '@/lib/validators/maquinas'
 
 export type MaquinaStatus = (typeof maquinaStatusValues)[number]
 
-export type EstadoMaquina = 'ocupada' | 'livre' | 'indisponivel'
+/** Tem OP em produção? Vem da OP, nunca do cadastro. */
+export type Ocupacao = 'com_op' | 'livre'
 
-// Os únicos status que IMPEDEM a máquina de receber OP, cada um já com a
-// frase que explica o porquê. Mapa explícito, e não a negação de 'operando':
-// assim um status novo no enum entra como LIVRE (o padrão seguro, que só
-// mostra um botão a mais) em vez de sumir da estação sem ninguém perceber.
-//
-// ⚠️ A LISTA E A FRASE SÃO O MESMO OBJETO de propósito. Enquanto eram duas
-// coisas — um Set aqui, uma mensagem lá na action — dava pra acrescentar um
-// status ao Set e esquecer o texto, e o operador levava um erro em branco.
-// Agora não existe status impeditivo sem motivo escrito.
+/** Pode produzir? Vem do cadastro. */
+export type Disponibilidade = 'apta' | 'em_setup' | 'manutencao' | 'desativada'
+
+export type SituacaoDaMaquina = {
+  ocupacao: Ocupacao
+  disponibilidade: Disponibilidade
+  /**
+   * A máquina pode receber uma OP NOVA agora?
+   *
+   * Exige as duas coisas: apta E livre. A segunda o banco já garante pelo
+   * índice único, mas a tela precisa saber pra não oferecer um botão que só
+   * devolve erro.
+   */
+  aceitaNovaOp: boolean
+  /**
+   * A manchete do cartão. NÃO inclui a OP: quando há uma, a tela mostra os
+   * dados dela embaixo, e é isso que faz manutenção e trabalho preso
+   * aparecerem juntos em vez de um esconder o outro.
+   */
+  rotulo: string
+  /** Chave de cor — a tela decide o tom exato, a regra decide qual é. */
+  tom: 'producao' | 'livre' | 'atencao' | 'inativa'
+}
+
+// Os status que IMPEDEM produzir, cada um com a frase que explica. Mapa, e
+// não lista: não existe impedimento sem motivo escrito.
 const MOTIVO_DE_IMPEDIMENTO = {
+  em_setup: 'está em setup',
   manutencao: 'está em manutenção',
   desativada: 'está desativada',
-} as const satisfies Partial<Record<MaquinaStatus, string>>
+} as const satisfies Partial<Record<Disponibilidade, string>>
 
-type StatusQueImpede = keyof typeof MOTIVO_DE_IMPEDIMENTO
+type DisponibilidadeQueImpede = keyof typeof MOTIVO_DE_IMPEDIMENTO
 
-function impedeTrabalho(status: MaquinaStatus): status is StatusQueImpede {
-  return status in MOTIVO_DE_IMPEDIMENTO
+function impede(d: Disponibilidade): d is DisponibilidadeQueImpede {
+  return d in MOTIVO_DE_IMPEDIMENTO
+}
+
+/**
+ * O cadastro vira disponibilidade.
+ *
+ * ⚠️ `switch` sem `default` e com guarda `never`: acrescentar um valor ao
+ * enum `maquina_status` QUEBRA O BUILD aqui até alguém decidir se ele impede
+ * ou não. O padrão seguro nunca é inferido — é escrito.
+ */
+export function disponibilidadeDe(status: MaquinaStatus): Disponibilidade {
+  switch (status) {
+    // Os dois significam "apta". 'parada' não aparece hoje em nenhuma
+    // máquina e sobrevive por ser valor histórico do enum.
+    case 'operando':
+    case 'parada':
+      return 'apta'
+    case 'setup':
+      return 'em_setup'
+    case 'manutencao':
+      return 'manutencao'
+    case 'desativada':
+      return 'desativada'
+    default: {
+      const nunca: never = status
+      throw new Error(`Status de máquina sem disponibilidade: ${String(nunca)}`)
+    }
+  }
 }
 
 /**
  * Por que esta máquina não pode receber OP, ou null se pode. A frase é
- * complemento de "A máquina TC-03 ___" — o servidor usa pra recusar e a
- * tela, pra explicar, sem que as duas possam divergir.
+ * complemento de "A máquina TC-03 ___" — o servidor recusa com ela e a tela
+ * explica com ela, sem que as duas possam divergir.
  */
 export function motivoDeImpedimento(status: MaquinaStatus): string | null {
-  return impedeTrabalho(status) ? MOTIVO_DE_IMPEDIMENTO[status] : null
+  const d = disponibilidadeDe(status)
+  return impede(d) ? MOTIVO_DE_IMPEDIMENTO[d] : null
 }
 
-export function estadoDaMaquina(
+const ROTULO: Record<Disponibilidade, string> = {
+  apta: 'Livre',
+  em_setup: 'Em setup',
+  manutencao: 'Em manutenção',
+  desativada: 'Desativada',
+}
+
+const TOM: Record<Disponibilidade, SituacaoDaMaquina['tom']> = {
+  apta: 'livre',
+  em_setup: 'atencao',
+  manutencao: 'atencao',
+  desativada: 'inativa',
+}
+
+export function situacaoDaMaquina(
   status: MaquinaStatus,
   temOpEmProducao: boolean,
-): EstadoMaquina {
-  if (temOpEmProducao) return 'ocupada'
-  if (impedeTrabalho(status)) return 'indisponivel'
-  return 'livre'
+): SituacaoDaMaquina {
+  const disponibilidade = disponibilidadeDe(status)
+  const ocupacao: Ocupacao = temOpEmProducao ? 'com_op' : 'livre'
+
+  // APTA + COM OP é o único caso em que a ocupação vira manchete. Nos
+  // demais, a manchete é o impedimento — e a OP, quando existe, aparece
+  // embaixo pela tela. É o que faz "em manutenção com trabalho preso dentro"
+  // ser legível numa linha só.
+  const ehProducao = disponibilidade === 'apta' && ocupacao === 'com_op'
+
+  return {
+    ocupacao,
+    disponibilidade,
+    aceitaNovaOp: disponibilidade === 'apta' && ocupacao === 'livre',
+    rotulo: ehProducao ? 'Em produção' : ROTULO[disponibilidade],
+    tom: ehProducao ? 'producao' : TOM[disponibilidade],
+  }
 }

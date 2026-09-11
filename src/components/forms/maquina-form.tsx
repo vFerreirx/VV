@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea'
 import type { User } from '@/lib/db/schema'
 import {
   maquinaSchema,
+  STATUS_ESCOLHIVEIS,
   STATUS_LABEL,
   maquinaStatusValues,
   type MaquinaInput,
@@ -126,7 +127,12 @@ export function MaquinaForm({
             />
           </Field>
 
-          <Field label="Status" id="status" error={errs.status?.message} required>
+          {/* ⚠️ SEM 'Operando' NA LISTA. Este campo declara DISPONIBILIDADE
+              (a máquina pode produzir?), não ocupação — quem diz se ela está
+              produzindo é a OP, e era escolher "Operando" aqui que fazia a
+              aba inteira mentir. A situação que a tela mostra é derivada:
+              ver src/lib/producao/estado-maquina.ts. */}
+          <Field label="Situação" id="status" error={errs.status?.message} required>
             <Controller
               control={form.control}
               name="status"
@@ -140,7 +146,7 @@ export function MaquinaForm({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {maquinaStatusValues.map((s) => (
+                    {STATUS_ESCOLHIVEIS.map((s) => (
                       <SelectItem key={s} value={s}>
                         {STATUS_LABEL[s]}
                       </SelectItem>

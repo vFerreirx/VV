@@ -24,7 +24,11 @@ import {
   SEM_MODELO,
   tituloDaOp,
 } from './rotulo-da-op.ts'
-import { estadoDaMaquina, motivoDeImpedimento } from './estado-maquina.ts'
+import {
+  disponibilidadeDe,
+  motivoDeImpedimento,
+  situacaoDaMaquina,
+} from './estado-maquina.ts'
 import {
   confirmacaoAntesDeIniciar,
   podeIniciar,
@@ -32,36 +36,114 @@ import {
 } from './inicio-da-op.ts'
 
 // -----------------------------------------------------------------
-// O cartão da máquina
+// A situação da máquina — os DOIS eixos
 // -----------------------------------------------------------------
 
-test('ocupada sai da OP, não do cadastro da máquina', () => {
-  // As 18 máquinas do banco estão TODAS em 'operando' e 17 não têm OP.
-  // Se 'operando' fosse "produzindo", a estação inteira apareceria ocupada.
-  assert.equal(estadoDaMaquina('operando', false), 'livre')
-  assert.equal(estadoDaMaquina('operando', true), 'ocupada')
+// Atalhos pra deixar os cenários legíveis: a segunda posição é "tem OP em
+// producao?".
+const livre = (st: Parameters<typeof situacaoDaMaquina>[0]) =>
+  situacaoDaMaquina(st, false)
+const comOp = (st: Parameters<typeof situacaoDaMaquina>[0]) =>
+  situacaoDaMaquina(st, true)
+
+test('maquina apta SEM OP e Livre, e aceita OP nova', () => {
+  // As 18 maquinas do banco estao em 'operando' e NENHUMA tem OP. Se
+  // 'operando' virasse "produzindo", a aba inteira mentiria — que e
+  // exatamente o que acontecia.
+  const s = livre('operando')
+  assert.equal(s.rotulo, 'Livre')
+  assert.equal(s.ocupacao, 'livre')
+  assert.equal(s.disponibilidade, 'apta')
+  assert.equal(s.aceitaNovaOp, true)
 })
 
-test('ocupada vence indisponível, e não o contrário', () => {
-  // Máquina rodando uma OP mas marcada em manutenção no cadastro mostra a
-  // OP. Esconder o trabalho real por causa de cadastro velho seria mentir
-  // pra quem está de pé na frente dela.
-  assert.equal(estadoDaMaquina('manutencao', true), 'ocupada')
-  assert.equal(estadoDaMaquina('manutencao', false), 'indisponivel')
+test('inicio de producao: apta + OP vira Em producao', () => {
+  const s = comOp('operando')
+  assert.equal(s.rotulo, 'Em produção')
+  assert.equal(s.ocupacao, 'com_op')
+  assert.equal(s.tom, 'producao')
+  // Ja tem OP: nao aceita outra. O indice unico garante no banco, mas a tela
+  // precisa saber pra nao oferecer botao que so devolve erro.
+  assert.equal(s.aceitaNovaOp, false)
 })
 
-test('parada e setup contam como LIVRE', () => {
-  // São estados momentâneos de uma máquina que pode receber trabalho agora.
-  assert.equal(estadoDaMaquina('parada', false), 'livre')
-  assert.equal(estadoDaMaquina('setup', false), 'livre')
+test('conclusao: OP em pronto_envio NAO ocupa mais a maquina', () => {
+  // Quem chama passa `false` porque a OP saiu de 'em_producao' — e o indice
+  // unico e parcial nesse status, entao a maquina libera de verdade. Sem
+  // isso, as maquinas iriam ficando "ocupadas" sem ninguem produzindo e a
+  // fabrica travaria sozinha.
+  assert.equal(livre('operando').rotulo, 'Livre')
+  assert.equal(livre('operando').aceitaNovaOp, true)
 })
 
-test('só manutenção e desativada impedem, e cada uma tem frase', () => {
+test('manutencao SEM OP: manchete e a manutencao', () => {
+  const s = livre('manutencao')
+  assert.equal(s.rotulo, 'Em manutenção')
+  assert.equal(s.ocupacao, 'livre')
+  assert.equal(s.aceitaNovaOp, false)
+})
+
+test('manutencao COM OP mostra as DUAS coisas', () => {
+  // O caso que quebra qualquer enum colapsado: a manchete e a manutencao, e
+  // a ocupacao continua legivel pra tela mostrar a OP presa ali. Esconder
+  // uma das duas manda a pessoa decidir errado.
+  const s = comOp('manutencao')
+  assert.equal(s.rotulo, 'Em manutenção')
+  assert.equal(s.ocupacao, 'com_op')
+  assert.equal(s.disponibilidade, 'manutencao')
+  assert.equal(s.aceitaNovaOp, false)
+})
+
+test('saida de manutencao RECALCULA, nao assume', () => {
+  // "Ativar" grava 'operando' (= apta). A manchete entao vem da OP: se o
+  // trabalho continua la, volta a Em producao; se nao, Livre. Nunca se
+  // declara producao por mudanca de cadastro.
+  assert.equal(comOp('operando').rotulo, 'Em produção')
+  assert.equal(livre('operando').rotulo, 'Livre')
+})
+
+test('desativada nao aceita OP, com ou sem trabalho dentro', () => {
+  assert.equal(livre('desativada').aceitaNovaOp, false)
+  assert.equal(comOp('desativada').aceitaNovaOp, false)
+  assert.equal(livre('desativada').rotulo, 'Desativada')
+  // A OP presa numa maquina desativada continua visivel pela ocupacao.
+  assert.equal(comOp('desativada').ocupacao, 'com_op')
+})
+
+test('setup impede iniciar, e e distinto de manutencao', () => {
+  // Setup e troca de configuracao: comecar outra OP no meio disso e o tipo
+  // de coisa que so se descobre depois. Rotulo proprio porque a diferenca
+  // pra manutencao e de DURACAO, e isso muda o que a pessoa faz.
+  const s = livre('setup')
+  assert.equal(s.aceitaNovaOp, false)
+  assert.equal(s.rotulo, 'Em setup')
+  assert.notEqual(s.rotulo, livre('manutencao').rotulo)
+})
+
+test('parada continua valendo como APTA (valor historico do enum)', () => {
+  assert.equal(disponibilidadeDe('parada'), 'apta')
+  assert.equal(livre('parada').aceitaNovaOp, true)
+})
+
+test('cada impedimento tem frase, e quem nao impede nao tem', () => {
   assert.equal(motivoDeImpedimento('manutencao'), 'está em manutenção')
   assert.equal(motivoDeImpedimento('desativada'), 'está desativada')
+  assert.equal(motivoDeImpedimento('setup'), 'está em setup')
   assert.equal(motivoDeImpedimento('operando'), null)
   assert.equal(motivoDeImpedimento('parada'), null)
-  assert.equal(motivoDeImpedimento('setup'), null)
+})
+
+test('aceitaNovaOp e motivoDeImpedimento nunca se contradizem', () => {
+  // A tela esconde o botao por `aceitaNovaOp`; o servidor recusa por
+  // `motivoDeImpedimento`. Se discordassem, ou a tela ofereceria o que o
+  // servidor recusa, ou o servidor aceitaria o que a tela nunca mostra.
+  const todos = [
+    'operando', 'parada', 'setup', 'manutencao', 'desativada',
+  ] as const
+  for (const st of todos) {
+    const impedido = motivoDeImpedimento(st) !== null
+    assert.equal(livre(st).aceitaNovaOp, !impedido, `divergiu em ${st}`)
+  }
 })
 
 // -----------------------------------------------------------------
