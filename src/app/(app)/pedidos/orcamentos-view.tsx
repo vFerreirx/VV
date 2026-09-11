@@ -77,6 +77,11 @@ import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import { cn } from '@/lib/utils'
 import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
+  decimalParaMoeda,
+  mascararMoeda,
+  moedaParaDecimal,
+} from '@/lib/moeda'
+import {
   chaveDeTamanhos,
   componentesVariaveis,
   tamanhoDoComponente as resolverTamanhoComponente,
@@ -127,28 +132,6 @@ type Edicao =
 
 function reais(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
-// Máscara BRL: dígitos preenchem da direita (centavos).
-function mascararMoeda(valor: string): string {
-  const digits = valor.replace(/\D/g, '')
-  if (!digits) return ''
-  return (Number(digits) / 100).toLocaleString('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
-
-function moedaParaDecimal(masked: string): string {
-  const digits = masked.replace(/\D/g, '')
-  if (!digits) return ''
-  return (Number(digits) / 100).toFixed(2)
-}
-
-function decimalParaMoeda(dec: string): string {
-  const cents = Math.round(Number(dec) * 100)
-  if (!Number.isFinite(cents)) return ''
-  return mascararMoeda(String(cents))
 }
 
 export function OrcamentosView({

@@ -41,6 +41,7 @@ import {
   descreverCombinacao,
   tamanhoDoComponente,
 } from '@/lib/kit-tamanhos'
+import { decimalParaMoeda, mascararMoeda } from '@/lib/moeda'
 import {
   avisoPrecoDeKit,
   centavosParaMoeda,
@@ -305,24 +306,6 @@ function detalhePorComponente(itens: KitItemDetalhe[]): string {
 // ao remover uma linha do meio, e o auto-animate animaria a saida da ULTIMA
 // em vez da que foi apagada. Contador de modulo basta - a chave nunca vai
 // pro HTML, so precisa nao repetir na sessao.
-// Mascara BRL, igual a do builder do pedido e a do form do produto: o valor
-// daqui vai preencher aquele campo, entao os tres falam a mesma lingua.
-function mascararMoeda(valor: string): string {
-  const digits = valor.replace(/\D/g, '')
-  if (!digits) return ''
-  return (Number(digits) / 100).toLocaleString('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
-
-function decimalParaMoeda(dec: string | undefined): string {
-  if (!dec) return ''
-  const cents = Math.round(Number(dec) * 100)
-  if (!Number.isFinite(cents)) return ''
-  return mascararMoeda(String(cents))
-}
-
 type LinhaItem = { id: string; produtoId: string; quantidade: string }
 
 let seqLinha = 0
