@@ -50,3 +50,13 @@ supabase/.temp
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# claude code
+# Skills instaladas (mattpocock/skills etc.) sao ferramenta de quem edita,
+# nao do projeto: ficam em ~/.claude/skills. A regra vale pra quando alguem
+# instalar uma aqui por engano — `npx skills add` escreve no diretorio atual.
+# `launch.json` continua versionado de proposito; so as skills saem.
+.claude/skills/
+# Lock do instalador `npx skills add`, que ele escreve na RAIZ do diretorio
+# onde roda. Fica de fora pelo mesmo motivo: descreve o setup de quem edita.
+skills-lock.json
