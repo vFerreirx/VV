@@ -1,17 +1,28 @@
 'use server'
 
-import { and, asc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
 
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { ordensProducao, produtos } from '@/lib/db/schema'
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
+import {
+  compradores,
+  orcamentoParcelas,
+  orcamentos,
+  ordensProducao,
+  produtos,
+} from '@/lib/db/schema'
+import { situacaoDaParcela } from '@/lib/parcela-estado'
 
 // Notificações derivadas do estado atual (sem tabela persistente).
-// Quando o assunto é resolvido (OP enviada), o alerta some sozinho.
+// Quando o assunto é resolvido (OP enviada, parcela recebida), o alerta some
+// sozinho — não há linha pra apagar, nem risco de sobrar aviso de coisa que
+// já foi resolvida.
 
 export type Notificacao = {
   id: string
-  tipo: 'op_atrasada'
+  tipo: 'op_atrasada' | 'parcela_a_conferir'
   titulo: string
   descricao: string
   href: string
@@ -26,6 +37,14 @@ const DIAS = 24 * 60 * 60 * 1000
 export async function listarNotificacoes(): Promise<Notificacao[]> {
   const user = await requireAuth()
   const now = Date.now()
+
+  // QUEM VÊ FINANCEIRO. As parcelas são da área de vendas, e o operador do
+  // chão de fábrica não tem o que fazer com boleto de cliente — o sino dele
+  // ficaria aceso por um assunto que não é dele e que ele não consegue
+  // resolver. Mesma pergunta que a guarda de página faz, só que aqui ela
+  // decide se a CONSULTA acontece.
+  const veFinanceiro =
+    (await nivelDaAreaPara(user.role, 'vendas')) !== 'nenhum'
 
   // Operador só é alertado de OPs livres ou que ele pegou; os demais
   // cargos veem tudo (mesma regra de visibilidade do kanban).
@@ -76,6 +95,77 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
       severidade: diasAtraso >= 3 ? 'critico' : 'aviso',
       referenciaEm: data,
     })
+  }
+
+  // 2) PARCELAS A CONFERIR — boleto/cheque que venceu e ninguém deu baixa.
+  //
+  // ⚠️ APARECE A PARTIR DO DIA DO VENCIMENTO, não antes. A pergunta é "o
+  // dinheiro caiu?", e ela só existe depois da data — avisar na véspera
+  // encheria o sino de coisa sobre a qual não há nada a fazer, e um sino que
+  // está sempre aceso deixa de ser lido.
+  //
+  // Some sozinha quando dão baixa: `recebido_em IS NULL` é o filtro, e é o
+  // mesmo estado que a tela do pedido mostra. Sem tabela de lembrete.
+  if (veFinanceiro) {
+    const hoje = hojeEmBrasilia()
+    const parcelas = await db
+      .select({
+        id: orcamentoParcelas.id,
+        numero: orcamentoParcelas.numero,
+        vencimento: orcamentoParcelas.vencimento,
+        valor: orcamentoParcelas.valor,
+        orcamentoId: orcamentos.id,
+        orcamentoNumero: orcamentos.numero,
+        cliente: orcamentos.cliente,
+        compradorNome: compradores.nome,
+      })
+      .from(orcamentoParcelas)
+      .innerJoin(orcamentos, eq(orcamentos.id, orcamentoParcelas.orcamentoId))
+      .leftJoin(compradores, eq(compradores.id, orcamentos.compradorId))
+      .where(
+        and(
+          isNull(orcamentoParcelas.recebidoEm),
+          // Comparação de `date` com texto 'YYYY-MM-DD': os dois lados são o
+          // mesmo tipo e não há fuso no meio. Ver src/lib/parcela-estado.ts.
+          lte(orcamentoParcelas.vencimento, hoje),
+          isNull(orcamentos.deletedAt),
+          // Pedido cancelado não tem o que cobrar.
+          ne(orcamentos.status, 'cancelado'),
+        ),
+      )
+      .orderBy(asc(orcamentoParcelas.vencimento))
+      .limit(50)
+
+    for (const p of parcelas) {
+      // A CLASSIFICAÇÃO VEM DO MESMO MÓDULO QUE A TELA usa. Se o sino
+      // contasse os dias por conta própria, ele diria "atrasada há 2 dias"
+      // enquanto o painel do mesmo pedido diria "vence hoje".
+      const s = situacaoDaParcela(p.vencimento, null, hoje)
+      const quanto = Number(p.valor).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+      })
+      const quem = p.compradorNome ?? p.cliente
+
+      notificacoes.push({
+        id: `parcela-${p.id}`,
+        tipo: 'parcela_a_conferir',
+        titulo:
+          s.estado === 'atrasada'
+            ? `Parcela ${p.numero}ª do pedido #${p.orcamentoNumero} venceu há ${s.diasAtraso} dia${s.diasAtraso === 1 ? '' : 's'}`
+            : `Parcela ${p.numero}ª do pedido #${p.orcamentoNumero} vence hoje`,
+        descricao: `${quem} — ${quanto}. Conferir se caiu.`,
+        href: `/pedidos/${p.orcamentoId}`,
+        // Mesmo corte das OPs: 3 dias vira crítico. Dois assuntos diferentes
+        // no mesmo sino precisam graduar igual, senão a cor não quer dizer
+        // nada.
+        severidade: s.diasAtraso >= 3 ? 'critico' : 'aviso',
+        // Meia-noite UTC do dia do vencimento: serve só pra ORDENAR a lista
+        // ao lado das OPs, que trazem instante de verdade. A classificação
+        // (hoje/atrasada) já foi feita em texto, sem fuso.
+        referenciaEm: new Date(`${p.vencimento}T00:00:00Z`),
+      })
+    }
   }
 
   // Ordena por mais atrasado primeiro

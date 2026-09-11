@@ -28,8 +28,18 @@ export function NotificationBell({
 
   const count = notificacoes.length
 
-  // Realtime: quando ordens_producao ou maquinas mudam, re-fetcha as
-  // notificações (que são derivadas do estado atual).
+  // Realtime: quando muda o que gera notificação, re-fetcha a lista (que é
+  // derivada do estado atual, sem tabela de lembrete).
+  //
+  // ⚠️ AS DUAS TABELAS SÃO AS DUAS FONTES: `ordens_producao` traz as OPs
+  // atrasadas, `orcamento_parcelas` traz os boletos a conferir. Sem a
+  // segunda, quem desse baixa numa aba veria o aviso continuar aceso na
+  // outra até trocar de página.
+  //
+  // ⚠️ E AS DUAS PRECISAM ESTAR NA PUBLICAÇÃO `supabase_realtime`, senão o
+  // canal conecta e nunca recebe evento — falha muda, sem erro no console.
+  // `orcamento_parcelas` publica em 55_pedido_parcelas.sql (e não em
+  // 05_realtime.sql, que roda antes de a tabela existir).
   useEffect(() => {
     const supabase = createBrowserSupabase()
     const channel = supabase
@@ -37,6 +47,11 @@ export function NotificationBell({
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'ordens_producao' },
+        () => refetch(),
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orcamento_parcelas' },
         () => refetch(),
       )
       .subscribe()

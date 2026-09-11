@@ -29,4 +29,19 @@ BEGIN
   EXCEPTION WHEN duplicate_object THEN
     NULL;
   END;
+
 END $$;
+
+-- ⚠️ NEM TODA TABELA DE REALTIME CABE AQUI. Os NN_*.sql rodam em ordem
+-- alfabética, então este arquivo (05) roda ANTES de qualquer tabela criada
+-- de 06 em diante — e `ALTER PUBLICATION ... ADD TABLE` numa tabela que
+-- ainda não existe levanta `undefined_table`, que o EXCEPTION acima não
+-- captura (ele só trata `duplicate_object`). O arquivo inteiro reverte e o
+-- setup para ali.
+--
+-- Por isso `orcamento_parcelas` publica dentro da própria
+-- 55_pedido_parcelas.sql, logo depois do CREATE TABLE. Quem for publicar
+-- uma tabela nova: faça o mesmo, e some a esta lista mentalmente ao
+-- procurar "quais tabelas têm realtime" —
+--   05: ordens_producao, maquinas
+--   55: orcamento_parcelas

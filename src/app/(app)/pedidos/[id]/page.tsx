@@ -5,9 +5,14 @@ import { obterEmpresaPrincipal } from '../../empresas/actions'
 import { obterCatalogoDePesos, obterOrcamento } from '../actions'
 import { listarFaltantes } from '../faltantes-actions'
 import { obterSituacaoFrete } from '../frete-actions'
+import {
+  listarParcelas,
+  sugestaoDePrimeiroVencimento,
+} from '../parcelas-actions'
 import { FretePainel } from './frete-painel'
 import { OrcamentoDoc } from './orcamento-doc'
 import { PagamentoPainel } from './pagamento-painel'
+import { ParcelasPainel } from './parcelas-painel'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireArea } from '@/lib/auth/require-auth'
@@ -28,14 +33,27 @@ export default async function OrcamentoPage({
 
   // A empresa é carregada AQUI, no server component — o componente de
   // impressão só recebe o que já veio resolvido.
-  const [orcamento, empresa, catalogo, situacaoFrete, faltantes] =
-    await Promise.all([
-      obterOrcamento(id),
-      obterEmpresaPrincipal(),
-      obterCatalogoDePesos(),
-      obterSituacaoFrete(),
-      listarFaltantes(id),
-    ])
+  // `listarParcelas` entra AQUI, em paralelo, e não dentro de
+  // `obterOrcamento`: aquela serve também o romaneio e a via de separação,
+  // que não têm o que fazer com vencimento. Mesmo raciocínio de
+  // `listarFaltantes`, logo ao lado.
+  const [
+    orcamento,
+    empresa,
+    catalogo,
+    situacaoFrete,
+    faltantes,
+    parcelas,
+    sugestaoVencimento,
+  ] = await Promise.all([
+    obterOrcamento(id),
+    obterEmpresaPrincipal(),
+    obterCatalogoDePesos(),
+    obterSituacaoFrete(),
+    listarFaltantes(id),
+    listarParcelas(id),
+    sugestaoDePrimeiroVencimento(),
+  ])
   if (!orcamento) notFound()
 
   // O peso é calculado AQUI, a cada leitura, a partir do catálogo de agora —
@@ -85,6 +103,17 @@ export default async function OrcamentoPage({
         freteValor={orcamento.freteValor}
         forma={orcamento.pagamentoForma}
         descontoPercentual={orcamento.descontoPercentual}
+        podeEditar={podeEditar}
+      />
+      {/* Logo abaixo do pagamento: a forma escolhida ali é o que decide se
+          este bloco aparece (boleto/cheque), e ler os dois juntos é o que
+          mostra que o vencimento é a continuação da forma. */}
+      <ParcelasPainel
+        orcamentoId={orcamento.id}
+        parcelas={parcelas}
+        forma={orcamento.pagamentoForma}
+        totalFinal={orcamento.totalFinal}
+        sugestaoPrimeiroVencimento={sugestaoVencimento}
         podeEditar={podeEditar}
       />
       <FretePainel

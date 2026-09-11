@@ -1,10 +1,12 @@
 import { sql } from 'drizzle-orm'
 import {
+  date,
   index,
   integer,
   jsonb,
   numeric,
   pgTable,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -15,6 +17,7 @@ import { compradores } from './compradores'
 import { orcamentoStatusEnum, pagamentoFormaEnum } from './enums'
 import { kits } from './kits'
 import { produtos } from './produtos'
+import { users } from './users'
 
 // Snapshot dos componentes do kit no momento do orçamento — o orçamento é
 // documento histórico, não pode mudar se a composição do kit mudar depois.
@@ -172,9 +175,75 @@ export const orcamentoFaltantes = pgTable(
   ],
 )
 
+
+// PARCELAS do pedido — os vencimentos de boleto/cheque.
+//
+// Existe pra dar o que LEMBRAR. `orcamentos` guarda como se paga e quanto de
+// desconto, mas não guardava data nenhuma — e sem data não há como avisar
+// "confira se esse boleto caiu". O sino de notificações deriva o lembrete
+// daqui, sem tabela de lembrete: some sozinho quando dão baixa.
+//
+// ⚠️ `vencimento` é `date`, não timestamp. É um DIA, sem hora e sem fuso —
+// e este projeto já pagou por confundir os dois: o comentário de
+// `estaVencida` (src/lib/validators/tarefas.ts) conta como o servidor UTC da
+// Vercel fazia a tarefa vencer às 21h da véspera. Como `date`, a coluna volta
+// em texto 'YYYY-MM-DD' e compara direto com `hojeEmBrasilia()`.
+//
+// ⚠️ A SOMA DAS PARCELAS PODE NÃO BATER COM O TOTAL, e isso não é erro: tem
+// entrada, tem sinal, tem acerto. A tela MOSTRA a diferença e não bloqueia —
+// travar o cadastro obrigaria a mentir num dos dois números.
+export const orcamentoParcelas = pgTable(
+  'orcamento_parcelas',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    orcamentoId: uuid()
+      .notNull()
+      .references(() => orcamentos.id, { onDelete: 'cascade' }),
+    // 1..N, a ordem de exibição. Regerar recomeça do 1 — o que é único é o
+    // par (orcamentoId, numero).
+    numero: smallint().notNull(),
+    vencimento: date().notNull(),
+    // Sempre > 0 (CHECK no banco): parcela de zero não é parcela. "Sem
+    // parcelas" é a ausência das linhas, igual ao que `orcamentoFaltantes`
+    // faz com a quantidade.
+    valor: numeric({ precision: 12, scale: 2 }).notNull(),
+    // Nº do boleto, nº e banco do cheque — texto livre, serve pra achar o
+    // papel.
+    observacao: text(),
+
+    // ESTADO. Nulo = pendente. Sem coluna booleana separada de propósito:
+    // dois campos pra mesma verdade saem de sincronia. O banco garante por
+    // CHECK que data e autor andam juntos — igual a `tarefas`.
+    recebidoEm: timestamp({ withTimezone: true }),
+    recebidoPor: uuid().references(() => users.id),
+
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => sql`now()`),
+  },
+  (table) => [
+    // Uma parcela por número dentro do pedido, e o índice de leitura do
+    // painel: `orcamentoId` é o prefixo à esquerda.
+    uniqueIndex('orcamento_parcelas_numero_uidx').on(
+      table.orcamentoId,
+      table.numero,
+    ),
+    // A consulta do SINO, e só ela: pendentes por vencimento. Parcial
+    // porque o histórico de recebidas só cresce e não interessa à pergunta
+    // "o que falta conferir?" — mesmo desenho de `tarefas_pendentes_idx`.
+    index('orcamento_parcelas_pendentes_idx')
+      .on(table.vencimento)
+      .where(sql`${table.recebidoEm} IS NULL`),
+  ],
+)
+
 export type Orcamento = typeof orcamentos.$inferSelect
 export type NewOrcamento = typeof orcamentos.$inferInsert
 export type OrcamentoItem = typeof orcamentoItens.$inferSelect
 export type NewOrcamentoItem = typeof orcamentoItens.$inferInsert
 export type OrcamentoFaltante = typeof orcamentoFaltantes.$inferSelect
 export type NewOrcamentoFaltante = typeof orcamentoFaltantes.$inferInsert
+export type OrcamentoParcela = typeof orcamentoParcelas.$inferSelect
+export type NewOrcamentoParcela = typeof orcamentoParcelas.$inferInsert

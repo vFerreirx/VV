@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { hojeEmBrasilia } from '@/lib/dia-brasil'
+import { diasEntre, hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   PRIORIDADE_NIVEIS,
   maiorPrioridade,
@@ -99,17 +99,16 @@ export const DIAS_PARA_URGENTE = 2
 // Até uma semana: dá tempo de reagir sem a bolinha acesa o mês inteiro.
 export const DIAS_PARA_ALTA = 7
 
-// Meia-noite UTC dos dois lados: `prazo` é `date` (sem hora nem fuso) e a
-// diferença tem que ser um número inteiro de dias, sem horário de verão nem
-// o fuso do servidor entrando na conta.
-function emUTC(iso: string): number {
-  const [ano, mes, dia] = iso.split('-').map(Number)
-  return Date.UTC(ano!, mes! - 1, dia!)
-}
-
 // Dias inteiros daqui até o prazo. Negativo = já venceu; 0 = vence hoje.
+//
+// A aritmética (meia-noite UTC dos dois lados, porque `prazo` é `date` sem
+// hora nem fuso) saiu daqui pra `diasEntre` em src/lib/dia-brasil.ts, que já
+// era dona de `somarDias` e fazia o mesmo truque. Ela ganhou um terceiro
+// consumidor — as parcelas do pedido — e três cópias da mesma conta são três
+// chances de discordarem sobre o que é "amanhã". A assinatura daqui fica: é
+// o vocabulário de tarefa, e quem chama não precisa saber onde a conta mora.
 export function diasAteOPrazo(prazo: string, hoje = hojeISO()): number {
-  return Math.round((emUTC(prazo) - emUTC(hoje)) / 86_400_000)
+  return diasEntre(hoje, prazo)
 }
 
 // Nível que a DATA sozinha pede. `baixa` é o piso — o menor nível que

@@ -171,6 +171,26 @@ export function somarDias(iso: string, dias: number): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
 }
 
+// Quantos dias de CALENDÁRIO separam duas datas 'YYYY-MM-DD'. Negativo
+// quando `ate` já passou; zero no mesmo dia.
+//
+// Irmã de `somarDias` e a mesma técnica: meia-noite UTC dos dois lados,
+// porque a data não tem hora e a diferença precisa ser um inteiro de dias —
+// sem horário de verão e sem o fuso do servidor entrando na conta.
+//
+// ⚠️ MORA AQUI PORQUE JÁ ERA A TERCEIRA CÓPIA. O mesmo truque estava em
+// `somarDias` (acima), em `diaDaSemana` (abaixo) e no `emUTC` de
+// src/lib/validators/tarefas.ts, que é quem calculava "dias até o prazo".
+// Aquele agora delega pra cá: são os mesmos dias, e duas implementações da
+// mesma aritmética são duas chances de discordarem sobre o que é "amanhã".
+export function diasEntre(de: string, ate: string): number {
+  const emUTC = (iso: string) => {
+    const [ano, mes, dia] = iso.split('-').map(Number)
+    return Date.UTC(ano!, mes! - 1, dia!)
+  }
+  return Math.round((emUTC(ate) - emUTC(de)) / 86_400_000)
+}
+
 // -----------------------------------------------------------------
 // Dia da semana
 // -----------------------------------------------------------------
