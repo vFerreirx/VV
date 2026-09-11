@@ -21,6 +21,7 @@ export function FabricaTabs({
   verEstacoes,
   maquinas,
   podeEditarMaquinas,
+  estacaoDoOperadorId,
   podeVerOrdens,
   estacoes,
   operadores,
@@ -31,6 +32,8 @@ export function FabricaTabs({
   verEstacoes: boolean
   maquinas: MaquinaListItem[]
   podeEditarMaquinas: boolean
+  /** A estação do operador logado, ou null pra quem não é operador. */
+  estacaoDoOperadorId: string | null
   podeVerOrdens: boolean
   estacoes: EstacaoComDetalhes[]
   operadores: OperadorOpcao[]
@@ -101,6 +104,7 @@ export function FabricaTabs({
             <MaquinasGrid
               maquinas={maquinas}
               podeEditar={podeEditarMaquinas}
+              estacaoDoOperadorId={estacaoDoOperadorId}
               podeVerOrdens={podeVerOrdens}
             />
           </TabsContent>

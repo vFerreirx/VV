@@ -71,7 +71,22 @@ import { cn } from '@/lib/utils'
 
 type Props = {
   maquinas: MaquinaListItem[]
+  /**
+   * Controle total na área `maquinas`: cadastro, desativação, exclusão.
+   * NÃO é o que libera registrar parada — ver `estacaoDoOperadorId`.
+   */
   podeEditar: boolean
+  /**
+   * A estação do operador logado (null pra quem não é operador).
+   *
+   * ⚠️ REGISTRAR PARADA É OUTRA PERGUNTA QUE EDITAR CADASTRO. O operador
+   * está como `ver` na área, e é ele quem está de pé na frente da máquina
+   * quando ela quebra — obrigá-lo a chamar o gerente pra marcar manutenção é
+   * o que faz a parada não ser registrada. `trocarStatusAction` já aceita o
+   * operador da estação desde a fase 2; isto aqui só faz a tela contar a
+   * mesma história que o servidor.
+   */
+  estacaoDoOperadorId: string | null
   /**
    * Quem enxerga a área `ordens` recebe o link pro detalhe da OP. Quem não
    * enxerga não recebe: `/ordens` tem `requireArea('ordens')`, e oferecer um
@@ -117,6 +132,7 @@ function agruparPorEstacao(maquinas: MaquinaListItem[]) {
 export function MaquinasGrid({
   maquinas,
   podeEditar,
+  estacaoDoOperadorId,
   podeVerOrdens,
 }: Props) {
   const [excluindo, setExcluindo] = useState<MaquinaListItem | null>(null)
@@ -278,6 +294,15 @@ export function MaquinasGrid({
                     key={m.id}
                     maquina={m}
                     podeEditar={podeEditar}
+                    // A conta é POR MÁQUINA: o operador manda nas da estação
+                    // dele, não nas do outro lado do galpão. É a mesma
+                    // comparação que a action faz (`estacao.id ===
+                    // atual.estacaoId`) e que a policy de RLS faz no banco.
+                    podeRegistrarParada={
+                      podeEditar ||
+                      (estacaoDoOperadorId !== null &&
+                        m.estacaoId === estacaoDoOperadorId)
+                    }
                     podeVerOrdens={podeVerOrdens}
                     onExcluir={() => setExcluindo(m)}
                   />
@@ -420,11 +445,13 @@ function ContadorFiltro({
 function MaquinaCard({
   maquina,
   podeEditar,
+  podeRegistrarParada,
   podeVerOrdens,
   onExcluir,
 }: {
   maquina: MaquinaListItem
   podeEditar: boolean
+  podeRegistrarParada: boolean
   podeVerOrdens: boolean
   onExcluir: () => void
 }) {
@@ -518,7 +545,11 @@ function MaquinaCard({
             olhar o que está rodando, não administrar cadastro. Dois ícones
             soltos ao lado do nome convidavam ao toque errado, e a lixeira
             ficava a um dedo de distância da informação mais lida da tela. */}
-        {podeEditar && (
+        {/* O MENU APARECE PRA QUEM TEM ALGUMA AÇÃO — e pro operador da
+            estação a ação é o histórico: quem pode marcar a parada precisa
+            poder conferir o que já foi marcado ali. Os itens de cadastro
+            continuam gated por `podeEditar` um a um. */}
+        {podeRegistrarParada && (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -536,30 +567,34 @@ function MaquinaCard({
                 gatilho é um botão de ícone de 32px. O menu nascia no piso de
                 128px e "Desativar máquina" quebrava em duas linhas. */}
             <DropdownMenuContent align="end" className="w-auto whitespace-nowrap">
-              <DropdownMenuItem
-                onClick={() =>
-                  definirStatus(desativada ? 'operando' : 'desativada')
-                }
-                disabled={isPending}
-              >
-                <Power />
-                {desativada ? 'Ativar máquina' : 'Desativar máquina'}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setVerHistorico(true)}>
                 <History />
                 Histórico de paradas
               </DropdownMenuItem>
-              <DropdownMenuItem
-                render={<Link href={`/maquinas/${maquina.id}`} />}
-              >
-                <Pencil />
-                Editar cadastro
-              </DropdownMenuItem>
-              <DropdownMenuItem variant="destructive" onClick={onExcluir}>
-                <Trash2 />
-                Excluir
-              </DropdownMenuItem>
+              {podeEditar && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() =>
+                      definirStatus(desativada ? 'operando' : 'desativada')
+                    }
+                    disabled={isPending}
+                  >
+                    <Power />
+                    {desativada ? 'Ativar máquina' : 'Desativar máquina'}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    render={<Link href={`/maquinas/${maquina.id}`} />}
+                  >
+                    <Pencil />
+                    Editar cadastro
+                  </DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onClick={onExcluir}>
+                    <Trash2 />
+                    Excluir
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -615,7 +650,7 @@ function MaquinaCard({
           isto o botão de cada um parava onde o texto dele acabava — três
           botões em três alturas diferentes na mesma linha, que é o "um card
           ficou maior que o outro". */}
-      {podeEditar && (
+      {podeRegistrarParada && (
         <div className="mt-auto flex gap-1.5">
           {/* MANUTENÇÃO é toggle, e SAIR DELA NÃO DECLARA PRODUÇÃO: grava
               'operando', que passou a significar só "apta". A manchete então

@@ -12,6 +12,7 @@ import {
 } from '../estacoes/actions'
 import { FabricaTabs } from './fabrica-tabs'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
+import { estacaoDoOperador } from '@/lib/db/estacao-operadores'
 import { requireAuth } from '@/lib/auth/require-auth'
 import { podeEscrever } from '@/lib/auth/permissoes'
 
@@ -38,6 +39,17 @@ export default async function FabricaPage({
 
   const maquinas = verMaquinas ? await listarMaquinas() : []
 
+  // ⚠️ A ESTAÇÃO DO OPERADOR, e é ela que libera o botão de Manutenção nas
+  // máquinas dele. A tela precisa fazer a MESMA conta que `trocarStatusAction`
+  // já faz no servidor: gerência pelo nível da área, operador pela estação.
+  // Enquanto o cartão olhava só `podeEscrever`, o operador — que em produção
+  // está como `ver` — não via o botão de uma ação que a action aceitaria dele.
+  // Tela que promete menos do que a action entrega é a mesma classe de
+  // problema que promete mais: as duas fazem alguém desistir de uma coisa que
+  // dava pra fazer, ou tentar uma que não dava.
+  const estacaoDoOp =
+    user.role === 'operador' ? await estacaoDoOperador(user.id) : null
+
   let estacoes: EstacaoComDetalhes[] = []
   let operadores: OperadorOpcao[] = []
   let maquinasOpcoes: MaquinaOpcao[] = []
@@ -59,6 +71,7 @@ export default async function FabricaPage({
       verEstacoes={verEstacoes}
       maquinas={maquinas}
       podeEditarMaquinas={podeEscrever(nMaq)}
+      estacaoDoOperadorId={estacaoDoOp?.id ?? null}
       podeVerOrdens={nOrdens !== 'nenhum'}
       estacoes={estacoes}
       operadores={operadores}
