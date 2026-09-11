@@ -1,12 +1,13 @@
 'use client'
 
-import { Check, Package, Truck, TriangleAlert } from 'lucide-react'
+import { Check, Eraser, Package, Truck, TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
   cotarFreteAction,
+  definirFreteManualAction,
   salvarFreteAction,
   type CotacaoFeita,
   type SituacaoFrete,
@@ -19,6 +20,7 @@ import {
   formatarKgFrete,
   valorDeclaradoCentavos,
 } from '@/lib/frete'
+import { decimalParaMoeda, mascararMoeda, moedaParaDecimal } from '@/lib/moeda'
 import { freteEmCentavos, temFrete } from '@/lib/total-pedido'
 import { cn } from '@/lib/utils'
 
@@ -75,6 +77,7 @@ export function FretePainel({
   const router = useRouter()
   const [cotando, startCotar] = useTransition()
   const [salvando, startSalvar] = useTransition()
+  const [salvandoManual, startManual] = useTransition()
   const [cep, setCep] = useState(mascaraCep(cepDoComprador ?? ''))
   const [cotacao, setCotacao] = useState<CotacaoFeita | null>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -115,6 +118,18 @@ export function FretePainel({
         prazoDias: s.prazoDias,
         cepDestino: cotacao.cepDestino,
       })
+      if (!r.success) {
+        toast.error(r.error)
+        return
+      }
+      toast.success(r.message ?? 'Frete salvo')
+      router.refresh()
+    })
+  }
+
+  function definirManual(valorDecimal: string | null) {
+    startManual(async () => {
+      const r = await definirFreteManualAction(orcamentoId, valorDecimal)
       if (!r.success) {
         toast.error(r.error)
         return
@@ -193,6 +208,20 @@ export function FretePainel({
               abaixo substitui este valor; editar o pedido também.
             </div>
           </div>
+        )}
+
+        {/* ⚠️ O CAMPO MANUAL FICA FORA DO TERNÁRIO ABAIXO, e isso é o ponto.
+            Quando a cotação está bloqueada (sem token, sem CEP de origem,
+            item sem peso) o simulador inteiro some — e é exatamente aí que
+            digitar o valor combinado por telefone é o ÚNICO caminho. Deixá-lo
+            dentro do `!bloqueado` seria esconder a saída justamente na hora
+            em que ela é necessária. */}
+        {podeEditar && (
+          <FreteManual
+            valorSalvo={salvo.valor}
+            desabilitado={cotando || salvandoManual}
+            onDefinir={definirManual}
+          />
         )}
 
         {bloqueado ? (
@@ -321,6 +350,83 @@ export function FretePainel({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+
+// -----------------------------------------------------------------
+// Frete digitado à mão
+// -----------------------------------------------------------------
+
+// O valor combinado por telefone, digitado direto aqui. Antes disso era
+// preciso voltar pra lista de pedidos e abrir o diálogo de editar — e quando
+// a cotação está bloqueada, o simulador nem aparece nesta tela, então o
+// caminho manual era o único e ficava escondido em outra página.
+//
+// ⚠️ O card "Frete informado à mão" logo acima é o espelho disto: ele mostra
+// valor SEM procedência, que é exatamente o que esta action grava. A
+// distinção entre estimativa e combinado é a razão de os dois existirem.
+function FreteManual({
+  valorSalvo,
+  desabilitado,
+  onDefinir,
+}: {
+  valorSalvo: string | null
+  desabilitado: boolean
+  onDefinir: (valorDecimal: string | null) => void
+}) {
+  // Inicia com o que está salvo pra que editar um valor existente não exija
+  // redigitar — e `decimalParaMoeda` devolve vazio quando não há frete, e
+  // não "0,00" (ver src/lib/moeda.ts).
+  const [valor, setValor] = useState(decimalParaMoeda(valorSalvo))
+
+  return (
+    <div className="mt-3 flex flex-wrap items-end gap-3 rounded-md border p-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="frete-manual">Valor combinado</Label>
+        <div className="relative">
+          <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
+            R$
+          </span>
+          <Input
+            id="frete-manual"
+            inputMode="decimal"
+            placeholder="0,00"
+            value={valor}
+            onChange={(e) => setValor(mascararMoeda(e.target.value))}
+            disabled={desabilitado}
+            className="h-9 w-32 pl-8 text-right tabular-nums"
+            autoComplete="off"
+          />
+        </div>
+      </div>
+      <Button
+        variant="outline"
+        onClick={() => onDefinir(moedaParaDecimal(valor) || null)}
+        disabled={desabilitado || valor === ''}
+      >
+        Usar este valor
+      </Button>
+      {/* Só aparece quando há o que limpar. "Sem frete" é a ausência do
+          valor, não um zero gravado. */}
+      {temFrete(valorSalvo) && (
+        <Button
+          variant="ghost"
+          onClick={() => {
+            setValor('')
+            onDefinir(null)
+          }}
+          disabled={desabilitado}
+        >
+          <Eraser />
+          Limpar frete
+        </Button>
+      )}
+      <p className="text-muted-foreground pb-2 text-xs">
+        Digitar um valor apaga a transportadora e o prazo da cotação — por
+        definição este número não veio de uma.
+      </p>
     </div>
   )
 }

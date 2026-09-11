@@ -221,6 +221,71 @@ export async function cotarFreteAction(
 }
 
 /**
+ * Grava um frete DIGITADO À MÃO, do painel do pedido.
+ *
+ * Existe porque digitar um valor exigia voltar pra lista e abrir o diálogo de
+ * editar — e o caso em que mais se precisa disso é justamente quando a
+ * cotação está bloqueada (sem token, sem CEP de origem, item sem peso), onde
+ * o simulador nem aparece. Combinar frete por telefone e digitar o valor é
+ * rotina, não exceção.
+ *
+ * ⚠️ SEMPRE LIMPA A PROCEDÊNCIA. Transportadora, serviço, prazo, CEP e data
+ * da cotação descrevem UM valor: o que a cotação devolveu. Mantê-los ao lado
+ * de um número digitado faria a tela dizer "Correios PAC · 5 dias — R$ 80"
+ * pra um frete que ninguém cotou. Em `atualizarOrcamentoAction`
+ * (./actions.ts) essa limpeza é condicional, porque lá o valor pode não ter
+ * mudado; aqui vale SEMPRE — por definição o valor veio da mão.
+ *
+ * VAZIO VIRA NULL, nunca zero. "Sem frete" é a ausência: um `0.00` gravado
+ * faria o documento imprimir "Frete R$ 0,00", que é a afirmação "o frete é
+ * por nossa conta" — ver `temFrete` em src/lib/total-pedido.ts.
+ */
+export async function definirFreteManualAction(
+  orcamentoId: string,
+  valor: string | null,
+): Promise<ActionResult> {
+  await requireAreaEscrita('vendas')
+
+  const [atual] = await db
+    .select({ id: orcamentos.id })
+    .from(orcamentos)
+    .where(and(eq(orcamentos.id, orcamentoId), isNull(orcamentos.deletedAt)))
+    .limit(1)
+  if (!atual) return { success: false, error: 'Pedido não encontrado' }
+
+  const limpo = valor?.trim() ?? ''
+  let freteValor: string | null = null
+  if (limpo !== '') {
+    const centavos = Math.round(Number(limpo) * 100)
+    if (!Number.isFinite(centavos) || centavos < 0) {
+      return { success: false, error: 'Valor de frete inválido' }
+    }
+    // Zero digitado também vira "sem frete": o usuário quis dizer "não tem",
+    // e guardar o zero faria a linha aparecer no documento.
+    freteValor = centavos > 0 ? (centavos / 100).toFixed(2) : null
+  }
+
+  await db
+    .update(orcamentos)
+    .set({
+      freteValor,
+      freteTransportadora: null,
+      freteServico: null,
+      fretePrazoDias: null,
+      freteCotadoEm: null,
+      freteCepDestino: null,
+    })
+    .where(eq(orcamentos.id, orcamentoId))
+
+  revalidatePath(`/pedidos/${orcamentoId}`)
+  revalidatePath('/pedidos')
+  return {
+    success: true,
+    message: freteValor ? 'Frete salvo no pedido' : 'Frete removido do pedido',
+  }
+}
+
+/**
  * Grava a cotação escolhida no pedido. É SNAPSHOT: recotar depois não
  * reescreve isto sozinho — só outra escolha explícita reescreve. Ver
  * AGENTS.md, "Peso é recalculado, preço é snapshot"; frete segue o preço.
