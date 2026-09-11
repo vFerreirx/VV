@@ -288,7 +288,27 @@ export async function listarProducaoUltimosDias(
       refugo: sql<number>`coalesce(sum(${apontamentosProducao.quantidadeRefugo}), 0)::int`,
     })
     .from(apontamentosProducao)
-    .where(gte(apontamentosProducao.inicio, inicio))
+    // ⚠️ JOIN COM A OP SÓ PRA PODER FILTRAR OP APAGADA. Sem ele, este
+    // gráfico somava apontamento de OP que já foi pra lixeira — e apagar uma
+    // OP não tirava do número o que ela tinha registrado.
+    //
+    // Apareceu com uma OP de teste que tinha 5000 peças apontadas: apagada
+    // havia dias, e as 5000 seguiam plantadas no dia 09/09 do gráfico, sem
+    // nenhuma OP viva que explicasse de onde vinham.
+    //
+    // `innerJoin` e não `leftJoin`: a FK de `ordem_id` é NOT NULL, então
+    // apontamento sem OP não existe. Se um dia existir, ficar de fora é o
+    // comportamento certo — número sem origem não é produção.
+    .innerJoin(
+      ordensProducao,
+      eq(ordensProducao.id, apontamentosProducao.ordemId),
+    )
+    .where(
+      and(
+        gte(apontamentosProducao.inicio, inicio),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
     .groupBy(diaEmBrasiliaSQL)
 
   // Preenche dias sem apontamento com zero pra linha não ficar com gaps.
