@@ -29,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ColorSwatch } from '@/components/ui/color-swatch'
 import { Input } from '@/components/ui/input'
 import { TeclaNumerica } from '@/components/ui/tecla-numerica'
 import {
@@ -43,6 +44,11 @@ import {
 } from '@/lib/producao/conclusao'
 import { estadoDaMaquina } from '@/lib/producao/estado-maquina'
 import { confirmacaoAntesDeIniciar } from '@/lib/producao/inicio-da-op'
+import {
+  agruparPorModelo,
+  prazoEmPalavras,
+  tituloDaOp,
+} from '@/lib/producao/rotulo-da-op'
 import {
   RelogioDeInatividade,
   TrocarOperadorBotao,
@@ -75,38 +81,50 @@ import { STATUS_LABEL } from '@/lib/validators/maquinas'
 //
 // SEM BARRA DE PROGRESSO. O registro passou a ser feito só no fim (Fase 3),
 // então uma barra ficaria em zero o turno inteiro afirmando que nada foi
-// feito. "Em produção · Meta: 20 peças" diz o que ele precisa saber e não
-// mente enquanto o trabalho corre.
+// feito. "Meta: 20 peças" diz o que ele precisa saber e não mente enquanto o
+// trabalho corre.
 //
 // O QUE ESTA TELA NÃO TEM, e a ausência é o desenho: arrastar, colunas,
 // filtros, chips, agrupamento, histórico, ícone sem rótulo, nada que dependa
 // de hover. Botão é verbo — "Iniciar produção", "Concluir produção" — e
-// nunca um ícone sozinho: no cartão estreito de duas colunas o rótulo
+// nunca um ícone sozinho: no cartão estreito de três colunas o rótulo
 // encurta, mas não vira desenho pra adivinhar.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // MEDIDAS — CALIBRADAS NO TABLET DA ESTAÇÃO, NÃO NO MONITOR
 // ─────────────────────────────────────────────────────────────────────────
 //
-// A primeira versão desta tela usava 56px de alvo e 18px de texto no cartão,
-// e no tablet de verdade ficou grande demais: cada cartão ocupava meia tela,
-// e ver a estação inteira exigia rolar. Numa tela de nove máquinas, ROLAR
-// custa mais do que ler letra menor — o operador perde a visão do conjunto,
-// que é a única coisa que esta tela existe pra dar.
+// ⚠️ A REGRA QUE DECIDE TUDO AQUI: numa tela de nove máquinas, ROLAR CUSTA
+// MAIS DO QUE LER LETRA MENOR. O operador que rola perde a visão do
+// conjunto, que é a única coisa que esta grade existe pra dar. Toda medida
+// abaixo foi encolhida contra esse critério, e nenhuma contra o de "caber
+// mais informação".
+//
+// Duas calibrações já aconteceram, as duas no tablet de verdade:
+//
+//   1ª — a versão original usava 56px de alvo e 18px de texto, e cada cartão
+//        ocupava meia tela. Foi pra 48px, texto de 18px e duas colunas.
+//   2ª — com duas colunas, nove máquinas davam cinco fileiras e a estação
+//        ainda não cabia. Foi pra TRÊS colunas no tablet, e o cartão perdeu
+//        uma linha inteira: o número da OP subiu pro topo, ao lado do código
+//        da máquina, e o "com fulano" passou a só existir quando há alguém.
 //
 // O que ficou:
-//   - alvo de toque no cartão: 48px (`h-12`). É o piso das diretrizes de
-//     toque (44-48px) e continua confortável com o dedo sujo de fiapo;
-//   - grade de DUAS colunas já no tablet (`sm:`), três no monitor do
-//     gerente. É o que corta a altura pela metade sem encolher nada;
-//   - o produto continua sendo o maior texto do cartão (`text-lg`), porque é
-//     o que ele reconhece de longe — só deixou de ser gigante.
+//   - grade de TRÊS colunas no tablet (`md:`), quatro no monitor do gerente.
+//     Nove máquinas viram três fileiras — a estação numa tela só;
+//   - o produto continua sendo o maior texto do cartão, porque é o que ele
+//     reconhece de longe. Só deixou de ser `text-lg`: em três colunas o nome
+//     quebra em duas linhas, e duas linhas de 18px em nove cartões eram o
+//     que empurrava a terceira fileira pra fora da tela;
+//   - identificação (número da OP, responsável) em `text-xs`, no topo e
+//     condicional. Ninguém lê isso de longe; só serve pra conferir de perto.
 //
-// ⚠️ O QUE **NÃO** ENCOLHEU, de propósito: a tecla do teclado numérico
-// (64px, `h-16`) e os botões de confirmar dos diálogos. Ali o dedo digita
-// número e confirma ação irreversível, com a mão em movimento — é o lugar
-// onde errar o alvo custa caro, e não há nada em volta competindo por
-// espaço. Cartão é leitura; diálogo é digitação.
+// ⚠️ O QUE **NÃO** ENCOLHEU, e não vai encolher: o alvo de toque de 48px
+// (`h-12`) nos botões do cartão, a tecla do teclado numérico (64px,
+// `h-16`, em components/ui/tecla-numerica) e os botões de confirmar dos
+// diálogos. TEXTO PEQUENO SE LÊ CHEGANDO PERTO; ALVO PEQUENO SE ERRA com o
+// dedo sujo de fiapo — e errar ali grava número ou conclui OP. Cartão é
+// leitura; diálogo é digitação.
 //
 // ⚠️ ISTO É SÓ UI. Nenhuma regra vive aqui: quem decide o que o operador
 // pode é `operadorPodeAgirNaOrdem` / `condicaoDeVisaoDoOperador`
@@ -134,15 +152,28 @@ type Props = {
   temPin: boolean
 }
 
-/** O que ele reconhece de longe, sem o nome do produto: "Terracota · King". */
+/**
+ * O título em TEXTO CORRIDO: "Peseira · Marsala · Queen". Serve os diálogos,
+ * onde não há espaço nem motivo pra dividir em partes com pesos diferentes.
+ *
+ * ⚠️ Mesma fonte do `TituloDaPeca` — `tituloDaOp`, em
+ * src/lib/producao/rotulo-da-op.ts. Os diálogos de confirmar e de concluir
+ * aparecem entre a fila e o cartão, e se falassem outro dialeto ("Capa de
+ * Almofada - ACONCHEGO / Caqui · ACONCHEGO · 45x45") o operador teria que
+ * traduzir no meio do caminho pra saber se é a mesma peça.
+ */
 function variacaoDe(op: {
+  produtoNome: string
   variacaoCor: string | null
   variacaoModelo: string | null
   variacaoTamanho: string | null
 }): string {
-  return [op.variacaoCor, op.variacaoModelo, op.variacaoTamanho]
-    .filter(Boolean)
-    .join(' · ')
+  const t = tituloDaOp(op.produtoNome, {
+    cor: op.variacaoCor,
+    modelo: op.variacaoModelo,
+    tamanho: op.variacaoTamanho,
+  })
+  return [t.familia, t.variacao].filter(Boolean).join(' · ')
 }
 
 export function PainelOperador({
@@ -265,9 +296,10 @@ export function PainelOperador({
           Nenhuma máquina vinculada à sua estação. Fale com o admin.
         </p>
       ) : (
-        // DUAS COLUNAS JÁ NO TABLET. É o que corta a altura da grade pela
-        // metade sem encolher texto nenhum — ver MEDIDAS no topo.
-        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+        // TRÊS COLUNAS NO TABLET, quatro no monitor do gerente. Nove
+        // máquinas em três colunas são TRÊS LINHAS — a estação inteira numa
+        // tela só, que é a única coisa que esta grade existe pra dar.
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 2xl:grid-cols-4">
           {maquinas.map((m) => (
             <CartaoMaquina
               key={m.id}
@@ -330,13 +362,16 @@ function CartaoMaquina({
   return (
     <div
       className={cn(
-        'flex min-h-32 flex-col rounded-xl border-2 p-3',
+        'flex min-h-24 flex-col rounded-xl border-2 p-2.5',
         estado === 'ocupada' && 'border-primary/40',
         estado === 'indisponivel' && 'bg-muted/40 border-dashed opacity-70',
       )}
     >
       {/* O CÓDIGO DA MÁQUINA NO TOPO, sempre — é por ele que ele acha o
-          cartão da máquina em que está de pé. */}
+          cartão da máquina em que está de pé.
+          O NÚMERO DA OP VEM PRA CÁ, na mesma linha: ele é identificação, não
+          conteúdo, e ocupando uma linha própria lá embaixo custava altura em
+          nove cartões pra dizer o que ninguém lê de longe. */}
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-base font-semibold tabular-nums">
           {m.codigo}
@@ -344,6 +379,11 @@ function CartaoMaquina({
         {estado === 'indisponivel' && (
           <span className="text-muted-foreground text-sm">
             {STATUS_LABEL[m.status]}
+          </span>
+        )}
+        {estado === 'ocupada' && m.op && (
+          <span className="text-muted-foreground truncate text-xs tabular-nums">
+            {m.op.numero}
           </span>
         )}
       </div>
@@ -357,7 +397,7 @@ function CartaoMaquina({
       )}
 
       {estado === 'livre' && (
-        <div className="flex flex-1 flex-col justify-center gap-2 pt-2">
+        <div className="flex flex-1 flex-col justify-end gap-1.5 pt-1.5">
           <p className="text-muted-foreground text-center text-sm">
             Máquina livre
           </p>
@@ -372,7 +412,7 @@ function CartaoMaquina({
       {/* INDISPONÍVEL NÃO OFERECE BOTÃO NENHUM. A máquina não pode receber
           OP, e um botão que só devolve erro é pior do que nenhum botão. */}
       {estado === 'indisponivel' && (
-        <div className="flex flex-1 items-center justify-center pt-2">
+        <div className="flex flex-1 items-center justify-center pt-1.5">
           <p className="text-muted-foreground text-center text-sm">
             Máquina indisponível
           </p>
@@ -393,41 +433,54 @@ function CorpoOcupada({
 }) {
   return (
     <>
-      {/* O que ele reconhece de longe vem primeiro e maior. O número da OP é
-          identificação, não conteúdo — vem depois e menor. */}
-      <div className="mt-1.5 text-lg leading-tight font-semibold">
-        {op.produtoNome}
-      </div>
-      {variacaoDe(op) && (
-        <div className="mt-0.5 text-base">{variacaoDe(op)}</div>
-      )}
+      {/* ⚠️ O MESMO TÍTULO DA FILA DE ESCOLHA, montado pela MESMA função
+          (`tituloDaOp`) e com o MESMO swatch ao lado. Ele escolhe a OP na
+          fila e depois passa o turno olhando este cartão — se as duas telas
+          montassem o texto por conta própria, conferir se pegou a peça certa
+          passaria a exigir tradução.
 
-      {/* META, NÃO PROGRESSO. Ver o cabeçalho do arquivo: o registro é feito
-          só no fim, então uma barra ficaria zerada o turno inteiro. */}
-      <p className="mt-2 text-base">
-        Em produção ·{' '}
-        <span className="font-semibold tabular-nums">
-          Meta: {op.quantidade} peças
-        </span>
-      </p>
+          O swatch aqui é `sm` (28px) e não `lg`: o cartão vive numa grade de
+          três colunas, e 48px de mancha comeriam a largura do nome. */}
+      <div className="mt-1 flex items-start gap-2">
+        <ColorSwatch
+          hex={op.corHex}
+          hex2={op.corHex2}
+          className="mt-0.5"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="text-base leading-tight">
+            <TituloDaPeca op={op} />
+          </div>
+          {/* META, NÃO PROGRESSO. Ver o cabeçalho do arquivo: o registro é
+              feito só no fim, então uma barra ficaria zerada o turno
+              inteiro. O modelo divide a linha com ela — na fila ele está no
+              cabeçalho do grupo, aqui não existe grupo pra carregá-lo. */}
+          <p className="text-muted-foreground text-sm tabular-nums">
+            {op.variacaoModelo && `${op.variacaoModelo} · `}
+            <span className="text-foreground font-semibold">
+              Meta: {op.quantidade} peças
+            </span>
+          </p>
+        </div>
+      </div>
       {/* OP LEGADA, com apontamento já feito. Não some com o número dele só
           porque a barra saiu — mas fica discreto, fora do caminho. */}
       {(op.produzido > 0 || op.refugo > 0) && (
-        <p className="text-muted-foreground text-sm tabular-nums">
+        <p className="text-muted-foreground text-xs tabular-nums">
           já registradas: {op.produzido}
           {op.refugo > 0 && ` · ${op.refugo} refugo`}
         </p>
       )}
 
-      <div className="text-muted-foreground mt-0.5 text-xs">
-        {op.numero}
-        {/* QUEM ESTÁ COM ELA, quando não é quem olha. A OP do colega não
-            ganha lista à parte: ela já está no cartão da máquina dele, e
-            agir nela continua permitido de propósito — o turno acaba com a
-            OP no meio e o colega precisa conseguir terminar
-            (`operadorPodeAgirNaOrdem`). */}
-        {op.responsavelNome && ` · com ${op.responsavelNome}`}
-      </div>
+      {/* QUEM ESTÁ COM ELA, e SÓ quando há alguém. Antes esta linha existia
+          sempre, pra carregar o número da OP que agora vive no topo — então
+          em toda OP sem responsável ela era uma linha em branco custando
+          altura em nove cartões. */}
+      {op.responsavelNome && (
+        <div className="text-muted-foreground truncate text-xs">
+          com {op.responsavelNome}
+        </div>
+      )}
 
       {/* UM BOTÃO SÓ, e não é economia de espaço.
           Eram dois — "Apontar" e "Terminei" —, cada um numa action e numa
@@ -436,8 +489,12 @@ function CorpoOcupada({
           terminar (número gravado, máquina ainda ocupada), ou terminou sem
           apontar (máquina livre, número que nunca existiu). Com um, o gesto
           é o do mundo físico: acabou, registra e sai da máquina. */}
+      {/* ⚠️ O BOTÃO NÃO ENCOLHEU. Tudo em volta ficou menor pra caber a
+          estação numa tela; o alvo de toque continua em 48px, que é o piso
+          das diretrizes. Texto pequeno se lê chegando perto — alvo pequeno
+          se erra com o dedo sujo de fiapo, e errar aqui grava número. */}
       {podeAgir && (
-        <div className="mt-auto pt-3">
+        <div className="mt-auto pt-2">
           <Button className="h-12 w-full text-base" onClick={onConcluir}>
             Concluir produção
           </Button>
@@ -578,7 +635,10 @@ function IniciarProducaoDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      {/* LARGO E ALTO, e não o `max-w-lg` de antes. Num tablet de 1024px
+          aquele usava metade da largura pra mostrar quatro de vinte linhas —
+          o operador rolava pra ver a fila que já estava paginada. */}
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="text-2xl">
             Iniciar na máquina {maquina.codigo}
@@ -601,44 +661,92 @@ function IniciarProducaoDialog({
           />
         </div>
 
-        <div className="max-h-[50vh] space-y-2 overflow-y-auto">
-          {ops.map((op) => (
+        {/* ⚠️ AGRUPADA POR MODELO, e o cabeçalho do grupo é o que permitiu a
+            linha encolher: ele carrega o ponto da malha, então nenhuma
+            linha precisa repetir "Peseira - RELEVO".
+
+            O MODELO É O PONTO (RELEVO, TRANÇAS, EFEITO 3D), e trocar de
+            modelo mexe no setup da máquina — três OPs RELEVO espalhadas
+            pelas posições 2, 5 e 6 obrigavam a armar a máquina três vezes
+            pro mesmo ponto.
+
+            A urgência não afunda: `agruparPorModelo` NÃO reordena, e como a
+            lista chega do SQL por prioridade + prazo, cada grupo entra na
+            posição da OP mais urgente que ele contém. */}
+        <div className="max-h-[70vh] space-y-5 overflow-y-auto">
+          {agruparPorModelo(ops).map((grupo) => (
+            <div key={grupo.modelo} className="space-y-1.5">
+              <div className="bg-background sticky top-0 flex items-baseline justify-between gap-2 border-b pb-1">
+                <h3 className="text-lg font-semibold tracking-wide">
+                  {grupo.modelo}
+                </h3>
+                <span className="text-muted-foreground text-sm tabular-nums">
+                  {grupo.ops.length}{' '}
+                  {grupo.ops.length === 1 ? 'OP' : 'OPs'}
+                </span>
+              </div>
+
+              {grupo.ops.map((op) => (
             <button
               key={op.id}
               type="button"
               disabled={isPending}
               onClick={() => escolher(op)}
-              className="hover:border-primary hover:bg-primary/5 focus-visible:ring-ring w-full rounded-xl border-2 p-3 text-left focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+              className="hover:border-primary hover:bg-primary/5 focus-visible:ring-ring flex w-full gap-3 rounded-xl border-2 p-2.5 text-left focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="text-xl font-semibold">{op.produtoNome}</div>
-                <SeloDePrioridade prioridade={op.prioridade} />
-              </div>
-              {variacaoDe(op) && (
-                <div className="text-lg">{variacaoDe(op)}</div>
-              )}
-              <div className="text-muted-foreground text-sm tabular-nums">
-                {op.numero} · {op.quantidade} peças
-              </div>
-              {/* AVISOS DO QUE VEM DEPOIS. Não é o texto da observação — é o
-                  aviso de que existe uma, pra ele saber que o toque vai
-                  abrir uma leitura em vez de começar direto. */}
-              {(op.observacoes ||
-                confirmacaoAntesDeIniciar(op.status) !== null) && (
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {confirmacaoAntesDeIniciar(op.status) !== null && (
-                    <span className="rounded bg-amber-500/15 px-2 py-0.5 text-sm text-amber-700 dark:text-amber-400">
-                      Aguardando matéria-prima
+              {/* O SWATCH É A ÂNCORA DO OLHO: ele varre uma coluna de cores
+                  em vez de ler nomes de produto que começam igual — e a cor
+                  é o que ele confere contra o fio que está na máquina. */}
+              <ColorSwatch
+                hex={op.corHex}
+                hex2={op.corHex2}
+                tamanho="lg"
+                className="mt-0.5"
+              />
+
+              {/* DUAS LINHAS, E ERAM QUATRO. O que saiu: o nome do produto
+                  (virou cabeçalho de grupo + a família aqui embaixo) e o
+                  número da OP, que é identificação e não decide escolha
+                  nenhuma — ele volta só quando há busca, logo abaixo. */}
+              <div className="min-w-0 flex-1">
+                {/* ⚠️ A FAMÍLIA VEM PRIMEIRO E EM NEGRITO — peseira, manta,
+                    capa de almofada. É o que a peça É, e decide o setup da
+                    máquina tanto quanto o ponto; tinha perdido destaque
+                    quando o nome do produto desceu pra segunda linha.
+                    A cor não precisa abrir a frase porque o SWATCH está ao
+                    lado: o olho pega a cor pela mancha, o texto confirma. */}
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="truncate text-xl">
+                    <TituloDaPeca op={op} />
+                  </span>
+                  <span className="flex shrink-0 items-baseline gap-2">
+                    <span className="text-base font-medium tabular-nums">
+                      {op.quantidade} pç
                     </span>
-                  )}
-                  {op.observacoes && (
-                    <span className="bg-muted text-muted-foreground rounded px-2 py-0.5 text-sm">
-                      Tem observação
-                    </span>
-                  )}
+                    <SeloDePrioridade prioridade={op.prioridade} />
+                  </span>
                 </div>
-              )}
+
+                <div className="text-muted-foreground flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <Prazo data={op.dataPrevistaFim} />
+                  {/* AS TARJAS VIRARAM TEXTO NA MESMA LINHA. Como caixinhas
+                      coloridas elas custavam uma quarta linha em toda OP que
+                      tivesse uma; aqui avisam sem empurrar nada. */}
+                  {confirmacaoAntesDeIniciar(op.status) !== null && (
+                    <span className="font-medium text-amber-700 dark:text-amber-400">
+                      aguardando matéria-prima
+                    </span>
+                  )}
+                  {op.observacoes && <span>tem observação</span>}
+                  {/* O NÚMERO SÓ QUANDO HÁ BUSCA. Fora da busca ele é ruído
+                      que não decide escolha; buscando "0151", some ele a
+                      linha que casou pareceria arbitrária. */}
+                  {termo.trim() !== '' && <span>{op.numero}</span>}
+                </div>
+              </div>
             </button>
+              ))}
+            </div>
           ))}
 
           {ops.length === 0 && !buscando && (
@@ -761,6 +869,55 @@ function ConfirmarInicioDialog({
   )
 }
 
+// O TÍTULO DA PEÇA, IGUAL NAS DUAS TELAS. As partes vêm de `tituloDaOp`
+// (src/lib/producao/rotulo-da-op.ts); aqui só se decide o peso de cada uma.
+// A família em negrito porque é o que a peça É; a variação em peso normal
+// porque o swatch ao lado já entregou a cor.
+function TituloDaPeca({
+  op,
+}: {
+  op: {
+    produtoNome: string
+    variacaoCor: string | null
+    variacaoModelo: string | null
+    variacaoTamanho: string | null
+  }
+}) {
+  const titulo = tituloDaOp(op.produtoNome, {
+    cor: op.variacaoCor,
+    modelo: op.variacaoModelo,
+    tamanho: op.variacaoTamanho,
+  })
+  return (
+    <>
+      <span className="font-bold">{titulo.familia}</span>
+      {titulo.variacao && (
+        <span className="font-normal"> · {titulo.variacao}</span>
+      )}
+    </>
+  )
+}
+
+// O PRAZO, QUE ERA INVISÍVEL. A fila é ordenada por prioridade E prazo, mas
+// só a prioridade aparecia — o operador via a ordem sem ver o motivo dela.
+// "vence HOJE" e "ATRASADA" vêm pintados; os outros, em texto normal. Se
+// todo prazo gritasse, nenhum gritaria.
+function Prazo({ data }: { data: Date | null }) {
+  const prazo = prazoEmPalavras(data ? new Date(data) : null)
+  if (!prazo) return null
+  return (
+    <span
+      className={cn(
+        prazo.urgente
+          ? 'text-destructive font-semibold'
+          : 'text-muted-foreground',
+      )}
+    >
+      {prazo.texto}
+    </span>
+  )
+}
+
 // Selo de prioridade. Só alta e urgente ganham um — a regra é do
 // `ehDestaque` em src/lib/prioridade.ts: um selo em cada linha vira ruído, e
 // o ruído esconde justamente o urgente.
@@ -859,17 +1016,29 @@ function ConsultaDialog({
 
         <div className="max-h-[55vh] space-y-2 overflow-y-auto">
           {ops.map((op) => (
-            <div key={op.id} className="rounded-xl border p-3">
+            <div key={op.id} className="flex gap-3 rounded-xl border p-3">
+              <ColorSwatch hex={op.corHex} hex2={op.corHex2} tamanho="lg" />
+              <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
-                <div className="text-lg font-semibold">{op.produtoNome}</div>
+                <div className="truncate text-lg">
+                  <TituloDaPeca op={op} />
+                </div>
                 <SeloDePrioridade prioridade={op.prioridade} />
               </div>
-              {variacaoDe(op) && (
-                <div className="text-base">{variacaoDe(op)}</div>
+              {op.variacaoModelo && (
+                <div className="text-muted-foreground truncate text-sm">
+                  {op.variacaoModelo}
+                </div>
               )}
-              <div className="text-muted-foreground text-sm tabular-nums">
-                {op.numero} · {op.quantidade} peças
-                {op.maquinaCodigo && ` · ${op.maquinaCodigo}`}
+              <div className="flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums">
+                <span>{op.quantidade} peças</span>
+                {ehFila && <Prazo data={op.dataPrevistaFim} />}
+                <span className="text-muted-foreground">{op.numero}</span>
+                {op.maquinaCodigo && (
+                  <span className="text-muted-foreground">
+                    {op.maquinaCodigo}
+                  </span>
+                )}
               </div>
 
               {/* A CONFIRMAÇÃO QUE O TOAST NÃO GUARDA. "Será que salvou?" é a
@@ -894,6 +1063,7 @@ function ConsultaDialog({
                   )}
                 </div>
               )}
+              </div>
             </div>
           ))}
 

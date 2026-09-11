@@ -16,6 +16,14 @@ import {
   resumoDaConclusao,
 } from './conclusao.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
+import {
+  agruparPorModelo,
+  destaqueDaVariacao,
+  familiaDoProduto,
+  prazoEmPalavras,
+  SEM_MODELO,
+  tituloDaOp,
+} from './rotulo-da-op.ts'
 import { estadoDaMaquina, motivoDeImpedimento } from './estado-maquina.ts'
 import {
   confirmacaoAntesDeIniciar,
@@ -223,4 +231,163 @@ test('mesma pessoa comecando e terminando nao vira ruido', () => {
     resumoDaConclusao(30, 0, calcularConclusao(30, 0), null),
     'Concluída com 30 de 30 peças',
   )
+})
+
+// -----------------------------------------------------------------
+// Como a OP se apresenta na lista
+// -----------------------------------------------------------------
+
+test('o modelo some quando ja esta no nome do produto', () => {
+  // "Capa de Almofada - ACONCHEGO" + "Caqui · ACONCHEGO · 45x45" dizia
+  // ACONCHEGO duas vezes, e a segunda ocupava o lugar de destaque.
+  assert.equal(
+    destaqueDaVariacao('Capa de Almofada - ACONCHEGO', {
+      cor: 'Caqui',
+      modelo: 'ACONCHEGO',
+      tamanho: '45x45',
+    }),
+    'Caqui · 45x45',
+  )
+})
+
+test('mas SOBREVIVE quando o nome nao o contem', () => {
+  // Se um produto novo nao seguir o padrao de nomes, o modelo continua
+  // aparecendo em vez de sumir em silencio.
+  assert.equal(
+    destaqueDaVariacao('Capa de Almofada', {
+      cor: 'Caqui',
+      modelo: 'ACONCHEGO',
+      tamanho: '45x45',
+    }),
+    'Caqui · ACONCHEGO · 45x45',
+  )
+})
+
+test('acento e caixa nao decidem se uma palavra some', () => {
+  assert.equal(
+    destaqueDaVariacao('Peseira - Efeito 3D', {
+      cor: 'Nude',
+      modelo: 'EFEITO 3D',
+      tamanho: 'King',
+    }),
+    'Nude · King',
+  )
+})
+
+test('campos vazios nao viram separador solto', () => {
+  assert.equal(
+    destaqueDaVariacao('Manta - ACONCHEGO', {
+      cor: 'Areia',
+      modelo: null,
+      tamanho: null,
+    }),
+    'Areia',
+  )
+  assert.equal(
+    destaqueDaVariacao('Produto', { cor: null, modelo: null, tamanho: null }),
+    '',
+  )
+})
+
+test('o prazo vira palavra, em dias de CALENDARIO', () => {
+  const agora = new Date('2026-09-10T14:00:00')
+  assert.equal(prazoEmPalavras(null, agora), null)
+  // Venceu as 8h de hoje: continua sendo HOJE as 14h, e nao "atrasada".
+  assert.deepEqual(prazoEmPalavras(new Date('2026-09-10T08:00:00'), agora), {
+    texto: 'vence HOJE',
+    urgente: true,
+  })
+  assert.deepEqual(prazoEmPalavras(new Date('2026-09-11T23:00:00'), agora), {
+    texto: 'vence amanhã',
+    urgente: false,
+  })
+  assert.deepEqual(prazoEmPalavras(new Date('2026-09-18T00:00:00'), agora), {
+    texto: '8 dias',
+    urgente: false,
+  })
+})
+
+test('atrasada conta os dias e e urgente', () => {
+  const agora = new Date('2026-09-10T14:00:00')
+  assert.deepEqual(prazoEmPalavras(new Date('2026-09-09T23:59:00'), agora), {
+    texto: 'ATRASADA 1 dia',
+    urgente: true,
+  })
+  assert.deepEqual(prazoEmPalavras(new Date('2026-09-07T00:00:00'), agora), {
+    texto: 'ATRASADA 3 dias',
+    urgente: true,
+  })
+})
+
+test('a familia perde o modelo, e so quando ele esta no fim', () => {
+  assert.equal(familiaDoProduto('Capa de Almofada - RELEVO', 'RELEVO'), 'Capa de Almofada')
+  assert.equal(familiaDoProduto('Peseira - EFEITO 3D', 'EFEITO 3D'), 'Peseira')
+  // Nao termina com o modelo: devolve inteiro em vez de cortar errado.
+  assert.equal(familiaDoProduto('Capa RELEVO especial', 'RELEVO'), 'Capa RELEVO especial')
+  assert.equal(familiaDoProduto('Manta', null), 'Manta')
+  // Cortar tudo deixaria a linha vazia — melhor o nome inteiro.
+  assert.equal(familiaDoProduto('RELEVO', 'RELEVO'), 'RELEVO')
+})
+
+test('agrupa por modelo SEM reordenar', () => {
+  // A lista chega ordenada por prioridade/prazo; o grupo entra na posicao da
+  // primeira OP dele, entao a urgencia decide a ordem dos grupos tambem.
+  const fila = [
+    { id: 'a', variacaoModelo: 'ACONCHEGO' },
+    { id: 'b', variacaoModelo: 'RELEVO' },
+    { id: 'c', variacaoModelo: 'SIENA' },
+    { id: 'd', variacaoModelo: 'RELEVO' },
+    { id: 'e', variacaoModelo: 'RELEVO' },
+  ]
+  const g = agruparPorModelo(fila)
+  assert.deepEqual(
+    g.map((x) => [x.modelo, x.ops.map((o) => o.id)]),
+    [
+      ['ACONCHEGO', ['a']],
+      ['RELEVO', ['b', 'd', 'e']],
+      ['SIENA', ['c']],
+    ],
+  )
+})
+
+test('sem modelo vira um grupo proprio, nao some', () => {
+  const g = agruparPorModelo([
+    { id: 'a', variacaoModelo: null },
+    { id: 'b', variacaoModelo: 'RELEVO' },
+  ])
+  assert.deepEqual(g.map((x) => x.modelo), [SEM_MODELO, 'RELEVO'])
+})
+
+test('fila vazia nao vira grupo vazio', () => {
+  assert.deepEqual(agruparPorModelo([]), [])
+})
+
+test('o titulo sai em PARTES, pras duas telas montarem igual', () => {
+  assert.deepEqual(
+    tituloDaOp('Peseira - RELEVO', {
+      cor: 'Marsala',
+      modelo: 'RELEVO',
+      tamanho: 'Queen',
+    }),
+    { familia: 'Peseira', variacao: 'Marsala · Queen', modelo: 'RELEVO' },
+  )
+})
+
+test('sem modelo, a familia e o nome inteiro', () => {
+  assert.deepEqual(
+    tituloDaOp('Manta Avulsa', { cor: 'Areia', modelo: null, tamanho: null }),
+    { familia: 'Manta Avulsa', variacao: 'Areia', modelo: null },
+  )
+})
+
+test('o modelo NAO se repete dentro da variacao', () => {
+  // Ele ja aparece no cabecalho do grupo (fila) ou na linha de baixo
+  // (cartao da maquina). Repetir aqui era a redundancia original.
+  const t = tituloDaOp('Capa de Almofada - SIENA', {
+    cor: 'Areia e Azul Marinho',
+    modelo: 'SIENA',
+    tamanho: '45x45',
+  })
+  assert.equal(t.variacao.includes('SIENA'), false)
+  assert.equal(t.variacao, 'Areia e Azul Marinho · 45x45')
 })

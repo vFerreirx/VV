@@ -23,6 +23,7 @@ import {
 } from '@/lib/db/estacao-operadores'
 import {
   apontamentosProducao,
+  cores,
   estacaoOperadores,
   estacoes,
   eventosKanban,
@@ -308,6 +309,14 @@ export type OpNaMaquina = {
   variacaoCor: string | null
   variacaoModelo: string | null
   variacaoTamanho: string | null
+  /**
+   * O hex da cor, pro swatch do cartão. Mesmo JOIN por nome da fila de
+   * escolha (`cores.nome` = `variacoes_produto.cor`), e pelo mesmo motivo:
+   * as duas telas mostram A MESMA OP com meia hora de diferença, e conferir
+   * se pegou a certa não pode exigir tradução.
+   */
+  corHex: string | null
+  corHex2: string | null
   /** A META da OP, em peças — o que a tela mostra como "Meta: X peças". */
   quantidade: number
   /**
@@ -365,6 +374,8 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
+      corHex: cores.codigoHex,
+      corHex2: cores.codigoHex2,
       // Mesma correlação qualificada à mão de `listarOrdensProducao`, e pelo
       // mesmo motivo: sem `"ordens_producao"."id"` explícito o Postgres
       // correlaciona com o `id` da própria subquery e o total sai sempre 0.
@@ -397,6 +408,7 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
       variacoesProduto,
       eq(variacoesProduto.id, ordensProducao.variacaoId),
     )
+    .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
     .where(and(eq(maquinas.estacaoId, estacao.id), isNull(maquinas.deletedAt)))
     // POSIÇÃO ESTÁVEL. O cartão da TC-01 é sempre o primeiro, ocupada ou
@@ -421,6 +433,8 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
               variacaoCor: r.variacaoCor ?? null,
               variacaoModelo: r.variacaoModelo ?? null,
               variacaoTamanho: r.variacaoTamanho ?? null,
+              corHex: r.corHex ?? null,
+              corHex2: r.corHex2 ?? null,
               quantidade: r.opQuantidade!,
               produzido: r.produzido ?? 0,
               refugo: r.refugo ?? 0,
@@ -463,6 +477,21 @@ export type OpParaIniciar = {
   variacaoTamanho: string | null
   quantidade: number
   observacoes: string | null
+  /**
+   * O hex da cor, pro swatch da fila. Vem de um JOIN por NOME entre
+   * `variacoes_produto.cor` (texto, preserva histórico) e `cores.nome` —
+   * não há FK entre as duas de propósito, pra que renomear uma cor não
+   * reescreva o que a variação registrou.
+   *
+   * Hoje as 466 variações do catálogo casam e têm hex. Quando não casar, o
+   * swatch vira o quadrado tracejado de "sem cor definida" e a linha
+   * continua legível pelo texto — degradar assim é o motivo de o JOIN ser
+   * LEFT e de o campo ser nulo.
+   */
+  corHex: string | null
+  corHex2: string | null
+  /** Pro "vence HOJE" — a fila é ordenada por ele e ele era invisível. */
+  dataPrevistaFim: Date | null
 }
 
 export type PaginaDeOps = {
@@ -538,10 +567,13 @@ export async function listarOpsParaIniciar(
       prioridade: ordensProducao.prioridade,
       quantidade: ordensProducao.quantidade,
       observacoes: ordensProducao.observacoes,
+      dataPrevistaFim: ordensProducao.dataPrevistaFim,
       produtoNome: produtos.nome,
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
+      corHex: cores.codigoHex,
+      corHex2: cores.codigoHex2,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -549,6 +581,7 @@ export async function listarOpsParaIniciar(
       variacoesProduto,
       eq(variacoesProduto.id, ordensProducao.variacaoId),
     )
+    .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     .where(and(...conditions))
     // A MESMA ORDEM DO KANBAN, e de propósito: o enum `ordem_prioridade` é
     // declarado baixa < normal < alta < urgente, então DESC traz urgente
@@ -573,6 +606,9 @@ export async function listarOpsParaIniciar(
       variacaoTamanho: r.variacaoTamanho ?? null,
       quantidade: r.quantidade,
       observacoes: r.observacoes,
+      corHex: r.corHex ?? null,
+      corHex2: r.corHex2 ?? null,
+      dataPrevistaFim: r.dataPrevistaFim,
     })),
     total,
     temMais: pagina * OPS_POR_PAGINA < total,
@@ -776,6 +812,9 @@ export async function listarOpsDaEstacao(
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
+      corHex: cores.codigoHex,
+      corHex2: cores.codigoHex2,
+      dataPrevistaFim: ordensProducao.dataPrevistaFim,
       maquinaId: ordensProducao.maquinaId,
       maquinaCodigo: maquinas.codigo,
       produzido: sql<number>`(
@@ -796,6 +835,7 @@ export async function listarOpsDaEstacao(
       eq(variacoesProduto.id, ordensProducao.variacaoId),
     )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
+    .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     .where(
       inArray(
         ordensProducao.id,
@@ -819,6 +859,9 @@ export async function listarOpsDaEstacao(
           variacaoTamanho: r.variacaoTamanho ?? null,
           quantidade: r.quantidade,
           observacoes: r.observacoes,
+          corHex: r.corHex ?? null,
+          corHex2: r.corHex2 ?? null,
+          dataPrevistaFim: r.dataPrevistaFim,
           maquinaCodigo: r.maquinaCodigo ?? null,
           concluidaEm: c?.em ?? null,
           concluidaPor: c?.por ?? null,

@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ColorSwatch } from '@/components/ui/color-swatch'
 import {
   Dialog,
   DialogContent,
@@ -267,43 +268,6 @@ export function CoresList({ cores, podeEditar }: Props) {
 // -----------------------------------------------------------------
 // ColorSwatch
 // -----------------------------------------------------------------
-
-function ColorSwatch({
-  hex,
-  hex2,
-}: {
-  hex: string | null
-  hex2?: string | null
-}) {
-  if (!hex && !hex2) {
-    return (
-      <div
-        className="size-7 rounded-md border border-dashed"
-        aria-label="Sem cor definida"
-      />
-    )
-  }
-  // Bicolor: swatch dividido na diagonal entre as duas tonalidades.
-  if (hex && hex2) {
-    return (
-      <div
-        className="size-7 rounded-md border ring-1 ring-foreground/10"
-        style={{
-          background: `linear-gradient(135deg, ${hex} 0 50%, ${hex2} 50% 100%)`,
-        }}
-        aria-label={`${hex} / ${hex2}`}
-      />
-    )
-  }
-  const cor = hex ?? hex2!
-  return (
-    <div
-      className="size-7 rounded-md border ring-1 ring-foreground/10"
-      style={{ backgroundColor: cor }}
-      aria-label={cor}
-    />
-  )
-}
 
 // Normaliza um hex digitado (com ou sem #) pra prévia; null se inválido.
 function normHexPreview(v?: string | null): string | null {
