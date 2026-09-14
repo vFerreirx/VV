@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter } from 'next/navigation'
-import { useMemo, useTransition } from 'react'
+import { useTransition } from 'react'
 import { Controller, useForm, useWatch, type Resolver } from 'react-hook-form'
 import { toast } from 'sonner'
 
@@ -11,6 +11,8 @@ import {
   criarOrdemAction,
   type ProdutoComVariacoesParaForm,
 } from '@/app/(app)/ordens/actions'
+import { erroDaVariacao } from '@/lib/producao/catalogo-op'
+import { CatalogoOrdem } from '@/components/forms/catalogo-ordem'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -25,6 +27,9 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import {
   CANAL_LABEL,
+  STATUS_INICIAIS,
+  STATUS_FILTRAVEIS,
+  criarOrdemSchema,
   PRIORIDADE_LABEL,
   STATUS_LABEL,
   canalValues,
@@ -57,7 +62,7 @@ const VAZIO: OrdemFormDefaults = {
   maquinaId: null,
   canalDestino: 'estoque',
   prioridade: 'normal',
-  status: 'aguardando_materia_prima',
+  status: 'programado',
   dataPrevistaInicio: null,
   dataPrevistaFim: null,
   responsavelId: null,
@@ -97,45 +102,30 @@ export function OrdemForm({
   const isEdit = Boolean(defaults.id)
 
   const form = useForm<OrdemInput>({
-    resolver: zodResolver(ordemSchema) as unknown as Resolver<OrdemInput>,
+    resolver: zodResolver(
+      isEdit ? ordemSchema : criarOrdemSchema,
+    ) as unknown as Resolver<OrdemInput>,
     defaultValues: toFormValues(defaults),
   })
 
-  // Estado reativo só pra filtrar variações pelo produto selecionado.
-  const produtoIdSelecionado = useWatch({
-    control: form.control,
-    name: 'produtoId',
-  })
+  const produtoId = useWatch({ control: form.control, name: 'produtoId' })
+  const variacaoId = useWatch({ control: form.control, name: 'variacaoId' })
+  const statusDisponiveis = isEdit ? STATUS_FILTRAVEIS : STATUS_INICIAIS
+  const statusHistorico =
+    isEdit && (defaults.status === 'acabamento' || defaults.status === 'embalagem')
 
-  const produtoSelecionado = useMemo(
-    () => produtos.find((p) => p.id === produtoIdSelecionado),
-    [produtos, produtoIdSelecionado],
-  )
-
-  const variacoesDisponiveis = useMemo(
-    () => produtoSelecionado?.variacoes ?? [],
-    [produtoSelecionado],
-  )
-
-  // Mapas valor→rótulo: o Base UI Select usa `items` pra exibir o NOME do
-  // item selecionado no gatilho (senão mostraria o valor cru — o ID).
-  const produtosItems = useMemo(
-    () => produtos.map((p) => ({ value: p.id, label: `${p.sku} — ${p.nome}` })),
-    [produtos],
-  )
-  const variacoesItems = useMemo(
-    () => [
-      { value: 'nenhuma', label: 'Sem variação' },
-      ...variacoesDisponiveis.map((v) => ({
-        value: v.id,
-        label:
-          [v.cor, v.modelo, v.tamanho].filter(Boolean).join(' / ') ||
-          v.skuVariacao,
-      })),
-    ],
-    [variacoesDisponiveis],
-  )
   const onSubmit = form.handleSubmit((values) => {
+    const produto = produtos.find((p) => p.id === values.produtoId)
+    const selecaoMudou =
+      values.produtoId !== defaults.produtoId || (values.variacaoId || null) !== defaults.variacaoId
+    const erroVariacao =
+      produto && (!isEdit || selecaoMudou)
+        ? erroDaVariacao(values.variacaoId, produto.variacoes)
+        : null
+    if (erroVariacao) {
+      form.setError('variacaoId', { message: erroVariacao })
+      return
+    }
     startTransition(async () => {
       const result = isEdit
         ? await atualizarOrdemAction(defaults.id!, values)
@@ -163,88 +153,20 @@ export function OrdemForm({
           <CardTitle>Produto</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field
-            label="Produto"
-            id="produtoId"
-            error={errs.produtoId?.message}
-            required
-            className="md:col-span-2"
-          >
-            <Controller
-              control={form.control}
-              name="produtoId"
-              render={({ field: ctl }) => (
-                <Select
-                  items={produtosItems}
-                  value={ctl.value || ''}
-                  onValueChange={(v) => {
-                    ctl.onChange(v ?? '')
-                    // Reseta variação quando troca produto.
-                    form.setValue('variacaoId', '', { shouldDirty: true })
-                  }}
-                  disabled={isPending}
-                >
-                  <SelectTrigger id="produtoId" className="w-full">
-                    <SelectValue placeholder="Selecione um produto…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {produtos.length === 0 && (
-                      <div className="text-muted-foreground p-2 text-xs">
-                        Nenhum produto ativo cadastrado.
-                      </div>
-                    )}
-                    {produtos.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {`${p.sku} — ${p.nome}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+          <div className="md:col-span-2">
+            <CatalogoOrdem
+              produtos={produtos}
+              produtoId={produtoId}
+              variacaoId={variacaoId ?? ''}
+              disabled={isPending}
+              error={errs.produtoId?.message ?? errs.variacaoId?.message}
+              onChange={(produto, variacao) => {
+                form.setValue('produtoId', produto, { shouldDirty: true })
+                form.setValue('variacaoId', variacao, { shouldDirty: true })
+                form.clearErrors(['produtoId', 'variacaoId'])
+              }}
             />
-          </Field>
-
-          <Field
-            label="Variação"
-            id="variacaoId"
-            error={errs.variacaoId?.message}
-            hint={
-              produtoSelecionado && variacoesDisponiveis.length === 0
-                ? 'Esse produto não tem variações cadastradas.'
-                : undefined
-            }
-          >
-            <Controller
-              control={form.control}
-              name="variacaoId"
-              render={({ field: ctl }) => (
-                <Select
-                  items={variacoesItems}
-                  value={ctl.value || 'nenhuma'}
-                  onValueChange={(v) => ctl.onChange(v === 'nenhuma' ? '' : v)}
-                  disabled={
-                    isPending ||
-                    !produtoSelecionado ||
-                    variacoesDisponiveis.length === 0
-                  }
-                >
-                  <SelectTrigger id="variacaoId" className="w-full">
-                    <SelectValue placeholder="Selecione…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="nenhuma">Sem variação</SelectItem>
-                    {variacoesDisponiveis.map((v) => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {[v.cor, v.modelo, v.tamanho]
-                          .filter(Boolean)
-                          .join(' / ') || v.skuVariacao}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </Field>
+          </div>
 
           <Field
             label="Quantidade (peças)"
@@ -268,10 +190,11 @@ export function OrdemForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Roteiro de produção</CardTitle>
+          <CardTitle>Planejamento da produção</CardTitle>
           <p className="text-muted-foreground text-sm">
-            Máquina e responsável são definidos depois — a OP entra na fila e o
-            operador puxa pra ele no kanban.
+            {isEdit
+              ? 'As informações abaixo pertencem a esta OP. A produção é acompanhada na tela da estação.'
+              : 'A OP entra na fila. Na tela da estação, o operador escolhe a máquina e inicia a produção.'}
           </p>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -306,12 +229,7 @@ export function OrdemForm({
             />
           </Field>
 
-          <Field
-            label="Prioridade"
-            id="prioridade"
-            error={errs.prioridade?.message}
-            required
-          >
+          <Field label="Prioridade" id="prioridade" error={errs.prioridade?.message} required>
             <Controller
               control={form.control}
               name="prioridade"
@@ -338,7 +256,7 @@ export function OrdemForm({
           </Field>
 
           <Field
-            label="Status"
+            label={isEdit ? 'Status' : 'Situação inicial'}
             id="status"
             error={errs.status?.message}
             required
@@ -357,7 +275,12 @@ export function OrdemForm({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {statusValues.map((s) => (
+                    {statusHistorico && (
+                      <SelectItem value={defaults.status} disabled>
+                        {STATUS_LABEL[defaults.status]} (histórico)
+                      </SelectItem>
+                    )}
+                    {statusDisponiveis.map((s) => (
                       <SelectItem key={s} value={s}>
                         {STATUS_LABEL[s]}
                       </SelectItem>
@@ -368,7 +291,14 @@ export function OrdemForm({
             />
           </Field>
 
-          <div /> {/* placeholder pra grid */}
+          {!isEdit ? (
+            <p className="text-muted-foreground self-center text-sm">
+              Programado: na fila para produção. Use Aguardando matéria-prima quando faltar
+              material.
+            </p>
+          ) : (
+            <div />
+          )}
 
           <Field
             label="Início previsto"
@@ -383,11 +313,7 @@ export function OrdemForm({
             />
           </Field>
 
-          <Field
-            label="Fim previsto"
-            id="dataPrevistaFim"
-            error={errs.dataPrevistaFim?.message}
-          >
+          <Field label="Fim previsto" id="dataPrevistaFim" error={errs.dataPrevistaFim?.message}>
             <Input
               id="dataPrevistaFim"
               type="date"
@@ -454,9 +380,7 @@ function Field({
         {required && <span className="text-destructive ml-0.5">*</span>}
       </Label>
       {children}
-      {hint && !error && (
-        <p className="text-muted-foreground text-xs">{hint}</p>
-      )}
+      {hint && !error && <p className="text-muted-foreground text-xs">{hint}</p>}
       {error && <p className="text-destructive text-xs">{error}</p>}
     </div>
   )

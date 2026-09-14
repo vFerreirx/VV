@@ -45,6 +45,7 @@ import {
   type User,
   type VariacaoProduto,
 } from '@/lib/db/schema'
+import { erroDaVariacao } from '@/lib/producao/catalogo-op'
 import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
 import {
   calcularConclusao,
@@ -59,6 +60,7 @@ import {
 } from '@/lib/producao/inicio-da-op'
 import {
   apontamentoSchema,
+  criarOrdemSchema,
   mudarStatusOrdemSchema,
   ordemRapidaSchema,
   ordemSchema,
@@ -286,7 +288,9 @@ export type ProdutoComVariacoesParaForm = Pick<
   >
 }
 
-export async function listarProdutosParaOrdem(): Promise<
+export async function listarProdutosParaOrdem(
+  { somenteAtivas = false }: { somenteAtivas?: boolean } = {},
+): Promise<
   ProdutoComVariacoesParaForm[]
 > {
   await requireAuth()
@@ -313,6 +317,9 @@ export async function listarProdutosParaOrdem(): Promise<
       tamanho: variacoesProduto.tamanho,
     })
     .from(variacoesProduto)
+    // A criação oferece só variações disponíveis. A edição mantém as antigas
+    // para que uma OP histórica não perca a identificação ao abrir o formulário.
+    .where(somenteAtivas ? isNull(variacoesProduto.deletedAt) : undefined)
     .orderBy(asc(variacoesProduto.skuVariacao))
 
   const byProduto = new Map<string, typeof vars>()
@@ -382,7 +389,7 @@ export async function criarOrdemAction(
 ): Promise<ActionResult<{ id: string }>> {
   const user = await requireAreaEscrita('ordens')
 
-  const parsed = ordemSchema.safeParse(input)
+  const parsed = criarOrdemSchema.safeParse(input)
   if (!parsed.success) {
     return {
       success: false,
@@ -390,6 +397,16 @@ export async function criarOrdemAction(
     }
   }
   const data = parsed.data
+
+  // O catálogo pode mudar entre abrir a tela e salvar. Valida novamente o
+  // produto e a variação no servidor; a FK sozinha aceita variação de outro produto.
+  const catalogo = await db.select({ produtoId: produtos.id, variacaoId: variacoesProduto.id })
+    .from(produtos)
+    .leftJoin(variacoesProduto, and(eq(variacoesProduto.produtoId, produtos.id), isNull(variacoesProduto.deletedAt)))
+    .where(and(eq(produtos.id, data.produtoId), eq(produtos.ativo, true), isNull(produtos.deletedAt)))
+  if (!catalogo.length) return { success: false, error: 'Produto indisponível. Selecione novamente no catálogo.' }
+  const erroVariacao = erroDaVariacao(data.variacaoId, catalogo.flatMap((v) => v.variacaoId ? [{ id: v.variacaoId }] : []))
+  if (erroVariacao) return { success: false, error: erroVariacao }
 
   const novoId = await db.transaction(async (tx) => {
     const [inserted] = await tx
@@ -511,6 +528,12 @@ export async function atualizarOrdemAction(
     .limit(1)
   if (!atual) {
     return { success: false, error: 'OP não encontrada' }
+  }
+
+  // Preserva o estado de registros antigos, mas não permite escolher novamente
+  // etapas retiradas do fluxo ao editar outra OP.
+  if (atual.status !== data.status && (data.status === 'acabamento' || data.status === 'embalagem')) {
+    return { success: false, error: 'Essa etapa não faz mais parte do fluxo de produção' }
   }
 
   const statusMudou = atual.status !== data.status
