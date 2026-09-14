@@ -209,7 +209,10 @@ export const STATUS_LABEL: Record<(typeof statusValues)[number], string> = {
   em_producao: 'Em produção',
   acabamento: 'Acabamento',
   embalagem: 'Embalagem',
-  pronto_envio: 'Na costura',
+  // "Produção concluída", nunca "Concluída" sozinha: a OP tem dois fins —
+  // sair da máquina (este) e receber baixa (`enviado`) —, e com a palavra
+  // solta o gerente não sabe qual aconteceu.
+  pronto_envio: 'Produção concluída',
   enviado: 'Enviado',
   cancelado: 'Cancelado',
 }
@@ -220,7 +223,7 @@ export const STATUS_LABEL_CURTO: Record<(typeof statusValues)[number], string> =
   em_producao: 'Em produção',
   acabamento: 'Acabamento',
   embalagem: 'Embalagem',
-  pronto_envio: 'Na costura',
+  pronto_envio: 'Prod. concluída',
   enviado: 'Enviado',
   cancelado: 'Cancelado',
 }

@@ -4,13 +4,12 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
   CheckCircle2,
-  ChevronRight,
-  ClipboardList,
+  ChevronDown,
+  Cog,
   ExternalLink,
-  Hand,
   Loader2,
+  PackageCheck,
   Trash2,
-  Undo2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -22,13 +21,16 @@ import {
   type EventoKanbanComUsuario,
 } from './actions'
 import {
+  ConcluirProducaoDialog,
+  IniciarNaMaquinaDialog,
+} from './dialogos-do-gerente'
+import {
   apontarProducaoAction,
+  desfazerConclusaoAction,
   excluirOrdemAction,
   listarApontamentos,
   mudarStatusOrdemAction,
   obterOrdem,
-  pegarOrdemAction,
-  soltarOrdemAction,
   type ApontamentoItem,
   type OrdemDetalhe,
 } from '@/app/(app)/ordens/actions'
@@ -59,27 +61,61 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { erroDaTransicaoGenerica } from '@/lib/producao/transicoes-da-op'
 import { cn } from '@/lib/utils'
 import {
   CANAL_LABEL,
   PRIORIDADE_LABEL,
-  STATUS_KANBAN,
+  STATUS_FILTRAVEIS,
   STATUS_LABEL,
   STATUS_LABEL_CURTO,
   statusValues,
 } from '@/lib/validators/ordens'
 
-// Fluxo de avanço: as etapas do kanban + "enviado" (concluído) no fim.
-const FLUXO: (typeof statusValues)[number][] = [...STATUS_KANBAN, 'enviado']
+type Status = (typeof statusValues)[number]
+
+// A PRÓXIMA AÇÃO DE CADA ETAPA — um botão principal só. A mini-tela era uma
+// lista de tudo que dava pra fazer (avançar, pegar, soltar, apontar, status
+// manual), e o gerente tinha que descobrir qual era a da vez. Agora ela abre
+// dizendo.
+//
+// ⚠️ "CONCLUIR" É SÓ A SAÍDA DA MÁQUINA. O fim comercial se chama "Dar baixa",
+// com o efeito escrito — no canal Estoque é ele que põe peça no saldo. Com as
+// duas coisas chamadas "concluir", o gerente não sabia qual tinha feito.
+type AcaoPrincipal = 'iniciar' | 'concluir' | 'baixa' | null
+
+function acaoPrincipalDe(status: Status): AcaoPrincipal {
+  switch (status) {
+    case 'aguardando_materia_prima':
+    case 'programado':
+      return 'iniciar'
+    // Os legados acabamento/embalagem também concluem: a OP já saiu da
+    // máquina no fluxo antigo, e o gerente pode concluir de qualquer coluna
+    // anterior (transicoes-da-op.ts).
+    case 'em_producao':
+    case 'acabamento':
+    case 'embalagem':
+      return 'concluir'
+    case 'pronto_envio':
+      return 'baixa'
+    case 'enviado':
+    case 'cancelado':
+      return null
+  }
+}
 
 export function OpDetailSheet({
   ordemId,
   onClose,
-  currentUserId,
+  gestor,
+  podeMover,
 }: {
   ordemId: string | null
   onClose: () => void
-  currentUserId: string
+  /** Admin ou gerente: as ações de produção e o apontamento avulso. */
+  gestor: boolean
+  /** Escrita no kanban: o Status manual. */
+  podeMover: boolean
 }) {
   return (
     <Sheet open={ordemId !== null} onOpenChange={(o) => !o && onClose()}>
@@ -90,7 +126,8 @@ export function OpDetailSheet({
             key={ordemId}
             ordemId={ordemId}
             onClose={onClose}
-            currentUserId={currentUserId}
+            gestor={gestor}
+            podeMover={podeMover}
           />
         )}
       </SheetContent>
@@ -105,11 +142,13 @@ export function OpDetailSheet({
 function DetalheBody({
   ordemId,
   onClose,
-  currentUserId,
+  gestor,
+  podeMover,
 }: {
   ordemId: string
   onClose: () => void
-  currentUserId: string
+  gestor: boolean
+  podeMover: boolean
 }) {
   const router = useRouter()
   const [ordem, setOrdem] = useState<OrdemDetalhe | null>(null)
@@ -121,6 +160,7 @@ function DetalheBody({
   const [confirmarExcluir, setConfirmarExcluir] = useState(false)
   const [excluindo, startExcluir] = useTransition()
   const [acaoPend, startAcao] = useTransition()
+  const [porta, setPorta] = useState<'maquina' | 'concluir' | null>(null)
   const [apontarOpen, setApontarOpen] = useState(false)
   const [qtdProduzida, setQtdProduzida] = useState('')
   const [qtdRefugo, setQtdRefugo] = useState('')
@@ -145,10 +185,6 @@ function DetalheBody({
         return
       }
       toast.success(result.message ?? 'Apontado')
-      // Apontar também toma a OP quando quem aponta é operador da estação.
-      if (result.assumiu) {
-        toast.info('A OP agora está com você')
-      }
       setQtdProduzida('')
       setQtdRefugo('')
       setApontarOpen(false)
@@ -157,21 +193,80 @@ function DetalheBody({
     })
   }
 
-  function pegarOuSoltar(pegar: boolean) {
+  // Depois de qualquer ação o sheet relê a OP inteira: status, máquina,
+  // histórico e apontamentos mudam juntos, e mostrar metade atualizada é pior
+  // que esperar um instante.
+  async function recarregar(id: string) {
+    const [o, e] = await Promise.all([
+      obterOrdem(id),
+      listarEventosOrdem(id),
+      recarregarApontamentos(id),
+    ])
+    if (o) setOrdem(o)
+    setEventos(e)
+  }
+
+  // ESCOLHER UM STATUS — do botão principal ou do Status manual. As duas
+  // portas próprias abrem diálogo; o resto vai pelo caminho genérico.
+  function escolherStatus(novoStatus: Status) {
+    if (!ordem || ordem.status === novoStatus) return
+    if (novoStatus === 'em_producao') {
+      // Voltar da conclusão pra máquina é desfazer a conclusão, apontamento
+      // junto — igual ao arrastar do board.
+      if (ordem.status === 'pronto_envio') desfazerConclusao()
+      else setPorta('maquina')
+      return
+    }
+    if (novoStatus === 'pronto_envio') {
+      setPorta('concluir')
+      return
+    }
+    handleMudarStatus(novoStatus)
+  }
+
+  function desfazerConclusao() {
     if (!ordem) return
     startAcao(async () => {
-      const result = pegar
-        ? await pegarOrdemAction(ordem.id)
-        : await soltarOrdemAction(ordem.id)
-      if (!result.success) {
-        toast.error(result.error)
+      const r = await desfazerConclusaoAction(ordem.id)
+      if (!r.success) {
+        toast.error(r.error)
         return
       }
-      toast.success(result.message ?? 'Pronto')
-      const novo = await obterOrdem(ordem.id)
-      if (novo) setOrdem(novo)
+      toast.success(r.message ?? 'Conclusão desfeita')
+      await recarregar(ordem.id)
       router.refresh()
     })
+  }
+
+  async function aoIniciar(mensagem: string) {
+    if (!ordem) return
+    setPorta(null)
+    toast.success(mensagem)
+    await recarregar(ordem.id)
+    router.refresh()
+  }
+
+  async function aoConcluir({
+    mensagem,
+    concluiu,
+  }: {
+    mensagem: string
+    concluiu: boolean
+  }) {
+    if (!ordem) return
+    setPorta(null)
+    // "Desfazer" só pra conclusão DE AGORA — ver o mesmo comentário no board.
+    toast.success(
+      mensagem,
+      concluiu
+        ? {
+            duration: 8000,
+            action: { label: 'Desfazer', onClick: () => desfazerConclusao() },
+          }
+        : undefined,
+    )
+    await recarregar(ordem.id)
+    router.refresh()
   }
 
   function excluir() {
@@ -226,7 +321,11 @@ function DetalheBody({
       // Enviado/cancelado saem do kanban — fecha o painel e atualiza o board.
       if (novoStatus === 'enviado' || novoStatus === 'cancelado') {
         toast.success(
-          novoStatus === 'enviado' ? 'OP concluída e enviada' : 'OP cancelada',
+          novoStatus === 'enviado'
+            ? ordem.canalDestino === 'estoque'
+              ? 'Baixa dada · entrou no estoque'
+              : 'Baixa dada · OP enviada'
+            : 'OP cancelada',
         )
         onClose()
         router.refresh()
@@ -261,84 +360,82 @@ function DetalheBody({
       </SheetHeader>
 
       <div className="space-y-5 px-4 pb-4">
-        {/* Ações rápidas */}
-        {(() => {
-          const idx = FLUXO.indexOf(ordem.status)
-          const proximo = idx >= 0 ? FLUXO[idx + 1] : undefined
-          const concluir = proximo === 'enviado'
-          const semDono = !ordem.responsavel
-          const meu = ordem.responsavel?.id === currentUserId
+        {/* A PRÓXIMA AÇÃO — um botão só, o da etapa. Só pra gerente/admin:
+            são as portas de `iniciarProducaoAction` e da conclusão sem teto,
+            que o servidor recusa pros outros papéis. */}
+        {gestor &&
+          (() => {
+            const acao = acaoPrincipalDe(ordem.status)
+            if (!acao) return null
+            const semApontamento = apontamentos.length === 0
+            return (
+              <section className="space-y-1.5">
+                {acao === 'iniciar' && (
+                  <Button
+                    className="w-full"
+                    disabled={acaoPend}
+                    onClick={() => setPorta('maquina')}
+                  >
+                    <Cog />
+                    Iniciar na máquina…
+                  </Button>
+                )}
 
-          return (
-            <section className="space-y-2">
-              <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-                Ações
-              </h3>
+                {acao === 'concluir' && (
+                  <>
+                    <Button
+                      className="w-full"
+                      disabled={acaoPend}
+                      onClick={() => setPorta('concluir')}
+                    >
+                      <PackageCheck />
+                      Concluir produção…
+                    </Button>
+                    {/* OP LEGADA em produção sem máquina: o arrastar antigo não
+                        perguntava. Resgatável, mas não é o caminho principal. */}
+                    {ordem.status === 'em_producao' && !ordem.maquina && (
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground w-full text-center text-xs underline-offset-2 hover:underline"
+                        disabled={acaoPend}
+                        onClick={() => setPorta('maquina')}
+                      >
+                        Pôr numa máquina…
+                      </button>
+                    )}
+                  </>
+                )}
 
-              {proximo && (
-                <Button
-                  className={cn(
-                    'w-full',
-                    concluir &&
-                      'bg-emerald-600 text-white hover:bg-emerald-700',
-                  )}
-                  disabled={acaoPend}
-                  onClick={() => handleMudarStatus(proximo)}
-                >
-                  {concluir ? (
-                    <>
+                {acao === 'baixa' && (
+                  <>
+                    <Button
+                      className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                      // Sem apontamento a baixa é recusada no servidor — e antes
+                      // entrava a META no estoque. A tela explica embaixo em vez
+                      // de deixar o toque virar erro.
+                      disabled={acaoPend || semApontamento}
+                      onClick={() => handleMudarStatus('enviado')}
+                    >
                       <CheckCircle2 />
-                      Concluir e enviar
-                    </>
-                  ) : (
-                    <>
-                      <ChevronRight />
-                      Avançar p/ {STATUS_LABEL[proximo]}
-                    </>
-                  )}
-                </Button>
-              )}
+                      {ordem.canalDestino === 'estoque'
+                        ? 'Dar baixa · entra no estoque'
+                        : 'Dar baixa · enviada'}
+                    </Button>
+                    {semApontamento && (
+                      <p className="text-muted-foreground text-center text-xs">
+                        Sem apontamento. Lance as peças abaixo antes de dar baixa.
+                      </p>
+                    )}
+                  </>
+                )}
+              </section>
+            )
+          })()}
 
-              {(semDono || meu) && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  disabled={acaoPend}
-                  onClick={() => pegarOuSoltar(semDono)}
-                >
-                  {semDono ? (
-                    <>
-                      <Hand />
-                      Pegar pra mim
-                    </>
-                  ) : (
-                    <>
-                      <Undo2 />
-                      Soltar (voltar pra fila)
-                    </>
-                  )}
-                </Button>
-              )}
-
-              {meu && (
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  disabled={acaoPend}
-                  onClick={() => setApontarOpen(true)}
-                >
-                  <ClipboardList />
-                  Apontar produção
-                </Button>
-              )}
-            </section>
-          )
-        })()}
-
-        {/* Produção (progresso + apontamentos) */}
+        {/* Resultado da produção (progresso + apontamentos) */}
         <section className="space-y-2">
           <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-            Produção
+            Resultado da produção
           </h3>
           <div className="text-muted-foreground flex justify-between text-xs tabular-nums">
             <span>Produzido</span>
@@ -382,29 +479,19 @@ function DetalheBody({
               ))}
             </ul>
           )}
-        </section>
-
-        <section className="space-y-2">
-          <h3 className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-            Status manual
-          </h3>
-          <Select
-            value={ordem.status}
-            onValueChange={(v) =>
-              v && handleMudarStatus(v as (typeof statusValues)[number])
-            }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {statusValues.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {STATUS_LABEL[s]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* FERRAMENTA DE CORREÇÃO, NÃO O CAMINHO. As quantidades entram pela
+              conclusão; isto existe pra OP antiga que chegou em Produção
+              concluída sem apontamento, e pro ajuste que só aparece na
+              conferência. Só soma — pra tirar, desfaz-se a conclusão. */}
+          {gestor && ordem.status !== 'enviado' && ordem.status !== 'cancelado' && (
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
+              onClick={() => setApontarOpen(true)}
+            >
+              Lançar apontamento avulso
+            </button>
+          )}
         </section>
 
         <section className="space-y-2">
@@ -543,6 +630,56 @@ function DetalheBody({
           )}
         </section>
 
+        {/* STATUS MANUAL — RECOLHIDO E NO FIM. É correção, não fluxo: o
+            fluxo é o botão lá de cima. Oferece só os status escolhíveis
+            (`STATUS_FILTRAVEIS`), e desabilita o que o caminho genérico
+            recusa, com a mesma regra do servidor. "Em produção" e "Produção
+            concluída" abrem os diálogos das portas, como no board. */}
+        {podeMover && (
+          <details className="group rounded-md border">
+            <summary className="text-muted-foreground flex cursor-pointer list-none items-center justify-between px-3 py-2 text-xs font-medium uppercase tracking-wide">
+              Status manual
+              <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t p-3">
+              <Select
+                value={ordem.status}
+                onValueChange={(v) => v && escolherStatus(v as Status)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* Legado fora do fluxo: aparece como é, sem ser escolhível. */}
+                  {!(STATUS_FILTRAVEIS as readonly string[]).includes(ordem.status) && (
+                    <SelectItem value={ordem.status} disabled>
+                      {STATUS_LABEL[ordem.status]} (histórico)
+                    </SelectItem>
+                  )}
+                  {STATUS_FILTRAVEIS.map((st) => {
+                    // As portas com diálogo ficam habilitadas: o diálogo é
+                    // quem pergunta o que falta. A baixa não tem diálogo, e só
+                    // vale a partir de Produção concluída.
+                    const temPorta = st === 'em_producao' || st === 'pronto_envio'
+                    const bloqueio = temPorta
+                      ? null
+                      : erroDaTransicaoGenerica(
+                          ordem.status,
+                          st,
+                          apontamentos.length > 0,
+                        )
+                    return (
+                      <SelectItem key={st} value={st} disabled={bloqueio !== null}>
+                        {STATUS_LABEL[st]}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          </details>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
           <Button
             size="sm"
@@ -598,15 +735,15 @@ function DetalheBody({
       <Dialog open={apontarOpen} onOpenChange={(o) => !o && setApontarOpen(false)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Apontar produção</DialogTitle>
+            <DialogTitle>Lançar apontamento avulso</DialogTitle>
             <DialogDescription>
-              Quantas peças ficaram prontas agora? Vai somando ao total
-              ({produzido}/{ordem.quantidade}).
+              Soma ao que já está registrado ({produzido}/{ordem.quantidade}).
+              É correção: o caminho normal é concluir a produção.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="ap-prod">Prontas</Label>
+              <Label htmlFor="ap-prod">Peças boas</Label>
               <Input
                 id="ap-prod"
                 type="number"
@@ -644,11 +781,36 @@ function DetalheBody({
               Cancelar
             </Button>
             <Button onClick={apontar} disabled={apontando}>
-              {apontando ? 'Salvando…' : 'Apontar'}
+              {apontando ? 'Salvando…' : 'Lançar'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {porta === 'maquina' && (
+        <IniciarNaMaquinaDialog
+          ordem={{
+            id: ordem.id,
+            numero: ordem.numero,
+            maquinaId: ordem.maquinaId,
+          }}
+          onFeito={aoIniciar}
+          onClose={() => setPorta(null)}
+        />
+      )}
+      {porta === 'concluir' && (
+        <ConcluirProducaoDialog
+          ordem={{
+            id: ordem.id,
+            numero: ordem.numero,
+            status: ordem.status,
+            quantidade: ordem.quantidade,
+            produzido,
+          }}
+          onFeito={aoConcluir}
+          onClose={() => setPorta(null)}
+        />
+      )}
     </>
   )
 }

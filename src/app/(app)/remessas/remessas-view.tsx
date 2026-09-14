@@ -272,7 +272,7 @@ function RemessaCard({
             {r.unidades.toLocaleString('pt-BR')} peças · {pctPecas}%
           </span>
           <span className="tabular-nums">
-            {r.opsProntas}/{r.ops} OPs prontas
+            {r.opsProntas}/{r.ops} OPs com produção concluída
           </span>
           {r.atrasadas > 0 && (
             <span className="text-destructive inline-flex items-center gap-1 font-medium">
@@ -284,7 +284,7 @@ function RemessaCard({
           <span>
             {r.pronta ? (
               <span className="font-medium text-emerald-600">
-                Pronta pra despachar
+                Produção concluída
               </span>
             ) : (
               <>

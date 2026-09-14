@@ -107,8 +107,8 @@ export async function listarOrdensProducao(
 
   const conditions = [
     isNull(ordensProducao.deletedAt),
-    // Cancelado e enviado (concluído) ficam fora do kanban — concluídas
-    // aparecem em Ordens com o filtro "Concluídas".
+    // Cancelado e enviado (com baixa) ficam fora do kanban — as com baixa
+    // aparecem em Ordens com o filtro "Com baixa".
     ne(ordensProducao.status, 'cancelado'),
     ne(ordensProducao.status, 'enviado'),
   ]

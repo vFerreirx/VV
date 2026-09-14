@@ -160,7 +160,9 @@ export function OrdensList({
       <div className="flex flex-wrap gap-1.5">
         {[
           { label: 'Todas', val: undefined as string | undefined },
-          { label: 'Concluídas', val: 'enviado' },
+          // "Com baixa", e não "Concluídas": concluída é a PRODUÇÃO, que
+          // continua no board. Este chip filtra `enviado`.
+          { label: 'Com baixa', val: 'enviado' },
           { label: 'Canceladas', val: 'cancelado' },
         ].map((chip) => {
           const ativo = statusAtual === chip.val

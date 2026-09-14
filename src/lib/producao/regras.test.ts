@@ -17,6 +17,11 @@ import {
 } from './conclusao.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
 import {
+  erroDaTransicaoGenerica,
+  erroDaTransicaoPeloFormulario,
+  podeConcluirProducao,
+} from './transicoes-da-op.ts'
+import {
   MOTIVOS_DE_PARADA,
   abreParada,
   duracaoEmPalavras,
@@ -295,17 +300,17 @@ test('numero quebrado ou negativo nao passa', () => {
 test('o resumo do historico diz o TOTAL contra a meta', () => {
   assert.equal(
     resumoDaConclusao(30, 0, calcularConclusao(30, 0)),
-    'Concluída com 30 de 30 peças',
+    'Produção concluída com 30 de 30 peças',
   )
   assert.equal(
     resumoDaConclusao(27, 2, calcularConclusao(30, 0)),
-    'Concluída com 27 de 30 peças (3 a menos) · 2 refugo',
+    'Produção concluída com 27 de 30 peças (3 a menos) · 2 refugo',
   )
   // Com registro anterior o total soma os dois, senao o gerente leria "18 de
   // 30" numa OP que ficou completa.
   assert.equal(
     resumoDaConclusao(18, 0, calcularConclusao(30, 12)),
-    'Concluída com 30 de 30 peças',
+    'Produção concluída com 30 de 30 peças',
   )
 })
 
@@ -314,14 +319,41 @@ test('a passagem de turno vai NOMEADA no historico', () => {
   // de quem concluiu. Ratear seria inventar; nomear a passagem, nao.
   assert.equal(
     resumoDaConclusao(30, 0, calcularConclusao(30, 0), 'teste1'),
-    'Concluída com 30 de 30 peças · iniciada por teste1',
+    'Produção concluída com 30 de 30 peças · iniciada por teste1',
   )
 })
 
 test('mesma pessoa comecando e terminando nao vira ruido', () => {
   assert.equal(
     resumoDaConclusao(30, 0, calcularConclusao(30, 0), null),
-    'Concluída com 30 de 30 peças',
+    'Produção concluída com 30 de 30 peças',
+  )
+})
+
+test('o gerente conclui sem teto; o operador continua com teto', () => {
+  // O teto e ligado por padrao: quem esquece de passar cai no lado do
+  // tablet, que e o seguro.
+  const c = calcularConclusao(30, 0)
+  assert.equal(erroDeQuantidade(32, 0, c) !== null, true)
+  assert.equal(erroDeQuantidade(32, 0, c, { teto: true }) !== null, true)
+  assert.equal(erroDeQuantidade(32, 0, c, { teto: false }), null)
+  // Sem teto, o resto da validacao continua valendo.
+  assert.equal(erroDeQuantidade(-1, 0, c, { teto: false }), 'Quantidade inválida')
+  assert.equal(erroDeQuantidade(2, 1.5, c, { teto: false }), 'Refugo inválido')
+})
+
+test('acima da meta o historico diz quanto a mais', () => {
+  // Sem isto, 32 de 30 saia igual a 30 de 30.
+  assert.equal(
+    resumoDaConclusao(32, 0, calcularConclusao(30, 0)),
+    'Produção concluída com 32 de 30 peças (2 a mais)',
+  )
+})
+
+test('conclusao direto da fila avisa que nao passou por maquina', () => {
+  assert.equal(
+    resumoDaConclusao(27, 1, calcularConclusao(30, 0), null, { semMaquina: true }),
+    'Produção concluída com 27 de 30 peças (3 a menos) · 1 refugo · sem passar por máquina',
   )
 })
 
@@ -602,4 +634,58 @@ test('relogio do tablet atrasado nao vira duracao negativa na tela', () => {
   const t0 = new Date('2026-09-11T08:00:00Z')
   const antes = new Date('2026-09-11T07:55:00Z')
   assert.equal(duracaoEmPalavras(t0, antes), 'menos de 1 min')
+})
+
+// -----------------------------------------------------------------
+// As portas da OP
+// -----------------------------------------------------------------
+
+test('em producao nunca entra pelo caminho generico', () => {
+  // Nem com apontamento: a porta pede a MAQUINA, nao a quantidade.
+  assert.notEqual(erroDaTransicaoGenerica('programado', 'em_producao', false), null)
+  assert.notEqual(erroDaTransicaoGenerica('pronto_envio', 'em_producao', true), null)
+})
+
+test('producao concluida pelo generico so com apontamento', () => {
+  assert.notEqual(erroDaTransicaoGenerica('em_producao', 'pronto_envio', false), null)
+  // A volta: OP concluida que recuou uma coluna ja tem a quantidade dela.
+  assert.equal(erroDaTransicaoGenerica('programado', 'pronto_envio', true), null)
+})
+
+test('baixa so a partir de producao concluida E com apontamento', () => {
+  // O caminho que alimentava o fallback da meta: pular direto pra enviado.
+  assert.notEqual(erroDaTransicaoGenerica('programado', 'enviado', true), null)
+  assert.notEqual(erroDaTransicaoGenerica('em_producao', 'enviado', true), null)
+  assert.notEqual(erroDaTransicaoGenerica('pronto_envio', 'enviado', false), null)
+  assert.equal(erroDaTransicaoGenerica('pronto_envio', 'enviado', true), null)
+})
+
+test('as outras transicoes seguem livres, e ficar parado nunca e erro', () => {
+  assert.equal(erroDaTransicaoGenerica('em_producao', 'programado', false), null)
+  assert.equal(erroDaTransicaoGenerica('programado', 'cancelado', false), null)
+  assert.equal(erroDaTransicaoGenerica('enviado', 'pronto_envio', true), null)
+  assert.equal(erroDaTransicaoGenerica('em_producao', 'em_producao', false), null)
+})
+
+test('o formulario nao leva pra nenhuma das tres portas, nem com apontamento', () => {
+  for (const para of ['em_producao', 'pronto_envio', 'enviado'] as const) {
+    assert.notEqual(erroDaTransicaoPeloFormulario('programado', para), null)
+  }
+  // O status atual continua valido: editar a observacao de uma OP em
+  // producao nao pode ser recusado.
+  assert.equal(erroDaTransicaoPeloFormulario('em_producao', 'em_producao'), null)
+  assert.equal(erroDaTransicaoPeloFormulario('programado', 'aguardando_materia_prima'), null)
+})
+
+test('gerente conclui de qualquer coluna antes; operador so de em producao', () => {
+  for (const s of ['aguardando_materia_prima', 'programado', 'acabamento', 'embalagem'] as const) {
+    assert.equal(podeConcluirProducao(s, true), true, s)
+    assert.equal(podeConcluirProducao(s, false), false, s)
+  }
+  assert.equal(podeConcluirProducao('em_producao', false), true)
+  assert.equal(podeConcluirProducao('em_producao', true), true)
+  // Depois da conclusao ninguem conclui de novo.
+  for (const s of ['pronto_envio', 'enviado', 'cancelado'] as const) {
+    assert.equal(podeConcluirProducao(s, true), false, s)
+  }
 })

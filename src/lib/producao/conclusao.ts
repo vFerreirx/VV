@@ -17,11 +17,12 @@
 // pra baixo pra conseguir salvar, e o número que sobra mente sobre o
 // rendimento do lote.
 //
-// ⚠️ E O TETO É SÓ DO OPERADOR. `apontarProducaoAction`, que é a ferramenta
-// do gerente no op-detail-sheet, continua sem limite. Se a fábrica de fato
-// fizer 32 numa OP de 30, as peças existem no mundo e alguém tem que
-// conseguir registrar — a decisão é que essa pessoa é quem planejou, não
-// quem está na máquina.
+// ⚠️ E O TETO É SÓ DO OPERADOR. O gerente conclui pelo board e aponta pelo
+// sheet sem limite: se a fábrica de fato fizer 32 numa OP de 30, as peças
+// existem no mundo e alguém tem que conseguir registrar — a decisão é que
+// essa pessoa é quem planejou, não quem está na máquina. É por isso que o
+// teto é uma OPÇÃO de `erroDeQuantidade`, ligada por padrão: quem esquecer
+// de passar cai no lado seguro, que é o do tablet.
 //
 // ─────────────────────────────────────────────────────────────────────────
 // ABAIXO DA META CONCLUI, E A DIFERENÇA VAI PRO HISTÓRICO
@@ -76,6 +77,7 @@ export function erroDeQuantidade(
   produzida: number,
   refugo: number,
   { meta, jaRegistrado, restante }: Conclusao,
+  { teto = true }: { teto?: boolean } = {},
 ): string | null {
   if (!Number.isInteger(produzida) || produzida < 0) {
     return 'Quantidade inválida'
@@ -83,7 +85,7 @@ export function erroDeQuantidade(
   if (!Number.isInteger(refugo) || refugo < 0) {
     return 'Refugo inválido'
   }
-  if (produzida > restante) {
+  if (teto && produzida > restante) {
     // A mensagem muda conforme haja registro anterior: "o máximo é 30" numa
     // OP que já tem 12 registradas seria uma meia-verdade que ele não tem
     // como conferir na tela.
@@ -112,18 +114,33 @@ export function erroDeQuantidade(
  *
  * `iniciadaPor` só entra quando é OUTRA pessoa. Numa OP que a mesma pessoa
  * começou e terminou, "iniciada por ela mesma" é ruído.
+ *
+ * ⚠️ "PRODUÇÃO CONCLUÍDA", NUNCA "CONCLUÍDA" SOZINHA. A OP tem dois fins: sair
+ * da máquina (esta linha) e receber baixa (`enviado`). Com a palavra solta, o
+ * gerente lendo o histórico não distingue um do outro.
+ *
+ * `semMaquina` marca a conclusão que o gerente faz direto da fila — a OP que
+ * saiu do tear enquanto o board ainda não sabia dela (a virada do Trello). A
+ * análise futura não precisa desta frase pra achá-las: a transição do evento
+ * já diz (`status_anterior` diferente de `em_producao`). A frase é pra quem
+ * lê o histórico e estranha a OP sem máquina.
  */
 export function resumoDaConclusao(
   produzida: number,
   refugo: number,
   { meta, jaRegistrado }: Conclusao,
   iniciadaPor?: string | null,
+  { semMaquina = false }: { semMaquina?: boolean } = {},
 ): string {
   const total = jaRegistrado + produzida
-  const falta = meta - total
-  const partes = [`Concluída com ${total} de ${meta} peças`]
-  if (falta > 0) partes.push(`(${falta} a menos)`)
+  const diferenca = meta - total
+  const partes = [`Produção concluída com ${total} de ${meta} peças`]
+  if (diferenca > 0) partes.push(`(${diferenca} a menos)`)
+  // Só o gerente passa da meta — o teto do operador não deixa. Sem isto, 32
+  // de 30 saía igual a 30 de 30 no histórico.
+  if (diferenca < 0) partes.push(`(${-diferenca} a mais)`)
   if (refugo > 0) partes.push(`· ${refugo} refugo`)
   if (iniciadaPor) partes.push(`· iniciada por ${iniciadaPor}`)
+  if (semMaquina) partes.push('· sem passar por máquina')
   return partes.join(' ')
 }

@@ -22,36 +22,26 @@ import {
   Clock,
   Cog,
   Folder,
-  Hand,
   PackageOpen,
   Plus,
-  Undo2,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useOptimistic, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import type { KanbanCardData } from './actions'
+import {
+  ConcluirProducaoDialog,
+  IniciarNaMaquinaDialog,
+} from './dialogos-do-gerente'
 import { OpDetailSheet } from './op-detail-sheet'
 import { QuickOrdemDialog } from './quick-ordem-dialog'
-import type {
-  MaquinasParaPegar,
-  ProdutoComVariacoesParaForm,
-} from '@/app/(app)/ordens/actions'
+import type { ProdutoComVariacoesParaForm } from '@/app/(app)/ordens/actions'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  listarMaquinasParaPegar,
+  desfazerConclusaoAction,
+  iniciarProducaoAction,
   mudarStatusOrdemAction,
-  pegarOrdemAction,
-  soltarOrdemAction,
 } from '@/app/(app)/ordens/actions'
 import { Badge } from '@/components/ui/badge'
 import { PRIORIDADE_BADGE } from '@/lib/prioridade'
@@ -96,35 +86,45 @@ export const COLUMN_STYLES: Record<
   },
 }
 
-// Limite de WIP (work-in-progress) por etapa. Ausente = sem limite.
+// OCUPAÇÃO NO CABEÇALHO DE "EM PRODUÇÃO", NO LUGAR DO LIMITE DE WIP.
 //
-// 48 = 24 (capacidade de máquina depois das 6 novas, TC-19 a TC-24) + os 12
-// do acabamento + os 12 da embalagem. As duas etapas saíram do board, mas o
-// trabalho continua no chão de fábrica: a OP que antes seguia pra acabamento
-// agora fica em `em_producao` até estar pronta pra envio, e o limite tem que
-// caber as três.
-const WIP_LIMITES: Partial<Record<StatusKanban, number>> = {
-  em_producao: 48,
-}
+// O limite era 48, calculado quando a OP ficava em `em_producao` também
+// durante acabamento e embalagem: 24 máquinas + 12 + 12. Hoje ela sai de
+// produção quando sai da máquina, e o índice único
+// `ordens_producao_maquina_em_producao_uidx` só deixa uma OP em produção por
+// máquina — o 48 nunca disparava, e um contador que nunca dispara ensina a
+// não olhar pra ele.
+//
+// O que responde "cabe mais uma?" é a máquina: "18 de 22 máquinas", as que
+// estão produzindo contra as aptas. Sem alarme — é informação, não limite.
+//
+// ⚠️ A CONTA É A DA /fabrica, e não uma nova. `page.tsx` usa a mesma
+// `listarMaquinas` e passa por `situacaoDaMaquina` + `contarMaquinas`
+// (src/lib/producao/estado-maquina.ts). Com uma conta aqui e outra lá, as
+// duas telas iam discordar sobre a mesma fábrica no mesmo minuto — e a
+// máquina em manutenção com OP dentro é exatamente onde elas divergiriam.
+export type OcupacaoDasMaquinas = { produzindo: number; aptas: number }
 
 // A partir de quanto tempo parado na etapa o card é destacado. Ausente =
 // sem destaque (o "há Xd" continua aparecendo, só sem cor).
 //
-// ⚠️ VAZIO DE PROPÓSITO: é o piloto só com OPs de canal `estoque`. Os 3 dias
-// que valiam pra todas as colunas eram chute, e chute igual pra fila e pra
-// máquina — uma OP três dias em `programado` é rotina, três dias em
-// `em_producao` pode ser uma máquina parada. Os limiares vão sair da mediana
-// e do p90 de permanência por coluna no `eventos_kanban` quando ~30 OPs
-// chegarem a `enviado`, ou em 6 semanas, o que vier primeiro.
+// ⚠️ VAZIO DURANTE A COLETA. Chute de limiar é pior que limiar nenhum: os 3
+// dias que valiam pra todas as colunas acendiam a fila por rotina e deixavam
+// passar a máquina parada. A coleta começa quando os operadores entram nos
+// tablets — antes disso o board é atualizado pelo gerente em paralelo com o
+// Trello, e o tempo por coluna mede quando ele lembrou de arrastar, não a
+// fábrica. Ela termina com 30 OPs com baixa E pelo menos 2 semanas
+// completas; os limiares saem da mediana e do p90 de permanência por coluna
+// no `eventos_kanban`.
 //
-// Ainda está EM ABERTO se vão ser dias por coluna ou normalizados por
+// Continua EM ABERTO se vão ser dias por coluna ou normalizados por
 // quantidade de peças: a mesma coluna segura uma OP de 20 peças por uma
 // tarde e uma de 600 por uma semana, e um limiar fixo em dias acenderia a
 // grande toda vez e nunca a pequena.
 //
-// Na coluna `pronto_envio` o destaque NÃO é atraso: é pendência de baixa — a
-// peça saiu da máquina, foi pra costura, e ninguém fechou a OP. O `title` do
-// relógio diz isso nessa coluna.
+// Na coluna Produção concluída o destaque NÃO é atraso: é pendência de baixa
+// — a produção terminou e ninguém deu baixa na OP. O `title` do relógio diz
+// isso nessa coluna.
 const AGING_ALERTA_MS: Partial<Record<StatusKanban, number>> = {}
 
 function tempoNaEtapa(
@@ -155,19 +155,25 @@ const FILTRO_LABEL: Record<FiltroChip, string> = {
 type Props = {
   ordens: KanbanCardData[]
   podeMover: boolean
-  isOperador: boolean
   currentUserId: string
   produtos: ProdutoComVariacoesParaForm[]
   podeCriar: boolean
+  ocupacao: OcupacaoDasMaquinas
+  /** Admin ou gerente: as ações de produção do sheet. */
+  gestor: boolean
 }
+
+// Status que a OP pode ter no board — os das colunas.
+type Status = (typeof statusValues)[number]
 
 export function KanbanBoard({
   ordens,
   podeMover,
-  isOperador,
   currentUserId,
   produtos,
   podeCriar,
+  ocupacao,
+  gestor,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -175,6 +181,10 @@ export function KanbanBoard({
   const [detalheId, setDetalheId] = useState<string | null>(null)
   const [novaOpOpen, setNovaOpOpen] = useState(false)
   const [filtros, setFiltros] = useState<Set<FiltroChip>>(new Set())
+  // O diálogo de uma das duas portas próprias, quando aberto.
+  const [porta, setPorta] = useState<
+    { tipo: 'maquina' | 'concluir'; ordem: KanbanCardData } | null
+  >(null)
 
   function toggleFiltro(f: FiltroChip) {
     setFiltros((prev) => {
@@ -213,6 +223,14 @@ export function KanbanBoard({
           // O useEffect acima sincroniza o estado local depois.
           router.refresh()
         },
+      )
+      // A OCUPAÇÃO DO CABEÇALHO também depende da máquina: pôr uma em
+      // manutenção muda o "de 22" sem mexer em OP nenhuma. `maquinas` já está
+      // na publicação (05_realtime.sql).
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'maquinas' },
+        () => router.refresh(),
       )
       .subscribe()
 
@@ -256,43 +274,63 @@ export function KanbanBoard({
     setActiveId(String(event.active.id))
   }
 
-  function mover(
-    ordemId: string,
-    novoStatus: (typeof statusValues)[number],
-    opts?: { semDesfazer?: boolean },
-  ) {
+  // O GESTO DO GERENTE: arrastar o card, ou o "›" dele. Decide QUAL porta.
+  //
+  // ⚠️ AS DUAS PORTAS PRÓPRIAS ABREM DIÁLOGO, E O CARD NÃO SE MEXE ANTES DE
+  // CONFIRMAR. Sem update otimista: cancelar não tem o que desfazer, porque a
+  // OP nunca saiu do lugar. O resto segue o caminho genérico de sempre.
+  function mover(ordemId: string, novoStatus: Status) {
     const ordem = items.find((o) => o.id === ordemId)
     if (!ordem || ordem.status === novoStatus) return
     if (!ehStatusKanban(novoStatus)) return
-    const statusAnterior = ordem.status
 
+    if (novoStatus === 'em_producao') {
+      // DE VOLTA DA CONCLUSÃO pra máquina é desfazer a conclusão — com o
+      // apontamento dela. Pedir máquina aqui só devolveria erro: OP com
+      // produção concluída não entra em máquina de novo.
+      if (ordem.status === 'pronto_envio') {
+        desfazerConclusao(ordem.id)
+        return
+      }
+      setPorta({ tipo: 'maquina', ordem })
+      return
+    }
+    if (novoStatus === 'pronto_envio') {
+      setPorta({ tipo: 'concluir', ordem })
+      return
+    }
+    moverGenerico(ordem.id, ordem.status, novoStatus, ordem.maquinaId)
+  }
+
+  // O caminho genérico (`mudarStatusOrdemAction`), com update otimista e
+  // "Desfazer". O servidor recusa as portas próprias — ver
+  // src/lib/producao/transicoes-da-op.ts.
+  function moverGenerico(
+    ordemId: string,
+    de: Status,
+    para: Status,
+    maquinaId: string | null,
+    opts?: { semDesfazer?: boolean },
+  ) {
     startTransition(async () => {
       // Optimistic update — válido durante toda a transição.
-      setOptimisticItems({ id: ordemId, status: novoStatus })
+      setOptimisticItems({ id: ordemId, status: para })
 
-      const result = await mudarStatusOrdemAction(ordemId, {
-        status: novoStatus,
-      })
+      const result = await mudarStatusOrdemAction(ordemId, { status: para })
       if (!result.success) {
         // Sai da transição: o estado otimista some e a UI volta pro server state.
         toast.error(result.error)
         return
       }
-      // A troca de dono nunca pode ser silenciosa: é assim que o colega
-      // descobre do pior jeito que a OP não é mais dele.
-      if (result.assumiu) {
-        toast.info('A OP agora está com você')
-      }
+      const texto = 'Movida pra ' + STATUS_LABEL_CURTO[para]
       if (opts?.semDesfazer) {
-        toast.success('Movida pra ' + STATUS_LABEL_CURTO[novoStatus])
+        toast.success(texto)
       } else {
-        // Toast com "Desfazer": devolve a OP pro status anterior.
-        toast.success('Movida pra ' + STATUS_LABEL_CURTO[novoStatus], {
+        toast.success(texto, {
           duration: 6000,
           action: {
             label: 'Desfazer',
-            onClick: () =>
-              mover(ordemId, statusAnterior, { semDesfazer: true }),
+            onClick: () => desfazerMovimento(ordemId, de, maquinaId),
           },
         })
       }
@@ -300,11 +338,102 @@ export function KanbanBoard({
     })
   }
 
+  // ⚠️ O "DESFAZER" RECEBE A ORIGEM PRONTA, E NÃO RELÊ O CARD. O toast
+  // guarda o closure do render em que o movimento começou — ali o card ainda
+  // estava na coluna de ORIGEM, e reler `items` fazia "voltar pra lá" parecer
+  // já feito: o desfazer saía sem fazer nada.
+  function desfazerMovimento(
+    ordemId: string,
+    voltarPara: Status,
+    maquinaId: string | null,
+  ) {
+    // A volta pra produção passa pela porta dela, com a máquina que a OP
+    // tinha. O servidor ainda confere se ela está livre.
+    if (voltarPara === 'em_producao') {
+      if (!maquinaId) {
+        toast.error('Essa OP não tem máquina pra voltar. Abra a OP e escolha uma.')
+        return
+      }
+      startTransition(async () => {
+        const r = await iniciarProducaoAction(ordemId, maquinaId)
+        if (!r.success) {
+          toast.error(r.error)
+          return
+        }
+        toast.success(r.message ?? 'OP voltou pra produção')
+        router.refresh()
+      })
+      return
+    }
+    // Pra `pronto_envio` o genérico aceita: a OP já tem o apontamento dela.
+    const atual = items.find((o) => o.id === ordemId)?.status
+    moverGenerico(ordemId, atual ?? voltarPara, voltarPara, maquinaId, {
+      semDesfazer: true,
+    })
+  }
+
+  function desfazerConclusao(ordemId: string) {
+    startTransition(async () => {
+      const r = await desfazerConclusaoAction(ordemId)
+      if (!r.success) {
+        toast.error(r.error)
+        return
+      }
+      toast.success(r.message ?? 'Conclusão desfeita')
+      router.refresh()
+    })
+  }
+
+  function aoIniciar(ordem: KanbanCardData, mensagem: string) {
+    setPorta(null)
+    // OP legada que só GANHOU máquina não mudou de coluna: não há o que
+    // desfazer por aqui.
+    if (ordem.status === 'em_producao') {
+      toast.success(mensagem)
+    } else {
+      toast.success(mensagem, {
+        duration: 6000,
+        action: {
+          label: 'Desfazer',
+          onClick: () =>
+            moverGenerico(ordem.id, 'em_producao', ordem.status, null, {
+              semDesfazer: true,
+            }),
+        },
+      })
+    }
+    router.refresh()
+  }
+
+  function aoConcluir(
+    ordem: KanbanCardData,
+    { mensagem, concluiu }: { mensagem: string; concluiu: boolean },
+  ) {
+    setPorta(null)
+    // "Desfazer" só pra conclusão DE AGORA. "Já estava concluída" também é
+    // sucesso, e desfazê-la apagaria o registro de outra pessoa. O desfazer
+    // tira o apontamento junto e devolve a OP pra origem — a máquina, ou a
+    // coluna da fila de onde o gerente concluiu.
+    toast.success(
+      mensagem,
+      concluiu
+        ? {
+            duration: 8000,
+            action: {
+              label: 'Desfazer',
+              onClick: () => desfazerConclusao(ordem.id),
+            },
+          }
+        : undefined,
+    )
+    router.refresh()
+  }
+
   function handleDragEnd(event: DragEndEvent) {
     setActiveId(null)
     const { active, over } = event
     if (!over) return
-    mover(String(active.id), String(over.id) as (typeof statusValues)[number])
+    mover(String(active.id), String(over.id) as Status)
   }
 
   return (
@@ -368,9 +497,8 @@ export function KanbanBoard({
               status={g.status}
               ordens={g.ordens}
               podeMover={podeMover}
-              isOperador={isOperador}
-              currentUserId={currentUserId}
               isPending={isPending}
+              ocupacao={g.status === 'em_producao' ? ocupacao : null}
               onMover={mover}
               onAbrirDetalhe={(id) => setDetalheId(id)}
             />
@@ -389,7 +517,8 @@ export function KanbanBoard({
       <OpDetailSheet
         ordemId={detalheId}
         onClose={() => setDetalheId(null)}
-        currentUserId={currentUserId}
+        gestor={gestor}
+        podeMover={podeMover}
       />
 
       <QuickOrdemDialog
@@ -397,6 +526,21 @@ export function KanbanBoard({
         onClose={() => setNovaOpOpen(false)}
         produtos={produtos}
       />
+
+      {porta?.tipo === 'maquina' && (
+        <IniciarNaMaquinaDialog
+          ordem={porta.ordem}
+          onFeito={(mensagem) => aoIniciar(porta.ordem, mensagem)}
+          onClose={() => setPorta(null)}
+        />
+      )}
+      {porta?.tipo === 'concluir' && (
+        <ConcluirProducaoDialog
+          ordem={porta.ordem}
+          onFeito={(resultado) => aoConcluir(porta.ordem, resultado)}
+          onClose={() => setPorta(null)}
+        />
+      )}
     </>
   )
 }
@@ -409,26 +553,22 @@ function KanbanColumn({
   status,
   ordens,
   podeMover,
-  isOperador,
-  currentUserId,
   isPending,
+  ocupacao,
   onMover,
   onAbrirDetalhe,
 }: {
   status: StatusKanban
   ordens: KanbanCardData[]
   podeMover: boolean
-  isOperador: boolean
-  currentUserId: string
   isPending: boolean
+  /** Só na coluna "Em produção"; null nas outras. */
+  ocupacao: OcupacaoDasMaquinas | null
   onMover: (id: string, status: (typeof statusValues)[number]) => void
   onAbrirDetalhe: (id: string) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status })
   const styles = COLUMN_STYLES[status]
-  const limite = WIP_LIMITES[status]
-  const acima = limite != null && ordens.length > limite
-  const cheio = limite != null && ordens.length === limite
 
   // 1º nível: OPs de uma remessa Full viram um card do Full na coluna.
   // O restante segue o agrupamento por produto (2+ OPs -> pasta).
@@ -456,29 +596,28 @@ function KanbanColumn({
     <div className="flex w-[78vw] max-w-64 shrink-0 snap-start flex-col sm:w-64">
       <header
         className={cn(
-          'mb-2 flex items-center justify-between rounded-md px-3 py-2 text-xs font-medium',
+          'mb-2 rounded-md px-3 py-2 text-xs font-medium',
           styles.header,
-          acima && 'ring-1 ring-destructive/50',
         )}
       >
-        <span className="flex items-center gap-2">
-          <span className={cn('inline-block h-2 w-2 rounded-full', styles.bar)} />
-          {STATUS_LABEL_CURTO[status]}
-        </span>
-        <span
-          className={cn(
-            'tabular-nums',
-            acima
-              ? 'text-destructive font-semibold'
-              : cheio
-                ? 'font-semibold opacity-90'
-                : 'opacity-70',
-          )}
-          title={limite != null ? `Limite da etapa: ${limite}` : undefined}
-        >
-          {ordens.length}
-          {limite != null && `/${limite}`}
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <span className={cn('inline-block h-2 w-2 rounded-full', styles.bar)} />
+            {STATUS_LABEL_CURTO[status]}
+          </span>
+          <span className="tabular-nums opacity-70">{ordens.length}</span>
+        </div>
+        {/* Os dois números podem divergir, e é informação: OP legada em
+            produção sem máquina, ou máquina em manutenção com OP dentro. */}
+        {ocupacao && (
+          <div
+            className="mt-0.5 text-[10px] font-normal tabular-nums opacity-80"
+            title="Máquinas produzindo / máquinas aptas — a mesma conta da Fábrica"
+          >
+            {ocupacao.produzindo} de {ocupacao.aptas}{' '}
+            {ocupacao.aptas === 1 ? 'máquina' : 'máquinas'}
+          </div>
+        )}
       </header>
       <div
         ref={setNodeRef}
@@ -501,8 +640,6 @@ function KanbanColumn({
             key={f.id}
             ops={f.ops}
             podeMover={podeMover}
-            isOperador={isOperador}
-            currentUserId={currentUserId}
             isPending={isPending}
             onMover={onMover}
             onAbrirDetalhe={onAbrirDetalhe}
@@ -514,8 +651,6 @@ function KanbanColumn({
               key={g.key}
               grupo={g}
               podeMover={podeMover}
-              isOperador={isOperador}
-              currentUserId={currentUserId}
               isPending={isPending}
               onMover={onMover}
               onAbrirDetalhe={onAbrirDetalhe}
@@ -525,8 +660,6 @@ function KanbanColumn({
               key={g.ops[0].id}
               ordem={g.ops[0]}
               podeMover={podeMover}
-              isOperador={isOperador}
-              currentUserId={currentUserId}
               isPending={isPending}
               onMover={onMover}
               onAbrirDetalhe={onAbrirDetalhe}
@@ -546,16 +679,12 @@ function KanbanColumn({
 function PastaFull({
   ops,
   podeMover,
-  isOperador,
-  currentUserId,
   isPending,
   onMover,
   onAbrirDetalhe,
 }: {
   ops: KanbanCardData[]
   podeMover: boolean
-  isOperador: boolean
-  currentUserId: string
   isPending: boolean
   onMover: (id: string, status: (typeof statusValues)[number]) => void
   onAbrirDetalhe: (id: string) => void
@@ -607,8 +736,6 @@ function PastaFull({
               key={o.id}
               ordem={o}
               podeMover={podeMover}
-              isOperador={isOperador}
-              currentUserId={currentUserId}
               isPending={isPending}
               onMover={onMover}
               onAbrirDetalhe={onAbrirDetalhe}
@@ -662,16 +789,12 @@ function contar(ops: KanbanCardData[], chave: (o: KanbanCardData) => string) {
 function PastaProduto({
   grupo,
   podeMover,
-  isOperador,
-  currentUserId,
   isPending,
   onMover,
   onAbrirDetalhe,
 }: {
   grupo: GrupoProduto
   podeMover: boolean
-  isOperador: boolean
-  currentUserId: string
   isPending: boolean
   onMover: (id: string, status: (typeof statusValues)[number]) => void
   onAbrirDetalhe: (id: string) => void
@@ -810,8 +933,6 @@ function PastaProduto({
                   key={o.id}
                   ordem={o}
                   podeMover={podeMover}
-                  isOperador={isOperador}
-                  currentUserId={currentUserId}
                   isPending={isPending}
                   onMover={onMover}
                   onAbrirDetalhe={onAbrirDetalhe}
@@ -832,16 +953,12 @@ function PastaProduto({
 function KanbanCard({
   ordem,
   podeMover,
-  isOperador,
-  currentUserId,
   isPending,
   onMover,
   onAbrirDetalhe,
 }: {
   ordem: KanbanCardData
   podeMover: boolean
-  isOperador: boolean
-  currentUserId: string
   isPending: boolean
   onMover: (id: string, status: (typeof statusValues)[number]) => void
   onAbrirDetalhe: (id: string) => void
@@ -850,14 +967,6 @@ function KanbanCard({
     id: ordem.id,
     disabled: !podeMover || isPending,
   })
-
-  // O operador move qualquer OP da ESTAÇÃO dele, não só a que pegou — e a
-  // query do servidor só entrega OP da fila ou da estação dele, então "tem
-  // máquina" já basta pra saber que é da estação. OP da fila (sem máquina)
-  // fica de fora de propósito: pra ela o caminho é "Pegar pra mim", que é
-  // quem escolhe a máquina. Espelha `operadorPodeAgirNaOrdem` no servidor.
-  const podeMoverEsta =
-    podeMover && (!isOperador || ordem.maquinaId !== null)
 
   // Quando arrastando, escondemos o card original (DragOverlay mostra a cópia).
   return (
@@ -883,233 +992,10 @@ function KanbanCard({
     >
       <KanbanCardContent
         ordem={ordem}
-        currentUserId={currentUserId}
-        isOperador={isOperador}
-        podeMoverEsta={podeMoverEsta}
+        podeMoverEsta={podeMover}
         onMover={onMover}
       />
     </div>
-  )
-}
-
-// Escolha da máquina ao pegar uma OP da fila.
-//
-// É CONVENIÊNCIA, não a regra: quem valida máquina existe / é da estação /
-// está livre é `pegarOrdemAction` no servidor. Aqui só evitamos oferecer o
-// que vai ser recusado.
-function EscolherMaquinaDialog({
-  ordemNumero,
-  isPending,
-  onEscolher,
-  onClose,
-}: {
-  ordemNumero: string
-  isPending: boolean
-  onEscolher: (maquinaId: string) => void
-  onClose: () => void
-}) {
-  const [dados, setDados] = useState<MaquinasParaPegar | null>(null)
-  const [erro, setErro] = useState<string | null>(null)
-
-  useEffect(() => {
-    let vivo = true
-    listarMaquinasParaPegar().then((r) => {
-      if (!vivo) return
-      if (r.success) setDados(r.data ?? null)
-      else setErro(r.error)
-    })
-    return () => {
-      vivo = false
-    }
-  }, [])
-
-  const carregando = dados === null && erro === null
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Em qual máquina?</DialogTitle>
-          <DialogDescription>
-            A OP {ordemNumero} entra em produção na máquina escolhida.
-            {/* Sem prefixo "Estação": o nome cadastrado já costuma ser
-                "Estação 1", e sairia "Estação Estação 1". */}
-            {dados?.estacaoNome ? ` Máquinas da ${dados.estacaoNome}.` : ''}
-          </DialogDescription>
-        </DialogHeader>
-
-        {carregando && (
-          <p className="text-muted-foreground py-6 text-center text-sm">
-            Carregando máquinas…
-          </p>
-        )}
-
-        {/* O caso "operador sem estação" chega aqui como erro da action, com
-            a mensagem explicando o que fazer — nunca um erro genérico. */}
-        {erro && (
-          <p className="text-destructive py-6 text-center text-sm">{erro}</p>
-        )}
-
-        {dados && dados.maquinas.length === 0 && (
-          <p className="text-muted-foreground py-6 text-center text-sm">
-            Nenhuma máquina vinculada
-            {dados.estacaoNome ? ` à estação ${dados.estacaoNome}` : ''}. Fale
-            com o admin pra vincular as máquinas em Estações.
-          </p>
-        )}
-
-        {dados && dados.maquinas.length > 0 && (
-          <div className="grid max-h-[50vh] grid-cols-1 gap-1.5 overflow-y-auto sm:grid-cols-2">
-            {dados.maquinas.map((m) => {
-              // SÃO DOIS MOTIVOS DIFERENTES pra máquina não servir, e a tela
-              // precisa dizer QUAL: ocupada (tem OP rodando — duas na mesma
-              // máquina não existe no mundo físico) ou impedida (manutenção,
-              // setup, desativada).
-              //
-              // ⚠️ O impedimento vem de `motivoDeImpedimento`, a MESMA função
-              // que `validarMaquinaParaOrdem` usa pra recusar no servidor.
-              // Antes este seletor só sabia de ocupação e oferecia a máquina
-              // em manutenção como se estivesse livre — o toque voltava com
-              // erro, e erro em botão que a tela ofereceu parece falha de
-              // quem clicou.
-              const ocupada = m.ocupadaPorOp !== null
-              const bloqueada = ocupada || m.impedimento !== null
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  disabled={bloqueada || isPending}
-                  onClick={() => onEscolher(m.id)}
-                  className={cn(
-                    'flex flex-col items-start rounded-lg border px-3 py-2 text-left text-sm transition-colors',
-                    bloqueada
-                      ? 'text-muted-foreground cursor-not-allowed opacity-60'
-                      : 'hover:border-primary hover:bg-primary/5',
-                  )}
-                >
-                  <span className="font-medium">{m.codigo}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {ocupada
-                      ? `Ocupada — OP ${m.ocupadaPorOp}`
-                      : m.impedimento
-                        ? `Indisponível — ${m.impedimento}`
-                        : m.nome}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
-            Cancelar
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// Botão "Pegar pra mim" / "Soltar" (fluxo puxado).
-function PegarSoltar({
-  ordem,
-  currentUserId,
-  isOperador,
-}: {
-  ordem: KanbanCardData
-  currentUserId: string
-  isOperador: boolean
-}) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-  const [escolhendoMaquina, setEscolhendoMaquina] = useState(false)
-  const semDono = !ordem.responsavelId
-  const meu = ordem.responsavelId === currentUserId
-
-  function pegar(maquinaId?: string) {
-    startTransition(async () => {
-      const result = await pegarOrdemAction(ordem.id, maquinaId)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      setEscolhendoMaquina(false)
-      toast.success(result.message ?? 'Pronto')
-      router.refresh()
-    })
-  }
-
-  function soltar() {
-    startTransition(async () => {
-      const result = await soltarOrdemAction(ordem.id)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success(result.message ?? 'Pronto')
-      router.refresh()
-    })
-  }
-
-  // "Pegar pra mim" é ação de OPERADOR. Admin e gerente mantêm a permissão
-  // na action, mas o botão não aparece pra eles.
-  const podePegar = semDono && isOperador
-  // Soltar: o dono, ou qualquer operador da estação — o colega precisa poder
-  // devolver a OP pra fila. Como o servidor só entrega OP da fila ou da
-  // estação dele, "tem máquina" já quer dizer "é da estação dele".
-  const podeSoltar =
-    !semDono && (meu || (isOperador && ordem.maquinaId !== null))
-
-  if (!podePegar && !podeSoltar) return null
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation()
-          if (podePegar) {
-            // OP que já tem máquina não pergunta de novo — a máquina dela é
-            // a resposta.
-            if (ordem.maquinaId) pegar()
-            else setEscolhendoMaquina(true)
-          } else {
-            soltar()
-          }
-        }}
-        disabled={isPending}
-        className={cn(
-          'mt-1 flex w-full items-center justify-center gap-1.5 rounded border py-1 text-[11px] font-medium transition-colors disabled:opacity-60',
-          podePegar
-            ? 'border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground'
-            : 'border-border text-muted-foreground hover:bg-muted',
-        )}
-      >
-        {podePegar ? (
-          <>
-            <Hand className="size-3" />
-            Pegar pra mim
-          </>
-        ) : (
-          <>
-            <Undo2 className="size-3" />
-            Soltar
-          </>
-        )}
-      </button>
-
-      {escolhendoMaquina && (
-        <div onClick={(e) => e.stopPropagation()}>
-          <EscolherMaquinaDialog
-            ordemNumero={ordem.numero}
-            isPending={isPending}
-            onEscolher={(maquinaId) => pegar(maquinaId)}
-            onClose={() => setEscolhendoMaquina(false)}
-          />
-        </div>
-      )}
-    </>
   )
 }
 
@@ -1117,15 +1003,11 @@ function PegarSoltar({
 function KanbanCardContent({
   ordem,
   dragging,
-  currentUserId,
-  isOperador,
   podeMoverEsta,
   onMover,
 }: {
   ordem: KanbanCardData
   dragging?: boolean
-  currentUserId?: string
-  isOperador?: boolean
   podeMoverEsta?: boolean
   onMover?: (id: string, status: (typeof statusValues)[number]) => void
 }) {
@@ -1254,7 +1136,7 @@ function KanbanCardContent({
             )}
             title={
               ordem.status === 'pronto_envio'
-                ? 'Tempo desde que saiu da máquina. Se destacado: ninguém fechou a OP depois da costura.'
+                ? 'Tempo desde a conclusão da produção. Em destaque: falta dar baixa.'
                 : 'Tempo nesta etapa'
             }
           >
@@ -1292,13 +1174,6 @@ function KanbanCardContent({
         </div>
       )}
 
-      {currentUserId && (
-        <PegarSoltar
-          ordem={ordem}
-          currentUserId={currentUserId}
-          isOperador={isOperador ?? false}
-        />
-      )}
     </article>
   )
 }

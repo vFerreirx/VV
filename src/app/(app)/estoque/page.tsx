@@ -28,8 +28,8 @@ export default async function EstoquePage({
       <div>
         <h1 className="text-2xl font-semibold">Estoque</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Saldo de cada variação. Produção concluída pro canal &ldquo;Estoque&rdquo;
-          entra automaticamente; vendas dão baixa.
+          Saldo de cada variação. OP de canal &ldquo;Estoque&rdquo; entra no saldo
+          quando recebe baixa; vendas tiram do saldo.
         </p>
       </div>
       <EstoqueList

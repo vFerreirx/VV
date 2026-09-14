@@ -7,6 +7,7 @@ import {
   type KanbanFiltros,
 } from './actions'
 import { KanbanBoard } from './kanban-board'
+import { listarMaquinas } from '../maquinas/actions'
 import { PainelOperador } from './painel-operador'
 import { ProducaoFiltros } from './producao-filtros'
 import {
@@ -15,8 +16,9 @@ import {
   listarResponsaveis,
 } from '@/app/(app)/ordens/actions'
 import { podeEscrever } from '@/lib/auth/permissoes'
+import { contarMaquinas, situacaoDaMaquina } from '@/lib/producao/estado-maquina'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
-import { requireArea } from '@/lib/auth/require-auth'
+import { isManager, requireArea } from '@/lib/auth/require-auth'
 import { canalValues } from '@/lib/validators/ordens'
 
 export const metadata: Metadata = { title: 'Produção — Vanvest' }
@@ -101,12 +103,27 @@ export default async function ProducaoPage({
     responsavelId: flat.responsavelId ?? 'todos',
   }
 
-  const [ordens, maquinas, responsaveis, produtos] = await Promise.all([
-    listarOrdensProducao(filtros),
-    listarMaquinasParaOrdem(),
-    listarResponsaveis(),
-    listarProdutosParaOrdem(),
-  ])
+  const [ordens, maquinas, responsaveis, produtos, maquinasDaFabrica] =
+    await Promise.all([
+      listarOrdensProducao(filtros),
+      listarMaquinasParaOrdem(),
+      listarResponsaveis(),
+      listarProdutosParaOrdem(),
+      listarMaquinas(),
+    ])
+
+  // ⚠️ A MESMA CONTA DA /fabrica: a mesma consulta (`listarMaquinas`) e a
+  // mesma regra (`situacaoDaMaquina` + `contarMaquinas`). Produzindo = apta
+  // com OP; aptas = produzindo + livres. A máquina em manutenção com OP dentro
+  // não conta em nenhuma das duas — ela não pode produzir, e é o caso em que
+  // uma conta escrita à mão aqui divergiria da outra tela.
+  const contagem = contarMaquinas(
+    maquinasDaFabrica.map((m) => situacaoDaMaquina(m.status, m.op !== null)),
+  )
+  const ocupacao = {
+    produzindo: contagem.emProducao,
+    aptas: contagem.emProducao + contagem.livres,
+  }
 
   const podeCriar = podeMover // mesmos papéis criam OP rápida
 
@@ -129,11 +146,12 @@ export default async function ProducaoPage({
       <KanbanBoard
         ordens={ordens}
         podeMover={podeMover}
-        // Sempre falso, e o type-check prova: o operador já voltou lá em
-        // cima, no painel próprio dele. O board continua recebendo a prop
-        // porque ele não mudou — só nunca mais vê um operador.
-        isOperador={false}
+        // Sem `isOperador`: o operador já voltou lá em cima, no painel próprio
+        // dele, e o board nunca mais vê um. A prop existia só pro "Pegar pra
+        // mim" do card, que saiu junto.
         currentUserId={user.id}
+        ocupacao={ocupacao}
+        gestor={isManager(user.role)}
         produtos={produtos}
         podeCriar={podeCriar}
       />

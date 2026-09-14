@@ -31,6 +31,7 @@ import {
 } from '@/lib/db/estacao-operadores'
 import {
   apontamentosProducao,
+  estacoes,
   eventosKanban,
   maquinas,
   movimentacoesEstoque,
@@ -58,6 +59,11 @@ import {
   observacaoDeMaquinaAtribuida,
   podeIniciar,
 } from '@/lib/producao/inicio-da-op'
+import {
+  erroDaTransicaoGenerica,
+  erroDaTransicaoPeloFormulario,
+  podeConcluirProducao,
+} from '@/lib/producao/transicoes-da-op'
 import {
   apontamentoSchema,
   criarOrdemSchema,
@@ -536,6 +542,32 @@ export async function atualizarOrdemAction(
     return { success: false, error: 'Essa etapa não faz mais parte do fluxo de produção' }
   }
 
+  // ⚠️ ENTRAR EM PRODUÇÃO, CONCLUIR E DAR BAIXA NÃO PASSAM POR AQUI. O
+  // formulário não tem como pedir máquina nem quantidade, e cada uma dessas
+  // transições tem action própria que registra o que falta. A regra mora em
+  // src/lib/producao/transicoes-da-op.ts, e o select do formulário usa a
+  // mesma função pra não oferecer o que esta linha recusa.
+  const erroDaPorta = erroDaTransicaoPeloFormulario(atual.status, data.status)
+  if (erroDaPorta) return { success: false, error: erroDaPorta }
+
+  // ⚠️ E A MÁQUINA DE UMA OP EM PRODUÇÃO NÃO TROCA POR AQUI. Isto trocava sem
+  // validar nada: máquina em manutenção entrava, e máquina ocupada estourava o
+  // índice único `ordens_producao_maquina_em_producao_uidx` como erro 500.
+  //
+  // `undefined` é "não mexeu", e não "tirou a máquina": o formulário devolve
+  // o valor que recebeu, campo vazio vira `undefined` no schema, e o Drizzle
+  // não grava chave `undefined` no `.set()`.
+  if (
+    atual.status === 'em_producao' &&
+    data.maquinaId !== undefined &&
+    data.maquinaId !== atual.maquinaId
+  ) {
+    return {
+      success: false,
+      error: 'A máquina de uma OP em produção não é trocada pelo formulário',
+    }
+  }
+
   const statusMudou = atual.status !== data.status
 
   await db.transaction(async (tx) => {
@@ -629,6 +661,21 @@ export async function mudarStatusOrdemAction(
     return { success: true, message: 'Status mantido' }
   }
 
+  // ⚠️ AS TRÊS PORTAS PRÓPRIAS. Este é o caminho GENÉRICO — arrastar card,
+  // Status manual — e ele não sabe perguntar máquina nem quantidade. Pra
+  // `em_producao` ele recusa sempre; pra `pronto_envio` e `enviado`, só
+  // aceita OP que já tem apontamento (e `enviado` só a partir de
+  // `pronto_envio`). A frase e a regra são as de transicoes-da-op.ts, as
+  // mesmas que a tela usa pra decidir o que oferecer.
+  const precisaDoApontamento =
+    data.status === 'pronto_envio' || data.status === 'enviado'
+  const erroDaPorta = erroDaTransicaoGenerica(
+    atual.status,
+    data.status,
+    precisaDoApontamento ? await temApontamento(id) : false,
+  )
+  if (erroDaPorta) return { success: false, error: erroDaPorta }
+
   await db.transaction(async (tx) => {
     await tx
       .update(ordensProducao)
@@ -662,7 +709,7 @@ export async function mudarStatusOrdemAction(
       observacao: data.observacao ?? null,
     })
 
-    // OP concluída (enviado) pro canal "Estoque" entra no estoque — uma vez só.
+    // OP com BAIXA (enviado) pro canal "Estoque" entra no estoque — uma vez só.
     if (data.status === 'enviado' && atual.canalDestino === 'estoque') {
       const [existente] = await tx
         .select({ id: movimentacoesEstoque.id })
@@ -681,7 +728,13 @@ export async function mudarStatusOrdemAction(
           })
           .from(apontamentosProducao)
           .where(eq(apontamentosProducao.ordemId, id))
-        const qtd = (agg?.total ?? 0) > 0 ? agg!.total : atual.quantidade
+        // ⚠️ SÓ O APONTADO ENTRA. Aqui havia um fallback: soma zero dava
+        // entrada da META — uma OP de 30 que rendeu 27, sem apontamento,
+        // entrava como 30. Não há mais como chegar aqui sem apontamento (a
+        // porta da baixa exige), e com apontamento só de refugo a soma é zero
+        // e nada entra: é a verdade, nenhuma peça boa saiu. Sem apontamento é
+        // recusa, nunca um número inventado.
+        const qtd = agg?.total ?? 0
         if (qtd > 0) {
           await tx.insert(movimentacoesEstoque).values({
             produtoId: atual.produtoId,
@@ -702,6 +755,17 @@ export async function mudarStatusOrdemAction(
   revalidatePath('/producao')
   revalidatePath('/estoque')
   return { success: true, message: 'Status atualizado', assumiu }
+}
+
+// A OP tem ao menos um apontamento? É a exceção das portas de `pronto_envio`
+// e `enviado` — ver transicoes-da-op.ts.
+async function temApontamento(ordemId: string): Promise<boolean> {
+  const [linha] = await db
+    .select({ id: apontamentosProducao.id })
+    .from(apontamentosProducao)
+    .where(eq(apontamentosProducao.ordemId, ordemId))
+    .limit(1)
+  return linha !== undefined
 }
 
 // -----------------------------------------------------------------
@@ -806,6 +870,9 @@ export type MaquinaParaPegar = {
   id: string
   codigo: string
   nome: string
+  // Pra o diálogo do gerente agrupar por estação. O operador já recebe só as
+  // da estação dele, então pra ele o valor se repete e o diálogo não agrupa.
+  estacaoNome: string | null
   // Número da OP que está EM PRODUÇÃO nesta máquina, ou null se está livre.
   ocupadaPorOp: string | null
   /**
@@ -830,8 +897,8 @@ export type MaquinasParaPegar = {
  * As máquinas que o usuário pode escolher ao pegar uma OP.
  *
  * Operador: só as da estação dele. Admin/gerente não têm estação, então
- * recebem todas as vivas — o botão "Pegar pra mim" nem aparece pra eles, mas
- * a permissão continua existindo.
+ * recebem todas as vivas — é a lista do "Em qual máquina?" do board, que
+ * agrupa por `estacaoNome`.
  *
  * O left join não pode duplicar linha de máquina: o índice único
  * `ordens_producao_maquina_em_producao_uidx` (migration 50) garante no máximo
@@ -866,8 +933,10 @@ export async function listarMaquinasParaPegar(): Promise<
       nome: maquinas.nome,
       status: maquinas.status,
       ocupadaPorOp: ordensProducao.numero,
+      estacaoNome: estacoes.nome,
     })
     .from(maquinas)
+    .leftJoin(estacoes, eq(estacoes.id, maquinas.estacaoId))
     .leftJoin(
       ordensProducao,
       and(
@@ -892,6 +961,7 @@ export async function listarMaquinasParaPegar(): Promise<
         id: r.id,
         codigo: r.codigo,
         nome: r.nome,
+        estacaoNome: r.estacaoNome ?? null,
         ocupadaPorOp: r.ocupadaPorOp ?? null,
         impedimento: motivoDeImpedimento(r.status),
       })),
@@ -1181,6 +1251,138 @@ export async function pegarOrdemAction(
   }
 }
 
+// -----------------------------------------------------------------
+// INICIAR NA MÁQUINA — a porta do GERENTE pra `em_producao`
+// -----------------------------------------------------------------
+//
+// Irmã de `pegarOrdemAction`, e separada dela de propósito. As duas põem a
+// OP numa máquina, mas o `pegar` é inteiro sobre o operador — e o gerente
+// difere em quatro pontos que virariam quatro `if` de papel lá dentro, com
+// os comentários de lá passando a mentir:
+//
+//   - O GERENTE NÃO VIRA RESPONSÁVEL. Ele planeja; a posse é do chão da
+//     estação, e o relatório de quem estava na máquina depende disso.
+//   - "Já foi pega por outro operador" não se aplica: ele move a OP de
+//     qualquer um, que é o que o kanban sempre permitiu a ele.
+//   - A MÁQUINA ESCOLHIDA VENCE a planejada. No `pegar`, a máquina que a OP já
+//     tem é a resposta; aqui ela só vem pré-selecionada no diálogo.
+//   - Sem confirmação de matéria-prima — o porquê está em inicio-da-op.ts.
+//
+// O que é IGUAL fica compartilhado: `podeIniciar` (o que entra em máquina),
+// `validarMaquinaParaOrdem` (impedimento e ocupação, que valem pra todo
+// mundo — são físicos), o UPDATE condicional e a tradução do índice único.
+export async function iniciarProducaoAction(
+  id: string,
+  maquinaId: string,
+): Promise<ActionResult> {
+  const user = await requireAuth()
+  if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
+
+  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
+    return { success: false, error: 'Sem permissão no kanban' }
+  }
+  // O operador tem a porta dele (`pegarOrdemAction`), que o torna dono e o
+  // prende à estação. Deixá-lo passar por aqui pularia as duas coisas.
+  if (!isManagerRole(user.role)) {
+    return { success: false, error: 'Só gerente ou admin inicia OP pelo board' }
+  }
+
+  const [atual] = await db
+    .select({
+      id: ordensProducao.id,
+      status: ordensProducao.status,
+      maquinaId: ordensProducao.maquinaId,
+      dataRealInicio: ordensProducao.dataRealInicio,
+    })
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.id, id), isNull(ordensProducao.deletedAt)))
+    .limit(1)
+  if (!atual) return { success: false, error: 'OP não encontrada' }
+
+  if (!podeIniciar(atual.status)) {
+    return {
+      success: false,
+      error: `OP em "${STATUS_LABEL_CURTO[atual.status]}" não entra em máquina`,
+    }
+  }
+
+  // `em_producao` só chega aqui como OP LEGADA sem máquina — a que entrou em
+  // produção pelo arrastar antigo, que não perguntava máquina. Com máquina,
+  // ela já está onde deveria.
+  const entraEmProducao = atual.status !== 'em_producao'
+  if (!entraEmProducao && atual.maquinaId) {
+    return { success: false, error: 'Essa OP já está em produção numa máquina' }
+  }
+
+  const maquinaValidada = await validarMaquinaParaOrdem(maquinaId, null, id)
+  if (maquinaValidada.erro !== null) {
+    return { success: false, error: maquinaValidada.erro }
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // Mesmo cadeado do `pegar`: se status ou máquina mudaram desde a
+      // leitura, nenhuma linha volta e nada é gravado.
+      const gravadas = await tx
+        .update(ordensProducao)
+        .set({
+          maquinaId,
+          ...(entraEmProducao
+            ? {
+                status: 'em_producao' as const,
+                dataRealInicio: atual.dataRealInicio ?? new Date(),
+              }
+            : {}),
+        })
+        .where(
+          and(
+            eq(ordensProducao.id, id),
+            isNull(ordensProducao.deletedAt),
+            eq(ordensProducao.status, atual.status),
+            atual.maquinaId === null
+              ? isNull(ordensProducao.maquinaId)
+              : eq(ordensProducao.maquinaId, atual.maquinaId),
+          ),
+        )
+        .returning({ id: ordensProducao.id })
+      if (gravadas.length === 0) throw new ConflitoDeOrdem()
+
+      await tx.insert(eventosKanban).values({
+        ordemId: id,
+        statusAnterior: atual.status,
+        statusNovo: 'em_producao',
+        usuarioId: user.id,
+        observacao: entraEmProducao
+          ? `Iniciada na máquina ${maquinaValidada.codigo}`
+          : observacaoDeMaquinaAtribuida(maquinaValidada.codigo),
+      })
+    })
+  } catch (erro) {
+    if (erro instanceof ConflitoDeOrdem) {
+      return {
+        success: false,
+        error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.',
+      }
+    }
+    if (ehConflitoDeMaquina(erro)) {
+      return {
+        success: false,
+        error: `A máquina ${maquinaValidada.codigo} foi ocupada agora mesmo. Escolha outra.`,
+      }
+    }
+    throw erro
+  }
+
+  revalidatePath('/producao')
+  revalidatePath('/ordens')
+  revalidatePath(`/ordens/${id}`)
+  revalidatePath('/fabrica')
+  return {
+    success: true,
+    message: `OP em produção na ${maquinaValidada.codigo}`,
+  }
+}
+
 export async function soltarOrdemAction(id: string): Promise<ActionResult> {
   const user = await requireAuth()
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
@@ -1381,7 +1583,10 @@ export type ConclusaoInput = { produzida: number; refugo: number }
 export async function concluirProducaoAction(
   ordemId: string,
   input: ConclusaoInput,
-): Promise<ActionResult> {
+  // `concluiu` separa a conclusão DE AGORA do "já estava concluída", que
+  // também volta como sucesso. O board só oferece "Desfazer" pra primeira:
+  // desfazer a segunda apagaria a conclusão de outra pessoa.
+): Promise<ActionResult<{ concluiu: true }>> {
   const user = await requireAuth()
   if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
 
@@ -1402,11 +1607,19 @@ export async function concluirProducaoAction(
     .limit(1)
   if (!op) return { success: false, error: 'OP não encontrada' }
 
-  // Já concluída antes desta chamada — o caso do reenvio. Responde a
-  // verdade ("já está pronta") em vez de um erro que assusta.
-  if (op.status !== 'em_producao') {
+  // DE ONDE DÁ PRA CONCLUIR. O operador, só de `em_producao`: no tablet a OP
+  // sai de uma máquina ou não sai de lugar nenhum. O gerente, de qualquer
+  // coluna anterior — é a OP que saiu do tear enquanto o board ainda não
+  // sabia dela (a virada do Trello). Fora disso, `concluidaAntes` diz a
+  // verdade: já concluída, já com baixa, cancelada ou fora de produção.
+  const gestor = isManagerRole(user.role)
+  if (!podeConcluirProducao(op.status, gestor)) {
     return concluidaAntes(op.status)
   }
+  // Concluída direto da fila, sem ter passado por máquina. A OP sai SEM
+  // máquina: a planejada não foi onde a peça saiu, e deixá-la ali faria o
+  // card mostrar um tear que nunca tocou nesta OP.
+  const semMaquina = op.status !== 'em_producao'
 
   // Mesma regra do mover e do apontar: é da estação dele, e concluir TOMA a
   // OP — a virada de turno fica registrada sozinha.
@@ -1439,12 +1652,16 @@ export async function concluirProducaoAction(
         .set({
           status: 'pronto_envio' as const,
           ...(assumiu ? { responsavelId: user.id } : {}),
+          ...(semMaquina ? { maquinaId: null } : {}),
         })
         .where(
           and(
             eq(ordensProducao.id, ordemId),
             isNull(ordensProducao.deletedAt),
-            eq(ordensProducao.status, 'em_producao'),
+            // O status LIDO, e não `em_producao` fixo: a conclusão do gerente
+            // parte de outras colunas. O cadeado é o mesmo — mudou desde a
+            // leitura, zero linhas.
+            eq(ordensProducao.status, op.status),
           ),
         )
         .returning({ id: ordensProducao.id })
@@ -1462,7 +1679,11 @@ export async function concluirProducaoAction(
         .where(eq(apontamentosProducao.ordemId, ordemId))
 
       const conclusao = calcularConclusao(op.quantidade, jaRegistrado)
-      const erro = erroDeQuantidade(input.produzida, input.refugo, conclusao)
+      // O TETO É SÓ DO OPERADOR (src/lib/producao/conclusao.ts): quem
+      // planejou registra o que a fábrica de fato fez, mesmo acima da meta.
+      const erro = erroDeQuantidade(input.produzida, input.refugo, conclusao, {
+        teto: user.role === 'operador',
+      })
       if (erro) throw new QuantidadeRecusada(erro)
 
       // Apontamento de 0 e 0 não vira linha: é o caso da OP que já tinha o
@@ -1471,7 +1692,7 @@ export async function concluirProducaoAction(
         const agora = new Date()
         await tx.insert(apontamentosProducao).values({
           ordemId,
-          maquinaId: op.maquinaId,
+          maquinaId: semMaquina ? null : op.maquinaId,
           operadorId: user.id,
           inicio: agora,
           fim: agora,
@@ -1497,18 +1718,25 @@ export async function concluirProducaoAction(
         )
         .orderBy(desc(eventosKanban.createdAt))
         .limit(1)
+      // Sem máquina não houve início a nomear.
       const iniciadaPor =
-        inicio && inicio.usuarioId !== user.id ? inicio.nome : null
+        !semMaquina && inicio && inicio.usuarioId !== user.id
+          ? inicio.nome
+          : null
 
       resumo = resumoDaConclusao(
         input.produzida,
         input.refugo,
         conclusao,
         iniciadaPor,
+        { semMaquina },
       )
+      // `statusAnterior` é a ORIGEM real. É ela que identifica, numa análise
+      // futura, as conclusões que não passaram por máquina — e é ela que
+      // `desfazerConclusaoAction` lê pra saber pra onde devolver.
       await tx.insert(eventosKanban).values({
         ordemId,
-        statusAnterior: 'em_producao',
+        statusAnterior: op.status,
         statusNovo: 'pronto_envio',
         usuarioId: user.id,
         observacao: resumo,
@@ -1518,15 +1746,21 @@ export async function concluirProducaoAction(
     revalidatePath('/producao')
     revalidatePath('/dashboard')
     revalidatePath(`/ordens/${ordemId}`)
-    return { success: true, message: resumo, assumiu }
+    return { success: true, message: resumo, assumiu, data: { concluiu: true } }
   } catch (erro) {
     if (erro instanceof QuantidadeRecusada) {
       return { success: false, error: erro.message }
     }
     if (erro instanceof ConflitoDeOrdem) {
-      // Alguém concluiu entre o SELECT e o UPDATE. Mesma resposta do
-      // reenvio: a OP está pronta, e dizer "erro" seria mentira.
-      return concluidaAntes('pronto_envio')
+      // Alguém mexeu entre o SELECT e o UPDATE — quase sempre outra
+      // conclusão. Lê o status de agora pra responder a verdade: "já estava
+      // concluída" quando foi isso, e não um erro que assusta.
+      const [agora] = await db
+        .select({ status: ordensProducao.status })
+        .from(ordensProducao)
+        .where(eq(ordensProducao.id, ordemId))
+        .limit(1)
+      return concluidaAntes(agora?.status ?? 'pronto_envio')
     }
     throw erro
   }
@@ -1592,39 +1826,76 @@ export async function desfazerConclusaoAction(
     .limit(1)
   if (!op) return { success: false, error: 'OP não encontrada' }
 
+  // As frases de recusa foram escritas pro tablet ("fale com o gerente"). O
+  // gerente chega aqui pelo "Desfazer" do board, e mandar ele falar com ele
+  // mesmo seria só esquisito.
+  const operador = user.role === 'operador'
+
   if (op.status !== 'pronto_envio') {
     return {
       success: false,
-      error: `O gerente já moveu essa OP (${STATUS_LABEL_CURTO[op.status]}). Fale com ele.`,
+      error: operador
+        ? `O gerente já moveu essa OP (${STATUS_LABEL_CURTO[op.status]}). Fale com ele.`
+        : `Essa OP já saiu de Produção concluída (${STATUS_LABEL_CURTO[op.status]})`,
     }
   }
-  if (!op.maquinaId) {
-    return { success: false, error: 'Essa OP não tem máquina pra voltar' }
-  }
 
-  if (user.role === 'operador') {
-    const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
-    if (!permissao.pode) return { success: false, error: permissao.erro }
-  }
+  // ─────────────────────────────────────────────────────────────────────
+  // PRA ONDE ELA VOLTA: DE ONDE ELA VEIO
+  // ─────────────────────────────────────────────────────────────────────
+  //
+  // O evento da conclusão guarda a origem em `status_anterior`. Veio de
+  // `em_producao` — o caso do tablet — e volta pra MESMA máquina, que tem que
+  // estar livre. Veio da fila — a conclusão do gerente sem máquina — e volta
+  // pra coluna de origem, sem máquina, por um ramo próprio.
+  //
+  // Sem evento (OP legada) ou sem origem, vale o caminho de sempre: a
+  // máquina.
+  const origem = await conclusaoMaisRecente(ordemId)
+  const voltaPraMaquina =
+    origem === null ||
+    origem.de === null ||
+    origem.de === 'em_producao'
+  const destino = voltaPraMaquina ? 'em_producao' : origem.de!
 
-  // A MÁQUINA TEM QUE ESTAR LIVRE. O índice único pegaria isso no UPDATE,
-  // mas com um 23505 traduzido genérico; aqui dá pra dizer QUAL OP ocupou.
-  const [ocupada] = await db
-    .select({ numero: ordensProducao.numero, codigo: maquinas.codigo })
-    .from(ordensProducao)
-    .innerJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
-    .where(
-      and(
-        eq(ordensProducao.maquinaId, op.maquinaId),
-        eq(ordensProducao.status, 'em_producao'),
-        isNull(ordensProducao.deletedAt),
-      ),
-    )
-    .limit(1)
-  if (ocupada) {
+  if (voltaPraMaquina) {
+    if (!op.maquinaId) {
+      return { success: false, error: 'Essa OP não tem máquina pra voltar' }
+    }
+
+    if (operador) {
+      const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
+      if (!permissao.pode) return { success: false, error: permissao.erro }
+    }
+
+    // A MÁQUINA TEM QUE ESTAR LIVRE. O índice único pegaria isso no UPDATE,
+    // mas com um 23505 traduzido genérico; aqui dá pra dizer QUAL OP ocupou.
+    const [ocupada] = await db
+      .select({ numero: ordensProducao.numero, codigo: maquinas.codigo })
+      .from(ordensProducao)
+      .innerJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
+      .where(
+        and(
+          eq(ordensProducao.maquinaId, op.maquinaId),
+          eq(ordensProducao.status, 'em_producao'),
+          isNull(ordensProducao.deletedAt),
+        ),
+      )
+      .limit(1)
+    if (ocupada) {
+      return {
+        success: false,
+        error: operador
+          ? `A máquina ${ocupada.codigo} já está com a OP ${ocupada.numero}. Fale com o gerente.`
+          : `A máquina ${ocupada.codigo} já está com a OP ${ocupada.numero}`,
+      }
+    }
+  } else if (!isManagerRole(user.role)) {
+    // Só o gerente conclui de fora da máquina (`podeConcluirProducao`), então
+    // só ele desfaz esse ramo.
     return {
       success: false,
-      error: `A máquina ${ocupada.codigo} já está com a OP ${ocupada.numero}. Fale com o gerente.`,
+      error: 'Essa conclusão foi feita pelo gerente. Fale com ele.',
     }
   }
 
@@ -1635,7 +1906,12 @@ export async function desfazerConclusaoAction(
       // e agora, zero linhas e nada acontece.
       const gravadas = await tx
         .update(ordensProducao)
-        .set({ status: 'em_producao' as const })
+        .set({
+          status: destino,
+          // O ramo da fila volta sem máquina — ela já saiu sem, e a coluna de
+          // origem não é lugar de OP presa a tear.
+          ...(voltaPraMaquina ? {} : { maquinaId: null }),
+        })
         .where(
           and(
             eq(ordensProducao.id, ordemId),
@@ -1649,6 +1925,9 @@ export async function desfazerConclusaoAction(
       // QUAIS APONTAMENTOS SÃO DA CONCLUSÃO: os criados de lá pra cá. Achar
       // pelo evento é preciso; "o último apontamento" seria um chute que
       // erraria se o gerente tivesse lançado algo depois.
+      //
+      // Relido DENTRO da transação e conferido com o de fora: se outra
+      // conclusão entrou no meio, a origem que decidiu o destino já não vale.
       const [conclusao] = await tx
         .select({ em: eventosKanban.createdAt })
         .from(eventosKanban)
@@ -1660,6 +1939,12 @@ export async function desfazerConclusaoAction(
         )
         .orderBy(desc(eventosKanban.createdAt))
         .limit(1)
+      if (
+        origem !== null &&
+        (!conclusao || conclusao.em.getTime() !== origem.em.getTime())
+      ) {
+        throw new ConflitoDeOrdem()
+      }
 
       if (conclusao) {
         const apagados = await tx
@@ -1677,9 +1962,11 @@ export async function desfazerConclusaoAction(
       await tx.insert(eventosKanban).values({
         ordemId,
         statusAnterior: 'pronto_envio',
-        statusNovo: 'em_producao',
+        statusNovo: destino,
         usuarioId: user.id,
-        observacao: `Conclusão desfeita — o registro de ${desfeito} peças foi cancelado`,
+        observacao: voltaPraMaquina
+          ? `Conclusão desfeita — o registro de ${desfeito} peças foi cancelado`
+          : `Conclusão desfeita — voltou pra ${STATUS_LABEL_CURTO[destino]} sem máquina; o registro de ${desfeito} peças foi cancelado`,
       })
     })
 
@@ -1688,7 +1975,9 @@ export async function desfazerConclusaoAction(
     revalidatePath(`/ordens/${ordemId}`)
     return {
       success: true,
-      message: `OP ${op.numero} voltou pra máquina`,
+      message: voltaPraMaquina
+        ? `OP ${op.numero} voltou pra máquina`
+        : `OP ${op.numero} voltou pra ${STATUS_LABEL_CURTO[destino]}`,
     }
   } catch (erro) {
     if (erro instanceof ConflitoDeOrdem) {
@@ -1700,11 +1989,32 @@ export async function desfazerConclusaoAction(
     if (ehConflitoDeMaquina(erro)) {
       return {
         success: false,
-        error: 'A máquina foi ocupada agora mesmo. Fale com o gerente.',
+        error: operador
+          ? 'A máquina foi ocupada agora mesmo. Fale com o gerente.'
+          : 'A máquina foi ocupada agora mesmo',
       }
     }
     throw erro
   }
+}
+
+// A conclusão mais recente da OP: quando foi (pra achar os apontamentos dela)
+// e de onde a OP veio (pra saber pra onde devolver).
+async function conclusaoMaisRecente(
+  ordemId: string,
+): Promise<{ em: Date; de: (typeof statusValues)[number] | null } | null> {
+  const [ev] = await db
+    .select({ em: eventosKanban.createdAt, de: eventosKanban.statusAnterior })
+    .from(eventosKanban)
+    .where(
+      and(
+        eq(eventosKanban.ordemId, ordemId),
+        eq(eventosKanban.statusNovo, 'pronto_envio'),
+      ),
+    )
+    .orderBy(desc(eventosKanban.createdAt))
+    .limit(1)
+  return ev ?? null
 }
 
 // A quantidade recusada pelo teto. Classe própria pra desfazer a transação
@@ -1712,13 +2022,24 @@ export async function desfazerConclusaoAction(
 // números daquela OP, e um erro genérico perderia isso.
 class QuantidadeRecusada extends Error {}
 
+// A RESPOSTA PRA "CONCLUIR" NUMA OP QUE NÃO ESTÁ EM PONTO DE CONCLUIR.
+//
+// Dois casos são SUCESSO de propósito: já concluída e já com baixa são o
+// reenvio depois de queda de conexão, e um "falhou" ali seria mentira sobre
+// algo que deu certo. Cancelada e fora de produção são recusa de verdade.
 function concluidaAntes(status: (typeof statusValues)[number]): ActionResult {
+  if (status === 'pronto_envio') {
+    return { success: true, message: 'Essa OP já estava com a produção concluída' }
+  }
+  if (status === 'enviado') {
+    return { success: true, message: 'Essa OP já tem baixa' }
+  }
+  if (status === 'cancelado') {
+    return { success: false, error: 'Essa OP foi cancelada' }
+  }
   return {
-    success: true,
-    message:
-      status === 'pronto_envio'
-        ? 'Essa OP já estava concluída'
-        : `Essa OP já saiu da máquina (${STATUS_LABEL_CURTO[status]})`,
+    success: false,
+    error: `Essa OP não está em produção (${STATUS_LABEL_CURTO[status]})`,
   }
 }
 

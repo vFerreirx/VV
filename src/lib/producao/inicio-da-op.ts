@@ -52,10 +52,12 @@ const PODEM_INICIAR = {
   aguardando_materia_prima: 'confirma',
   // O caso normal: o gerente já programou, é só começar.
   programado: 'direto',
-  // JÁ EM PRODUÇÃO E SEM MÁQUINA. Parece impossível e não é: o gerente pode
-  // arrastar o card pra coluna "Em produção" no kanban sem escolher máquina.
-  // A OP fica em produção em lugar nenhum. Deixá-la de fora daqui seria
-  // deixá-la presa pra sempre — nenhuma tela do operador a resgataria.
+  // JÁ EM PRODUÇÃO E SEM MÁQUINA — só LEGADO. O arrastar antigo do kanban
+  // punha a OP em produção sem perguntar máquina; hoje nenhum caminho faz
+  // isso (transicoes-da-op.ts), mas as que ficaram assim continuam existindo.
+  // Deixá-las de fora daqui seria deixá-las presas pra sempre: é por esta
+  // entrada que o `pegar` do operador e o `iniciarProducaoAction` do gerente
+  // as põem numa máquina.
   em_producao: 'direto',
 } as const satisfies Partial<Record<StatusDaOrdem, 'direto' | 'confirma'>>
 

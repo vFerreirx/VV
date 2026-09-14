@@ -12,6 +12,7 @@ import {
   type ProdutoComVariacoesParaForm,
 } from '@/app/(app)/ordens/actions'
 import { erroDaVariacao } from '@/lib/producao/catalogo-op'
+import { erroDaTransicaoPeloFormulario } from '@/lib/producao/transicoes-da-op'
 import { CatalogoOrdem } from '@/components/forms/catalogo-ordem'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -110,7 +111,16 @@ export function OrdemForm({
 
   const produtoId = useWatch({ control: form.control, name: 'produtoId' })
   const variacaoId = useWatch({ control: form.control, name: 'variacaoId' })
-  const statusDisponiveis = isEdit ? STATUS_FILTRAVEIS : STATUS_INICIAIS
+  // ⚠️ O SELECT NÃO OFERECE O QUE O SERVIDOR RECUSA. Entrar em produção,
+  // concluir a produção e dar baixa têm porta própria na tela de Produção —
+  // máquina, quantidades, apontamento —, e `atualizarOrdemAction` recusa as
+  // três vindas daqui. A regra é a mesma função (transicoes-da-op.ts). O
+  // status ATUAL continua na lista: some a transição, não a informação.
+  const statusDisponiveis = isEdit
+    ? STATUS_FILTRAVEIS.filter(
+        (s) => erroDaTransicaoPeloFormulario(defaults.status, s) === null,
+      )
+    : STATUS_INICIAIS
   const statusHistorico =
     isEdit && (defaults.status === 'acabamento' || defaults.status === 'embalagem')
 
