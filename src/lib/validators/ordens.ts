@@ -218,7 +218,7 @@ export const STATUS_LABEL: Record<(typeof statusValues)[number], string> = {
   em_producao: 'Em produção',
   acabamento: 'Acabamento',
   embalagem: 'Embalagem',
-  pronto_envio: 'Pronto pra envio',
+  pronto_envio: 'Na costura',
   enviado: 'Enviado',
   cancelado: 'Cancelado',
 }
@@ -232,7 +232,7 @@ export const STATUS_LABEL_CURTO: Record<
   em_producao: 'Em produção',
   acabamento: 'Acabamento',
   embalagem: 'Embalagem',
-  pronto_envio: 'Pronto envio',
+  pronto_envio: 'Na costura',
   enviado: 'Enviado',
   cancelado: 'Cancelado',
 }

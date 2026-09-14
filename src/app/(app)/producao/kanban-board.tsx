@@ -107,16 +107,37 @@ const WIP_LIMITES: Partial<Record<StatusKanban, number>> = {
   em_producao: 48,
 }
 
-// A partir de quanto tempo parado na etapa o card é destacado (3 dias).
-const AGING_ALERTA_MS = 3 * 24 * 60 * 60 * 1000
+// A partir de quanto tempo parado na etapa o card é destacado. Ausente =
+// sem destaque (o "há Xd" continua aparecendo, só sem cor).
+//
+// ⚠️ VAZIO DE PROPÓSITO: é o piloto só com OPs de canal `estoque`. Os 3 dias
+// que valiam pra todas as colunas eram chute, e chute igual pra fila e pra
+// máquina — uma OP três dias em `programado` é rotina, três dias em
+// `em_producao` pode ser uma máquina parada. Os limiares vão sair da mediana
+// e do p90 de permanência por coluna no `eventos_kanban` quando ~30 OPs
+// chegarem a `enviado`, ou em 6 semanas, o que vier primeiro.
+//
+// Ainda está EM ABERTO se vão ser dias por coluna ou normalizados por
+// quantidade de peças: a mesma coluna segura uma OP de 20 peças por uma
+// tarde e uma de 600 por uma semana, e um limiar fixo em dias acenderia a
+// grande toda vez e nunca a pequena.
+//
+// Na coluna `pronto_envio` o destaque NÃO é atraso: é pendência de baixa — a
+// peça saiu da máquina, foi pra costura, e ninguém fechou a OP. O `title` do
+// relógio diz isso nessa coluna.
+const AGING_ALERTA_MS: Partial<Record<StatusKanban, number>> = {}
 
-function tempoNaEtapa(desde: Date): { label: string; aging: boolean } {
+function tempoNaEtapa(
+  desde: Date,
+  status: (typeof statusValues)[number],
+): { label: string; aging: boolean } {
   const ms = Date.now() - new Date(desde).getTime()
   const min = Math.max(0, Math.floor(ms / 60000))
   const h = Math.floor(min / 60)
   const d = Math.floor(h / 24)
   const label = d >= 1 ? `há ${d}d` : h >= 1 ? `há ${h}h` : `há ${min}min`
-  return { label, aging: ms >= AGING_ALERTA_MS }
+  const limite = ehStatusKanban(status) ? AGING_ALERTA_MS[status] : undefined
+  return { label, aging: limite !== undefined && ms >= limite }
 }
 
 type FiltroChip = 'minhas' | 'urgentes' | 'atrasadas' | 'semDono'
@@ -1108,7 +1129,12 @@ function KanbanCardContent({
   podeMoverEsta?: boolean
   onMover?: (id: string, status: (typeof statusValues)[number]) => void
 }) {
-  const tempo = tempoNaEtapa(ordem.desdeStatus)
+  // Sem transição registrada não há relógio — ver `desdeStatus` em
+  // producao/actions.ts. Mostrar "há 0min" seria afirmar uma entrada que
+  // ninguém sabe quando foi.
+  const tempo = ordem.desdeStatus
+    ? tempoNaEtapa(ordem.desdeStatus, ordem.status)
+    : null
   const idx = indiceNoKanban(ordem.status)
   const proximo =
     idx >= 0 && idx < STATUS_KANBAN.length - 1 ? STATUS_KANBAN[idx + 1] : null
@@ -1215,16 +1241,27 @@ function KanbanCardContent({
             <span className="truncate">{ordem.estacaoNome}</span>
           </span>
         )}
-        <span
-          className={cn(
-            'inline-flex items-center gap-0.5',
-            tempo.aging && 'text-destructive font-medium',
-          )}
-          title="Tempo nesta etapa"
-        >
-          <Clock className="size-2.5" />
-          {tempo.label}
-        </span>
+        {tempo && (
+          <span
+            className={cn(
+              'inline-flex items-center gap-0.5',
+              // ⚠️ ÂMBAR, NUNCA `text-destructive`. O vermelho é de `atrasada`
+              // (a data prevista, na linha de cima do mesmo card), e os dois
+              // no mesmo tom faziam "passou do prazo" e "está parada há muito
+              // tempo" parecerem a mesma coisa. Mesmo tom do "Em risco" das
+              // remessas (remessas-view.tsx).
+              tempo.aging && 'font-medium text-amber-600 dark:text-amber-400',
+            )}
+            title={
+              ordem.status === 'pronto_envio'
+                ? 'Tempo desde que saiu da máquina. Se destacado: ninguém fechou a OP depois da costura.'
+                : 'Tempo nesta etapa'
+            }
+          >
+            <Clock className="size-2.5" />
+            {tempo.label}
+          </span>
+        )}
         {ordem.responsavelNome && (
           <span className="truncate">{ordem.responsavelNome.split(' ')[0]}</span>
         )}

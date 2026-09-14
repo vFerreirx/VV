@@ -79,7 +79,13 @@ export type KanbanCardData = {
   dataPrevistaFim: Date | null
   atrasada: boolean
   // Quando a OP entrou no status atual (pra mostrar "tempo na etapa").
-  desdeStatus: Date
+  //
+  // ⚠️ NULO QUANDO NÃO HÁ TRANSIÇÃO REGISTRADA, e o card então não mostra
+  // relógio. Não existe valor "aproximado" que sirva: o `updatedAt` que
+  // entrava aqui muda em qualquer edição (trocar a observação zerava o
+  // aging), e um relógio que zera sozinho é pior do que relógio nenhum —
+  // esconde justamente a OP parada há mais tempo.
+  desdeStatus: Date | null
   observacoes: string | null
 }
 
@@ -174,12 +180,28 @@ export async function listarOrdensProducao(
         FROM ${apontamentosProducao}
         WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
       )`,
-      // Última entrada no status atual (pra calcular tempo na etapa).
+      // Última ENTRADA no status atual (pra calcular tempo na etapa).
+      //
+      // ⚠️ SÓ TRANSIÇÃO CONTA. `pegarOrdemAction` grava de propósito um
+      // evento `em_producao` -> `em_producao` quando a OP que já estava em
+      // produção só GANHA MÁQUINA — o histórico precisa dele, porque a OP
+      // mudou de lugar no chão de fábrica. Mas ela não ENTROU em produção
+      // de novo, e contar esse evento zerava o relógio de uma OP que podia
+      // estar parada há dias.
+      //
+      // `IS DISTINCT FROM` e não `<>`: o evento de criação tem
+      // `status_anterior` NULO, e `NULL <> 'programado'` é NULL — o `<>`
+      // descartaria justamente a entrada da OP na primeira coluna, e toda OP
+      // que nunca foi movida ficaria sem relógio.
+      //
+      // O filtro é SÓ AQUI. As leituras de histórico (`listarEventosOrdem`
+      // e `historicoDaOrdem`) continuam mostrando o evento sem transição.
       desdeStatus: sql<string | null>`(
         SELECT MAX(${eventosKanban.createdAt})
         FROM ${eventosKanban}
         WHERE ${eventosKanban.ordemId} = "ordens_producao"."id"
           AND ${eventosKanban.statusNovo} = ${ordensProducao.status}
+          AND ${eventosKanban.statusAnterior} IS DISTINCT FROM ${eventosKanban.statusNovo}
       )`,
     })
     .from(ordensProducao)
@@ -275,9 +297,8 @@ export async function listarOrdensProducao(
         op.dataPrevistaFim !== null &&
         op.status !== 'enviado' &&
         new Date(op.dataPrevistaFim).getTime() < now,
-      desdeStatus: desdeStatus
-        ? new Date(desdeStatus)
-        : (op.updatedAt ?? op.createdAt),
+      // Sem fallback de propósito — ver o comentário do tipo.
+      desdeStatus: desdeStatus ? new Date(desdeStatus) : null,
       observacoes: op.observacoes,
     }),
   )
