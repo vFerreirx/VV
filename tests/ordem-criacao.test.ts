@@ -44,10 +44,12 @@ test('schema de edição preserva estados históricos', () => {
   assert.equal(ordemSchema.safeParse({ ...entrada, status: 'acabamento' }).success, true)
   assert.equal(ordemSchema.safeParse({ ...entrada, status: 'embalagem' }).success, true)
 })
+// `corHex` vem com o catálogo desde a busca do "Nova OP" (a amostra de cor).
+const semHex = { corHex: null, corHex2: null }
 const variacoes = [
-  { id: 'a', modelo: 'LINKS', tamanho: '45x45', cor: 'Âmbar', skuVariacao: 'A' },
-  { id: 'b', modelo: 'LINKS', tamanho: '50x50', cor: 'Rose', skuVariacao: 'B' },
-  { id: 'c', modelo: 'ARAN', tamanho: '45x45', cor: 'Rose', skuVariacao: 'C' },
+  { id: 'a', modelo: 'LINKS', tamanho: '45x45', cor: 'Âmbar', skuVariacao: 'A', ...semHex },
+  { id: 'b', modelo: 'LINKS', tamanho: '50x50', cor: 'Rose', skuVariacao: 'B', ...semHex },
+  { id: 'c', modelo: 'ARAN', tamanho: '45x45', cor: 'Rose', skuVariacao: 'C', ...semHex },
 ]
 test('catálogo oferece todos os modelos e separa suas variações', () => {
   assert.deepEqual(modelosDoProduto({ variacoes }), ['LINKS', 'ARAN'])
@@ -71,7 +73,8 @@ test('exige uma variação existente do produto selecionado', () => {
   assert.ok(erroDaVariacao('', variacoes))
   assert.ok(erroDaVariacao('de-outro-produto', variacoes))
   assert.ok(erroDaVariacao('removida', []))
-  assert.equal(erroDaVariacao('', []), null)
+  // Variação é sempre obrigatória, mesmo em produto sem variação.
+  assert.ok(erroDaVariacao('', []))
 })
 
 test('catálogo renderiza uma única cor selecionada e preserva a variação da edição', async () => {

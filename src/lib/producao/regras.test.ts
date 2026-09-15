@@ -17,10 +17,13 @@ import {
 } from './conclusao.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
 import {
+  erroDaExclusao,
   erroDaTransicaoGenerica,
   erroDaTransicaoPeloFormulario,
+  erroDoCancelamento,
   podeConcluirProducao,
 } from './transicoes-da-op.ts'
+import { buscarVariacoes, erroDaVariacao } from './catalogo-op.ts'
 import {
   MOTIVOS_DE_PARADA,
   abreParada,
@@ -688,4 +691,126 @@ test('gerente conclui de qualquer coluna antes; operador so de em producao', () 
   for (const s of ['pronto_envio', 'enviado', 'cancelado'] as const) {
     assert.equal(podeConcluirProducao(s, true), false, s)
   }
+})
+
+// -----------------------------------------------------------------
+// Cancelar e excluir
+// -----------------------------------------------------------------
+
+test('OP com baixa nao cancela, nem pelo botao nem pelo status manual', () => {
+  assert.notEqual(erroDoCancelamento('enviado'), null)
+  assert.notEqual(erroDaTransicaoGenerica('enviado', 'cancelado', true), null)
+  assert.notEqual(erroDoCancelamento('cancelado'), null)
+  for (const s of ['aguardando_materia_prima', 'programado', 'em_producao', 'pronto_envio'] as const) {
+    assert.equal(erroDoCancelamento(s), null, s)
+    assert.equal(erroDaTransicaoGenerica(s, 'cancelado', false), null, s)
+  }
+})
+
+test('exclui so o engano: nunca entrou em producao e sem apontamento', () => {
+  assert.equal(
+    erroDaExclusao({ status: 'programado', dataRealInicio: null, temApontamento: false }),
+    null,
+  )
+  // Cancelada por engano tambem se exclui: nunca produziu nada.
+  assert.equal(
+    erroDaExclusao({ status: 'cancelado', dataRealInicio: null, temApontamento: false }),
+    null,
+  )
+})
+
+test('OP que entrou em producao e voltou pra fila nao exclui', () => {
+  // O Desfazer devolve pra Programado, mas a data de inicio fica.
+  assert.notEqual(
+    erroDaExclusao({ status: 'programado', dataRealInicio: new Date(), temApontamento: false }),
+    null,
+  )
+})
+
+test('legado em coluna depois da maquina, sem data de inicio, nao exclui', () => {
+  for (const s of ['em_producao', 'acabamento', 'embalagem', 'pronto_envio', 'enviado'] as const) {
+    assert.notEqual(
+      erroDaExclusao({ status: s, dataRealInicio: null, temApontamento: false }),
+      null,
+      s,
+    )
+  }
+})
+
+test('apontamento impede excluir, mesmo na fila', () => {
+  assert.notEqual(
+    erroDaExclusao({ status: 'programado', dataRealInicio: null, temApontamento: true }),
+    null,
+  )
+})
+
+// -----------------------------------------------------------------
+// Busca unica por variacao
+// -----------------------------------------------------------------
+
+const catalogo = [
+  {
+    id: 'p1',
+    nome: 'Peseira - RELEVO',
+    sku: '010',
+    variacoes: [
+      { id: 'v1', modelo: 'RELEVO', tamanho: 'Queen', cor: 'Marsala', skuVariacao: '010-MAR-Q' },
+      { id: 'v2', modelo: 'RELEVO', tamanho: 'Casal', cor: 'Marsala', skuVariacao: '010-MAR-C' },
+      { id: 'v3', modelo: 'RELEVO', tamanho: 'Queen', cor: 'Âmbar', skuVariacao: '010-AMB-Q' },
+    ],
+  },
+  {
+    id: 'p2',
+    nome: 'Manta - ACONCHEGO',
+    sku: '020',
+    variacoes: [
+      { id: 'v4', modelo: 'ACONCHEGO', tamanho: 'Manta', cor: 'Marsala', skuVariacao: '020-MAR' },
+      { id: 'v5', modelo: null, tamanho: 'Manta', cor: 'Areia', skuVariacao: '020-ARE' },
+    ],
+  },
+]
+
+test('busca: todo pedaco precisa casar, em qualquer campo', () => {
+  const r = buscarVariacoes(catalogo, 'peseira marsala queen')
+  assert.deepEqual(r.itens.map((i) => i.variacao.id), ['v1'])
+  assert.deepEqual(
+    buscarVariacoes(catalogo, 'marsala').itens.map((i) => i.variacao.id),
+    ['v1', 'v2', 'v4'],
+  )
+})
+
+test('busca: sem acento e sem maiuscula', () => {
+  assert.deepEqual(buscarVariacoes(catalogo, 'AMBAR').itens.map((i) => i.variacao.id), ['v3'])
+})
+
+test('busca: acha pelo SKU da variacao e pelo SKU do produto', () => {
+  assert.deepEqual(buscarVariacoes(catalogo, '010-amb').itens.map((i) => i.variacao.id), ['v3'])
+  assert.equal(buscarVariacoes(catalogo, '020').total, 2)
+})
+
+test('busca: vazia e sem escopo nao lista nada', () => {
+  assert.equal(buscarVariacoes(catalogo, '   ').total, 0)
+})
+
+test('busca: com escopo, vazia lista o produto e modelo do escopo', () => {
+  const r = buscarVariacoes(catalogo, '', { escopo: { produtoId: 'p1', modelo: 'RELEVO' } })
+  assert.deepEqual(r.itens.map((i) => i.variacao.id), ['v1', 'v2', 'v3'])
+  // E o escopo filtra junto com o termo.
+  const q = buscarVariacoes(catalogo, 'casal', { escopo: { produtoId: 'p1', modelo: 'RELEVO' } })
+  assert.deepEqual(q.itens.map((i) => i.variacao.id), ['v2'])
+  // Variacao sem modelo cai no "Sem modelo".
+  const sm = buscarVariacoes(catalogo, '', { escopo: { produtoId: 'p2', modelo: 'Sem modelo' } })
+  assert.deepEqual(sm.itens.map((i) => i.variacao.id), ['v5'])
+})
+
+test('busca: limite corta a lista mas o total diz quantas havia', () => {
+  const r = buscarVariacoes(catalogo, 'marsala', { limite: 2 })
+  assert.equal(r.itens.length, 2)
+  assert.equal(r.total, 3)
+})
+
+test('variacao e sempre obrigatoria, mesmo em produto sem variacao', () => {
+  assert.notEqual(erroDaVariacao('', []), null)
+  assert.notEqual(erroDaVariacao(null, [{ id: 'a' }]), null)
+  assert.equal(erroDaVariacao('a', [{ id: 'a' }]), null)
 })

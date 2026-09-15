@@ -16,6 +16,7 @@ import {
   maquinas,
   modelos,
   movimentacoesEstoque,
+  eventosKanban,
   ordensProducao,
   produtos,
   remessasFull,
@@ -25,7 +26,7 @@ import {
   variacoesProduto,
 } from '@/lib/db/schema'
 import { resumoDeDias } from '@/lib/dia-brasil'
-import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
+import { CANAL_LABEL_CURTO, STATUS_LABEL_CURTO } from '@/lib/validators/ordens'
 
 // Lixeira: tudo no sistema é soft-delete (deleted_at). Aqui o admin vê o
 // que foi excluído, restaura, ou apaga DE VEZ (DELETE mesmo, sem volta).
@@ -120,7 +121,7 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
         .orderBy(desc(produtos.deletedAt))
         .limit(LIMITE_POR_TIPO),
       () => db
-        .select({ id: ordensProducao.id, numero: ordensProducao.numero, em: ordensProducao.deletedAt, produtoNome: produtos.nome })
+        .select({ id: ordensProducao.id, numero: ordensProducao.numero, status: ordensProducao.status, em: ordensProducao.deletedAt, produtoNome: produtos.nome })
         .from(ordensProducao)
         .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
         .where(isNotNull(ordensProducao.deletedAt))
@@ -184,7 +185,7 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
 
   const itens: ItemLixeira[] = [
     ...prods.map((p): ItemLixeira => ({ tipo: 'produto', id: p.id, titulo: p.nome, subtitulo: p.sku, excluidoEm: p.em! })),
-    ...ops.map((o): ItemLixeira => ({ tipo: 'op', id: o.id, titulo: `${o.numero} — ${o.produtoNome}`, subtitulo: 'volta como cancelada', excluidoEm: o.em! })),
+    ...ops.map((o): ItemLixeira => ({ tipo: 'op', id: o.id, titulo: `${o.numero} — ${o.produtoNome}`, subtitulo: `volta como ${STATUS_LABEL_CURTO[o.status]}`, excluidoEm: o.em! })),
     ...kitsRows.map((k): ItemLixeira => ({ tipo: 'kit', id: k.id, titulo: k.nome, subtitulo: k.sku, excluidoEm: k.em! })),
     ...coresRows.map((c): ItemLixeira => ({ tipo: 'cor', id: c.id, titulo: c.nome, subtitulo: 'Cor', excluidoEm: c.em! })),
     ...modelosRows.map((m): ItemLixeira => ({ tipo: 'modelo', id: m.id, titulo: m.nome, subtitulo: 'Modelo', excluidoEm: m.em! })),
@@ -244,7 +245,7 @@ export async function restaurarAction(
   tipo: TipoLixeira,
   id: string,
 ): Promise<ActionResult> {
-  await requireRole(['admin'])
+  const user = await requireRole(['admin'])
 
   if (!UUID_RE.test(id)) return { success: false, error: 'ID inválido' }
 
@@ -265,12 +266,25 @@ export async function restaurarAction(
         })
         break
       case 'op':
-        // Volta com o status que tinha ao ser excluída (cancelado, na
-        // prática) — o usuário reativa pelo fluxo normal.
-        await db
-          .update(ordensProducao)
-          .set({ deletedAt: null })
-          .where(eq(ordensProducao.id, id))
+        // Volta EXATAMENTE como estava: excluir não mexe mais no status
+        // (ordens/actions.ts). O rastro vai pro histórico da OP, par do
+        // "OP excluída" que a exclusão gravou.
+        await db.transaction(async (tx) => {
+          const [op] = await tx
+            .update(ordensProducao)
+            .set({ deletedAt: null })
+            .where(eq(ordensProducao.id, id))
+            .returning({ status: ordensProducao.status })
+          if (op) {
+            await tx.insert(eventosKanban).values({
+              ordemId: id,
+              statusAnterior: op.status,
+              statusNovo: op.status,
+              usuarioId: user.id,
+              observacao: 'OP restaurada da lixeira',
+            })
+          }
+        })
         break
       case 'kit':
         await db

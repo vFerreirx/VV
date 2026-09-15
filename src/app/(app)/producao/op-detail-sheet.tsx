@@ -26,6 +26,7 @@ import {
 } from './dialogos-do-gerente'
 import {
   apontarProducaoAction,
+  cancelarOrdemAction,
   desfazerConclusaoAction,
   excluirOrdemAction,
   listarApontamentos,
@@ -61,7 +62,11 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
-import { erroDaTransicaoGenerica } from '@/lib/producao/transicoes-da-op'
+import {
+  erroDaExclusao,
+  erroDaTransicaoGenerica,
+  erroDoCancelamento,
+} from '@/lib/producao/transicoes-da-op'
 import { cn } from '@/lib/utils'
 import {
   CANAL_LABEL,
@@ -109,6 +114,7 @@ export function OpDetailSheet({
   onClose,
   gestor,
   podeMover,
+  podeEditarOrdens,
 }: {
   ordemId: string | null
   onClose: () => void
@@ -116,6 +122,8 @@ export function OpDetailSheet({
   gestor: boolean
   /** Escrita no kanban: o Status manual. */
   podeMover: boolean
+  /** Escrita em "ordens": Cancelar e Excluir, que são decisões sobre a OP. */
+  podeEditarOrdens: boolean
 }) {
   return (
     <Sheet open={ordemId !== null} onOpenChange={(o) => !o && onClose()}>
@@ -128,6 +136,7 @@ export function OpDetailSheet({
             onClose={onClose}
             gestor={gestor}
             podeMover={podeMover}
+            podeEditarOrdens={podeEditarOrdens}
           />
         )}
       </SheetContent>
@@ -144,11 +153,13 @@ function DetalheBody({
   onClose,
   gestor,
   podeMover,
+  podeEditarOrdens,
 }: {
   ordemId: string
   onClose: () => void
   gestor: boolean
   podeMover: boolean
+  podeEditarOrdens: boolean
 }) {
   const router = useRouter()
   const [ordem, setOrdem] = useState<OrdemDetalhe | null>(null)
@@ -159,6 +170,8 @@ function DetalheBody({
   const [, startTransition] = useTransition()
   const [confirmarExcluir, setConfirmarExcluir] = useState(false)
   const [excluindo, startExcluir] = useTransition()
+  const [confirmarCancelar, setConfirmarCancelar] = useState(false)
+  const [cancelando, startCancelar] = useTransition()
   const [acaoPend, startAcao] = useTransition()
   const [porta, setPorta] = useState<'maquina' | 'concluir' | null>(null)
   const [apontarOpen, setApontarOpen] = useState(false)
@@ -210,6 +223,11 @@ function DetalheBody({
   // portas próprias abrem diálogo; o resto vai pelo caminho genérico.
   function escolherStatus(novoStatus: Status) {
     if (!ordem || ordem.status === novoStatus) return
+    // Cancelar tem confirmação e porta própria, venha do botão ou daqui.
+    if (novoStatus === 'cancelado') {
+      setConfirmarCancelar(true)
+      return
+    }
     if (novoStatus === 'em_producao') {
       // Voltar da conclusão pra máquina é desfazer a conclusão, apontamento
       // junto — igual ao arrastar do board.
@@ -280,6 +298,23 @@ function DetalheBody({
       toast.success(result.message ?? 'OP excluída')
       setConfirmarExcluir(false)
       onClose()
+      router.refresh()
+    })
+  }
+
+  // CANCELAR: a fábrica desistiu. Continua visível em Canceladas, e a
+  // máquina, se estava em produção, fica livre — ver `cancelarOrdemAction`.
+  function cancelar() {
+    if (!ordem) return
+    startCancelar(async () => {
+      const result = await cancelarOrdemAction(ordem.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(result.message ?? 'OP cancelada')
+      setConfirmarCancelar(false)
+      await recarregar(ordem.id)
       router.refresh()
     })
   }
@@ -661,13 +696,17 @@ function DetalheBody({
                     // quem pergunta o que falta. A baixa não tem diálogo, e só
                     // vale a partir de Produção concluída.
                     const temPorta = st === 'em_producao' || st === 'pronto_envio'
+                    // Cancelar exige escrita em ordens: sem ela, a opção
+                    // levaria a uma action que recusa.
                     const bloqueio = temPorta
                       ? null
-                      : erroDaTransicaoGenerica(
-                          ordem.status,
-                          st,
-                          apontamentos.length > 0,
-                        )
+                      : st === 'cancelado' && !podeEditarOrdens
+                        ? 'sem permissão'
+                        : erroDaTransicaoGenerica(
+                            ordem.status,
+                            st,
+                            apontamentos.length > 0,
+                          )
                     return (
                       <SelectItem key={st} value={st} disabled={bloqueio !== null}>
                         {STATUS_LABEL[st]}
@@ -680,16 +719,39 @@ function DetalheBody({
           </details>
         )}
 
+        {/* CANCELAR E EXCLUIR SÃO COISAS DIFERENTES (transicoes-da-op.ts), e
+            cada botão só aparece quando a regra deixa — a mesma com que o
+            servidor recusa. Cancelar é a fábrica desistindo; excluir é o
+            engano de cadastro, que só existe enquanto a OP nunca produziu. */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setConfirmarExcluir(true)}
-            disabled={excluindo}
-          >
-            <Trash2 className="text-destructive" />
-            Excluir OP
-          </Button>
+          <div className="flex flex-wrap gap-1">
+            {podeEditarOrdens && erroDoCancelamento(ordem.status) === null && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setConfirmarCancelar(true)}
+                disabled={cancelando}
+              >
+                Cancelar OP…
+              </Button>
+            )}
+            {podeEditarOrdens &&
+              erroDaExclusao({
+                status: ordem.status,
+                dataRealInicio: ordem.dataRealInicio,
+                temApontamento: apontamentos.length > 0,
+              }) === null && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setConfirmarExcluir(true)}
+                  disabled={excluindo}
+                >
+                  <Trash2 className="text-destructive" />
+                  Excluir
+                </Button>
+              )}
+          </div>
           <Button
             size="sm"
             variant="outline"
@@ -709,8 +771,9 @@ function DetalheBody({
           <DialogHeader>
             <DialogTitle>Excluir OP {ordem.numero}?</DialogTitle>
             <DialogDescription>
-              A ordem será cancelada e removida do kanban. O histórico fica
-              preservado para referência.
+              Pra OP cadastrada por engano. Ela sai das listas e vai pra
+              lixeira sem mudar de status — restaurar devolve exatamente como
+              está. Se a fábrica desistiu dela, use Cancelar.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -727,6 +790,39 @@ function DetalheBody({
               disabled={excluindo}
             >
               {excluindo ? 'Excluindo…' : 'Excluir'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={confirmarCancelar}
+        onOpenChange={(o) => !o && setConfirmarCancelar(false)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar OP {ordem.numero}?</DialogTitle>
+            <DialogDescription>
+              A OP vai pra Canceladas e continua visível lá.
+              {ordem.status === 'em_producao' &&
+                ' A máquina fica livre pra outra OP.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmarCancelar(false)}
+              disabled={cancelando}
+            >
+              Voltar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={cancelar}
+              loading={cancelando}
+              disabled={cancelando}
+            >
+              Cancelar OP
             </Button>
           </DialogFooter>
         </DialogContent>

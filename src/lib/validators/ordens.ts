@@ -120,20 +120,6 @@ export type OrdemInput = z.input<typeof ordemSchema>
 export type OrdemOutput = z.output<typeof ordemSchema>
 
 // -----------------------------------------------------------------
-// OP rápida (criada no próprio kanban — só o essencial)
-// -----------------------------------------------------------------
-
-export const ordemRapidaSchema = z.object({
-  produtoId: z.string().refine((v) => uuidRegex.test(v), 'Selecione um produto'),
-  variacaoId: uuidOpt,
-  quantidade: quantidadeReq,
-  canalDestino: z.enum(canalValues),
-  prioridade: z.enum(prioridadeValues),
-})
-
-export type OrdemRapidaInput = z.input<typeof ordemRapidaSchema>
-
-// -----------------------------------------------------------------
 // Mudar status (usado pelo kanban)
 // -----------------------------------------------------------------
 
@@ -171,7 +157,11 @@ export type ApontamentoInput = z.input<typeof apontamentoSchema>
 
 export const ordensFiltrosSchema = z.object({
   q: z.string().trim().optional(),
-  status: z.union([z.enum(statusValues), z.literal('todos')]).optional(),
+  // "abertas" (sem baixa e sem cancelamento) é o padrão da lista quando a
+  // URL não traz status; "todos" é explícito. Ver `listarOrdens`.
+  status: z
+    .union([z.enum(statusValues), z.literal('todos'), z.literal('abertas')])
+    .optional(),
   canal: z.union([z.enum(canalValues), z.literal('todos')]).optional(),
   prioridade: z.union([z.enum(prioridadeValues), z.literal('todas')]).optional(),
   maquinaId: z.string().trim().optional(),

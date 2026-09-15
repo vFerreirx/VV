@@ -42,6 +42,9 @@ export function erroDaTransicaoGenerica(
   temApontamento: boolean,
 ): string | null {
   if (de === para) return null
+  // Cancelar tem porta própria (`cancelarOrdemAction`), mas a regra vale
+  // igual aqui: o Status manual não pode fazer o que o botão recusa.
+  if (para === 'cancelado') return erroDoCancelamento(de)
   if (para === 'em_producao') {
     return 'Pra entrar em produção, escolha a máquina (Iniciar na máquina…)'
   }
@@ -98,4 +101,73 @@ export function podeConcluirProducao(
 ): boolean {
   if (status === 'em_producao') return true
   return gestor && (ANTES_DA_CONCLUSAO as readonly string[]).includes(status)
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CANCELAR E EXCLUIR SÃO COISAS DIFERENTES
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Antes os dois terminavam no mesmo lugar: "Excluir" gravava `cancelado` E
+// `deletedAt`, e a lixeira devolvia a OP "como cancelada". O relatório não
+// tinha como separar a OP que foi um engano da OP que a fábrica decidiu não
+// fazer — e restaurar um engano trazia de volta uma OP cancelada que nunca
+// tinha sido cancelada.
+//
+//   CANCELAR — a OP existiu e a fábrica desistiu. Vai pra `cancelado` e
+//              continua VISÍVEL em Canceladas: é informação sobre a fábrica.
+//   EXCLUIR  — a OP foi um engano de cadastro. Grava só `deletedAt`, sem
+//              mexer no status, e restaurar da lixeira devolve a OP
+//              exatamente como estava.
+//
+// ⚠️ A MESMA FUNÇÃO RESPONDE À TELA E AO SERVIDOR, como as portas acima: a
+// tela esconde o botão com ela, a action recusa com ela — inclusive no lote.
+
+/**
+ * Por que esta OP não pode ser cancelada, ou null se pode.
+ *
+ * OP com BAIXA não cancela: a entrada no estoque já aconteceu, e cancelar
+ * deixaria peça no saldo de uma OP que "não foi feita".
+ */
+export function erroDoCancelamento(status: StatusDaOrdem): string | null {
+  if (status === 'enviado') {
+    return 'OP com baixa não cancela: a entrada no estoque já aconteceu'
+  }
+  if (status === 'cancelado') return 'Essa OP já está cancelada'
+  return null
+}
+
+// Status que só existem DEPOIS de a OP entrar numa máquina. Entra na regra da
+// exclusão junto com `dataRealInicio`, e não no lugar dela: a data cobre a OP
+// que entrou em produção e voltou pra fila pelo Desfazer; o status cobre o
+// legado que chegou nessas colunas sem a data preenchida.
+const STATUS_DEPOIS_DA_MAQUINA = [
+  'em_producao',
+  'acabamento',
+  'embalagem',
+  'pronto_envio',
+  'enviado',
+] as const satisfies readonly StatusDaOrdem[]
+
+/**
+ * Por que esta OP não pode ser EXCLUÍDA, ou null se pode.
+ *
+ * Só se exclui o engano: OP que nunca entrou em produção e não tem
+ * apontamento. Máquina planejada não impede — planejar não é produzir. Pra
+ * todo o resto a resposta é Cancelar, que deixa o registro à vista.
+ */
+export function erroDaExclusao(op: {
+  status: StatusDaOrdem
+  dataRealInicio: Date | string | null
+  temApontamento: boolean
+}): string | null {
+  if (op.temApontamento) {
+    return 'Essa OP tem apontamento. Use Cancelar'
+  }
+  if (
+    op.dataRealInicio !== null ||
+    (STATUS_DEPOIS_DA_MAQUINA as readonly string[]).includes(op.status)
+  ) {
+    return 'Essa OP já entrou em produção. Use Cancelar'
+  }
+  return null
 }

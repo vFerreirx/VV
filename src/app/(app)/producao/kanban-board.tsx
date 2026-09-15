@@ -35,8 +35,8 @@ import {
   IniciarNaMaquinaDialog,
 } from './dialogos-do-gerente'
 import { OpDetailSheet } from './op-detail-sheet'
-import { QuickOrdemDialog } from './quick-ordem-dialog'
 import type { ProdutoComVariacoesParaForm } from '@/app/(app)/ordens/actions'
+import { NovaOpDialog } from '@/components/ordens/nova-op-dialog'
 import { Button } from '@/components/ui/button'
 import {
   desfazerConclusaoAction,
@@ -478,7 +478,7 @@ export function KanbanBoard({
             onClick={() => setNovaOpOpen(true)}
           >
             <Plus />
-            Nova OP rápida
+            Nova OP
           </Button>
         )}
       </div>
@@ -519,13 +519,13 @@ export function KanbanBoard({
         onClose={() => setDetalheId(null)}
         gestor={gestor}
         podeMover={podeMover}
+        // Cancelar e Excluir são escrita em "ordens" — a mesma que cria OP.
+        podeEditarOrdens={podeCriar}
       />
 
-      <QuickOrdemDialog
-        open={novaOpOpen}
-        onClose={() => setNovaOpOpen(false)}
-        produtos={produtos}
-      />
+      {novaOpOpen && (
+        <NovaOpDialog produtos={produtos} onClose={() => setNovaOpOpen(false)} />
+      )}
 
       {porta?.tipo === 'maquina' && (
         <IniciarNaMaquinaDialog

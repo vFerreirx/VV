@@ -1,6 +1,5 @@
 'use client'
 
-import { Combine } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -45,12 +44,17 @@ type Escolha = { tamanho: string; cor: string }
 export function GerarDeKit({
   kits,
   produtos,
+  open,
+  onOpenChange,
 }: {
   kits: KitComItens[]
   produtos: Produtos
+  /** Controlado pelo menu "Nova OP ▾" da /ordens. */
+  open: boolean
+  onOpenChange: (aberto: boolean) => void
 }) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const setOpen = onOpenChange
   const [isPending, startTransition] = useTransition()
   const [kitId, setKitId] = useState(kits[0]?.id ?? '')
   const [qtd, setQtd] = useState('1')
@@ -117,11 +121,6 @@ export function GerarDeKit({
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
-        <Combine />
-        Gerar de kit
-      </Button>
-
       <Dialog open={open} onOpenChange={(o) => !o && setOpen(false)}>
         <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-lg">
           <DialogHeader className="border-b p-6">

@@ -271,7 +271,9 @@ function EventoChip({
   if (evento.remessa) {
     return (
       <Link
-        href={`/ordens?remessaId=${evento.id}`}
+        // `status=todos`: as OPs de um Full incluem as que já tiveram baixa, e
+        // a lista abre em "Abertas" quando a URL não diz nada.
+        href={`/ordens?remessaId=${evento.id}&status=todos`}
         title={`${EVENTO_FULL_CANAL_LABEL[evento.canal]} — ${evento.observacao ?? ''}`}
         className={cn(
           'flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium hover:opacity-80',

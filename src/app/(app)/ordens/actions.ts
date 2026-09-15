@@ -10,6 +10,7 @@ import {
   inArray,
   isNull,
   ne,
+  notInArray,
   or,
   sql,
 } from 'drizzle-orm'
@@ -32,6 +33,7 @@ import {
 } from '@/lib/db/estacao-operadores'
 import {
   apontamentosProducao,
+  cores,
   estacoes,
   eventosKanban,
   maquinas,
@@ -61,21 +63,21 @@ import {
   podeIniciar,
 } from '@/lib/producao/inicio-da-op'
 import {
+  erroDaExclusao,
   erroDaTransicaoGenerica,
   erroDaTransicaoPeloFormulario,
+  erroDoCancelamento,
   podeConcluirProducao,
 } from '@/lib/producao/transicoes-da-op'
 import {
   apontamentoSchema,
   criarOrdemSchema,
   mudarStatusOrdemSchema,
-  ordemRapidaSchema,
   ordemSchema,
   ordensFiltrosSchema,
   STATUS_LABEL_CURTO,
   type ApontamentoInput,
   type MudarStatusOrdemInput,
-  type OrdemRapidaInput,
   type OrdemInput,
   type OrdensFiltros,
   type statusValues,
@@ -102,6 +104,9 @@ export type OrdemListItem = OrdemProducao & {
   // "15/07" quando a OP pertence a uma remessa Full.
   remessaData: string | null
   atrasada: boolean
+  /** Soma dos apontamentos — a coluna "Resultado". Zero e zero = sem registro. */
+  produzido: number
+  refugo: number
 }
 
 // Tamanho da página da listagem de ordens.
@@ -139,8 +144,16 @@ export async function listarOrdens(
       )!,
     )
   }
-  if (f.status && f.status !== 'todos') {
-    conditions.push(eq(ordensProducao.status, f.status))
+  // ⚠️ SEM STATUS NA URL É "ABERTAS", e não "todas". A lista abre no que
+  // está em andamento — tudo que não teve baixa nem foi cancelado —, porque é
+  // isso que se procura aqui no dia a dia. "Todas" é um valor EXPLÍCITO
+  // (`status=todos`), e quem linka pra uma OP específica que pode estar com
+  // baixa (a busca global, o calendário do Full) manda ele junto.
+  const status = f.status ?? 'abertas'
+  if (status === 'abertas') {
+    conditions.push(notInArray(ordensProducao.status, ['enviado', 'cancelado']))
+  } else if (status !== 'todos') {
+    conditions.push(eq(ordensProducao.status, status))
   }
   if (f.canal && f.canal !== 'todos') {
     conditions.push(eq(ordensProducao.canalDestino, f.canal))
@@ -175,6 +188,19 @@ export async function listarOrdens(
       maquinaNome: maquinas.nome,
       responsavelNome: users.nome,
       remessaDataEnvio: remessasFull.dataEnvio,
+      // ⚠️ `"ordens_producao"."id"` QUALIFICADO À MÃO, como em
+      // producao/actions.ts: sem isso o Postgres correlaciona com o `id` da
+      // própria subquery e o resultado sai sempre zero.
+      produzido: sql<number>`(
+        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)::int
+        FROM ${apontamentosProducao}
+        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+      )`,
+      refugo: sql<number>`(
+        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeRefugo}), 0)::int
+        FROM ${apontamentosProducao}
+        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+      )`,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -201,6 +227,8 @@ export async function listarOrdens(
       maquinaNome,
       responsavelNome,
       remessaDataEnvio,
+      produzido,
+      refugo,
     }) => ({
       ...op,
       produtoNome,
@@ -217,6 +245,8 @@ export async function listarOrdens(
         op.status !== 'enviado' &&
         op.status !== 'cancelado' &&
         new Date(op.dataPrevistaFim).getTime() < now,
+      produzido: produzido ?? 0,
+      refugo: refugo ?? 0,
     }),
   )
 
@@ -291,7 +321,17 @@ export type ProdutoComVariacoesParaForm = Pick<
   'id' | 'sku' | 'nome'
 > & {
   variacoes: Array<
-    Pick<VariacaoProduto, 'id' | 'skuVariacao' | 'cor' | 'modelo' | 'tamanho'>
+    Pick<VariacaoProduto, 'id' | 'skuVariacao' | 'cor' | 'modelo' | 'tamanho'> & {
+      /**
+       * O hex da cor, pro swatch da busca do "Nova OP". Mesmo LEFT JOIN por
+       * nome (`cores.nome` = `variacoes_produto.cor`) do cartão e do tablet:
+       * a amostra que o gerente escolhe tem que ser a que o operador confere
+       * contra o fio. Sem cor casada, null — e o swatch vira o quadrado de
+       * "sem cor definida".
+       */
+      corHex: string | null
+      corHex2: string | null
+    }
   >
 }
 
@@ -322,8 +362,11 @@ export async function listarProdutosParaOrdem(
       cor: variacoesProduto.cor,
       modelo: variacoesProduto.modelo,
       tamanho: variacoesProduto.tamanho,
+      corHex: cores.codigoHex,
+      corHex2: cores.codigoHex2,
     })
     .from(variacoesProduto)
+    .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     // A criação oferece só variações disponíveis. A edição mantém as antigas
     // para que uma OP histórica não perca a identificação ao abrir o formulário.
     .where(somenteAtivas ? isNull(variacoesProduto.deletedAt) : undefined)
@@ -344,6 +387,8 @@ export async function listarProdutosParaOrdem(
       cor: v.cor,
       modelo: v.modelo,
       tamanho: v.tamanho,
+      corHex: v.corHex ?? null,
+      corHex2: v.corHex2 ?? null,
     })),
   }))
 }
@@ -412,6 +457,7 @@ export async function criarOrdemAction(
     .leftJoin(variacoesProduto, and(eq(variacoesProduto.produtoId, produtos.id), isNull(variacoesProduto.deletedAt)))
     .where(and(eq(produtos.id, data.produtoId), eq(produtos.ativo, true), isNull(produtos.deletedAt)))
   if (!catalogo.length) return { success: false, error: 'Produto indisponível. Selecione novamente no catálogo.' }
+  // Variação SEMPRE obrigatória — ver `erroDaVariacao` (catalogo-op.ts).
   const erroVariacao = erroDaVariacao(data.variacaoId, catalogo.flatMap((v) => v.variacaoId ? [{ id: v.variacaoId }] : []))
   if (erroVariacao) return { success: false, error: erroVariacao }
 
@@ -443,62 +489,6 @@ export async function criarOrdemAction(
       statusNovo: data.status,
       usuarioId: user.id,
       observacao: 'OP criada',
-    })
-
-    return inserted!.id
-  })
-
-  revalidatePath('/ordens')
-  revalidatePath('/producao')
-  return { success: true, data: { id: novoId }, message: 'OP criada' }
-}
-
-// -----------------------------------------------------------------
-// Criar OP rápida (no próprio kanban) — operador também pode
-// -----------------------------------------------------------------
-
-export async function criarOrdemRapidaAction(
-  input: OrdemRapidaInput,
-): Promise<ActionResult<{ id: string }>> {
-  const user = await requireAuth()
-  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
-    return { success: false, error: 'Sem permissão pra criar OP no kanban' }
-  }
-
-  const parsed = ordemRapidaSchema.safeParse(input)
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: parsed.error.issues[0]?.message ?? 'Dados inválidos',
-    }
-  }
-  const data = parsed.data
-
-  // Operador que cria a corridinha já fica como dono; gerente deixa na fila.
-  const responsavelId = user.role === 'operador' ? user.id : null
-
-  const novoId = await db.transaction(async (tx) => {
-    const [inserted] = await tx
-      .insert(ordensProducao)
-      .values({
-        numero: '',
-        produtoId: data.produtoId,
-        variacaoId: data.variacaoId ?? null,
-        quantidade: data.quantidade,
-        canalDestino: data.canalDestino,
-        prioridade: data.prioridade,
-        status: 'programado',
-        criadoPor: user.id,
-        responsavelId,
-      })
-      .returning({ id: ordensProducao.id })
-
-    await tx.insert(eventosKanban).values({
-      ordemId: inserted!.id,
-      statusAnterior: null,
-      statusNovo: 'programado',
-      usuarioId: user.id,
-      observacao: 'OP rápida criada',
     })
 
     return inserted!.id
@@ -2063,39 +2053,123 @@ function concluidaAntes(status: (typeof statusValues)[number]): ActionResult {
 }
 
 // -----------------------------------------------------------------
-// Soft delete (cancela e marca deletedAt)
+// CANCELAR — a fábrica desistiu da OP
 // -----------------------------------------------------------------
-
-export async function excluirOrdemAction(id: string): Promise<ActionResult> {
+//
+// Cancelar e excluir são coisas diferentes (topo de transicoes-da-op.ts):
+// cancelada continua VISÍVEL em Canceladas, porque é informação sobre a
+// fábrica. A regra do que pode vive em `erroDoCancelamento`, a mesma com que
+// o sheet decide mostrar o botão e o Status manual decide oferecer a opção.
+//
+// Se estava em produção, a MÁQUINA FICA LIVRE sem nada a mais: o índice único
+// `ordens_producao_maquina_em_producao_uidx` só cobre `em_producao`. O
+// `maquina_id` fica na OP como histórico de onde ela estava.
+//
+// Escrita em "ordens", e não no kanban: cancelar é decisão sobre a OP, e é
+// da área que a planeja.
+export async function cancelarOrdemAction(id: string): Promise<ActionResult> {
   const user = await requireAreaEscrita('ordens')
+  if (!uuidRegex.test(id)) return { success: false, error: 'ID inválido' }
 
   const [atual] = await db
-    .select()
+    .select({ id: ordensProducao.id, status: ordensProducao.status })
     .from(ordensProducao)
     .where(and(eq(ordensProducao.id, id), isNull(ordensProducao.deletedAt)))
     .limit(1)
-  if (!atual) {
-    return { success: false, error: 'OP não encontrada' }
+  if (!atual) return { success: false, error: 'OP não encontrada' }
+
+  const erro = erroDoCancelamento(atual.status)
+  if (erro) return { success: false, error: erro }
+
+  const gravadas = await db.transaction(async (tx) => {
+    // Condicional no status lido: se alguém deu baixa no meio, nada muda.
+    const linhas = await tx
+      .update(ordensProducao)
+      .set({ status: 'cancelado' })
+      .where(
+        and(
+          eq(ordensProducao.id, id),
+          isNull(ordensProducao.deletedAt),
+          eq(ordensProducao.status, atual.status),
+        ),
+      )
+      .returning({ id: ordensProducao.id })
+    if (linhas.length === 0) return 0
+
+    await tx.insert(eventosKanban).values({
+      ordemId: id,
+      statusAnterior: atual.status,
+      statusNovo: 'cancelado',
+      usuarioId: user.id,
+      observacao: 'OP cancelada',
+    })
+    return linhas.length
+  })
+  if (gravadas === 0) {
+    return { success: false, error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.' }
   }
+
+  revalidatePath('/ordens')
+  revalidatePath(`/ordens/${id}`)
+  revalidatePath('/producao')
+  revalidatePath('/fabrica')
+  return { success: true, message: 'OP cancelada' }
+}
+
+// -----------------------------------------------------------------
+// EXCLUIR — a OP foi um engano de cadastro
+// -----------------------------------------------------------------
+//
+// ⚠️ GRAVA SÓ `deletedAt`, SEM MEXER NO STATUS. Antes gravava `cancelado`
+// junto, e restaurar da lixeira devolvia como cancelada uma OP que nunca foi
+// cancelada. Agora a lixeira devolve exatamente o que estava.
+//
+// Só o engano se exclui: OP que nunca entrou em produção e não tem
+// apontamento (`erroDaExclusao`). O resto se cancela.
+//
+// O RASTRO FICA NO `eventos_kanban`, num evento sem transição ("OP excluída"):
+// sem isto, quem excluiu e quando não estaria escrito em lugar nenhum. O
+// relógio do aging ignora evento sem transição (producao/actions.ts).
+
+// Ler o que a regra precisa de várias OPs de uma vez — o lote e a unitária
+// usam a mesma consulta, pra decidir igual.
+async function situacaoParaExcluir(ids: string[]) {
+  return db
+    .select({
+      id: ordensProducao.id,
+      status: ordensProducao.status,
+      dataRealInicio: ordensProducao.dataRealInicio,
+      temApontamento: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${apontamentosProducao}
+        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+      )`,
+    })
+    .from(ordensProducao)
+    .where(and(inArray(ordensProducao.id, ids), isNull(ordensProducao.deletedAt)))
+}
+
+export async function excluirOrdemAction(id: string): Promise<ActionResult> {
+  const user = await requireAreaEscrita('ordens')
+  if (!uuidRegex.test(id)) return { success: false, error: 'ID inválido' }
+
+  const [atual] = await situacaoParaExcluir([id])
+  if (!atual) return { success: false, error: 'OP não encontrada' }
+
+  const erro = erroDaExclusao(atual)
+  if (erro) return { success: false, error: erro }
 
   await db.transaction(async (tx) => {
     await tx
       .update(ordensProducao)
-      .set({
-        deletedAt: new Date(),
-        status: atual.status === 'enviado' ? atual.status : 'cancelado',
-      })
+      .set({ deletedAt: new Date() })
       .where(eq(ordensProducao.id, id))
-
-    if (atual.status !== 'cancelado' && atual.status !== 'enviado') {
-      await tx.insert(eventosKanban).values({
-        ordemId: id,
-        statusAnterior: atual.status,
-        statusNovo: 'cancelado',
-        usuarioId: user.id,
-        observacao: 'OP excluída',
-      })
-    }
+    await tx.insert(eventosKanban).values({
+      ordemId: id,
+      statusAnterior: atual.status,
+      statusNovo: atual.status,
+      usuarioId: user.id,
+      observacao: 'OP excluída',
+    })
   })
 
   revalidatePath('/ordens')
@@ -2112,7 +2186,7 @@ const uuidRegex =
 
 export async function excluirMultiplasOrdensAction(
   ids: string[],
-): Promise<ActionResult<{ excluidas: number }>> {
+): Promise<ActionResult<{ excluidas: number; recusadas: number }>> {
   const user = await requireAreaEscrita('ordens')
 
   if (!Array.isArray(ids) || ids.length === 0) {
@@ -2123,62 +2197,56 @@ export async function excluirMultiplasOrdensAction(
     return { success: false, error: 'Nenhum ID válido na seleção' }
   }
 
-  // Carrega as OPs ativas pra gerar eventos kanban depois.
-  const opsAtivas = await db
-    .select({ id: ordensProducao.id, status: ordensProducao.status })
-    .from(ordensProducao)
-    .where(
-      and(
-        inArray(ordensProducao.id, idsValidos),
-        isNull(ordensProducao.deletedAt),
-      ),
-    )
-
-  if (opsAtivas.length === 0) {
+  const ops = await situacaoParaExcluir(idsValidos)
+  if (ops.length === 0) {
     return { success: false, error: 'Nenhuma OP encontrada' }
   }
 
-  await db.transaction(async (tx) => {
-    const now = new Date()
-    // Marca como cancelado quando não estava enviado/cancelado
-    await tx
-      .update(ordensProducao)
-      .set({ deletedAt: now })
-      .where(inArray(ordensProducao.id, opsAtivas.map((o) => o.id)))
+  // A MESMA REGRA DA UNITÁRIA, OP por OP. As que podem são excluídas; as que
+  // não podem ficam, e a resposta diz quantas e por quê — agrupado pela
+  // frase da regra, pra "2 já entraram em produção" sair numa linha só.
+  const podem = ops.filter((o) => erroDaExclusao(o) === null)
+  const motivos = new Map<string, number>()
+  for (const o of ops) {
+    const erro = erroDaExclusao(o)
+    if (erro) motivos.set(erro, (motivos.get(erro) ?? 0) + 1)
+  }
 
-    // Vira "cancelado" só pras que ainda estavam ativas
-    const paraCancelar = opsAtivas
-      .filter((o) => o.status !== 'enviado' && o.status !== 'cancelado')
-      .map((o) => o.id)
-
-    if (paraCancelar.length > 0) {
+  if (podem.length > 0) {
+    await db.transaction(async (tx) => {
       await tx
         .update(ordensProducao)
-        .set({ status: 'cancelado' })
-        .where(inArray(ordensProducao.id, paraCancelar))
-
-      // Gera eventos kanban (statusAnterior é o status antigo de cada OP)
-      const eventos = opsAtivas
-        .filter((o) => o.status !== 'enviado' && o.status !== 'cancelado')
-        .map((o) => ({
+        .set({ deletedAt: new Date() })
+        .where(inArray(ordensProducao.id, podem.map((o) => o.id)))
+      await tx.insert(eventosKanban).values(
+        podem.map((o) => ({
           ordemId: o.id,
           statusAnterior: o.status,
-          statusNovo: 'cancelado' as const,
+          statusNovo: o.status,
           usuarioId: user.id,
-          observacao: 'OP excluída em massa',
-        }))
-      await tx.insert(eventosKanban).values(eventos)
-    }
-  })
+          observacao: 'OP excluída em lote',
+        })),
+      )
+    })
+    revalidatePath('/ordens')
+    revalidatePath('/producao')
+  }
 
-  revalidatePath('/ordens')
-  revalidatePath('/producao')
+  const recusadas = ops.length - podem.length
+  const partes: string[] = []
+  if (podem.length > 0) {
+    partes.push(podem.length === 1 ? '1 OP excluída' : `${podem.length} OPs excluídas`)
+  }
+  for (const [motivo, n] of motivos) {
+    partes.push(`${n} não: ${motivo.charAt(0).toLowerCase()}${motivo.slice(1)}`)
+  }
+
+  if (podem.length === 0) {
+    return { success: false, error: partes.join(' · ') }
+  }
   return {
     success: true,
-    data: { excluidas: opsAtivas.length },
-    message:
-      opsAtivas.length === 1
-        ? '1 OP excluída'
-        : `${opsAtivas.length} OPs excluídas`,
+    data: { excluidas: podem.length, recusadas },
+    message: partes.join(' · '),
   }
 }

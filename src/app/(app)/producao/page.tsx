@@ -115,12 +115,22 @@ export default async function ProducaoPage({
     responsavelId: flat.responsavelId ?? 'todos',
   }
 
+  // ⚠️ CRIAR OP É ESCRITA EM "ORDENS", venha de onde vier. Antes o botão do
+  // kanban seguia `podeMover` e chamava uma action própria que conferia o
+  // KANBAN — quem tinha só o board criava OP sem ter a área de ordens.
+  // Agora o diálogo é o mesmo da /ordens, com a mesma action e a mesma guarda.
+  const podeCriar = podeEscrever(await nivelDaAreaPara(user.role, 'ordens'))
+
   const [ordens, maquinas, responsaveis, produtos, maquinasDaFabrica] =
     await Promise.all([
       listarOrdensProducao(filtros),
       listarMaquinasParaOrdem(),
       listarResponsaveis(),
-      listarProdutosParaOrdem(),
+      // Só com a variação ATIVA: o diálogo de criar não pode oferecer uma
+      // variação apagada. E só pra quem vai ver o botão.
+      podeCriar
+        ? listarProdutosParaOrdem({ somenteAtivas: true })
+        : Promise.resolve([]),
       listarMaquinas(),
     ])
 
@@ -137,7 +147,6 @@ export default async function ProducaoPage({
     aptas: contagem.emProducao + contagem.livres,
   }
 
-  const podeCriar = podeMover // mesmos papéis criam OP rápida
 
   return (
     <div className="space-y-6">

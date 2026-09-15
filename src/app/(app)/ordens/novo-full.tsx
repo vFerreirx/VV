@@ -1,6 +1,6 @@
 'use client'
 
-import { PackageOpen, Plus, X } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -62,13 +62,18 @@ export function NovoFull({
   remessas,
   produtos,
   contas,
+  open,
+  onOpenChange,
 }: {
   remessas: RemessaFullOpcao[]
   produtos: Produtos
   contas: ContaMarketplace[]
+  /** Controlado pelo menu "Nova OP ▾" da /ordens. */
+  open: boolean
+  onOpenChange: (aberto: boolean) => void
 }) {
   const router = useRouter()
-  const [open, setOpen] = useState(false)
+  const setOpen = onOpenChange
   const [isPending, startTransition] = useTransition()
   // 'nova' = criar um Full novo; senão, id do Full existente.
   const [remessaSel, setRemessaSel] = useState<string>('nova')
@@ -160,11 +165,6 @@ export function NovoFull({
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
-        <PackageOpen />
-        Novo Full
-      </Button>
-
       <Dialog open={open} onOpenChange={(o) => !o && setOpen(false)}>
         <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-xl">
           <DialogHeader className="border-b p-6">

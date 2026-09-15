@@ -7,20 +7,19 @@ import {
   ChevronRight,
   CircleAlert,
   ClipboardList,
-  Pencil,
   Search,
-  Trash2,
 } from 'lucide-react'
-import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
   excluirMultiplasOrdensAction,
-  excluirOrdemAction,
   type OrdemListItem,
+  type ProdutoComVariacoesParaForm,
 } from './actions'
+import { OpDetailSheet } from '@/app/(app)/producao/op-detail-sheet'
+import { BotaoNovaOp } from '@/components/ordens/nova-op-dialog'
 import type { RemessaFullOpcao } from './remessas-actions'
 import { Badge } from '@/components/ui/badge'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
@@ -83,6 +82,19 @@ type Props = {
   remessas: RemessaFullOpcao[]
   podeEditar: boolean
   filtrosIniciais: OrdensFiltros
+  produtosNovaOp: ProdutoComVariacoesParaForm[]
+  /** Admin ou gerente: as ações de produção do painel lateral. */
+  gestor: boolean
+  /** Escrita no kanban: o Status manual do painel. */
+  podeMoverKanban: boolean
+}
+
+// "27/30 · 2 ref." — o que a OP rendeu, contra a meta. Vazio enquanto não há
+// apontamento: um "0/30" diria que a produção deu zero, quando ela nem foi
+// registrada.
+function resultadoDe(o: OrdemListItem): string {
+  if (o.produzido === 0 && o.refugo === 0) return ''
+  return `${o.produzido}/${o.quantidade}${o.refugo > 0 ? ` · ${o.refugo} ref.` : ''}`
 }
 
 export function OrdensList({
@@ -93,13 +105,18 @@ export function OrdensList({
   remessas,
   podeEditar,
   filtrosIniciais,
+  produtosNovaOp,
+  gestor,
+  podeMoverKanban,
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
   const [busca, setBusca] = useState(filtrosIniciais.q ?? '')
-  const [excluindo, setExcluindo] = useState<OrdemListItem | null>(null)
+  // CLICAR NA OP ABRE O PAINEL LATERAL, o mesmo do kanban, sem sair da lista.
+  // "Abrir OP completa" dentro dele continua indo pra /ordens/[id].
+  const [detalheId, setDetalheId] = useState<string | null>(null)
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set())
   const [bulkExcluindo, setBulkExcluindo] = useState(false)
 
@@ -130,7 +147,13 @@ export function OrdensList({
   function aplicarFiltro(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(searchParams.toString())
     for (const [k, v] of Object.entries(updates)) {
-      if (!v || v === 'todos' || v === 'todas') params.delete(k)
+      // ⚠️ STATUS É A EXCEÇÃO. Sem status na URL a lista abre em "Abertas",
+      // então "todos" precisa FICAR na URL — apagá-lo, como os outros filtros
+      // fazem com "todos"/"todas", mandaria o "Todas" de volta pra "Abertas".
+      // "abertas" é que some: é o padrão.
+      const ehPadrao =
+        k === 'status' ? v === 'abertas' : v === 'todos' || v === 'todas'
+      if (!v || ehPadrao) params.delete(k)
       else params.set(k, v)
     }
     // Mudou filtro -> volta pra primeira página.
@@ -149,21 +172,21 @@ export function OrdensList({
     aplicarFiltro({ q: busca.trim() || undefined })
   }
 
-  // Atalhos rápidos de status (Todas / Concluídas / Canceladas).
-  const statusAtual =
-    filtrosIniciais.status && filtrosIniciais.status !== 'todos'
-      ? filtrosIniciais.status
-      : undefined
+  // Sem status na URL = "abertas" (ver `listarOrdens`).
+  const statusAtual = filtrosIniciais.status ?? 'abertas'
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-1.5">
         {[
-          { label: 'Todas', val: undefined as string | undefined },
+          // ABERTAS É O PADRÃO: tudo sem baixa e sem cancelamento — o que se
+          // procura aqui no dia a dia, e o que o gerente confere na virada.
+          { label: 'Abertas', val: 'abertas' },
           // "Com baixa", e não "Concluídas": concluída é a PRODUÇÃO, que
           // continua no board. Este chip filtra `enviado`.
           { label: 'Com baixa', val: 'enviado' },
           { label: 'Canceladas', val: 'cancelado' },
+          { label: 'Todas', val: 'todos' },
         ].map((chip) => {
           const ativo = statusAtual === chip.val
           return (
@@ -204,13 +227,14 @@ export function OrdensList({
 
         <div className="flex flex-wrap items-center gap-2">
           <Select
-            value={filtrosIniciais.status ?? 'todos'}
+            value={statusAtual}
             onValueChange={(v) => aplicarFiltro({ status: v ?? undefined })}
           >
             <SelectTrigger size="sm" className="min-w-[10rem]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="abertas">Abertas</SelectItem>
               <SelectItem value="todos">Todos status</SelectItem>
               {/* STATUS_FILTRAVEIS, não statusValues: acabamento e
                   embalagem saíram do fluxo e não são mais escolhíveis. O
@@ -297,9 +321,9 @@ export function OrdensList({
           description="Crie ordens de produção pra acompanhar no kanban e dar entrada no estoque."
           action={
             podeEditar ? (
-              <Button size="sm" render={<Link href="/ordens/novo" />}>
-                Criar primeira OP
-              </Button>
+              <BotaoNovaOp produtos={produtosNovaOp} size="sm">
+                Nova OP
+              </BotaoNovaOp>
             ) : undefined
           }
         />
@@ -324,12 +348,11 @@ export function OrdensList({
                   <TableHead>Produto</TableHead>
                   <TableHead className="text-right">Qtd (un)</TableHead>
                   <TableHead>Máquina</TableHead>
-                  <TableHead>Responsável</TableHead>
+                  <TableHead>Resultado</TableHead>
                   <TableHead>Canal</TableHead>
                   <TableHead>Prioridade</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Prev. fim</TableHead>
-                  {podeEditar && <TableHead className="w-24" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -337,9 +360,12 @@ export function OrdensList({
                   <TableRow
                     key={o.id}
                     data-state={selecionados.has(o.id) ? 'selected' : undefined}
+                    onClick={() => setDetalheId(o.id)}
+                    className="cursor-pointer"
                   >
                     {podeEditar && (
-                      <TableCell>
+                      // O checkbox seleciona e NÃO abre o painel.
+                      <TableCell onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           aria-label={`Selecionar ${o.numero}`}
                           checked={selecionados.has(o.id)}
@@ -347,14 +373,7 @@ export function OrdensList({
                         />
                       </TableCell>
                     )}
-                    <TableCell className="font-mono text-xs">
-                      <Link
-                        href={`/ordens/${o.id}`}
-                        className="hover:underline"
-                      >
-                        {o.numero}
-                      </Link>
-                    </TableCell>
+                    <TableCell className="font-mono text-xs">{o.numero}</TableCell>
                     <TableCell>
                       <div className="font-medium">{o.produtoNome}</div>
                       <div className="text-muted-foreground text-xs">
@@ -367,11 +386,7 @@ export function OrdensList({
                       {o.quantidade.toLocaleString('pt-BR')}
                     </TableCell>
                     <TableCell>{o.maquinaNome ?? '—'}</TableCell>
-                    <TableCell>
-                      {o.responsavelNome ?? (
-                        <span className="text-muted-foreground">Na fila</span>
-                      )}
-                    </TableCell>
+                    <TableCell className="tabular-nums">{resultadoDe(o)}</TableCell>
                     <TableCell>
                       {CANAL_LABEL_CURTO[o.canalDestino]}
                       {o.remessaData && (
@@ -406,28 +421,6 @@ export function OrdensList({
                           : '—'}
                       </span>
                     </TableCell>
-                    {podeEditar && (
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            render={<Link href={`/ordens/${o.id}`} />}
-                            aria-label="Editar"
-                          >
-                            <Pencil />
-                          </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() => setExcluindo(o)}
-                            aria-label="Excluir"
-                          >
-                            <Trash2 className="text-destructive" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -439,7 +432,16 @@ export function OrdensList({
             {ordens.map((o) => (
               <div
                 key={o.id}
-                className="rounded-lg border p-4"
+                role="button"
+                tabIndex={0}
+                onClick={() => setDetalheId(o.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    setDetalheId(o.id)
+                  }
+                }}
+                className="cursor-pointer rounded-lg border p-4"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex min-w-0 items-start gap-2">
@@ -448,13 +450,11 @@ export function OrdensList({
                         aria-label={`Selecionar ${o.numero}`}
                         checked={selecionados.has(o.id)}
                         onCheckedChange={() => toggleOne(o.id)}
+                        onClick={(e) => e.stopPropagation()}
                         className="mt-1"
                       />
                     )}
-                    <Link
-                      href={`/ordens/${o.id}`}
-                      className="min-w-0 flex-1 hover:underline"
-                    >
+                    <div className="min-w-0 flex-1">
                       <div className="font-mono text-xs">{o.numero}</div>
                       <div className="truncate font-medium">{o.produtoNome}</div>
                       <div className="text-muted-foreground text-xs">
@@ -462,7 +462,7 @@ export function OrdensList({
                           .filter(Boolean)
                           .join(' / ') || o.produtoSku}
                       </div>
-                    </Link>
+                    </div>
                   </div>
                   <Badge className={STATUS_BADGE[o.status]}>
                     {STATUS_LABEL_CURTO[o.status]}
@@ -477,9 +477,9 @@ export function OrdensList({
                   <div className="text-foreground text-right">
                     {o.maquinaNome ?? '—'}
                   </div>
-                  <div>Responsável</div>
-                  <div className="text-foreground text-right">
-                    {o.responsavelNome ?? 'Na fila'}
+                  <div>Resultado</div>
+                  <div className="text-foreground text-right tabular-nums">
+                    {resultadoDe(o) || '—'}
                   </div>
                   <div>Canal</div>
                   <div className="text-foreground text-right">
@@ -541,7 +541,13 @@ export function OrdensList({
         </>
       )}
 
-      <ExcluirDialog ordem={excluindo} onClose={() => setExcluindo(null)} />
+      <OpDetailSheet
+        ordemId={detalheId}
+        onClose={() => setDetalheId(null)}
+        gestor={gestor}
+        podeMover={podeMoverKanban}
+        podeEditarOrdens={podeEditar}
+      />
       <BulkExcluirDialog
         open={bulkExcluindo}
         ids={idsSelecionados}
@@ -574,10 +580,15 @@ function BulkExcluirDialog({
     startTransition(async () => {
       const result = await excluirMultiplasOrdensAction(ids)
       if (!result.success) {
-        toast.error(result.error)
+        // Nenhuma pôde: a frase diz por quê ("2 não: já entraram em produção").
+        toast.error(result.error, { duration: 8000 })
         return
       }
-      toast.success(result.message ?? 'Excluídas')
+      // Parte pôde, parte não: o toast conta as duas, e quem ficou continua na
+      // lista pra ser cancelada.
+      toast.success(result.message ?? 'Excluídas', {
+        duration: result.data?.recusadas ? 8000 : undefined,
+      })
       router.refresh()
       onDone()
     })
@@ -591,8 +602,10 @@ function BulkExcluirDialog({
             Excluir {ids.length} OP{ids.length === 1 ? '' : 's'}?
           </DialogTitle>
           <DialogDescription>
-            As OPs selecionadas serão marcadas como canceladas e removidas do
-            kanban. Apontamentos e movimentações ficam preservados.
+            Excluir é pra OP cadastrada por engano: só saem as que nunca
+            entraram em produção e não têm apontamento, e vão pra lixeira sem
+            mudar de status. As outras ficam na lista — pra essas, use Cancelar
+            no painel da OP.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -601,61 +614,6 @@ function BulkExcluirDialog({
           </Button>
           <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
             {`Excluir ${ids.length}`}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// -----------------------------------------------------------------
-// Dialog de exclusão
-// -----------------------------------------------------------------
-
-function ExcluirDialog({
-  ordem,
-  onClose,
-}: {
-  ordem: OrdemListItem | null
-  onClose: () => void
-}) {
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-
-  function excluir() {
-    if (!ordem) return
-    startTransition(async () => {
-      const result = await excluirOrdemAction(ordem.id)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success(result.message ?? 'Excluída')
-      router.refresh()
-      onClose()
-    })
-  }
-
-  return (
-    <Dialog open={ordem !== null} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Excluir OP?</DialogTitle>
-          <DialogDescription>
-            {ordem?.numero} ({ordem?.produtoNome}) será marcada como cancelada
-            e removida do kanban. Apontamentos e movimentações ficam preservados.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isPending}>
-            Cancelar
-          </Button>
-          <Button loading={isPending}
-            variant="destructive"
-            onClick={excluir}
-            disabled={isPending}
-          >
-            {'Excluir'}
           </Button>
         </DialogFooter>
       </DialogContent>
