@@ -40,6 +40,7 @@ import {
   duracaoEmPalavras,
   ehMotivoValido,
   exigeObservacao,
+  oQueParou,
   rotuloDoMotivo,
 } from './parada-de-maquina.ts'
 import {
@@ -617,6 +618,18 @@ test('motivo nulo tem rotulo, porque setup e desativacao nao escolhem motivo', (
   assert.equal(rotuloDoMotivo('eletrica'), 'eletrica')
   assert.equal(ehMotivoValido('eletrica'), false)
   assert.equal(ehMotivoValido('quebra'), true)
+})
+
+test('manchete da parada: motivo em minuscula, e o "outro" diz o que foi', () => {
+  const p = (motivo: string | null, observacaoAbertura: string | null = null) =>
+    oQueParou({ motivo, observacaoAbertura })
+  assert.equal(p('falta_fio'), 'falta de fio')
+  assert.equal(p('preventiva'), 'manutenção preventiva')
+  // A observacao so substitui o rotulo no "outro".
+  assert.equal(p('quebra', 'agulha partida'), 'quebra')
+  assert.equal(p('outro', 'correia solta'), 'correia solta')
+  // "Outro" sem texto nao deixa a manchete vazia.
+  assert.equal(p('outro'), 'outro')
 })
 
 test('a duracao se mede em minutos e horas, nao em viradas de meia-noite', () => {

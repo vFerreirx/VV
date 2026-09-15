@@ -1,5 +1,6 @@
 'use client'
 
+import { ListChecks } from 'lucide-react'
 import { useState, useTransition, ViewTransition } from 'react'
 
 import Link from 'next/link'
@@ -15,14 +16,26 @@ import { EstacoesList } from '../estacoes/estacoes-list'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
+/**
+ * O que falta pra fábrica estar montada: máquina sem estação não aparece em
+ * tablet nenhum, e operador sem PIN não consegue trocar de turno no tablet.
+ */
+export type PendenciasDaFabrica = {
+  /** Códigos das máquinas sem estação. */
+  maquinasSemEstacao: string[]
+  /** Nomes dos operadores ativos, com estação, que ainda não criaram PIN. */
+  operadoresSemPin: string[]
+}
+
 export function FabricaTabs({
   tabInicial,
   verMaquinas,
   verEstacoes,
   maquinas,
   podeEditarMaquinas,
-  estacaoDoOperadorId,
   podeVerOrdens,
+  fichaDaOp,
+  pendencias,
   estacoes,
   operadores,
   maquinasOpcoes,
@@ -32,9 +45,10 @@ export function FabricaTabs({
   verEstacoes: boolean
   maquinas: MaquinaListItem[]
   podeEditarMaquinas: boolean
-  /** A estação do operador logado, ou null pra quem não é operador. */
-  estacaoDoOperadorId: string | null
   podeVerOrdens: boolean
+  fichaDaOp: { gestor: boolean; podeMover: boolean; podeEditarOrdens: boolean }
+  /** Null pra quem não tem escrita em Estações — a faixa nem existe. */
+  pendencias: PendenciasDaFabrica | null
   estacoes: EstacaoComDetalhes[]
   operadores: OperadorOpcao[]
   maquinasOpcoes: MaquinaOpcao[]
@@ -60,6 +74,17 @@ export function FabricaTabs({
           operadores).
         </p>
       </div>
+
+      {pendencias && (
+        <FaixaDePendencias
+          pendencias={pendencias}
+          irParaEstacoes={
+            verEstacoes && aba !== 'estacoes'
+              ? () => startTransition(() => setAba('estacoes'))
+              : null
+          }
+        />
+      )}
 
       <Tabs
         value={aba}
@@ -104,8 +129,8 @@ export function FabricaTabs({
             <MaquinasGrid
               maquinas={maquinas}
               podeEditar={podeEditarMaquinas}
-              estacaoDoOperadorId={estacaoDoOperadorId}
               podeVerOrdens={podeVerOrdens}
+              fichaDaOp={fichaDaOp}
             />
           </TabsContent>
         )}
@@ -122,6 +147,58 @@ export function FabricaTabs({
           </div>
         </ViewTransition>
       </Tabs>
+    </div>
+  )
+}
+
+// O PASSO 2 DA MONTAGEM, em cima das duas abas: o que falta aparece onde a
+// gerência já está olhando, e some sozinho quando não falta nada — uma faixa
+// que fica pra sempre dizendo "tudo certo" vira papel de parede.
+function FaixaDePendencias({
+  pendencias,
+  irParaEstacoes,
+}: {
+  pendencias: PendenciasDaFabrica
+  irParaEstacoes: (() => void) | null
+}) {
+  const { maquinasSemEstacao: maq, operadoresSemPin: ops } = pendencias
+  if (maq.length === 0 && ops.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+      <ListChecks className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+      <div className="min-w-0 flex-1 space-y-1">
+        {maq.length > 0 && (
+          <p>
+            <span className="font-medium">
+              {maq.length} {maq.length === 1 ? 'máquina' : 'máquinas'} sem
+              estação
+            </span>
+            <span className="text-muted-foreground">
+              {' '}
+              ({maq.join(', ')}) — não aparecem em nenhum tablet.
+            </span>
+          </p>
+        )}
+        {ops.length > 0 && (
+          <p>
+            <span className="font-medium">
+              {ops.length} {ops.length === 1 ? 'operador' : 'operadores'} sem
+              PIN
+            </span>
+            <span className="text-muted-foreground">
+              {' '}
+              ({ops.join(', ')}) — o PIN é criado pelo próprio operador, no
+              tablet da estação.
+            </span>
+          </p>
+        )}
+      </div>
+      {maq.length > 0 && irParaEstacoes && (
+        <Button size="sm" variant="outline" onClick={irParaEstacoes}>
+          Ver estações
+        </Button>
+      )}
     </div>
   )
 }

@@ -21,10 +21,7 @@ import {
   desfazerConclusaoAction,
   pegarOrdemAction,
 } from '@/app/(app)/ordens/actions'
-import {
-  ParadaDialog,
-  type ParadaAbertaResumo,
-} from '@/components/maquinas/parada-dialog'
+import { ParadaDialog } from '@/components/maquinas/parada-dialog'
 import { useDuracaoDesde } from '@/components/maquinas/use-duracao-desde'
 import { Button } from '@/components/ui/button'
 import {
@@ -52,7 +49,7 @@ import { situacaoDaMaquina } from '@/lib/producao/estado-maquina'
 import { confirmacaoAntesDeIniciar } from '@/lib/producao/inicio-da-op'
 import {
   MOTIVOS_DE_PARADA,
-  rotuloDoMotivo,
+  oQueParou,
   type MotivoDeParada,
 } from '@/lib/producao/parada-de-maquina'
 import {
@@ -608,17 +605,6 @@ function CartaoMaquina({
       )}
     </div>
   )
-}
-
-// O que parou, pra manchete. O motivo em minúscula, porque vem depois de
-// "Parada:"; o "Outro" é o texto que alguém digitou, que diz mais do que a
-// palavra "outro".
-function oQueParou(parada: ParadaAbertaResumo): string {
-  if (parada.motivo === 'outro' && parada.observacaoAbertura) {
-    return parada.observacaoAbertura
-  }
-  const r = rotuloDoMotivo(parada.motivo)
-  return r.charAt(0).toLowerCase() + r.slice(1)
 }
 
 // Secundária de fileira dividida: mesma altura de 48px da principal — o alvo

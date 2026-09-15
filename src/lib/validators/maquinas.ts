@@ -36,9 +36,15 @@ export const maquinaStatusValues = [
 // Os dois continuam VÁLIDOS no enum e no banco: 'operando' é o valor que as
 // 18 linhas têm e o que o botão "Ativar" grava; 'parada' é histórico. O
 // schema segue aceitando os cinco — isto aqui é só o que a TELA oferece.
+//
+// ⚠️ 'manutencao' TAMBÉM SAIU. Manutenção é PARADA, e parada tem motivo: pelo
+// cadastro ela entrava sem motivo nenhum, e o histórico ganhava linhas "Sem
+// motivo registrado" que ninguém sabe ler. Parar e liberar é pelo cartão
+// ("Registrar parada" / "Voltou"). Máquina que já está em manutenção mostra o
+// status desabilitado, com "(histórico)", e salva sem mexer nele —
+// `atualizarMaquinaAction` só recusa ENTRAR em manutenção por aqui.
 export const STATUS_ESCOLHIVEIS = [
   'setup',
-  'manutencao',
   'desativada',
 ] as const satisfies readonly (typeof maquinaStatusValues)[number][]
 

@@ -156,7 +156,9 @@ export const AREAS: Area[] = [
     descricao: 'Cadastro e status das máquinas.',
     href: '/maquinas',
     editavel: true,
-    nivelPadrao: padrao({ [G]: 'total', [O]: 'ver', [E]: 'ver', [V]: 'ver' }),
+    // Operador `nenhum`: a tela dele é o tablet da estação (/producao), onde
+    // também registra parada. A /fabrica é da gerência.
+    nivelPadrao: padrao({ [G]: 'total', [O]: 'nenhum', [E]: 'ver', [V]: 'ver' }),
   },
   {
     key: 'estacoes',

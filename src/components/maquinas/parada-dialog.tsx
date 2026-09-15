@@ -39,13 +39,9 @@ import {
   exigeObservacao,
   rotuloDoMotivo,
   type MotivoDeParada,
+  type ParadaAbertaResumo,
 } from '@/lib/producao/parada-de-maquina'
 import { cn } from '@/lib/utils'
-
-export type ParadaAbertaResumo = {
-  motivo: string | null
-  observacaoAbertura: string | null
-}
 
 export function ParadaDialog({
   maquina,

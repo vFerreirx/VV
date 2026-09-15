@@ -212,6 +212,19 @@ function EstacaoBody({
   const [maquinaIds, setMaquinaIds] = useState<string[]>(
     estacao?.maquinaIds ?? [],
   )
+  // O AVISO DE SAÍDA aparece no próprio rodapé, e não num segundo diálogo
+  // empilhado: é a mesma decisão, e o que ela move está logo acima.
+  const [confirmandoSaida, setConfirmandoSaida] = useState(false)
+
+  // Máquinas marcadas que hoje estão em OUTRA estação. Salvar as tira de lá
+  // (`aplicarMaquinas`) — e o tablet daquela estação perde a máquina sem
+  // ninguém ter olhado pra ele.
+  const saindoDeOutra = maquinas.filter(
+    (m) =>
+      maquinaIds.includes(m.id) &&
+      m.estacaoId !== null &&
+      m.estacaoId !== estacao?.id,
+  )
 
   const operadoresItems = useMemo(
     () => ({
@@ -240,12 +253,17 @@ function EstacaoBody({
   }
 
   function toggleMaquina(id: string) {
+    setConfirmandoSaida(false)
     setMaquinaIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     )
   }
 
-  function salvar() {
+  function salvar(confirmado = false) {
+    if (!confirmado && saindoDeOutra.length > 0) {
+      setConfirmandoSaida(true)
+      return
+    }
     startTransition(async () => {
       const input = {
         nome,
@@ -411,15 +429,25 @@ function EstacaoBody({
                     type="button"
                     onClick={() => toggleMaquina(m.id)}
                     disabled={isPending}
-                    title={m.codigo}
+                    title={m.nome}
                     className={cn(
-                      'rounded-full border px-2.5 py-1 text-xs transition-colors',
+                      'rounded-full border px-2.5 py-1 text-xs tabular-nums transition-colors',
                       ativo
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'hover:bg-accent',
                     )}
                   >
-                    {m.nome}
+                    {/* O CÓDIGO, que é como o tablet e o cartão chamam a
+                        máquina. A estação só aparece quando é OUTRA — na
+                        própria, "· Estação 1" repetido em cada chip é
+                        ruído. */}
+                    {m.codigo}
+                    {m.estacaoNome && m.estacaoId !== estacao?.id && (
+                      <span className={cn(!ativo && 'text-muted-foreground')}>
+                        {' · '}
+                        {m.estacaoNome}
+                      </span>
+                    )}
                   </button>
                 )
               })}
@@ -428,14 +456,43 @@ function EstacaoBody({
         </div>
       </div>
 
-      <DialogFooter>
-        <Button variant="outline" onClick={onClose} disabled={isPending}>
-          Cancelar
-        </Button>
-        <Button loading={isPending} onClick={salvar} disabled={isPending || nome.trim().length < 2}>
-          {isEdit ? 'Salvar' : 'Criar'}
-        </Button>
-      </DialogFooter>
+      {confirmandoSaida && saindoDeOutra.length > 0 ? (
+        <div className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+          <ul className="space-y-0.5">
+            {saindoDeOutra.map((m) => (
+              <li key={m.id} className="tabular-nums">
+                <span className="font-medium">{m.codigo}</span> sai da{' '}
+                {m.estacaoNome}
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmandoSaida(false)}
+              disabled={isPending}
+            >
+              Voltar
+            </Button>
+            <Button
+              loading={isPending}
+              onClick={() => salvar(true)}
+              disabled={isPending || nome.trim().length < 2}
+            >
+              Mover e salvar
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Cancelar
+          </Button>
+          <Button loading={isPending} onClick={() => salvar()} disabled={isPending || nome.trim().length < 2}>
+            {isEdit ? 'Salvar' : 'Criar'}
+          </Button>
+        </DialogFooter>
+      )}
     </>
   )
 }

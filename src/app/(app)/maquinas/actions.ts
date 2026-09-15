@@ -165,7 +165,12 @@ export type MaquinaListItem = Maquina & {
    * Existe se e somente se o status impede produzir; quem garante isso é
    * `sincronizarParada`, e o índice parcial garante que é no máximo uma.
    */
-  paradaAberta: { iniciadaEm: Date; motivo: string | null } | null
+  paradaAberta: {
+    iniciadaEm: Date
+    motivo: string | null
+    /** O texto do "Outro" vira a manchete — ver `oQueParou`. */
+    observacaoAbertura: string | null
+  } | null
   /**
    * ⚠️ É DAQUI QUE SAI A OCUPAÇÃO, e não de `status`. A tela passa isto pra
    * `situacaoDaMaquina` (src/lib/producao/estado-maquina.ts), que é a mesma
@@ -210,6 +215,7 @@ export async function listarMaquinas(
       responsavelNome: responsavel.nome,
       paradaIniciadaEm: maquinaParadas.iniciadaEm,
       paradaMotivo: maquinaParadas.motivo,
+      paradaObservacao: maquinaParadas.observacaoAbertura,
     })
     .from(maquinas)
     // ⚠️ NÃO HÁ MAIS JOIN COM `operador_atual_id`. Ele existia pra exibir o
@@ -264,7 +270,11 @@ export async function listarMaquinas(
     paradaAberta:
       r.paradaIniciadaEm === null
         ? null
-        : { iniciadaEm: r.paradaIniciadaEm, motivo: r.paradaMotivo },
+        : {
+            iniciadaEm: r.paradaIniciadaEm,
+            motivo: r.paradaMotivo,
+            observacaoAbertura: r.paradaObservacao,
+          },
   }))
 }
 
@@ -362,6 +372,22 @@ export async function obterMaquina(id: string): Promise<Maquina | null> {
 // Criar
 // -----------------------------------------------------------------
 
+// ⚠️ MANUTENÇÃO NÃO ENTRA PELO CADASTRO. O formulário deixou de oferecer
+// (STATUS_ESCOLHIVEIS), e sem isto a action continuaria aceitando — a tela
+// prometeria uma coisa e o servidor entregaria outra. Manutenção é parada, e
+// parada entra pelo cartão, com motivo. Quem JÁ está em manutenção salva o
+// cadastro normalmente: o status não muda e nenhuma parada é tocada.
+function recusaManutencaoPeloCadastro(
+  statusAtual: MaquinaStatus | null,
+  statusNovo: MaquinaStatus,
+): { success: false; error: string } | null {
+  if (statusNovo !== 'manutencao' || statusAtual === 'manutencao') return null
+  return {
+    success: false,
+    error: 'Registre a parada pelo cartão da máquina, com o motivo',
+  }
+}
+
 export async function criarMaquinaAction(
   input: MaquinaInput,
 ): Promise<ActionResult<{ id: string }>> {
@@ -375,6 +401,8 @@ export async function criarMaquinaAction(
     }
   }
   const data = parsed.data
+  const recusa = recusaManutencaoPeloCadastro(null, data.status)
+  if (recusa) return recusa
 
   const codigoUpper = data.codigo.toUpperCase()
   const existing = await db
@@ -431,6 +459,8 @@ export async function atualizarMaquinaAction(
   if (!atual) {
     return { success: false, error: 'Máquina não encontrada' }
   }
+  const recusa = recusaManutencaoPeloCadastro(atual.status, data.status)
+  if (recusa) return recusa
 
   // Código único entre OUTRAS máquinas.
   const codigoUpper = data.codigo.toUpperCase()

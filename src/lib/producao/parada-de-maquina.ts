@@ -80,6 +80,32 @@ export function rotuloDoMotivo(motivo: string | null): string {
   return ehMotivoValido(motivo) ? ROTULO[motivo] : motivo
 }
 
+/** O que a manchete do cartão e o diálogo do "Voltou" precisam da parada. */
+export type ParadaAbertaResumo = {
+  motivo: string | null
+  observacaoAbertura: string | null
+}
+
+/**
+ * O que parou, pra manchete "Parada: ___ · há 2 h".
+ *
+ * ⚠️ UMA FUNÇÃO SÓ PRAS DUAS TELAS — o tablet da estação e a aba Máquinas
+ * (/fabrica). Enquanto cada uma montava a frase por conta própria, o gerente
+ * lia "Em manutenção" onde o operador lia "Parada: falta de fio", e os dois
+ * falavam da mesma máquina sem perceber.
+ *
+ * O motivo vai em minúscula porque vem depois de "Parada:". O "Outro" é o
+ * texto que alguém digitou, que diz mais do que a palavra "outro" — e pode ser
+ * longo, então quem exibe corta com reticências.
+ */
+export function oQueParou(parada: ParadaAbertaResumo): string {
+  if (parada.motivo === 'outro' && parada.observacaoAbertura) {
+    return parada.observacaoAbertura
+  }
+  const r = rotuloDoMotivo(parada.motivo)
+  return r.charAt(0).toLowerCase() + r.slice(1)
+}
+
 /**
  * "Outro" obriga a dizer o quê.
  *

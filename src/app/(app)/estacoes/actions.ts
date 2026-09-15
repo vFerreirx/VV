@@ -39,8 +39,18 @@ export type OperadorOpcao = {
   nome: string
   estacaoAtualId: string | null
   estacaoAtualNome: string | null
+  /** Só o booleano, pro checklist da /fabrica. O hash nunca sai daqui. */
+  temPin: boolean
 }
-export type MaquinaOpcao = { id: string; codigo: string; nome: string }
+// `estacao*` é a estação ATUAL da máquina: o diálogo mostra "TC-07 · Estação
+// 1" e avisa antes de tirá-la de lá.
+export type MaquinaOpcao = {
+  id: string
+  codigo: string
+  nome: string
+  estacaoId: string | null
+  estacaoNome: string | null
+}
 
 // -----------------------------------------------------------------
 // Listagem
@@ -100,6 +110,7 @@ export async function listarOperadores(): Promise<OperadorOpcao[]> {
       nome: users.nome,
       estacaoAtualId: estacoes.id,
       estacaoAtualNome: estacoes.nome,
+      pinHash: users.pinHash,
     })
     .from(users)
     .leftJoin(estacaoOperadores, eq(estacaoOperadores.operadorId, users.id))
@@ -119,6 +130,9 @@ export async function listarOperadores(): Promise<OperadorOpcao[]> {
     nome: r.nome,
     estacaoAtualId: r.estacaoAtualId ?? null,
     estacaoAtualNome: r.estacaoAtualNome ?? null,
+    // O map descarta o hash ANTES de sair da função: isto é 'use server' e
+    // o retorno viaja pro cliente.
+    temPin: r.pinHash !== null,
   }))
 }
 
@@ -126,8 +140,20 @@ export async function listarOperadores(): Promise<OperadorOpcao[]> {
 export async function listarMaquinasOpcoes(): Promise<MaquinaOpcao[]> {
   await requireArea('estacoes')
   return db
-    .select({ id: maquinas.id, codigo: maquinas.codigo, nome: maquinas.nome })
+    .select({
+      id: maquinas.id,
+      codigo: maquinas.codigo,
+      nome: maquinas.nome,
+      // Pelo JOIN, e não por `maquinas.estacao_id`: estação excluída não
+      // conta como "a estação dela".
+      estacaoId: estacoes.id,
+      estacaoNome: estacoes.nome,
+    })
     .from(maquinas)
+    .leftJoin(
+      estacoes,
+      and(eq(estacoes.id, maquinas.estacaoId), isNull(estacoes.deletedAt)),
+    )
     .where(isNull(maquinas.deletedAt))
     .orderBy(asc(maquinas.codigo))
 }

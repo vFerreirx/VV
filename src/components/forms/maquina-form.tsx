@@ -95,6 +95,10 @@ export function MaquinaForm({
   })
 
   const errs = form.formState.errors
+  // Status que o formulário não oferece mais, mas que a máquina já tem. Fica
+  // visível e desabilitado — some a escolha, não a informação. Mesmo padrão
+  // do formulário da OP.
+  const statusHistorico = defaults.status === 'manutencao'
 
   // Operadores válidos pra atribuir = role 'operador' (RLS deixa esses
   // usuários atualizarem a própria máquina).
@@ -144,6 +148,11 @@ export function MaquinaForm({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    {statusHistorico && (
+                      <SelectItem value={defaults.status} disabled>
+                        {STATUS_LABEL[defaults.status]} (histórico)
+                      </SelectItem>
+                    )}
                     {STATUS_ESCOLHIVEIS.map((s) => (
                       <SelectItem key={s} value={s}>
                         {STATUS_LABEL[s]}

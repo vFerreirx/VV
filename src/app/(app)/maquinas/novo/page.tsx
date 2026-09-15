@@ -25,7 +25,7 @@ export default async function NovaMaquinaPage() {
         <div>
           <h1 className="text-2xl font-semibold">Nova máquina</h1>
           <p className="text-muted-foreground text-sm">
-            Cadastre uma máquina com código, status e operador.
+            Cadastre uma máquina com código, nome e situação.
           </p>
         </div>
       </div>

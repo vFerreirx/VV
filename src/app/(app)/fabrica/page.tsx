@@ -10,10 +10,9 @@ import {
   type MaquinaOpcao,
   type OperadorOpcao,
 } from '../estacoes/actions'
-import { FabricaTabs } from './fabrica-tabs'
+import { FabricaTabs, type PendenciasDaFabrica } from './fabrica-tabs'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
-import { estacaoDoOperador } from '@/lib/db/estacao-operadores'
-import { requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireAuth } from '@/lib/auth/require-auth'
 import { podeEscrever } from '@/lib/auth/permissoes'
 
 export const metadata: Metadata = { title: 'Fábrica — Vanvest' }
@@ -25,30 +24,25 @@ export default async function FabricaPage({
 }) {
   const user = await requireAuth()
 
-  const [nMaq, nEst, nOrdens] = await Promise.all([
+  const [nMaq, nEst, nOrdens, nKanban] = await Promise.all([
     nivelDaAreaPara(user.role, 'maquinas'),
     nivelDaAreaPara(user.role, 'estacoes'),
-    // Decide se o cartão da máquina mostra o link pro detalhe da OP. A rota
-    // /ordens tem `requireArea('ordens')`, então oferecer o link a quem não
-    // tem a área terminaria em redirect.
+    // Decide se o número da OP no cartão abre a ficha dela.
     nivelDaAreaPara(user.role, 'ordens'),
+    // E o que a ficha deixa fazer: sem escrita no kanban, só leitura.
+    nivelDaAreaPara(user.role, 'kanban'),
   ])
   const verMaquinas = nMaq !== 'nenhum'
   const verEstacoes = nEst !== 'nenhum'
   if (!verMaquinas && !verEstacoes) redirect('/dashboard')
 
+  // ⚠️ O OPERADOR NÃO É PÚBLICO DESTA TELA. Ele registra parada no tablet da
+  // estação (/producao), com a trava de PIN dizendo quem tocou; aqui, parar e
+  // liberar máquina é da gerência, pela escrita na área `maquinas`. O padrão
+  // do operador nessa área é `nenhum` (src/lib/auth/permissoes.ts) — e
+  // `trocarStatusAction` continua aceitando o operador da estação, porque é
+  // a mesma action que o tablet chama.
   const maquinas = verMaquinas ? await listarMaquinas() : []
-
-  // ⚠️ A ESTAÇÃO DO OPERADOR, e é ela que libera o botão de Manutenção nas
-  // máquinas dele. A tela precisa fazer a MESMA conta que `trocarStatusAction`
-  // já faz no servidor: gerência pelo nível da área, operador pela estação.
-  // Enquanto o cartão olhava só `podeEscrever`, o operador — que em produção
-  // está como `ver` — não via o botão de uma ação que a action aceitaria dele.
-  // Tela que promete menos do que a action entrega é a mesma classe de
-  // problema que promete mais: as duas fazem alguém desistir de uma coisa que
-  // dava pra fazer, ou tentar uma que não dava.
-  const estacaoDoOp =
-    user.role === 'operador' ? await estacaoDoOperador(user.id) : null
 
   let estacoes: EstacaoComDetalhes[] = []
   let operadores: OperadorOpcao[] = []
@@ -61,6 +55,19 @@ export default async function FabricaPage({
     ])
   }
 
+  // O PASSO 2, só pra quem monta as estações. As duas listas já vieram
+  // acima; o PIN chega como booleano (`temPin`), nunca o hash.
+  const pendencias: PendenciasDaFabrica | null = podeEscrever(nEst)
+    ? {
+        maquinasSemEstacao: maquinasOpcoes
+          .filter((m) => m.estacaoId === null)
+          .map((m) => m.codigo),
+        operadoresSemPin: operadores
+          .filter((o) => o.estacaoAtualId !== null && !o.temPin)
+          .map((o) => o.nome),
+      }
+    : null
+
   const sp = await searchParams
   const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'maquinas'
 
@@ -71,8 +78,17 @@ export default async function FabricaPage({
       verEstacoes={verEstacoes}
       maquinas={maquinas}
       podeEditarMaquinas={podeEscrever(nMaq)}
-      estacaoDoOperadorId={estacaoDoOp?.id ?? null}
       podeVerOrdens={nOrdens !== 'nenhum'}
+      fichaDaOp={
+        podeEscrever(nKanban)
+          ? {
+              gestor: isManager(user.role),
+              podeMover: true,
+              podeEditarOrdens: podeEscrever(nOrdens),
+            }
+          : { gestor: false, podeMover: false, podeEditarOrdens: false }
+      }
+      pendencias={pendencias}
       estacoes={estacoes}
       operadores={operadores}
       maquinasOpcoes={maquinasOpcoes}

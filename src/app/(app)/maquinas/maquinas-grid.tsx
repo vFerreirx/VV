@@ -3,7 +3,6 @@
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
-  ExternalLink,
   Factory,
   History,
   MoreHorizontal,
@@ -57,10 +56,12 @@ import {
   type GrupoDeMaquina,
   type SituacaoDaMaquina,
 } from '@/lib/producao/estado-maquina'
+import { OpDetailSheet } from '@/app/(app)/producao/op-detail-sheet'
 import { ParadaDialog } from '@/components/maquinas/parada-dialog'
 import { useDuracaoDesde } from '@/components/maquinas/use-duracao-desde'
 import {
   duracaoEmPalavras,
+  oQueParou,
   rotuloDoMotivo,
 } from '@/lib/producao/parada-de-maquina'
 import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
@@ -70,27 +71,25 @@ import { cn } from '@/lib/utils'
 type Props = {
   maquinas: MaquinaListItem[]
   /**
-   * Controle total na área `maquinas`: cadastro, desativação, exclusão.
-   * NÃO é o que libera registrar parada — ver `estacaoDoOperadorId`.
+   * Escrita na área `maquinas`: cadastro, desativação, exclusão — e também
+   * registrar e encerrar parada.
+   *
+   * ⚠️ O OPERADOR NÃO REGISTRA PARADA AQUI. Ele registra no tablet da
+   * estação (/producao), que é onde está de pé quando a máquina para, com a
+   * trava de PIN dizendo quem foi. Esta tela é da gerência; enquanto ela
+   * também aceitava o operador pela estação, a mesma parada tinha duas portas
+   * com regras diferentes, e só uma delas sabia quem estava tocando.
    */
   podeEditar: boolean
   /**
-   * A estação do operador logado (null pra quem não é operador).
-   *
-   * ⚠️ REGISTRAR PARADA É OUTRA PERGUNTA QUE EDITAR CADASTRO. O operador
-   * está como `ver` na área, e é ele quem está de pé na frente da máquina
-   * quando ela quebra — obrigá-lo a chamar o gerente pra marcar manutenção é
-   * o que faz a parada não ser registrada. `trocarStatusAction` já aceita o
-   * operador da estação desde a fase 2; isto aqui só faz a tela contar a
-   * mesma história que o servidor.
-   */
-  estacaoDoOperadorId: string | null
-  /**
-   * Quem enxerga a área `ordens` recebe o link pro detalhe da OP. Quem não
-   * enxerga não recebe: `/ordens` tem `requireArea('ordens')`, e oferecer um
-   * link que termina em redirect é pior do que não oferecer.
+   * Quem enxerga a área `ordens` pode abrir a ficha da OP pelo número.
    */
   podeVerOrdens: boolean
+  /**
+   * O que a ficha da OP deixa fazer. Sem escrita no kanban, tudo falso — a
+   * ficha abre só pra leitura.
+   */
+  fichaDaOp: { gestor: boolean; podeMover: boolean; podeEditarOrdens: boolean }
 }
 
 // A cor sai do TOM da regra compartilhada, não do status cru. Enquanto era
@@ -130,10 +129,13 @@ function agruparPorEstacao(maquinas: MaquinaListItem[]) {
 export function MaquinasGrid({
   maquinas,
   podeEditar,
-  estacaoDoOperadorId,
   podeVerOrdens,
+  fichaDaOp,
 }: Props) {
   const [excluindo, setExcluindo] = useState<MaquinaListItem | null>(null)
+  // UMA FICHA pra grade inteira, e não uma por cartão: são 18 cartões e só
+  // uma OP aberta de cada vez.
+  const [opAberta, setOpAberta] = useState<string | null>(null)
   const { estacao, grupo, definir } = useFiltrosNaUrl()
   const conectado = useAtualizacaoAoVivo()
 
@@ -292,16 +294,7 @@ export function MaquinasGrid({
                     key={m.id}
                     maquina={m}
                     podeEditar={podeEditar}
-                    // A conta é POR MÁQUINA: o operador manda nas da estação
-                    // dele, não nas do outro lado do galpão. É a mesma
-                    // comparação que a action faz (`estacao.id ===
-                    // atual.estacaoId`) e que a policy de RLS faz no banco.
-                    podeRegistrarParada={
-                      podeEditar ||
-                      (estacaoDoOperadorId !== null &&
-                        m.estacaoId === estacaoDoOperadorId)
-                    }
-                    podeVerOrdens={podeVerOrdens}
+                    onAbrirOp={podeVerOrdens ? setOpAberta : null}
                     onExcluir={() => setExcluindo(m)}
                   />
                 ))}
@@ -312,6 +305,13 @@ export function MaquinasGrid({
       </div>
 
       <ExcluirDialog maquina={excluindo} onClose={() => setExcluindo(null)} />
+      <OpDetailSheet
+        ordemId={opAberta}
+        onClose={() => setOpAberta(null)}
+        gestor={fichaDaOp.gestor}
+        podeMover={fichaDaOp.podeMover}
+        podeEditarOrdens={fichaDaOp.podeEditarOrdens}
+      />
     </>
   )
 }
@@ -443,14 +443,13 @@ function ContadorFiltro({
 function MaquinaCard({
   maquina,
   podeEditar,
-  podeRegistrarParada,
-  podeVerOrdens,
+  onAbrirOp,
   onExcluir,
 }: {
   maquina: MaquinaListItem
   podeEditar: boolean
-  podeRegistrarParada: boolean
-  podeVerOrdens: boolean
+  /** Null pra quem não enxerga a área `ordens`: o número fica só texto. */
+  onAbrirOp: ((ordemId: string) => void) | null
   onExcluir: () => void
 }) {
   const router = useRouter()
@@ -468,9 +467,14 @@ function MaquinaCard({
   // conta própria, esta aqui lia só `maquinas.status` e dizia "Operando" nas
   // 18 máquinas com a fábrica parada.
   const s = situacaoDaMaquina(maquina.status, maquina.op !== null)
-  const emManutencao = s.disponibilidade === 'manutencao'
   const desativada = s.disponibilidade === 'desativada'
+  // "VOLTOU" SERVE AO SETUP TAMBÉM. Os dois são a máquina parada esperando
+  // alguém dizer que acabou; a desativada não — reativar é decisão de
+  // cadastro, e mora no menu.
+  const podeVoltar =
+    s.disponibilidade === 'manutencao' || s.disponibilidade === 'em_setup'
   const desde = useDuracaoDesde(maquina.paradaAberta?.iniciadaEm ?? null)
+  const parada = maquina.paradaAberta
 
   function definirStatus(novo: 'operando' | 'manutencao' | 'desativada') {
     startTransition(async () => {
@@ -514,15 +518,25 @@ function MaquinaCard({
                 {maquina.nome}
               </span>
             </div>
+            {/* ⚠️ A MESMA MANCHETE DO TABLET, montada pela mesma função
+                (`oQueParou`): "Parada: falta de fio · há 2 h". O gerente e o
+                operador leem a mesma frase sobre a mesma máquina. Setup,
+                desativada e a manutenção marcada pelo cadastro não têm
+                motivo e ficam com o rótulo de sempre.
+
+                UMA LINHA, cortada com reticências: o "Outro" traz o texto que
+                alguém digitou, e o inteiro está no diálogo do "Voltou". */}
             <div
               className={cn(
-                'text-xs',
+                'truncate text-xs',
                 s.tom === 'producao' && 'font-medium text-emerald-700 dark:text-emerald-400',
                 s.tom === 'atencao' && 'font-medium text-orange-700 dark:text-orange-400',
                 (s.tom === 'livre' || s.tom === 'inativa') && 'text-muted-foreground',
               )}
             >
-              {s.rotulo}
+              {parada && parada.motivo !== null
+                ? `Parada: ${oQueParou(parada)}`
+                : s.rotulo}
               {/* ⚠️ O TEMPO ENTRA NA LINHA QUE JÁ EXISTE, não numa nova. O
                   cartão tem altura padrão (`min-h-44`) calibrada pro cartão
                   ocupado; uma linha a mais aqui faria a fileira inteira
@@ -543,11 +557,10 @@ function MaquinaCard({
             olhar o que está rodando, não administrar cadastro. Dois ícones
             soltos ao lado do nome convidavam ao toque errado, e a lixeira
             ficava a um dedo de distância da informação mais lida da tela. */}
-        {/* O MENU APARECE PRA QUEM TEM ALGUMA AÇÃO — e pro operador da
-            estação a ação é o histórico: quem pode marcar a parada precisa
-            poder conferir o que já foi marcado ali. Os itens de cadastro
-            continuam gated por `podeEditar` um a um. */}
-        {podeRegistrarParada && (
+        {/* O MENU É DE QUEM TEM ESCRITA NA ÁREA — a mesma pessoa que
+            registra a parada, e que por isso precisa poder conferir o que já
+            foi registrado ali. */}
+        {podeEditar && (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -569,30 +582,26 @@ function MaquinaCard({
                 <History />
                 Histórico de paradas
               </DropdownMenuItem>
-              {podeEditar && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() =>
-                      definirStatus(desativada ? 'operando' : 'desativada')
-                    }
-                    disabled={isPending}
-                  >
-                    <Power />
-                    {desativada ? 'Ativar máquina' : 'Desativar máquina'}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    render={<Link href={`/maquinas/${maquina.id}`} />}
-                  >
-                    <Pencil />
-                    Editar cadastro
-                  </DropdownMenuItem>
-                  <DropdownMenuItem variant="destructive" onClick={onExcluir}>
-                    <Trash2 />
-                    Excluir
-                  </DropdownMenuItem>
-                </>
-              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() =>
+                  definirStatus(desativada ? 'operando' : 'desativada')
+                }
+                disabled={isPending}
+              >
+                <Power />
+                {desativada ? 'Ativar máquina' : 'Desativar máquina'}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                render={<Link href={`/maquinas/${maquina.id}`} />}
+              >
+                <Pencil />
+                Editar cadastro
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={onExcluir}>
+                <Trash2 />
+                Excluir
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -615,18 +624,19 @@ function MaquinaCard({
             <span className="min-w-0 truncate">
               <TituloDaPeca op={maquina.op} />
             </span>
-            {/* O NÚMERO É O LINK, quando a pessoa pode ver a área `ordens`.
-                Vai pra LISTA FILTRADA e não pra /ordens/{id}: aquela rota é
-                `requireRole(['admin','gerente_producao'])` e é a tela de
-                EDIÇÃO — quem tem só `ver` em máquinas bateria num redirect. */}
-            {podeVerOrdens ? (
-              <Link
-                href={`/ordens?q=${encodeURIComponent(maquina.op.numero)}`}
-                className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 tabular-nums underline-offset-2 hover:underline"
+            {/* O NÚMERO ABRE A FICHA DA OP, ali mesmo, quando a pessoa pode
+                ver a área `ordens`. Antes levava pra /ordens filtrada: saía
+                da fábrica pra ler uma OP e voltava pra achar o cartão de
+                novo. A ficha é a mesma do kanban e de /remessas, e sem
+                escrita no kanban ela abre só pra leitura. */}
+            {onAbrirOp ? (
+              <button
+                type="button"
+                onClick={() => onAbrirOp(maquina.op!.id)}
+                className="text-muted-foreground hover:text-foreground shrink-0 tabular-nums underline underline-offset-2"
               >
                 {maquina.op.numero}
-                <ExternalLink className="size-3" />
-              </Link>
+              </button>
             ) : (
               <span className="text-muted-foreground shrink-0 tabular-nums">
                 {maquina.op.numero}
@@ -648,36 +658,42 @@ function MaquinaCard({
           isto o botão de cada um parava onde o texto dele acabava — três
           botões em três alturas diferentes na mesma linha, que é o "um card
           ficou maior que o outro". */}
-      {podeRegistrarParada && (
+      {/* A AÇÃO DA PARADA FICA VISÍVEL, sozinha. É a do dia a dia — a
+          máquina parou agora e alguém precisa registrar —, e enterrá-la no
+          menu custaria um toque em cima da urgência. Desativar é decisão,
+          não rotina: aquela pode esperar o menu, e a desativada não tem botão
+          aqui.
+
+          OS MESMOS VERBOS DO TABLET: "Registrar parada" na apta, "Voltou" na
+          parada. Antes era um "Manutenção" que ligava e desligava — o
+          gerente e o operador davam dois nomes pro mesmo gesto.
+
+          "VOLTOU" NÃO DECLARA PRODUÇÃO: grava 'operando', que significa só
+          "apta". A manchete é recalculada da OP — se o trabalho continua lá,
+          volta a "Em produção"; se não, "Livre". */}
+      {podeEditar && !desativada && (
         <div className="mt-auto flex gap-1.5">
-          {/* MANUTENÇÃO é toggle, e SAIR DELA NÃO DECLARA PRODUÇÃO: grava
-              'operando', que passou a significar só "apta". A manchete então
-              é recalculada da OP — se o trabalho continua lá, volta a "Em
-              produção"; se não, "Livre". Antes isto gravava 'operando' com o
-              sentido de "está rodando", e a máquina mentia até alguém
-              corrigir à mão. */}
-          {/* MANUTENÇÃO FICA VISÍVEL, sozinha. É a ação do dia a dia — a
-              máquina parou agora e alguém precisa registrar —, e enterrá-la
-              no menu custaria um toque em cima da urgência. Desativar é
-              decisão, não rotina: aquela pode esperar o menu. */}
-          {/* ⚠️ DEIXOU DE SER TOGGLE CEGO. Antes um toque gravava
-              'manutencao' e outro desfazia, sem registrar nada — e era por
-              isso que, depois que a máquina voltava, não sobrava vestígio de
-              que ela tinha parado. Agora o toque abre o diálogo: um segundo
-              toque escolhe o motivo, e é só. */}
-          <Button
-            size="sm"
-            variant={emManutencao ? 'default' : 'outline'}
-            className="w-full"
-            disabled={isPending}
-            aria-pressed={emManutencao}
-            onClick={() =>
-              setDialogoDeParada(emManutencao ? 'fechar' : 'abrir')
-            }
-          >
-            <Wrench />
-            Manutenção
-          </Button>
+          {podeVoltar ? (
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={isPending}
+              onClick={() => setDialogoDeParada('fechar')}
+            >
+              Voltou
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full"
+              disabled={isPending}
+              onClick={() => setDialogoDeParada('abrir')}
+            >
+              <Wrench />
+              Registrar parada
+            </Button>
+          )}
         </div>
       )}
 
@@ -685,6 +701,9 @@ function MaquinaCard({
         maquina={maquina}
         modo={dialogoDeParada}
         onClose={() => setDialogoDeParada(null)}
+        // O que o "Voltou" encerra, inteiro — é onde o texto de um "Outro",
+        // cortado na manchete, aparece por completo.
+        paradaAberta={parada}
       />
       <HistoricoSheet
         maquina={verHistorico ? maquina : null}
