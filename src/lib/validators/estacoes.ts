@@ -68,3 +68,30 @@ export const ESTACAO_CORES = [
   '#6366f1', // índigo
   '#06b6d4', // ciano
 ] as const
+
+/**
+ * Por que a estação não pode ser excluída agora, ou null se pode.
+ *
+ * ⚠️ OP EM PRODUÇÃO PRENDE A ESTAÇÃO. Excluir tira a estação das máquinas, e
+ * a OP que está rodando numa delas some de todos os tablets — o da estação
+ * deixa de existir e nenhum outro enxerga a máquina. Ninguém consegue
+ * concluir, e a máquina fica ocupada sem dono.
+ *
+ * A MESMA FRASE na action (que recusa de verdade) e no diálogo (que desabilita
+ * o botão antes): mora aqui pra as duas não divergirem.
+ */
+export function motivoParaNaoExcluirEstacao(
+  maquinas: readonly { codigo: string; opEmProducao: string | null }[],
+): string | null {
+  const presas = maquinas.filter(
+    (m): m is { codigo: string; opEmProducao: string } =>
+      m.opEmProducao !== null,
+  )
+  if (presas.length === 0) return null
+  if (presas.length === 1) {
+    const m = presas[0]!
+    return `A ${m.codigo} está com a OP ${m.opEmProducao} em produção. Conclua ou tire a OP da máquina antes de excluir a estação.`
+  }
+  const lista = presas.map((m) => `${m.codigo} (${m.opEmProducao})`).join(', ')
+  return `Estão com OP em produção: ${lista}. Conclua ou tire as OPs das máquinas antes de excluir a estação.`
+}

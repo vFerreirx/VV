@@ -46,7 +46,12 @@ export async function estacaoDoOperador(
   return row ?? null
 }
 
-export type OperadorDaEstacao = { id: string; nome: string }
+export type OperadorDaEstacao = {
+  id: string
+  nome: string
+  /** Só o booleano. O hash nunca sai daqui — ver o map abaixo. */
+  temPin: boolean
+}
 
 /**
  * Operadores de várias estações de uma vez, agrupados por estacaoId.
@@ -63,6 +68,7 @@ export async function operadoresPorEstacao(
       estacaoId: estacaoOperadores.estacaoId,
       id: users.id,
       nome: users.nome,
+      pinHash: users.pinHash,
     })
     .from(estacaoOperadores)
     .innerJoin(users, eq(users.id, estacaoOperadores.operadorId))
@@ -76,7 +82,9 @@ export async function operadoresPorEstacao(
 
   for (const r of rows) {
     const lista = mapa.get(r.estacaoId) ?? []
-    lista.push({ id: r.id, nome: r.nome })
+    // O hash vira booleano AQUI, antes de sair da função: quem chama é uma
+    // action 'use server', e o retorno viaja pro cliente.
+    lista.push({ id: r.id, nome: r.nome, temPin: r.pinHash !== null })
     mapa.set(r.estacaoId, lista)
   }
   return mapa

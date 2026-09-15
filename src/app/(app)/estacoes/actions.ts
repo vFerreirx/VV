@@ -14,21 +14,35 @@ import {
   estacaoOperadores,
   estacoes,
   maquinas,
+  ordensProducao,
   users,
   type Estacao,
 } from '@/lib/db/schema'
-import { estacaoSchema, type EstacaoInput } from '@/lib/validators/estacoes'
+import {
+  estacaoSchema,
+  motivoParaNaoExcluirEstacao,
+  type EstacaoInput,
+} from '@/lib/validators/estacoes'
 
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
   | { success: false; error: string }
+
+// Uma máquina da estação, como o cartão e o diálogo de exclusão mostram.
+export type MaquinaDaEstacaoResumo = {
+  id: string
+  codigo: string
+  nome: string
+  /** Número da OP em produção nela agora, ou null. Prende a exclusão. */
+  opEmProducao: string | null
+}
 
 // Estação com nomes resolvidos + máquinas vinculadas (pra lista/edição).
 export type EstacaoComDetalhes = Estacao & {
   operadores: OperadorDaEstacao[]
   operadorIds: string[]
   maquinaIds: string[]
-  maquinaNomes: string[]
+  maquinas: MaquinaDaEstacaoResumo[]
 }
 
 // `estacaoAtual*` preenchido = o operador JÁ está em outra estação. A tela
@@ -75,10 +89,23 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
   const maqs = await db
     .select({
       id: maquinas.id,
+      codigo: maquinas.codigo,
       nome: maquinas.nome,
       estacaoId: maquinas.estacaoId,
+      opEmProducao: ordensProducao.numero,
     })
     .from(maquinas)
+    // A OP em produção, pro diálogo de exclusão saber que não pode. Não
+    // duplica a máquina: `ordens_producao_maquina_em_producao_uidx` garante
+    // no máximo uma OP `em_producao` por máquina.
+    .leftJoin(
+      ordensProducao,
+      and(
+        eq(ordensProducao.maquinaId, maquinas.id),
+        eq(ordensProducao.status, 'em_producao'),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
     .where(and(isNull(maquinas.deletedAt), inArray(maquinas.estacaoId, ids)))
     // Ordena pelo código (TC-01..18) pra manter a ordem numérica das máquinas.
     .orderBy(asc(maquinas.codigo))
@@ -91,7 +118,12 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
       operadores,
       operadorIds: operadores.map((o) => o.id),
       maquinaIds: minhas.map((m) => m.id),
-      maquinaNomes: minhas.map((m) => m.nome),
+      maquinas: minhas.map((m) => ({
+        id: m.id,
+        codigo: m.codigo,
+        nome: m.nome,
+        opEmProducao: m.opEmProducao ?? null,
+      })),
     }
   })
 }
@@ -333,7 +365,25 @@ export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (!uuidRegex.test(id)) return { success: false, error: 'ID inválido' }
 
-  await db.transaction(async (tx) => {
+  // ⚠️ OP EM PRODUÇÃO PRENDE A ESTAÇÃO — ver `motivoParaNaoExcluirEstacao`.
+  // Conferido DENTRO da transação, e a recusa desfaz tudo: nada é gravado.
+  const recusa = await db.transaction(async (tx) => {
+    const presas = await tx
+      .select({ codigo: maquinas.codigo, opEmProducao: ordensProducao.numero })
+      .from(maquinas)
+      .innerJoin(
+        ordensProducao,
+        and(
+          eq(ordensProducao.maquinaId, maquinas.id),
+          eq(ordensProducao.status, 'em_producao'),
+          isNull(ordensProducao.deletedAt),
+        ),
+      )
+      .where(and(eq(maquinas.estacaoId, id), isNull(maquinas.deletedAt)))
+      .orderBy(asc(maquinas.codigo))
+    const motivo = motivoParaNaoExcluirEstacao(presas)
+    if (motivo) return motivo
+
     await tx
       .update(estacoes)
       .set({ deletedAt: new Date(), ativo: false })
@@ -349,8 +399,12 @@ export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
     await tx
       .delete(estacaoOperadores)
       .where(eq(estacaoOperadores.estacaoId, id))
+    return null
   })
+  if (recusa) return { success: false, error: recusa }
 
+  // A lista vive em /fabrica; /estacoes só redireciona.
+  revalidatePath('/fabrica')
   revalidatePath('/estacoes')
   revalidatePath('/producao')
   return { success: true, message: 'Estação excluída' }

@@ -36,6 +36,7 @@ import { cn } from '@/lib/utils'
 import {
   ESTACAO_CORES,
   MAX_OPERADORES_POR_ESTACAO,
+  motivoParaNaoExcluirEstacao,
 } from '@/lib/validators/estacoes'
 
 type Props = {
@@ -110,19 +111,41 @@ export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
                 {e.operadores.length === 0 ? (
                   <span className="text-muted-foreground">Sem operadores</span>
                 ) : (
-                  <span>{e.operadores.map((o) => o.nome).join(' · ')}</span>
+                  <span>
+                    {e.operadores.map((o, i) => (
+                      <span key={o.id}>
+                        {i > 0 && ' · '}
+                        {o.nome}
+                        {/* Sem PIN, o operador não troca de turno no tablet
+                            — tem que digitar a senha inteira. O PIN é criado
+                            por ele mesmo, no tablet. */}
+                        {!o.temPin && (
+                          <span className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                            sem PIN
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </span>
                 )}
               </div>
 
               <div className="flex flex-wrap gap-1">
-                {e.maquinaNomes.length === 0 ? (
+                {e.maquinas.length === 0 ? (
                   <span className="text-muted-foreground text-xs">
                     Sem máquinas vinculadas
                   </span>
                 ) : (
-                  e.maquinaNomes.map((n) => (
-                    <Badge key={n} variant="secondary">
-                      {n}
+                  // O CÓDIGO, que é como o tablet, a aba Máquinas e o diálogo
+                  // chamam a máquina. O nome fica no title.
+                  e.maquinas.map((m) => (
+                    <Badge
+                      key={m.id}
+                      variant="secondary"
+                      className="tabular-nums"
+                      title={m.nome}
+                    >
+                      {m.codigo}
                     </Badge>
                   ))
                 )}
@@ -510,6 +533,10 @@ function ExcluirDialog({
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  // A MESMA FRASE da action. Aqui ela só desabilita o botão antes; quem
+  // recusa de verdade é o servidor, porque entre abrir e confirmar alguém
+  // pode ter iniciado uma OP numa dessas máquinas.
+  const bloqueio = estacao ? motivoParaNaoExcluirEstacao(estacao.maquinas) : null
 
   function excluir() {
     if (!estacao) return
@@ -529,18 +556,76 @@ function ExcluirDialog({
     <Dialog open={estacao !== null} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Excluir estação?</DialogTitle>
+          <DialogTitle>Excluir {estacao?.nome}?</DialogTitle>
           <DialogDescription>
-            &ldquo;{estacao?.nome}&rdquo; será removida. As máquinas voltam a
-            ficar sem estação (não são apagadas).
+            A estação some. Máquinas e operadores não são apagados, mas ficam
+            sem estação.
           </DialogDescription>
         </DialogHeader>
+
+        {/* O QUE ACONTECE, COM NOME. "As máquinas voltam a ficar sem estação"
+            não dizia que elas somem dos tablets, nem que os operadores
+            perdem o tablet junto — é isso que quem exclui precisa pesar. */}
+        {estacao && (
+          <div className="max-h-[50vh] space-y-3 overflow-y-auto text-sm">
+            <div className="space-y-1">
+              <p className="font-medium">
+                Ficam sem estação e somem dos tablets
+              </p>
+              {estacao.maquinas.length === 0 ? (
+                <p className="text-muted-foreground">
+                  Nenhuma máquina vinculada.
+                </p>
+              ) : (
+                <ul className="text-muted-foreground space-y-0.5">
+                  {estacao.maquinas.map((m) => (
+                    <li key={m.id} className="tabular-nums">
+                      <span className="text-foreground">{m.codigo}</span>
+                      {' · '}
+                      {m.nome}
+                      {m.opEmProducao && (
+                        <span className="text-destructive font-medium">
+                          {' '}
+                          · {m.opEmProducao} em produção
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="space-y-1">
+              <p className="font-medium">
+                Ficam sem estação e não conseguem mais usar o tablet
+              </p>
+              {estacao.operadores.length === 0 ? (
+                <p className="text-muted-foreground">
+                  Nenhum operador vinculado.
+                </p>
+              ) : (
+                <p className="text-muted-foreground">
+                  {estacao.operadores.map((o) => o.nome).join(', ')}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {bloqueio && (
+          <p className="text-destructive text-sm font-medium">{bloqueio}</p>
+        )}
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancelar
           </Button>
-          <Button loading={isPending} variant="destructive" onClick={excluir} disabled={isPending}>
-            {'Excluir'}
+          <Button
+            loading={isPending}
+            variant="destructive"
+            onClick={excluir}
+            disabled={isPending || bloqueio !== null}
+          >
+            Excluir
           </Button>
         </DialogFooter>
       </DialogContent>
