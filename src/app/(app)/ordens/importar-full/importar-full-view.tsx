@@ -13,7 +13,9 @@ import type { KitComItens } from '../../kits/actions'
 import { DeParaDialog } from './de-para-dialog'
 import { Badge } from '@/components/ui/badge'
 import type { ContaMarketplace } from '@/lib/db/schema'
+import { CampoProducaoAte } from '@/components/remessas/campo-producao-ate'
 import { Button } from '@/components/ui/button'
+import { erroDoProducaoAte } from '@/lib/producao/prazo-da-remessa'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -88,6 +90,8 @@ export function ImportarFullView({
 
   const [remessaSel, setRemessaSel] = useState(NOVA)
   const [dataEnvio, setDataEnvio] = useState('')
+  // null = padrão (envio menos a folga) — ver CampoProducaoAte.
+  const [producaoAte, setProducaoAte] = useState<string | null>(null)
   const [contaId, setContaId] = useState<string | null>(null)
   // O canal vem do PDF, então dá pra filtrar as contas sem perguntar nada.
   const contasDoCanal = conf ? contas.filter((c) => c.canal === conf.canal) : []
@@ -164,7 +168,10 @@ export function ImportarFullView({
     producao.length > 0 &&
     conf.jaImportado === null &&
     // Full novo exige data E conta; Full existente já traz as duas.
-    (remessaSel !== NOVA || (dataEnvio !== '' && contaId !== null))
+    (remessaSel !== NOVA ||
+      (dataEnvio !== '' &&
+        contaId !== null &&
+        erroDoProducaoAte(dataEnvio, producaoAte) === null))
 
   function confirmar() {
     if (!conf) return
@@ -172,6 +179,7 @@ export function ImportarFullView({
       const r = await importarFullAction({
         remessaId: remessaSel === NOVA ? null : remessaSel,
         dataEnvio: remessaSel === NOVA ? dataEnvio : null,
+        producaoAte: remessaSel === NOVA ? producaoAte : null,
         contaId: remessaSel === NOVA ? contaId : null,
         canal: conf.canal,
         envioId: conf.envioId,
@@ -484,6 +492,13 @@ export function ImportarFullView({
                   disabled={criando}
                 />
               </div>
+              <CampoProducaoAte
+                id="producao-ate"
+                dataEnvio={dataEnvio}
+                valor={producaoAte}
+                onChange={setProducaoAte}
+                disabled={criando}
+              />
               {/* O canal vem do PDF, então o seletor já nasce filtrado.
                   Usando um Full existente, a conta é a dele e nem
                   perguntamos. */}

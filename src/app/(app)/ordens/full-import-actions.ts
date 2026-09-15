@@ -16,6 +16,7 @@ import {
   remessasFull,
   variacoesProduto,
 } from '@/lib/db/schema'
+import { prazoDaOp, producaoAteEfetivo } from '@/lib/producao/prazo-da-remessa'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { ErroLeitura, lerEnvioFull } from '@/lib/full-import'
 import { normalizarSku } from '@/lib/full-import/pdf-texto'
@@ -491,13 +492,19 @@ export async function importarFullAction(
 
   const resultado = await db
     .transaction(async (tx) => {
-      let remessa: { id: string; canal: string; dataEnvio: string }
+      let remessa: {
+        id: string
+        canal: string
+        dataEnvio: string
+        producaoAte: string | null
+      }
       if (d.remessaId) {
         const [r] = await tx
           .select({
             id: remessasFull.id,
             canal: remessasFull.canal,
             dataEnvio: remessasFull.dataEnvio,
+            producaoAte: remessasFull.producaoAte,
             envioId: remessasFull.envioId,
           })
           .from(remessasFull)
@@ -535,6 +542,8 @@ export async function importarFullAction(
           .values({
             canal: d.canal,
             dataEnvio: d.dataEnvio,
+            // Nulo = padrão. O schema já recusou o que fura a folga.
+            producaoAte: d.producaoAte ?? null,
             envioId: d.envioId ?? null,
             contaId: conta.id,
           })
@@ -542,15 +551,16 @@ export async function importarFullAction(
             id: remessasFull.id,
             canal: remessasFull.canal,
             dataEnvio: remessasFull.dataEnvio,
+            producaoAte: remessasFull.producaoAte,
           })
         remessa = r!
       }
 
       const [, m, dia] = remessa.dataEnvio.split('-')
       const rotulo = `${d.canal === 'full_ml' ? 'Full ML' : 'Full Shopee'} · ${dia}/${m}`
-      // Data de envio vira o prazo (fim do dia, horário do Brasil) — mesma
-      // regra do cadastro manual do Full.
-      const prazo = new Date(`${remessa.dataEnvio}T23:59:59-03:00`)
+      // O prazo da PRODUÇÃO vira o prazo da OP — mesma regra do cadastro
+      // manual do Full, pela mesma função.
+      const prazo = prazoDaOp(producaoAteEfetivo(remessa))
       const origem = d.envioId ? ` (envio ${d.envioId})` : ''
 
       for (const [variacaoId, quantidade] of somados) {

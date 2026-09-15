@@ -12,6 +12,7 @@ import {
   remessasFull,
   variacoesProduto,
 } from '@/lib/db/schema'
+import { prazoDaOp, producaoAteEfetivo } from '@/lib/producao/prazo-da-remessa'
 import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
 import {
   criarOpsFullSchema,
@@ -69,7 +70,8 @@ export async function listarRemessasFull(): Promise<RemessaFullOpcao[]> {
 }
 
 // Cria as OPs dentro de um Full (novo ou existente). Cada item vira uma
-// OP programada com o canal do Full e a data de envio como prazo.
+// OP programada com o canal do Full e o PRAZO DA PRODUÇÃO da remessa — não a
+// data de envio (src/lib/producao/prazo-da-remessa.ts).
 export async function criarOpsFullAction(
   input: CriarOpsFullInput,
 ): Promise<ActionResult<{ ops: number }>> {
@@ -98,13 +100,19 @@ export async function criarOpsFullAction(
 
   const criadas = await db.transaction(async (tx) => {
     // Full existente ou novo.
-    let remessa: { id: string; canal: string; dataEnvio: string }
+    let remessa: {
+      id: string
+      canal: string
+      dataEnvio: string
+      producaoAte: string | null
+    }
     if (data.remessaId) {
       const [r] = await tx
         .select({
           id: remessasFull.id,
           canal: remessasFull.canal,
           dataEnvio: remessasFull.dataEnvio,
+          producaoAte: remessasFull.producaoAte,
         })
         .from(remessasFull)
         .where(
@@ -135,18 +143,23 @@ export async function criarOpsFullAction(
         .values({
           canal: data.canal!,
           dataEnvio: data.dataEnvio!,
+          // Nulo = padrão. O schema já recusou o que fura a folga.
+          producaoAte: data.producaoAte ?? null,
           contaId: conta.id,
         })
         .returning({
           id: remessasFull.id,
           canal: remessasFull.canal,
           dataEnvio: remessasFull.dataEnvio,
+          producaoAte: remessasFull.producaoAte,
         })
       remessa = r!
     }
 
-    // Data de envio vira o prazo (fim do dia, horário do Brasil).
-    const prazo = new Date(`${remessa.dataEnvio}T23:59:59-03:00`)
+    // O prazo da PRODUÇÃO vira o prazo da OP (fim do dia, horário do
+    // Brasil) — o da remessa nova ou o da existente, que é o que faz a OP
+    // cadastrada depois herdar o prazo de quem já estava lá.
+    const prazo = prazoDaOp(producaoAteEfetivo(remessa))
     const rotulo = labelRemessa(remessa.canal, remessa.dataEnvio)
 
     for (const it of data.itens) {

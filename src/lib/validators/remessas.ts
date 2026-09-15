@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { prioridadeValues } from './ordens'
+import { erroDoProducaoAte } from '@/lib/producao/prazo-da-remessa'
 
 const uuid = z.string().uuid('Item inválido')
 
@@ -31,6 +32,13 @@ export const criarOpsFullSchema = z
     // exigida no refine abaixo, porque a coluna no banco é nullable
     // (histórico) e a obrigatoriedade é do formulário.
     contaId: uuid.optional(),
+    // Prazo da produção do Full NOVO. Nulo = padrão (envio menos a folga).
+    // Usando um Full existente, o prazo é o dele.
+    producaoAte: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
+      .nullable()
+      .optional(),
     prioridade: z.enum(prioridadeValues),
     itens: z.array(fullItemSchema).min(1, 'Adicione ao menos um produto'),
   })
@@ -39,6 +47,13 @@ export const criarOpsFullSchema = z
   })
   .refine((d) => d.remessaId || d.contaId, {
     message: 'Escolha a conta de marketplace do envio',
+  })
+  // A MESMA REGRA DA TELA (prazo-da-remessa.ts): nunca depois do envio, e no
+  // mínimo a folga antes. Só vale pro Full novo.
+  .superRefine((d, ctx) => {
+    if (d.remessaId || !d.dataEnvio) return
+    const erro = erroDoProducaoAte(d.dataEnvio, d.producaoAte ?? null)
+    if (erro) ctx.addIssue({ code: 'custom', message: erro, path: ['producaoAte'] })
   })
 
 export type CriarOpsFullInput = z.input<typeof criarOpsFullSchema>

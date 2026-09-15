@@ -11,6 +11,7 @@ import {
   criarOpsFullAction,
   type RemessaFullOpcao,
 } from './remessas-actions'
+import { CampoProducaoAte } from '@/components/remessas/campo-producao-ate'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -34,6 +35,7 @@ import {
   PRIORIDADE_LABEL,
   prioridadeValues,
 } from '@/lib/validators/ordens'
+import { erroDoProducaoAte } from '@/lib/producao/prazo-da-remessa'
 import { fullCanalValues } from '@/lib/validators/remessas'
 
 type Produtos = Awaited<ReturnType<typeof listarProdutosParaOrdem>>
@@ -81,6 +83,8 @@ export function NovoFull({
     useState<(typeof fullCanalValues)[number]>('full_ml')
   const [contaId, setContaId] = useState<string | null>(null)
   const [dataEnvio, setDataEnvio] = useState('')
+  // null = padrão (envio menos a folga) — ver CampoProducaoAte.
+  const [producaoAte, setProducaoAte] = useState<string | null>(null)
 
   // Só as contas do canal escolhido. Trocar de canal zera a conta — senão
   // sobraria uma conta do ML selecionada num Full da Shopee.
@@ -137,12 +141,19 @@ export function NovoFull({
       toast.error('Escolha a conta de marketplace do envio')
       return
     }
+    const erroPrazo =
+      remessaSel === 'nova' ? erroDoProducaoAte(dataEnvio, producaoAte) : null
+    if (erroPrazo) {
+      toast.error(erroPrazo)
+      return
+    }
 
     startTransition(async () => {
       const result = await criarOpsFullAction({
         remessaId: remessaSel === 'nova' ? undefined : remessaSel,
         canal: remessaSel === 'nova' ? canal : undefined,
         dataEnvio: remessaSel === 'nova' ? dataEnvio : undefined,
+        producaoAte: remessaSel === 'nova' ? producaoAte : undefined,
         // Full existente já tem conta — não se pergunta de novo nem se
         // sobrescreve.
         contaId: remessaSel === 'nova' ? (contaId ?? undefined) : undefined,
@@ -158,6 +169,7 @@ export function NovoFull({
       setLinhas([{ ...LINHA_VAZIA }])
       setRemessaSel('nova')
       setDataEnvio('')
+      setProducaoAte(null)
       setContaId(null)
       router.refresh()
     })
@@ -257,6 +269,13 @@ export function NovoFull({
                     disabled={isPending}
                   />
                 </div>
+                <CampoProducaoAte
+                  id="full-producao-ate"
+                  dataEnvio={dataEnvio}
+                  valor={producaoAte}
+                  onChange={setProducaoAte}
+                  disabled={isPending}
+                />
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label>Conta</Label>
                   {/* Idem: trocar o canal zera a conta e troca a lista. */}

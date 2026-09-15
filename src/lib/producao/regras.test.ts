@@ -25,6 +25,15 @@ import {
 } from './transicoes-da-op.ts'
 import { buscarVariacoes, erroDaVariacao } from './catalogo-op.ts'
 import {
+  FOLGA_DIAS_PRODUCAO,
+  erroDoProducaoAte,
+  prazoDaOp,
+  producaoAteEfetivo,
+  producaoAtePadrao,
+  riscoDaRemessa,
+  rotuloDaRemessa,
+} from './prazo-da-remessa.ts'
+import {
   MOTIVOS_DE_PARADA,
   abreParada,
   duracaoEmPalavras,
@@ -813,4 +822,60 @@ test('variacao e sempre obrigatoria, mesmo em produto sem variacao', () => {
   assert.notEqual(erroDaVariacao('', []), null)
   assert.notEqual(erroDaVariacao(null, [{ id: 'a' }]), null)
   assert.equal(erroDaVariacao('a', [{ id: 'a' }]), null)
+})
+
+// -----------------------------------------------------------------
+// Prazo da producao da remessa Full
+// -----------------------------------------------------------------
+
+test('o padrao e a data de envio menos a folga, atravessando o mes', () => {
+  assert.equal(FOLGA_DIAS_PRODUCAO, 3)
+  assert.equal(producaoAtePadrao('2026-09-30'), '2026-09-27')
+  assert.equal(producaoAtePadrao('2026-10-02'), '2026-09-29')
+})
+
+test('nulo e o padrao, e acompanha a data de envio', () => {
+  assert.equal(producaoAteEfetivo({ dataEnvio: '2026-09-30', producaoAte: null }), '2026-09-27')
+  assert.equal(producaoAteEfetivo({ dataEnvio: '2026-10-10', producaoAte: null }), '2026-10-07')
+  assert.equal(producaoAteEfetivo({ dataEnvio: '2026-09-30', producaoAte: '2026-09-20' }), '2026-09-20')
+})
+
+test('producao ate: nunca depois do envio, e no minimo a folga antes', () => {
+  assert.equal(erroDoProducaoAte('2026-09-30', null), null)
+  assert.equal(erroDoProducaoAte('2026-09-30', '2026-09-27'), null)
+  assert.equal(erroDoProducaoAte('2026-09-30', '2026-09-10'), null)
+  assert.notEqual(erroDoProducaoAte('2026-09-30', '2026-09-28'), null)
+  assert.notEqual(erroDoProducaoAte('2026-09-30', '2026-09-30'), null)
+  assert.notEqual(erroDoProducaoAte('2026-09-30', '2026-10-01'), null)
+  assert.notEqual(erroDoProducaoAte('2026-09-30', '30/09/2026'), null)
+})
+
+test('o prazo da OP e o fim do dia em Brasilia', () => {
+  assert.equal(prazoDaOp('2026-09-27').toISOString(), '2026-09-28T02:59:59.000Z')
+})
+
+test('risco: atrasada so quando o prazo da PRODUCAO passou', () => {
+  const base = { producaoConcluida: false, diasAteEnvio: 5 }
+  assert.equal(riscoDaRemessa({ ...base, diasAteProducao: -1 }), 'atrasada')
+  assert.equal(riscoDaRemessa({ ...base, diasAteProducao: 0 }), 'em_risco')
+  assert.equal(riscoDaRemessa({ ...base, diasAteProducao: 2 }), 'em_risco')
+  assert.equal(riscoDaRemessa({ ...base, diasAteProducao: 3 }), 'no_prazo')
+})
+
+test('producao concluida com envio passado e pendencia de baixa, nao atraso', () => {
+  assert.equal(
+    riscoDaRemessa({ producaoConcluida: true, diasAteProducao: -10, diasAteEnvio: -1 }),
+    'baixa_pendente',
+  )
+  // Concluida antes do envio esta no prazo, mesmo que o prazo da producao
+  // tenha passado ontem.
+  assert.equal(
+    riscoDaRemessa({ producaoConcluida: true, diasAteProducao: -1, diasAteEnvio: 2 }),
+    'no_prazo',
+  )
+})
+
+test('rotulo da remessa: canal e dia/mes', () => {
+  assert.equal(rotuloDaRemessa('full_ml', '2026-09-30'), 'Full ML · 30/09')
+  assert.equal(rotuloDaRemessa('full_shopee', '2026-10-02'), 'Full Shopee · 02/10')
 })

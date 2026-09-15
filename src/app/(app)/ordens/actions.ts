@@ -19,11 +19,19 @@ import { revalidatePath } from 'next/cache'
 
 import {
   isManager as isManagerRole,
+  requireArea,
   requireAuth,
   requireAreaEscrita,
 } from '@/lib/auth/require-auth'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
+import { gravarBaixa } from '@/lib/db/baixa-da-op'
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
+import {
+  prazoDaOp,
+  producaoAteEfetivo,
+  rotuloDaRemessa,
+} from '@/lib/producao/prazo-da-remessa'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { db } from '@/lib/db'
 import {
@@ -37,7 +45,6 @@ import {
   estacoes,
   eventosKanban,
   maquinas,
-  movimentacoesEstoque,
   ordensProducao,
   produtos,
   remessasFull,
@@ -257,6 +264,17 @@ export type OrdemDetalhe = OrdemProducao & {
   produto: Produto
   variacao: VariacaoProduto | null
   maquina: Maquina | null
+  /**
+   * A remessa Full da OP, com o prazo da produção JÁ efetivo (o escolhido ou
+   * o padrão). É o que o painel mostra e o que o "Mudar destino" precisa pra
+   * dizer de onde a OP sai.
+   */
+  remessa: {
+    id: string
+    rotulo: string
+    dataEnvio: string
+    producaoAte: string
+  } | null
   criador: Pick<User, 'id' | 'nome' | 'email'> | null
   responsavel: Pick<User, 'id' | 'nome' | 'email'> | null
 }
@@ -269,6 +287,9 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
       produto: produtos,
       variacao: variacoesProduto,
       maquina: maquinas,
+      remessaCanal: remessasFull.canal,
+      remessaDataEnvio: remessasFull.dataEnvio,
+      remessaProducaoAte: remessasFull.producaoAte,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -277,6 +298,7 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
       eq(variacoesProduto.id, ordensProducao.variacaoId),
     )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
+    .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
     .where(and(eq(ordensProducao.id, id), isNull(ordensProducao.deletedAt)))
     .limit(1)
 
@@ -307,6 +329,18 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
     produto: row.produto,
     variacao: row.variacao ?? null,
     maquina: row.maquina ?? null,
+    remessa:
+      row.op.remessaFullId && row.remessaCanal && row.remessaDataEnvio
+        ? {
+            id: row.op.remessaFullId,
+            rotulo: rotuloDaRemessa(row.remessaCanal, row.remessaDataEnvio),
+            dataEnvio: row.remessaDataEnvio,
+            producaoAte: producaoAteEfetivo({
+              dataEnvio: row.remessaDataEnvio,
+              producaoAte: row.remessaProducaoAte,
+            }),
+          }
+        : null,
     criador,
     responsavel,
   }
@@ -670,6 +704,32 @@ export async function mudarStatusOrdemAction(
   )
   if (erroDaPorta) return { success: false, error: erroDaPorta }
 
+  // ⚠️ A BAIXA TEM EFEITO PRÓPRIO — status, data de fim, histórico e
+  // entrada no estoque — e mora em src/lib/db/baixa-da-op.ts, a mesma função
+  // que o DESPACHO da remessa usa. As duas não podem dar baixa de jeitos
+  // diferentes.
+  if (data.status === 'enviado') {
+    const gravou = await db.transaction((tx) =>
+      gravarBaixa(tx, atual, {
+        usuarioId: user.id,
+        observacao: data.observacao ?? null,
+        ...(assumiu ? { responsavelId: user.id } : {}),
+      }),
+    )
+    if (!gravou) {
+      return {
+        success: false,
+        error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.',
+      }
+    }
+    revalidatePath('/ordens')
+    revalidatePath(`/ordens/${id}`)
+    revalidatePath('/producao')
+    revalidatePath('/estoque')
+    revalidatePath('/remessas')
+    return { success: true, message: 'Status atualizado', assumiu }
+  }
+
   await db.transaction(async (tx) => {
     await tx
       .update(ordensProducao)
@@ -688,10 +748,6 @@ export async function mudarStatusOrdemAction(
           atual.dataRealInicio === null && data.status === 'em_producao'
             ? new Date()
             : atual.dataRealInicio,
-        dataRealFim:
-          data.status === 'enviado'
-            ? atual.dataRealFim ?? new Date()
-            : atual.dataRealFim,
       })
       .where(eq(ordensProducao.id, id))
 
@@ -702,46 +758,6 @@ export async function mudarStatusOrdemAction(
       usuarioId: user.id,
       observacao: data.observacao ?? null,
     })
-
-    // OP com BAIXA (enviado) pro canal "Estoque" entra no estoque — uma vez só.
-    if (data.status === 'enviado' && atual.canalDestino === 'estoque') {
-      const [existente] = await tx
-        .select({ id: movimentacoesEstoque.id })
-        .from(movimentacoesEstoque)
-        .where(
-          and(
-            eq(movimentacoesEstoque.referenciaId, id),
-            eq(movimentacoesEstoque.tipo, 'entrada_producao'),
-          ),
-        )
-        .limit(1)
-      if (!existente) {
-        const [agg] = await tx
-          .select({
-            total: sql<number>`coalesce(sum(${apontamentosProducao.quantidadeProduzida}), 0)::int`,
-          })
-          .from(apontamentosProducao)
-          .where(eq(apontamentosProducao.ordemId, id))
-        // ⚠️ SÓ O APONTADO ENTRA. Aqui havia um fallback: soma zero dava
-        // entrada da META — uma OP de 30 que rendeu 27, sem apontamento,
-        // entrava como 30. Não há mais como chegar aqui sem apontamento (a
-        // porta da baixa exige), e com apontamento só de refugo a soma é zero
-        // e nada entra: é a verdade, nenhuma peça boa saiu. Sem apontamento é
-        // recusa, nunca um número inventado.
-        const qtd = agg?.total ?? 0
-        if (qtd > 0) {
-          await tx.insert(movimentacoesEstoque).values({
-            produtoId: atual.produtoId,
-            variacaoId: atual.variacaoId,
-            tipo: 'entrada_producao',
-            quantidade: qtd,
-            referenciaId: id,
-            referenciaTipo: 'ordem',
-            usuarioId: user.id,
-          })
-        }
-      }
-    }
   })
 
   revalidatePath('/ordens')
@@ -1378,6 +1394,179 @@ export async function iniciarProducaoAction(
     success: true,
     message: `OP em produção na ${maquinaValidada.codigo}`,
   }
+}
+
+// -----------------------------------------------------------------
+// MUDAR DESTINO — a OP de remessa vai pra outro Full, ou pro estoque
+// -----------------------------------------------------------------
+//
+// O Full da semana saiu sem esta OP, ou o cliente do marketplace desistiu:
+// a peça existe, e a pergunta é pra onde ela vai. Sem esta porta, o caminho
+// era cancelar e recriar — perdendo o histórico de produção dela.
+//
+//   outra remessa — do MESMO canal, não excluída, com envio de hoje em
+//                   diante (inclusive a que ainda não tem OP: o Full da
+//                   semana que vem). A OP herda o prazo da produção dela.
+//   estoque       — sai da remessa, o canal vira `estoque` e fica sem prazo.
+//
+// Só OP sem baixa e não cancelada: a que teve baixa já foi embora no
+// caminhão. O histórico ganha uma linha sem transição dizendo de onde pra
+// onde — o relógio do aging ignora esse tipo de evento.
+
+export type DestinoDaOrdem = { tipo: 'remessa'; remessaId: string } | { tipo: 'estoque' }
+
+export type RemessaDestino = { id: string; rotulo: string; producaoAte: string }
+
+/** As remessas pra onde esta OP pode ir. Leitura, pro diálogo. */
+export async function listarDestinosDaOrdem(
+  ordemId: string,
+): Promise<RemessaDestino[]> {
+  await requireArea('ordens')
+  if (!uuidRe.test(ordemId)) return []
+
+  const [op] = await db
+    .select({
+      canal: ordensProducao.canalDestino,
+      remessaFullId: ordensProducao.remessaFullId,
+    })
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
+    .limit(1)
+  if (!op?.remessaFullId) return []
+
+  const rows = await db
+    .select({
+      id: remessasFull.id,
+      canal: remessasFull.canal,
+      dataEnvio: remessasFull.dataEnvio,
+      producaoAte: remessasFull.producaoAte,
+    })
+    .from(remessasFull)
+    .where(
+      and(
+        isNull(remessasFull.deletedAt),
+        eq(remessasFull.canal, op.canal),
+        ne(remessasFull.id, op.remessaFullId),
+        sql`${remessasFull.dataEnvio} >= ${hojeEmBrasilia()}`,
+      ),
+    )
+    .orderBy(asc(remessasFull.dataEnvio))
+
+  return rows.map((r) => ({
+    id: r.id,
+    rotulo: rotuloDaRemessa(r.canal, r.dataEnvio),
+    producaoAte: producaoAteEfetivo(r),
+  }))
+}
+
+export async function mudarDestinoDaOrdemAction(
+  ordemId: string,
+  destino: DestinoDaOrdem,
+): Promise<ActionResult> {
+  const user = await requireAreaEscrita('ordens')
+  if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
+
+  const [op] = await db
+    .select({
+      id: ordensProducao.id,
+      status: ordensProducao.status,
+      canal: ordensProducao.canalDestino,
+      remessaFullId: ordensProducao.remessaFullId,
+      remessaCanal: remessasFull.canal,
+      remessaDataEnvio: remessasFull.dataEnvio,
+    })
+    .from(ordensProducao)
+    .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
+    .limit(1)
+  if (!op) return { success: false, error: 'OP não encontrada' }
+  if (!op.remessaFullId) {
+    return { success: false, error: 'Essa OP não é de nenhuma remessa' }
+  }
+  if (op.status === 'enviado') {
+    return { success: false, error: 'Essa OP já teve baixa: foi embora com a remessa' }
+  }
+  if (op.status === 'cancelado') {
+    return { success: false, error: 'Essa OP está cancelada' }
+  }
+
+  const origem =
+    op.remessaCanal && op.remessaDataEnvio
+      ? rotuloDaRemessa(op.remessaCanal, op.remessaDataEnvio)
+      : 'remessa'
+
+  let alvo: { remessaFullId: string | null; canal: typeof op.canal; prazo: Date | null; rotulo: string }
+  if (destino.tipo === 'estoque') {
+    alvo = { remessaFullId: null, canal: 'estoque', prazo: null, rotulo: 'Estoque' }
+  } else {
+    if (!uuidRe.test(destino.remessaId)) return { success: false, error: 'Remessa inválida' }
+    const [r] = await db
+      .select({
+        id: remessasFull.id,
+        canal: remessasFull.canal,
+        dataEnvio: remessasFull.dataEnvio,
+        producaoAte: remessasFull.producaoAte,
+      })
+      .from(remessasFull)
+      .where(and(eq(remessasFull.id, destino.remessaId), isNull(remessasFull.deletedAt)))
+      .limit(1)
+    if (!r) return { success: false, error: 'Remessa não encontrada' }
+    if (r.id === op.remessaFullId) {
+      return { success: false, error: 'A OP já está nessa remessa' }
+    }
+    if (r.canal !== op.canal) {
+      return { success: false, error: 'A remessa é de outro canal' }
+    }
+    if (r.dataEnvio < hojeEmBrasilia()) {
+      return { success: false, error: 'O envio dessa remessa já passou' }
+    }
+    alvo = {
+      remessaFullId: r.id,
+      canal: r.canal,
+      prazo: prazoDaOp(producaoAteEfetivo(r)),
+      rotulo: rotuloDaRemessa(r.canal, r.dataEnvio),
+    }
+  }
+
+  const gravou = await db.transaction(async (tx) => {
+    // Condicional na remessa e no status lidos: se alguém deu baixa ou
+    // mudou o destino no meio, nada muda.
+    const linhas = await tx
+      .update(ordensProducao)
+      .set({
+        remessaFullId: alvo.remessaFullId,
+        canalDestino: alvo.canal,
+        dataPrevistaFim: alvo.prazo,
+      })
+      .where(
+        and(
+          eq(ordensProducao.id, ordemId),
+          isNull(ordensProducao.deletedAt),
+          eq(ordensProducao.status, op.status),
+          eq(ordensProducao.remessaFullId, op.remessaFullId!),
+        ),
+      )
+      .returning({ id: ordensProducao.id })
+    if (linhas.length === 0) return false
+
+    await tx.insert(eventosKanban).values({
+      ordemId,
+      statusAnterior: op.status,
+      statusNovo: op.status,
+      usuarioId: user.id,
+      observacao: `Destino: ${origem} → ${alvo.rotulo}`,
+    })
+    return true
+  })
+  if (!gravou) {
+    return { success: false, error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.' }
+  }
+
+  revalidatePath('/ordens')
+  revalidatePath('/producao')
+  revalidatePath('/remessas')
+  revalidatePath('/estoque')
+  return { success: true, message: `OP agora vai pra ${alvo.rotulo}` }
 }
 
 export async function soltarOrdemAction(id: string): Promise<ActionResult> {

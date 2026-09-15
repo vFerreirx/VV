@@ -308,6 +308,9 @@ function RemessasAlerta({ remessas }: { remessas: RemessaAberta[] }) {
   const emRisco = remessas.filter((r) => r.risco !== 'no_prazo')
   const atrasadas = emRisco.filter((r) => r.risco === 'atrasada')
   const risco = emRisco.filter((r) => r.risco === 'em_risco')
+  // Envio passou e ainda há OP sem baixa, com a produção concluída: é
+  // pendência de fechamento, não atraso — âmbar, contada à parte.
+  const baixaPendente = emRisco.filter((r) => r.risco === 'baixa_pendente')
 
   return (
     <Card>
@@ -343,6 +346,14 @@ function RemessasAlerta({ remessas }: { remessas: RemessaAberta[] }) {
                   {risco.length} em risco
                 </span>
               )}
+              {(atrasadas.length > 0 || risco.length > 0) &&
+                baixaPendente.length > 0 &&
+                ' · '}
+              {baixaPendente.length > 0 && (
+                <span className="text-amber-600">
+                  {baixaPendente.length} com baixa pendente
+                </span>
+              )}
             </p>
             <ul className="divide-y">
               {emRisco.slice(0, 5).map((r) => {
@@ -363,7 +374,11 @@ function RemessasAlerta({ remessas }: { remessas: RemessaAberta[] }) {
                           : 'bg-amber-500/15 text-amber-600',
                       )}
                     >
-                      {r.risco === 'atrasada' ? 'Atrasada' : 'Em risco'}
+                      {r.risco === 'atrasada'
+                        ? 'Atrasada'
+                        : r.risco === 'baixa_pendente'
+                          ? 'Falta dar baixa'
+                          : 'Em risco'}
                     </Badge>
                   </li>
                 )

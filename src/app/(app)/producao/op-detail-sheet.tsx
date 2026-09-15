@@ -27,6 +27,9 @@ import {
 import {
   apontarProducaoAction,
   cancelarOrdemAction,
+  listarDestinosDaOrdem,
+  mudarDestinoDaOrdemAction,
+  type RemessaDestino,
   desfazerConclusaoAction,
   excluirOrdemAction,
   listarApontamentos,
@@ -172,6 +175,7 @@ function DetalheBody({
   const [excluindo, startExcluir] = useTransition()
   const [confirmarCancelar, setConfirmarCancelar] = useState(false)
   const [cancelando, startCancelar] = useTransition()
+  const [mudandoDestino, setMudandoDestino] = useState(false)
   const [acaoPend, startAcao] = useTransition()
   const [porta, setPorta] = useState<'maquina' | 'concluir' | null>(null)
   const [apontarOpen, setApontarOpen] = useState(false)
@@ -558,6 +562,12 @@ function DetalheBody({
               value={ordem.maquina ? ordem.maquina.nome : '—'}
             />
             <Detail label="Canal" value={CANAL_LABEL[ordem.canalDestino]} />
+            {ordem.remessa && (
+              <Detail
+                label="Remessa"
+                value={`${ordem.remessa.rotulo} · produção até ${diaMesDe(ordem.remessa.producaoAte)}`}
+              />
+            )}
             <Detail
               label="Prioridade"
               value={PRIORIDADE_LABEL[ordem.prioridade]}
@@ -725,6 +735,20 @@ function DetalheBody({
             engano de cadastro, que só existe enquanto a OP nunca produziu. */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
           <div className="flex flex-wrap gap-1">
+            {/* MUDAR DESTINO: a OP de remessa, sem baixa, vai pra outro Full do
+                mesmo canal ou pro estoque. */}
+            {podeEditarOrdens &&
+              ordem.remessa &&
+              ordem.status !== 'enviado' &&
+              ordem.status !== 'cancelado' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setMudandoDestino(true)}
+                >
+                  Mudar destino…
+                </Button>
+              )}
             {podeEditarOrdens && erroDoCancelamento(ordem.status) === null && (
               <Button
                 size="sm"
@@ -794,6 +818,19 @@ function DetalheBody({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {mudandoDestino && ordem.remessa && (
+        <MudarDestinoDialog
+          ordemId={ordem.id}
+          origem={ordem.remessa.rotulo}
+          onClose={() => setMudandoDestino(false)}
+          onFeito={async () => {
+            setMudandoDestino(false)
+            await recarregar(ordem.id)
+            router.refresh()
+          }}
+        />
+      )}
 
       <Dialog
         open={confirmarCancelar}
@@ -932,5 +969,104 @@ function Detail({
         {value}
       </dd>
     </>
+  )
+}
+
+// "27/09" a partir de 'YYYY-MM-DD'.
+function diaMesDe(iso: string): string {
+  const [, m, d] = iso.split('-')
+  return `${d}/${m}`
+}
+
+// -----------------------------------------------------------------
+// Mudar destino da OP de remessa
+// -----------------------------------------------------------------
+
+function MudarDestinoDialog({
+  ordemId,
+  origem,
+  onClose,
+  onFeito,
+}: {
+  ordemId: string
+  origem: string
+  onClose: () => void
+  onFeito: () => void
+}) {
+  const [destinos, setDestinos] = useState<RemessaDestino[] | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  useEffect(() => {
+    let vivo = true
+    listarDestinosDaOrdem(ordemId).then((r) => vivo && setDestinos(r))
+    return () => {
+      vivo = false
+    }
+  }, [ordemId])
+
+  function mudar(destino: { tipo: 'remessa'; remessaId: string } | { tipo: 'estoque' }) {
+    startTransition(async () => {
+      const r = await mudarDestinoDaOrdemAction(ordemId, destino)
+      if (!r.success) {
+        toast.error(r.error)
+        return
+      }
+      toast.success(r.message ?? 'Destino alterado')
+      onFeito()
+    })
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !isPending && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Mudar destino</DialogTitle>
+          <DialogDescription>
+            Hoje em {origem}. A OP leva o histórico junto, e o prazo passa a ser o
+            do novo destino.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-1.5">
+          {destinos === null && (
+            <p className="text-muted-foreground py-4 text-center text-sm">Carregando…</p>
+          )}
+          {destinos?.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              disabled={isPending}
+              onClick={() => mudar({ tipo: 'remessa', remessaId: d.id })}
+              className="hover:border-primary hover:bg-primary/5 flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left text-sm disabled:opacity-60"
+            >
+              <span className="font-medium">{d.rotulo}</span>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                produção até {diaMesDe(d.producaoAte)}
+              </span>
+            </button>
+          ))}
+          {destinos?.length === 0 && (
+            <p className="text-muted-foreground text-sm">
+              Nenhum outro Full do mesmo canal com envio de hoje em diante.
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => mudar({ tipo: 'estoque' })}
+            className="hover:border-primary hover:bg-primary/5 flex w-full items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-2 text-left text-sm disabled:opacity-60"
+          >
+            <span className="font-medium">Estoque</span>
+            <span className="text-muted-foreground text-xs">sai da remessa, sem prazo</span>
+          </button>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Voltar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

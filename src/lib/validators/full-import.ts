@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { erroDoProducaoAte } from '@/lib/producao/prazo-da-remessa'
+
 export const fullCanalImportValues = ['full_ml', 'full_shopee'] as const
 
 // Componentes de um código: o que a fábrica produz por UNIDADE do envio.
@@ -43,6 +45,12 @@ export const importarFullSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
       .nullable()
       .optional(),
+    // Prazo da produção do Full NOVO. Nulo = padrão (envio menos a folga).
+    producaoAte: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
+      .nullable()
+      .optional(),
     canal: z.enum(fullCanalImportValues),
     envioId: z.string().trim().max(80).nullable().optional(),
     prioridade: z.enum(['baixa', 'normal', 'alta', 'urgente']),
@@ -61,6 +69,12 @@ export const importarFullSchema = z
   })
   .refine((d) => d.remessaId || d.contaId, {
     message: 'Escolha a conta de marketplace do envio',
+  })
+  // A MESMA REGRA DA TELA (prazo-da-remessa.ts). Só vale pro Full novo.
+  .superRefine((d, ctx) => {
+    if (d.remessaId || !d.dataEnvio) return
+    const erro = erroDoProducaoAte(d.dataEnvio, d.producaoAte ?? null)
+    if (erro) ctx.addIssue({ code: 'custom', message: erro, path: ['producaoAte'] })
   })
 
 export type ImportarFullInput = z.infer<typeof importarFullSchema>

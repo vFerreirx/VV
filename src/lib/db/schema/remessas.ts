@@ -5,14 +5,20 @@ import { contasMarketplace } from './contas-marketplace'
 import { ordemCanalEnum } from './enums'
 
 // Remessa Full: agrupador de OPs por envio (Full ML/Shopee + data).
-// As OPs criadas "dentro" do Full recebem remessa_full_id e herdam a
-// data de envio como prazo (data_prevista_fim).
+// As OPs criadas "dentro" do Full recebem remessa_full_id e herdam o PRAZO
+// DA PRODUÇÃO da remessa (`producaoAte` efetivo) como data_prevista_fim — e
+// não a data de envio, que é quando o caminhão sai.
 export const remessasFull = pgTable(
   'remessas_full',
   {
     id: uuid().primaryKey().defaultRandom(),
     canal: ordemCanalEnum().notNull(),
     dataEnvio: date().notNull(),
+    // Prazo da PRODUÇÃO desta remessa (costura e separação vêm depois).
+    // NULO = padrão: data de envio menos a folga, calculado por
+    // src/lib/producao/prazo-da-remessa.ts. O CHECK no banco (58) só impede
+    // passar do envio; a folga mínima é política e mora no código.
+    producaoAte: date(),
     observacao: text(),
 
     // Identificador do envio no marketplace, lido do PDF na importação:
