@@ -98,10 +98,11 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
 
 // Operadores ativos, já com a estação em que cada um está (se estiver).
 //
-// ⚠️ Pode voltar VAZIO: hoje não existe nenhum usuário com cargo `operador`.
-// Quem trata esse caso é a tela — ela precisa dizer isso com todas as letras
-// e apontar pra /usuarios, senão o admin abre, vê select vazio e acha que
-// quebrou.
+// ⚠️ Pode voltar VAZIO: em 02/09 não existia nenhum usuário com cargo
+// `operador`. Quem trata esse caso é a tela — ela precisa dizer isso com todas
+// as letras e apontar pra /usuarios, senão o admin abre, vê select vazio e
+// acha que quebrou. São dois lugares: o diálogo da estação e a faixa de
+// pendências da /fabrica (`nenhumOperadorAtivo`, em fabrica/page.tsx).
 export async function listarOperadores(): Promise<OperadorOpcao[]> {
   await requireArea('estacoes')
   const rows = await db

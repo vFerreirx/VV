@@ -21,6 +21,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
  * tablet nenhum, e operador sem PIN não consegue trocar de turno no tablet.
  */
 export type PendenciasDaFabrica = {
+  /**
+   * Nenhum usuário ativo com cargo operador. Sem ele o passo 2 é impossível,
+   * e a faixa precisa dizer isso — senão fica vazia e parece tudo pronto.
+   */
+  nenhumOperadorAtivo: boolean
+  /** Nomes das estações vivas sem nenhum operador ATIVO. */
+  estacoesSemOperador: string[]
   /** Códigos das máquinas sem estação. */
   maquinasSemEstacao: string[]
   /** Nomes dos operadores ativos, com estação, que ainda não criaram PIN. */
@@ -36,6 +43,7 @@ export function FabricaTabs({
   podeVerOrdens,
   fichaDaOp,
   pendencias,
+  podeCriarUsuario,
   estacoes,
   operadores,
   maquinasOpcoes,
@@ -49,6 +57,7 @@ export function FabricaTabs({
   fichaDaOp: { gestor: boolean; podeMover: boolean; podeEditarOrdens: boolean }
   /** Null pra quem não tem escrita em Estações — a faixa nem existe. */
   pendencias: PendenciasDaFabrica | null
+  podeCriarUsuario: boolean
   estacoes: EstacaoComDetalhes[]
   operadores: OperadorOpcao[]
   maquinasOpcoes: MaquinaOpcao[]
@@ -78,6 +87,7 @@ export function FabricaTabs({
       {pendencias && (
         <FaixaDePendencias
           pendencias={pendencias}
+          podeCriarUsuario={podeCriarUsuario}
           irParaEstacoes={
             verEstacoes && aba !== 'estacoes'
               ? () => startTransition(() => setAba('estacoes'))
@@ -156,18 +166,68 @@ export function FabricaTabs({
 // que fica pra sempre dizendo "tudo certo" vira papel de parede.
 function FaixaDePendencias({
   pendencias,
+  podeCriarUsuario,
   irParaEstacoes,
 }: {
   pendencias: PendenciasDaFabrica
+  podeCriarUsuario: boolean
   irParaEstacoes: (() => void) | null
 }) {
-  const { maquinasSemEstacao: maq, operadoresSemPin: ops } = pendencias
-  if (maq.length === 0 && ops.length === 0) return null
+  const {
+    nenhumOperadorAtivo: semNinguem,
+    estacoesSemOperador: est,
+    maquinasSemEstacao: maq,
+    operadoresSemPin: ops,
+  } = pendencias
+  if (!semNinguem && est.length === 0 && maq.length === 0 && ops.length === 0) {
+    return null
+  }
 
   return (
     <div className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
       <ListChecks className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
       <div className="min-w-0 flex-1 space-y-1">
+        {/* ⚠️ SEM OPERADOR NENHUM, A FRASE É ESSA — e não "N estações sem
+            operador", que seriam todas e esconderiam a causa. É o bloqueio
+            de tudo o que vem embaixo: sem operador não há estação atendida
+            nem PIN pra criar. */}
+        {semNinguem ? (
+          <p>
+            <span className="font-medium">Nenhum operador cadastrado.</span>
+            <span className="text-muted-foreground">
+              {' '}
+              As estações não têm quem opere.{' '}
+              {podeCriarUsuario ? (
+                <>
+                  Crie um usuário com cargo Operador em{' '}
+                  <Link
+                    href="/usuarios"
+                    className="text-foreground underline underline-offset-2"
+                  >
+                    Usuários
+                  </Link>
+                  .
+                </>
+              ) : (
+                'Peça ao admin pra criar um usuário com cargo Operador em Usuários.'
+              )}
+            </span>
+          </p>
+        ) : (
+          est.length > 0 && (
+            <p>
+              <span className="font-medium">
+                {est.length} {est.length === 1 ? 'estação' : 'estações'} sem
+                operador
+              </span>
+              <span className="text-muted-foreground">
+                {' '}
+                ({est.join(', ')}) — ninguém entra no tablet{' '}
+                {est.length === 1 ? 'dela' : 'delas'}.
+              </span>
+            </p>
+          )
+        )}
         {maq.length > 0 && (
           <p>
             <span className="font-medium">
@@ -194,7 +254,8 @@ function FaixaDePendencias({
           </p>
         )}
       </div>
-      {maq.length > 0 && irParaEstacoes && (
+      {(maq.length > 0 || (!semNinguem && est.length > 0)) &&
+        irParaEstacoes && (
         <Button size="sm" variant="outline" onClick={irParaEstacoes}>
           Ver estações
         </Button>

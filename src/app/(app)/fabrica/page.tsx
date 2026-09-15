@@ -55,10 +55,19 @@ export default async function FabricaPage({
     ])
   }
 
-  // O PASSO 2, só pra quem monta as estações. As duas listas já vieram
-  // acima; o PIN chega como booleano (`temPin`), nunca o hash.
+  // O PASSO 2, só pra quem monta as estações. As listas já vieram acima; o
+  // PIN chega como booleano (`temPin`), nunca o hash.
+  //
+  // ⚠️ "SEM OPERADOR" CONTA OPERADOR ATIVO, e por isso sai de `operadores` e
+  // não de `estacoes[].operadores`. Aquela lista só descarta usuário
+  // EXCLUÍDO: um operador desativado ainda vinculado faria a estação parecer
+  // atendida sem ninguém conseguir entrar no tablet dela.
   const pendencias: PendenciasDaFabrica | null = podeEscrever(nEst)
     ? {
+        nenhumOperadorAtivo: operadores.length === 0,
+        estacoesSemOperador: estacoes
+          .filter((e) => !operadores.some((o) => o.estacaoAtualId === e.id))
+          .map((e) => e.nome),
         maquinasSemEstacao: maquinasOpcoes
           .filter((m) => m.estacaoId === null)
           .map((m) => m.codigo),
@@ -89,6 +98,9 @@ export default async function FabricaPage({
           : { gestor: false, podeMover: false, podeEditarOrdens: false }
       }
       pendencias={pendencias}
+      // /usuarios é `requireRole(['admin'])`: pro gerente, um link pra lá
+      // terminaria em redirect.
+      podeCriarUsuario={user.role === 'admin'}
       estacoes={estacoes}
       operadores={operadores}
       maquinasOpcoes={maquinasOpcoes}
