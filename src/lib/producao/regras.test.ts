@@ -26,6 +26,7 @@ import {
 import { buscarVariacoes, erroDaVariacao } from './catalogo-op.ts'
 import {
   FOLGA_DIAS_PRODUCAO,
+  avisoDoProducaoAte,
   erroDoProducaoAte,
   prazoDaOp,
   producaoAteEfetivo,
@@ -840,14 +841,28 @@ test('nulo e o padrao, e acompanha a data de envio', () => {
   assert.equal(producaoAteEfetivo({ dataEnvio: '2026-09-30', producaoAte: '2026-09-20' }), '2026-09-20')
 })
 
-test('producao ate: nunca depois do envio, e no minimo a folga antes', () => {
+test('producao ate: o unico bloqueio e passar do envio', () => {
   assert.equal(erroDoProducaoAte('2026-09-30', null), null)
   assert.equal(erroDoProducaoAte('2026-09-30', '2026-09-27'), null)
   assert.equal(erroDoProducaoAte('2026-09-30', '2026-09-10'), null)
-  assert.notEqual(erroDoProducaoAte('2026-09-30', '2026-09-28'), null)
-  assert.notEqual(erroDoProducaoAte('2026-09-30', '2026-09-30'), null)
+  // Remessa urgente: folga curta NAO bloqueia mais — vira aviso.
+  assert.equal(erroDoProducaoAte('2026-09-30', '2026-09-28'), null)
+  // O mesmo dia do envio e permitido, como o CHECK da migration 58.
+  assert.equal(erroDoProducaoAte('2026-09-30', '2026-09-30'), null)
   assert.notEqual(erroDoProducaoAte('2026-09-30', '2026-10-01'), null)
   assert.notEqual(erroDoProducaoAte('2026-09-30', '30/09/2026'), null)
+})
+
+test('producao ate: folga curta e aviso, nao erro', () => {
+  assert.notEqual(avisoDoProducaoAte('2026-09-30', '2026-09-28'), null)
+  assert.notEqual(avisoDoProducaoAte('2026-09-30', '2026-09-30'), null)
+  // Sem aviso no padrao, com a folga exata e com folga de sobra.
+  assert.equal(avisoDoProducaoAte('2026-09-30', null), null)
+  assert.equal(avisoDoProducaoAte('2026-09-30', '2026-09-27'), null)
+  assert.equal(avisoDoProducaoAte('2026-09-30', '2026-09-10'), null)
+  // Quando ja e erro, a tela mostra so o erro.
+  assert.equal(avisoDoProducaoAte('2026-09-30', '2026-10-01'), null)
+  assert.equal(avisoDoProducaoAte('2026-09-30', '30/09/2026'), null)
 })
 
 test('o prazo da OP e o fim do dia em Brasilia', () => {

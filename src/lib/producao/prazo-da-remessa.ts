@@ -22,10 +22,14 @@ import { diasEntre, somarDias } from '../dia-brasil.ts'
 /**
  * Folga entre o fim da produção e o envio, em dias de calendário.
  *
- * ESTIMATIVA de costura + separação, definida em 15/09/2026. É também o
- * MÍNIMO: "Produção até" não pode ser editado pra menos de 3 dias antes do
- * envio. O banco só impede passar do envio (58_remessa_producao_ate.sql) —
- * esta folga é política e muda aqui, sem migration.
+ * ESTIMATIVA de costura + separação, definida em 15/09/2026. É o PADRÃO do
+ * "Produção até", e NÃO um mínimo: menos que isso é permitido, com aviso
+ * (`avisoDoProducaoAte`). Remessa urgente — envio em 1 ou 2 dias — precisa
+ * poder nascer com um prazo possível; com a folga como bloqueio, ela nascia
+ * atrasada e sem como ajustar.
+ *
+ * O único bloqueio é a produção terminar DEPOIS do envio — o mesmo CHECK de
+ * 58_remessa_producao_ate.sql. A folga é política e muda aqui, sem migration.
  */
 export const FOLGA_DIAS_PRODUCAO = 3
 
@@ -51,8 +55,12 @@ export function producaoAteEfetivo(remessa: {
 }
 
 /**
- * Por que este "Produção até" não serve, ou null se serve. Nulo sempre serve
- * — é o padrão.
+ * Por que este "Produção até" NÃO PODE ser salvo, ou null se pode. Nulo sempre
+ * pode — é o padrão.
+ *
+ * ⚠️ SÓ O IMPOSSÍVEL BLOQUEIA: data inválida, ou a produção terminar depois
+ * do envio (o CHECK da migration 58). Folga curta é AVISO, e mora na função
+ * de baixo — misturar as duas era o que travava a remessa urgente.
  */
 export function erroDoProducaoAte(
   dataEnvio: string,
@@ -63,8 +71,23 @@ export function erroDoProducaoAte(
   if (producaoAte > dataEnvio) {
     return 'A produção não pode terminar depois do envio'
   }
+  return null
+}
+
+/**
+ * O aviso de folga curta, ou null. Não impede salvar.
+ *
+ * Null no padrão (que é a folga exata), quando já há erro (a tela não mostra
+ * erro e aviso juntos) e com folga suficiente.
+ */
+export function avisoDoProducaoAte(
+  dataEnvio: string,
+  producaoAte: string | null,
+): string | null {
+  if (producaoAte === null) return null
+  if (erroDoProducaoAte(dataEnvio, producaoAte) !== null) return null
   if (diasEntre(producaoAte, dataEnvio) < FOLGA_DIAS_PRODUCAO) {
-    return `A produção precisa terminar pelo menos ${FOLGA_DIAS_PRODUCAO} dias antes do envio (costura e separação)`
+    return `Menos de ${FOLGA_DIAS_PRODUCAO} dias pra costura e separação`
   }
   return null
 }

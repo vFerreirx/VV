@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import {
   FOLGA_DIAS_PRODUCAO,
+  avisoDoProducaoAte,
   erroDoProducaoAte,
   producaoAtePadrao,
 } from '@/lib/producao/prazo-da-remessa'
@@ -36,6 +37,9 @@ export function CampoProducaoAte({
   const padrao = dataEnvio ? producaoAtePadrao(dataEnvio) : ''
   const mostrado = valor ?? padrao
   const erro = dataEnvio ? erroDoProducaoAte(dataEnvio, valor) : null
+  // AVISO NÃO TRAVA: folga curta é permitida (remessa urgente). Quem decide se
+  // salva é só o `erro` — os três formulários já bloqueiam só por ele.
+  const aviso = dataEnvio ? avisoDoProducaoAte(dataEnvio, valor) : null
 
   return (
     <div className="space-y-1.5">
@@ -44,7 +48,10 @@ export function CampoProducaoAte({
         id={id}
         type="date"
         value={mostrado}
-        max={padrao || undefined}
+        // ⚠️ O LIMITE DO SELETOR É A DATA DE ENVIO, e não o padrão. Com o
+        // padrão aqui, o calendário do navegador não deixava escolher a data
+        // da remessa urgente antes de qualquer regra rodar.
+        max={dataEnvio || undefined}
         onChange={(e) => {
           const v = e.target.value
           onChange(v === '' || v === padrao ? null : v)
@@ -63,14 +70,21 @@ export function CampoProducaoAte({
           separação.
         </p>
       ) : (
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
-          onClick={() => onChange(null)}
-          disabled={disabled}
-        >
-          Voltar ao padrão ({FOLGA_DIAS_PRODUCAO} dias antes do envio)
-        </button>
+        <div className="space-y-0.5">
+          {aviso && (
+            <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+              {aviso}
+            </p>
+          )}
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
+            onClick={() => onChange(null)}
+            disabled={disabled}
+          >
+            Voltar ao padrão ({FOLGA_DIAS_PRODUCAO} dias antes do envio)
+          </button>
+        </div>
       )}
     </div>
   )
