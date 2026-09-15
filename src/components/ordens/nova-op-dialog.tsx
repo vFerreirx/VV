@@ -87,6 +87,11 @@ export function NovaOpDialog({
   const [destaque, setDestaque] = useState(0)
   const [escolha, setEscolha] = useState<Escolha | null>(null)
   const [navegando, setNavegando] = useState(false)
+  // ⚠️ O CATÁLOGO É CONTROLADO: ele sabe qual produto está escolhido pelas
+  // props, não por estado próprio. Passar `produtoId=""` fixo fazia o clique
+  // no produto não carregar nada — o catálogo avisava a escolha, ninguém
+  // guardava, e ele continuava sem produto pra mostrar tamanho e cor.
+  const [noCatalogo, setNoCatalogo] = useState({ produtoId: '', variacaoId: '' })
   const [quantidade, setQuantidade] = useState('')
 
   // O planejamento — o que se repete de uma OP pra próxima
@@ -269,16 +274,24 @@ export function NovaOpDialog({
               // que procura. Escolher aqui preenche a mesma peça da busca.
               <CatalogoOrdem
                 produtos={produtos}
-                produtoId=""
-                variacaoId=""
+                produtoId={noCatalogo.produtoId}
+                variacaoId={noCatalogo.variacaoId}
                 disabled={isPending}
                 onChange={(produtoId, variacaoId) => {
                   const produto = produtos.find((p) => p.id === produtoId)
                   const variacao = produto?.variacoes.find((v) => v.id === variacaoId)
                   if (produto && variacao) {
+                    // Chegou na variação: vira a peça escolhida, e o catálogo
+                    // recomeça do zero na próxima vez que for aberto.
                     escolher({ produto, variacao })
                     setNavegando(false)
+                    setNoCatalogo({ produtoId: '', variacaoId: '' })
+                    return
                   }
+                  // Ainda no meio do caminho (modelo ou produto escolhido, falta
+                  // tamanho ou cor): guarda, pra o catálogo mostrar o próximo
+                  // passo.
+                  setNoCatalogo({ produtoId, variacaoId })
                 }}
               />
             ) : (
