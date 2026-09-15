@@ -61,6 +61,7 @@ import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
 import {
   calcularConclusao,
   erroDeQuantidade,
+  erroDoAutorDoDesfazer,
   resumoDaConclusao,
 } from '@/lib/producao/conclusao'
 import {
@@ -1978,18 +1979,22 @@ export async function concluirProducaoAction(
 // "corrigir".
 //
 // ─────────────────────────────────────────────────────────────────────────
-// DUAS GUARDAS DE ESTADO REAL, E NENHUMA DE RELÓGIO
+// TRÊS GUARDAS DE FATO, E NENHUMA DE RELÓGIO
 // ─────────────────────────────────────────────────────────────────────────
 //
 //   1. A OP ainda tem que estar em `pronto_envio`. Se o gerente já moveu,
 //      não há mais volta pelo tablet — quem está adiante na esteira decide.
 //   2. A máquina tem que estar LIVRE. Se alguém já iniciou outra OP na
 //      TC-02, o mundo físico andou: tem peça na máquina agora.
+//   3. No tablet, SÓ QUEM CONCLUIU desfaz (`erroDoAutorDoDesfazer`). O erro
+//      que isto corrige é pessoal — "eu toquei errado" —, e um colega de
+//      estação desfazendo a conclusão do outro apagava o apontamento de
+//      alguém horas depois. Gerente e admin desfazem qualquer uma.
 //
 // ⚠️ E NÃO HÁ JANELA DE TEMPO, de propósito. Um "só nos primeiros 15
-// minutos" seria um terceiro guarda arbitrário, que recusa sem conseguir
-// explicar por quê. As duas condições acima SÃO o mundo real, e toda recusa
-// delas tem uma frase que o operador entende e pode agir sobre.
+// minutos" seria um guarda arbitrário, que recusa sem conseguir explicar por
+// quê. As três condições acima SÃO fatos, e toda recusa delas tem uma frase
+// que o operador entende e pode agir sobre.
 //
 // ⚠️ O APONTAMENTO É APAGADO, e isso é decisão, não descuido. Manter o
 // número errado inflaria a produção do dia — que é justamente o dado que
@@ -2050,6 +2055,19 @@ export async function desfazerConclusaoAction(
   // Sem evento (OP legada) ou sem origem, vale o caminho de sempre: a
   // máquina.
   const origem = await conclusaoMaisRecente(ordemId)
+
+  // A GUARDA DO AUTOR vem antes das de máquina e vale pros dois ramos. A
+  // sessão é a que o "Quem é você?" do tablet confirmou — é ela que conta.
+  // A transação lá embaixo confere que a conclusão ainda é esta (pelo
+  // horário), então uma conclusão nova de outra pessoa no meio vira conflito.
+  if (operador) {
+    const recusa = erroDoAutorDoDesfazer(
+      origem && { id: origem.porId, nome: origem.porNome },
+      user.id,
+    )
+    if (recusa) return { success: false, error: recusa }
+  }
+
   const voltaPraMaquina =
     origem === null ||
     origem.de === null ||
@@ -2090,7 +2108,8 @@ export async function desfazerConclusaoAction(
     }
   } else if (!isManagerRole(user.role)) {
     // Só o gerente conclui de fora da máquina (`podeConcluirProducao`), então
-    // só ele desfaz esse ramo.
+    // só ele desfaz esse ramo. Pro operador a guarda do autor já recusou
+    // acima, com o nome de quem concluiu; isto fica pra qualquer outro cargo.
     return {
       success: false,
       error: 'Essa conclusão foi feita pelo gerente. Fale com ele.',
@@ -2196,14 +2215,24 @@ export async function desfazerConclusaoAction(
   }
 }
 
-// A conclusão mais recente da OP: quando foi (pra achar os apontamentos dela)
-// e de onde a OP veio (pra saber pra onde devolver).
-async function conclusaoMaisRecente(
-  ordemId: string,
-): Promise<{ em: Date; de: (typeof statusValues)[number] | null } | null> {
+// A conclusão mais recente da OP: quando foi (pra achar os apontamentos dela),
+// de onde a OP veio (pra saber pra onde devolver) e QUEM concluiu (no tablet,
+// só essa pessoa desfaz).
+async function conclusaoMaisRecente(ordemId: string): Promise<{
+  em: Date
+  de: (typeof statusValues)[number] | null
+  porId: string | null
+  porNome: string | null
+} | null> {
   const [ev] = await db
-    .select({ em: eventosKanban.createdAt, de: eventosKanban.statusAnterior })
+    .select({
+      em: eventosKanban.createdAt,
+      de: eventosKanban.statusAnterior,
+      porId: eventosKanban.usuarioId,
+      porNome: users.nome,
+    })
     .from(eventosKanban)
+    .leftJoin(users, eq(users.id, eventosKanban.usuarioId))
     .where(
       and(
         eq(eventosKanban.ordemId, ordemId),

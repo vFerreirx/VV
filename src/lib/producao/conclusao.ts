@@ -144,3 +144,38 @@ export function resumoDaConclusao(
   if (semMaquina) partes.push('· sem passar por máquina')
   return partes.join(' ')
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// DESFAZER: NO TABLET, SÓ QUEM CONCLUIU
+// ─────────────────────────────────────────────────────────────────────────
+//
+// O desfazer existe pra "fiz agora e foi errado" — e só quem concluiu sabe
+// que errou. Um colega de estação que desfaz a conclusão do outro não está
+// corrigindo engano nenhum: está APAGANDO o apontamento de alguém, horas
+// depois, sem ter visto a peça sair. Foi o que aconteceu em 15/09: a teste1
+// desfez às 15:18 uma conclusão que o admin tinha feito às 11:02, e as 50
+// peças sumiram do total.
+//
+// Gerente e admin continuam desfazendo qualquer uma (board e ficha da OP) —
+// quem chama esta função é só o caminho do operador.
+
+/** Quem fez a conclusão mais recente da OP. Null = não há evento dela. */
+export type AutorDaConclusao = { id: string | null; nome: string | null } | null
+
+/**
+ * Por que ESTE operador não pode desfazer esta conclusão, ou null se pode.
+ *
+ * ⚠️ SEM AUTOR, RECUSA. OP legada sem evento de conclusão, ou evento cujo
+ * usuário não existe mais: não dá pra provar que foi o próprio operador, e o
+ * lado seguro de uma ação que apaga apontamento é o gerente decidir.
+ */
+export function erroDoAutorDoDesfazer(
+  autor: AutorDaConclusao,
+  operadorId: string,
+): string | null {
+  if (autor === null || autor.id === null) {
+    return 'Não há registro de quem concluiu. Só o gerente pode desfazer.'
+  }
+  if (autor.id === operadorId) return null
+  return `Quem concluiu foi ${autor.nome ?? 'outra pessoa'}. Só essa pessoa ou o gerente podem desfazer.`
+}

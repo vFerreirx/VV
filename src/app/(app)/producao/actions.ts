@@ -14,7 +14,7 @@ import {
 } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
-import { requireArea, requireAuth } from '@/lib/auth/require-auth'
+import { isManager, requireArea, requireAuth } from '@/lib/auth/require-auth'
 import { PRIORIDADE_NIVEIS, type PrioridadeNivel } from '@/lib/prioridade'
 import { db } from '@/lib/db'
 import {
@@ -41,6 +41,7 @@ import {
   type DestinoNaEstacao,
   type StatusDaOrdem,
 } from '@/lib/producao/destino-da-ordem'
+import { erroDoAutorDoDesfazer } from '@/lib/producao/conclusao'
 import type { MaquinaStatus } from '@/lib/producao/estado-maquina'
 import { STATUS_QUE_INICIAM } from '@/lib/producao/inicio-da-op'
 import { canalValues, statusValues } from '@/lib/validators/ordens'
@@ -798,9 +799,12 @@ export type OpDaConsulta = OpParaIniciar & {
   produzido: number
   refugo: number
   /**
-   * A OP ainda está em `pronto_envio` E a máquina dela está livre? As duas
-   * guardas de `desfazerConclusaoAction`, calculadas aqui pra que o botão
-   * não apareça só pra devolver erro. Quem recusa de verdade é a action.
+   * A OP ainda está em `pronto_envio`, a máquina dela está livre E quem
+   * concluiu foi quem está logado? As três guardas de
+   * `desfazerConclusaoAction`, calculadas aqui pra que o botão não apareça só
+   * pra devolver erro. Quem recusa de verdade é a action.
+   *
+   * As conclusões dos colegas continuam na lista, com o nome — só sem botão.
    */
   podeDesfazer: boolean
 }
@@ -924,7 +928,12 @@ export async function listarOpsDaEstacao(
             destino === 'terminadas' &&
             r.status === 'pronto_envio' &&
             r.maquinaId !== null &&
-            !maquinasOcupadas.has(r.maquinaId),
+            !maquinasOcupadas.has(r.maquinaId) &&
+            (isManager(user.role) ||
+              erroDoAutorDoDesfazer(
+                c ? { id: c.porId, nome: c.por } : null,
+                user.id,
+              ) === null),
         }
       }),
     total: todas.length,
@@ -935,6 +944,7 @@ export async function listarOpsDaEstacao(
 type DadosDaConclusao = {
   em: Date
   por: string | null
+  porId: string | null
   resumo: string | null
 }
 
@@ -950,6 +960,7 @@ async function conclusoesDe(
       ordemId: eventosKanban.ordemId,
       em: eventosKanban.createdAt,
       por: users.nome,
+      porId: eventosKanban.usuarioId,
       resumo: eventosKanban.observacao,
     })
     .from(eventosKanban)
@@ -966,7 +977,12 @@ async function conclusoesDe(
   // conclusão que vale. Uma OP desfeita e concluída de novo tem duas.
   for (const r of rows) {
     if (!mapa.has(r.ordemId)) {
-      mapa.set(r.ordemId, { em: r.em, por: r.por, resumo: r.resumo })
+      mapa.set(r.ordemId, {
+        em: r.em,
+        por: r.por,
+        porId: r.porId,
+        resumo: r.resumo,
+      })
     }
   }
   return mapa

@@ -13,6 +13,7 @@ import { test } from 'node:test'
 import {
   calcularConclusao,
   erroDeQuantidade,
+  erroDoAutorDoDesfazer,
   resumoDaConclusao,
 } from './conclusao.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
@@ -369,6 +370,19 @@ test('conclusao direto da fila avisa que nao passou por maquina', () => {
     resumoDaConclusao(27, 1, calcularConclusao(30, 0), null, { semMaquina: true }),
     'Produção concluída com 27 de 30 peças (3 a menos) · 1 refugo · sem passar por máquina',
   )
+})
+
+test('desfazer no tablet: so quem concluiu', () => {
+  const vitor = { id: 'u-vitor', nome: 'Vitor' }
+  assert.equal(erroDoAutorDoDesfazer({ id: 'u-teste1', nome: 'teste1' }, 'u-teste1'), null)
+  // O colega de estacao nao desfaz — e a frase diz quem pode.
+  assert.equal(
+    erroDoAutorDoDesfazer(vitor, 'u-teste1'),
+    'Quem concluiu foi Vitor. Só essa pessoa ou o gerente podem desfazer.',
+  )
+  // Sem autor nao da pra provar que foi o proprio: recusa.
+  assert.notEqual(erroDoAutorDoDesfazer(null, 'u-teste1'), null)
+  assert.notEqual(erroDoAutorDoDesfazer({ id: null, nome: null }, 'u-teste1'), null)
 })
 
 // -----------------------------------------------------------------

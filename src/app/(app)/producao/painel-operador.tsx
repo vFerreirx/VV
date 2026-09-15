@@ -1697,9 +1697,10 @@ function hora(d: Date): string {
 // física — alguém pode estar prestes a montar outra coisa ali —, e o botão
 // fica numa lista onde o dedo passa rolando. A pergunta espera.
 //
-// O botão só aparece quando as DUAS guardas da action já passam (OP ainda em
-// pronto_envio, máquina livre). Quem recusa de verdade continua sendo o
-// servidor: entre o render e o toque, o mundo pode ter andado.
+// O botão só aparece quando as TRÊS guardas da action já passam (OP ainda em
+// pronto_envio, máquina livre, e quem concluiu é quem está logado). Quem
+// recusa de verdade continua sendo o servidor: entre o render e o toque, o
+// mundo pode ter andado — e a pessoa, trocado.
 function BotaoDesfazer({
   op,
   onFeito,
@@ -1722,6 +1723,12 @@ function BotaoDesfazer({
       }
       if (!r.success) {
         setErro(r.error)
+        // A LISTA PODE ESTAR VELHA. Ela foi carregada por quem estava logado
+        // quando abriu, e o "Quem é você?" pode ter trocado a pessoa no meio
+        // — ou a máquina foi ocupada. Recarregar tira o botão que o servidor
+        // acabou de recusar, em vez de deixá-lo lá convidando outro toque.
+        toast.error(r.error)
+        onFeito()
         return
       }
       toast.success(r.message ?? 'Conclusão desfeita', { duration: 8000 })
