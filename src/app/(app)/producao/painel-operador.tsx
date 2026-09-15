@@ -1,6 +1,6 @@
 'use client'
 
-import { Delete, Search, TriangleAlert } from 'lucide-react'
+import { ChevronRight, Delete, Search, TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -21,6 +21,11 @@ import {
   desfazerConclusaoAction,
   pegarOrdemAction,
 } from '@/app/(app)/ordens/actions'
+import {
+  ParadaDialog,
+  type ParadaAbertaResumo,
+} from '@/components/maquinas/parada-dialog'
+import { useDuracaoDesde } from '@/components/maquinas/use-duracao-desde'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -38,6 +43,7 @@ import {
   PRIORIDADE_LABEL,
   type PrioridadeNivel,
 } from '@/lib/prioridade'
+import { ERRO_TABLET_TRAVADO } from '@/lib/auth/inatividade'
 import {
   calcularConclusao,
   erroDeQuantidade,
@@ -45,13 +51,19 @@ import {
 import { situacaoDaMaquina } from '@/lib/producao/estado-maquina'
 import { confirmacaoAntesDeIniciar } from '@/lib/producao/inicio-da-op'
 import {
+  MOTIVOS_DE_PARADA,
+  rotuloDoMotivo,
+  type MotivoDeParada,
+} from '@/lib/producao/parada-de-maquina'
+import {
   agruparPorModelo,
   prazoEmPalavras,
   tituloDaOp,
 } from '@/lib/producao/rotulo-da-op'
 import {
-  RelogioDeInatividade,
+  TravaDoTablet,
   TrocarOperadorBotao,
+  useTravaDoTablet,
 } from './troca-operador'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
@@ -131,7 +143,38 @@ import { cn } from '@/lib/utils'
 // evita oferecer o clique que já seria recusado, e mostra a mensagem que a
 // action devolveu quando erra.
 
+// OS MOTIVOS QUE O OPERADOR VÊ — cinco dos sete. "Manutenção preventiva" e
+// "sem operador" são decisões do gerente, e continuam só na /fabrica.
+//
+// ⚠️ É FILTRO DE TELA, e a tupla fica intacta (src/lib/producao/
+// parada-de-maquina.ts, com a cópia no CHECK do banco). Tipado como
+// `MotivoDeParada`: um valor que não existe não compila.
+//
+// É também a lista que decide o "Voltou": o operador fecha a parada que ele
+// poderia ter aberto. A preventiva que o gerente registrou é o gerente que
+// fecha.
+const MOTIVOS_DO_OPERADOR: readonly MotivoDeParada[] = [
+  'quebra',
+  'troca_agulha',
+  'falta_fio',
+  'energia',
+  'outro',
+]
+
+const OPCOES_DE_MOTIVO_DO_OPERADOR = MOTIVOS_DE_PARADA.filter((m) =>
+  MOTIVOS_DO_OPERADOR.includes(m.valor),
+)
+
+function operadorFechaEstaParada(motivo: string | null): boolean {
+  return (
+    motivo !== null &&
+    (MOTIVOS_DO_OPERADOR as readonly string[]).includes(motivo)
+  )
+}
+
 type Props = {
+  /** Pra "Quem é você?" saber se o nome escolhido é quem já está logado. */
+  operadorId: string
   nomeOperador: string
   estacaoNome: string | null
   /** As máquinas da estação, já ordenadas por código. A tela é esta lista. */
@@ -149,6 +192,10 @@ type Props = {
    * componente de cliente, e o que entra aqui vai pro navegador.
    */
   temPin: boolean
+  /** `Date.now()` do servidor — a trava grava e decide no relógio dele. */
+  horaDoServidor: number
+  /** O servidor já considera a sessão travada. */
+  travadoNoServidor: boolean
 }
 
 /**
@@ -175,15 +222,41 @@ function variacaoDe(op: {
   return [t.familia, t.variacao].filter(Boolean).join(' · ')
 }
 
+// A TRAVA ENVOLVE A TELA INTEIRA: o cabeçalho mostra "(travado)", cada ação
+// que grava pergunta "Quem é você?", e os diálogos abertos também recusam
+// quando o servidor trava antes da tela — ver troca-operador.tsx.
 export function PainelOperador({
+  operadorId,
+  horaDoServidor,
+  travadoNoServidor,
+  ...resto
+}: Props) {
+  return (
+    <TravaDoTablet
+      horaDoServidor={horaDoServidor}
+      travadoNoServidor={travadoNoServidor}
+      operadorAtualId={operadorId}
+    >
+      <Estacao {...resto} />
+    </TravaDoTablet>
+  )
+}
+
+function Estacao({
   nomeOperador,
   estacaoNome,
   maquinas,
   contagens,
   podeAgir,
   temPin,
-}: Props) {
+}: Omit<Props, 'operadorId' | 'horaDoServidor' | 'travadoNoServidor'>) {
   const router = useRouter()
+  const { travado, exigirIdentidade } = useTravaDoTablet()
+  const [parada, setParada] = useState<{
+    maquina: MaquinaDaEstacao
+    modo: 'abrir' | 'fechar'
+  } | null>(null)
+  const [observacao, setObservacao] = useState<OpNaMaquina | null>(null)
   const [iniciando, setIniciando] = useState<MaquinaDaEstacao | null>(null)
   const [concluindo, setConcluindo] = useState<{
     op: OpNaMaquina
@@ -254,6 +327,13 @@ export function PainelOperador({
       <div className="bg-background sticky top-0 z-30 flex flex-wrap items-center gap-x-4 gap-y-2 border-b py-3">
         <h1 className="text-xl font-semibold">
           {nomeOperador}
+          {/* TRAVADO, O NOME DEIXA DE SER "QUEM ESTÁ TRABALHANDO" e passa a
+              ser só a última pessoa que usou. Dizer isso no cabeçalho, e não
+              numa faixa fixa: a faixa ocuparia o dia inteiro a altura
+              calibrada pra caber nove máquinas. */}
+          {travado && (
+            <span className="text-muted-foreground font-normal"> (travado)</span>
+          )}
           <span className="text-muted-foreground font-normal"> · </span>
           <span className="text-muted-foreground font-normal">
             {estacaoNome}
@@ -300,14 +380,30 @@ export function PainelOperador({
         // tela só, que é a única coisa que esta grade existe pra dar.
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 2xl:grid-cols-4">
           {maquinas.map((m) => (
+            // ⚠️ TODA AÇÃO QUE GRAVA PASSA POR `exigirIdentidade`. Travado,
+            // ela pergunta "Quem é você?" e segue sozinha depois do PIN;
+            // destravado, é o toque de sempre.
             <CartaoMaquina
               key={m.id}
               maquina={m}
               podeAgir={podeAgir}
-              onIniciar={() => setIniciando(m)}
+              onIniciar={() => exigirIdentidade(() => setIniciando(m))}
               onConcluir={() =>
-                m.op && setConcluindo({ op: m.op, maquinaCodigo: m.codigo })
+                exigirIdentidade(
+                  () =>
+                    m.op &&
+                    setConcluindo({ op: m.op, maquinaCodigo: m.codigo }),
+                )
               }
+              onParou={() =>
+                exigirIdentidade(() => setParada({ maquina: m, modo: 'abrir' }))
+              }
+              onVoltou={() =>
+                exigirIdentidade(() =>
+                  setParada({ maquina: m, modo: 'fechar' }),
+                )
+              }
+              onObservacao={() => m.op && setObservacao(m.op)}
             />
           ))}
         </div>
@@ -319,7 +415,18 @@ export function PainelOperador({
           onClose={() => setIniciando(null)}
         />
       )}
-      <RelogioDeInatividade />
+
+      {parada && (
+        <ParadaDoOperador
+          maquina={parada.maquina}
+          modo={parada.modo}
+          onClose={() => setParada(null)}
+        />
+      )}
+
+      {observacao?.observacoes && (
+        <ObservacaoDialog op={observacao} onClose={() => setObservacao(null)} />
+      )}
 
       {concluindo && (
         <ConcluirDialog
@@ -350,18 +457,40 @@ function CartaoMaquina({
   podeAgir,
   onIniciar,
   onConcluir,
+  onParou,
+  onVoltou,
+  onObservacao,
 }: {
   maquina: MaquinaDaEstacao
   podeAgir: boolean
   onIniciar: () => void
   onConcluir: () => void
+  onParou: () => void
+  onVoltou: () => void
+  onObservacao: () => void
 }) {
+  const { agoraNoServidor } = useTravaDoTablet()
   // OS DOIS EIXOS, e não um estado colapsado. A versão anterior escolhia um
   // vencedor ("ocupada vence indisponível") e escondia a manutenção de uma
   // máquina que tinha trabalho preso dentro — justamente o caso em que o
   // operador mais precisa ver as duas coisas.
   const s = situacaoDaMaquina(m.status, m.op !== null)
   const impedida = s.disponibilidade !== 'apta'
+
+  // "Há quanto tempo" no relógio do SERVIDOR, que foi quem gravou o início.
+  const desde = useDuracaoDesde(
+    m.paradaAberta?.iniciadaEm ?? null,
+    agoraNoServidor,
+  )
+
+  // PAROU: máquina apta, com ou sem OP dentro. VOLTOU: parada de manutenção
+  // com um dos motivos do operador — setup, desativada e a preventiva do
+  // gerente são cadastro de quem planeja, e quem abriu é quem fecha.
+  const podeParar = podeAgir && !impedida
+  const podeVoltar =
+    podeAgir &&
+    m.status === 'manutencao' &&
+    operadorFechaEstaParada(m.paradaAberta?.motivo ?? null)
 
   return (
     <div
@@ -372,8 +501,15 @@ function CartaoMaquina({
         // tracejada e esmaecida: ali não há nada pra ler. Com trabalho
         // dentro, o cartão continua legível — quem está na frente dela
         // precisa enxergar a peça, não um retângulo cinza.
-        impedida && s.ocupacao === 'livre' && 'bg-muted/40 border-dashed opacity-70',
-        impedida && s.ocupacao === 'com_op' && 'border-amber-500/50',
+        //
+        // A que o OPERADOR PODE LIBERAR não esmaece: o "Voltou" é a ação
+        // principal dela, e botão principal em cartão apagado parece
+        // desabilitado.
+        impedida &&
+          s.ocupacao === 'livre' &&
+          !podeVoltar &&
+          'bg-muted/40 border-dashed opacity-70',
+        impedida && (s.ocupacao === 'com_op' || podeVoltar) && 'border-amber-500/50',
       )}
     >
       {/* O CÓDIGO DA MÁQUINA NO TOPO, sempre — é por ele que ele acha o
@@ -395,10 +531,19 @@ function CartaoMaquina({
       {/* A MANCHETE DO IMPEDIMENTO, e ela aparece MESMO com OP dentro. É a
           linha que responde "por que esta máquina está parada se tem peça
           nela?" — sem ela, o operador ficaria esperando a máquina voltar
-          sozinha. */}
+          sozinha.
+
+          COM PARADA REGISTRADA, A MANCHETE É O MOTIVO: "Parada: falta de fio
+          · há 2 h". "Em manutenção" não diz o que esperar nem desde quando.
+          UMA LINHA SÓ, cortada com reticências — o "Outro" traz o texto que
+          alguém digitou, que pode ser longo, e o inteiro está no diálogo do
+          "Voltou". Setup e desativada vêm do cadastro, sem motivo, e ficam
+          com o rótulo de sempre. */}
       {impedida && (
-        <p className="mt-0.5 text-sm font-medium text-amber-700 dark:text-amber-400">
-          {s.rotulo}
+        <p className="mt-0.5 truncate text-sm font-medium text-amber-700 dark:text-amber-400">
+          {m.paradaAberta && m.paradaAberta.motivo !== null
+            ? `Parada: ${oQueParou(m.paradaAberta)}${desde ? ` · há ${desde}` : ''}`
+            : s.rotulo}
         </p>
       )}
 
@@ -413,6 +558,14 @@ function CartaoMaquina({
           op={m.op}
           podeAgir={podeAgir}
           onConcluir={onConcluir}
+          onObservacao={onObservacao}
+          secundaria={
+            podeVoltar ? (
+              <BotaoSecundario onClick={onVoltou}>Voltou</BotaoSecundario>
+            ) : podeParar ? (
+              <BotaoSecundario onClick={onParou}>Parou</BotaoSecundario>
+            ) : null
+          }
         />
       )}
 
@@ -422,23 +575,69 @@ function CartaoMaquina({
             Máquina livre
           </p>
           {podeAgir && (
-            <Button className="h-12 w-full text-base" onClick={onIniciar}>
-              Iniciar produção
-            </Button>
+            // A AÇÃO DA FILEIRA DIVIDE O ESPAÇO, e não ganha linha própria:
+            // uma fileira a mais em nove cartões é a terceira linha da grade
+            // saindo da tela. O rótulo secundário encurta ("Parou"), mas
+            // continua sendo verbo — nunca um ícone pra adivinhar.
+            <div className="flex gap-1.5">
+              <Button className="h-12 min-w-0 flex-1 px-2 text-base" onClick={onIniciar}>
+                Iniciar produção
+              </Button>
+              <BotaoSecundario onClick={onParou}>Parou</BotaoSecundario>
+            </div>
           )}
         </div>
       )}
 
-      {/* IMPEDIDA E VAZIA NÃO OFERECE BOTÃO NENHUM. A máquina não pode
-          receber OP, e um botão que só devolve erro é pior do que nenhum. */}
+      {/* IMPEDIDA E VAZIA: o "Voltou" é a ação PRINCIPAL quando é o operador
+          quem libera. Nos outros impedimentos não há botão nenhum — a máquina
+          não pode receber OP, e um botão que só devolve erro é pior do que
+          nenhum. */}
       {impedida && s.ocupacao === 'livre' && (
-        <div className="flex flex-1 items-center justify-center pt-1.5">
-          <p className="text-muted-foreground text-center text-sm">
-            Não pode receber OP agora
-          </p>
+        <div className="flex flex-1 flex-col justify-end pt-1.5">
+          {podeVoltar ? (
+            <Button className="h-12 w-full text-base" onClick={onVoltou}>
+              Voltou
+            </Button>
+          ) : (
+            <p className="text-muted-foreground flex flex-1 items-center justify-center text-center text-sm">
+              Não pode receber OP agora
+            </p>
+          )}
         </div>
       )}
     </div>
+  )
+}
+
+// O que parou, pra manchete. O motivo em minúscula, porque vem depois de
+// "Parada:"; o "Outro" é o texto que alguém digitou, que diz mais do que a
+// palavra "outro".
+function oQueParou(parada: ParadaAbertaResumo): string {
+  if (parada.motivo === 'outro' && parada.observacaoAbertura) {
+    return parada.observacaoAbertura
+  }
+  const r = rotuloDoMotivo(parada.motivo)
+  return r.charAt(0).toLowerCase() + r.slice(1)
+}
+
+// Secundária de fileira dividida: mesma altura de 48px da principal — o alvo
+// não encolhe —, e só a largura do rótulo curto.
+function BotaoSecundario({
+  onClick,
+  children,
+}: {
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Button
+      variant="outline"
+      className="h-12 shrink-0 px-3 text-base"
+      onClick={onClick}
+    >
+      {children}
+    </Button>
   )
 }
 
@@ -446,11 +645,21 @@ function CorpoOcupada({
   op,
   podeAgir,
   onConcluir,
+  onObservacao,
+  secundaria,
 }: {
   op: OpNaMaquina
   podeAgir: boolean
   onConcluir: () => void
+  onObservacao: () => void
+  /** "Parou" ou "Voltou", dividindo a fileira com "Concluir produção". */
+  secundaria: React.ReactNode
 }) {
+  const temObservacao = Boolean(op.observacoes)
+  // Com observação, o BLOCO DO TÍTULO INTEIRO vira o alvo do toque. Ele já tem
+  // mais de 48px de altura, então a marca não custa linha nenhuma — e sem
+  // observação o bloco é só leitura, sem nada a mais.
+  const Bloco = temObservacao ? 'button' : 'div'
   return (
     <>
       {/* ⚠️ O MESMO TÍTULO DA FILA DE ESCOLHA, montado pela MESMA função
@@ -461,7 +670,23 @@ function CorpoOcupada({
 
           O swatch aqui é `sm` (28px) e não `lg`: o cartão vive numa grade de
           três colunas, e 48px de mancha comeriam a largura do nome. */}
-      <div className="mt-1 flex items-start gap-2">
+      {/* A OBSERVAÇÃO NÃO PODE SER SÓ DE QUEM INICIA. Ela aparecia apenas no
+          fluxo de iniciar, e quem pega a OP já rodando na troca de turno
+          nunca via "usar o fio do lote velho". */}
+      <Bloco
+        {...(temObservacao
+          ? {
+              type: 'button' as const,
+              onClick: onObservacao,
+              'aria-label': `Ler a observação da OP ${op.numero}`,
+            }
+          : {})}
+        className={cn(
+          'mt-1 flex w-full items-start gap-2 text-left',
+          temObservacao &&
+            'hover:bg-muted/40 focus-visible:ring-ring -mx-1 rounded-md px-1 focus-visible:ring-2 focus-visible:outline-none',
+        )}
+      >
         <ColorSwatch
           hex={op.corHex}
           hex2={op.corHex2}
@@ -474,15 +699,31 @@ function CorpoOcupada({
           {/* META, NÃO PROGRESSO. Ver o cabeçalho do arquivo: o registro é
               feito só no fim, então uma barra ficaria zerada o turno
               inteiro. O modelo divide a linha com ela — na fila ele está no
-              cabeçalho do grupo, aqui não existe grupo pra carregá-lo. */}
-          <p className="text-muted-foreground text-sm tabular-nums">
-            {op.variacaoModelo && `${op.variacaoModelo} · `}
-            <span className="text-foreground font-semibold">
+              cabeçalho do grupo, aqui não existe grupo pra carregá-lo.
+
+              ⚠️ UMA LINHA, E NÃO QUEBRA. Quem cede quando falta largura é o
+              MODELO, cortado com reticências; a meta e a marca da observação
+              ficam inteiras. E a marca encurta pra "obs." abaixo de `lg`,
+              onde as três colunas deixam o cartão estreito demais pra
+              "tem observação" caber ao lado da meta. */}
+          <p className="text-muted-foreground flex min-w-0 items-baseline gap-1 text-sm whitespace-nowrap tabular-nums">
+            {op.variacaoModelo && (
+              <span className="min-w-0 truncate">{op.variacaoModelo} ·</span>
+            )}
+            <span className="text-foreground shrink-0 font-semibold">
               Meta: {op.quantidade} peças
             </span>
+            {temObservacao && (
+              <span className="text-primary inline-flex shrink-0 items-center font-medium">
+                ·&nbsp;
+                <span className="hidden lg:inline">tem observação</span>
+                <span className="lg:hidden">obs.</span>
+                <ChevronRight className="size-3.5" />
+              </span>
+            )}
           </p>
         </div>
-      </div>
+      </Bloco>
       {/* OP LEGADA, com apontamento já feito. Não some com o número dele só
           porque a barra saiu — mas fica discreto, fora do caminho. */}
       {(op.produzido > 0 || op.refugo > 0) && (
@@ -514,10 +755,14 @@ function CorpoOcupada({
           das diretrizes. Texto pequeno se lê chegando perto — alvo pequeno
           se erra com o dedo sujo de fiapo, e errar aqui grava número. */}
       {podeAgir && (
-        <div className="mt-auto pt-2">
-          <Button className="h-12 w-full text-base" onClick={onConcluir}>
+        <div className="mt-auto flex gap-1.5 pt-2">
+          <Button
+            className="h-12 min-w-0 flex-1 px-2 text-base"
+            onClick={onConcluir}
+          >
             Concluir produção
           </Button>
+          {secundaria}
         </div>
       )}
     </>
@@ -572,6 +817,7 @@ function IniciarProducaoDialog({
   const [buscando, setBuscando] = useState(true)
   const [confirmando, setConfirmando] = useState<OpParaIniciar | null>(null)
   const [erro, setErro] = useState<string | null>(null)
+  const { exigirIdentidade, travarEPerguntar } = useTravaDoTablet()
 
   // BUSCA COM DEBOUNCE, mesmo padrão do global-search: 200ms. Sem ele, cada
   // tecla vira uma consulta, e num tablet a digitação é lenta o bastante pra
@@ -618,7 +864,7 @@ function IniciarProducaoDialog({
       setConfirmando(op)
       return
     }
-    iniciar(op, false)
+    exigirIdentidade(() => iniciar(op, false))
   }
 
   function iniciar(op: OpParaIniciar, materiaPrimaConfirmada: boolean) {
@@ -628,6 +874,12 @@ function IniciarProducaoDialog({
         materiaPrimaConfirmada,
       })
       if (!r.success) {
+        // O TABLET TRAVOU COM O DIÁLOGO ABERTO: pergunta quem é e tenta de
+        // novo com a mesma OP, sem ele ter que achar ela na fila outra vez.
+        if (r.error === ERRO_TABLET_TRAVADO) {
+          travarEPerguntar(() => iniciar(op, materiaPrimaConfirmada))
+          return
+        }
         // A MENSAGEM FICA NO DIÁLOGO, em tipo grande. Num toast ela
         // apareceria atrás do diálogo aberto e sumiria antes de ele ler.
         setErro(r.error)
@@ -647,7 +899,9 @@ function IniciarProducaoDialog({
         maquina={maquina}
         isPending={isPending}
         erro={erro}
-        onConfirmar={() => iniciar(confirmando, true)}
+        onConfirmar={() =>
+          exigirIdentidade(() => iniciar(confirmando, true))
+        }
         onVoltar={() => setConfirmando(null)}
       />
     )
@@ -663,8 +917,14 @@ function IniciarProducaoDialog({
           <DialogTitle className="text-2xl">
             Iniciar na máquina {maquina.codigo}
           </DialogTitle>
+          {/* ⚠️ A REGRA DO TOQUE, ESCRITA. "Em produção" começa quando a
+              máquina tece, e o tempo de setup fica FORA dele de propósito:
+              com o toque dado ao começar a armar a máquina, cada OP carregaria
+              o setup dela, e o tempo por coluna do `eventos_kanban` — de onde
+              vão sair os limiares do aging — mediria a troca de fio, não a
+              produção. */}
           <DialogDescription className="text-base">
-            Escolha a OP que entra em produção agora.
+            Escolha a OP. Toque quando a máquina começar a tecer.
           </DialogDescription>
         </DialogHeader>
 
@@ -1176,6 +1436,7 @@ function ConcluirDialog({
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  const { exigirIdentidade, travarEPerguntar } = useTravaDoTablet()
   const conclusao = calcularConclusao(op.quantidade, op.produzido)
   const [ativo, setAtivo] = useState<Campo>('produzida')
   const chave = chaveDoRascunho(op.id)
@@ -1271,6 +1532,12 @@ function ConcluirDialog({
     setErro(null)
     startTransition(async () => {
       const r = await concluirProducaoAction(op.id, { produzida, refugo })
+      if (!r.success && r.error === ERRO_TABLET_TRAVADO) {
+        // O rascunho fica no localStorage; depois do PIN, conclui com os
+        // mesmos números.
+        travarEPerguntar(concluir)
+        return
+      }
       if (!r.success) {
         // O RASCUNHO FICA. A falha é o momento em que ele mais precisa do
         // número preservado — é o que ele vai reenviar.
@@ -1366,7 +1633,7 @@ function ConcluirDialog({
           className="h-16 text-xl"
           loading={isPending}
           disabled={isPending}
-          onClick={concluir}
+          onClick={() => exigirIdentidade(concluir)}
         >
           Concluir com {produzida} {produzida === 1 ? 'peça boa' : 'peças boas'}
         </Button>
@@ -1457,11 +1724,16 @@ function BotaoDesfazer({
   const [confirmando, setConfirmando] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
+  const { exigirIdentidade, travarEPerguntar } = useTravaDoTablet()
 
   function desfazer() {
     setErro(null)
     startTransition(async () => {
       const r = await desfazerConclusaoAction(op.id)
+      if (!r.success && r.error === ERRO_TABLET_TRAVADO) {
+        travarEPerguntar(desfazer)
+        return
+      }
       if (!r.success) {
         setErro(r.error)
         return
@@ -1502,7 +1774,7 @@ function BotaoDesfazer({
           className="h-12 flex-1 text-base"
           loading={isPending}
           disabled={isPending}
-          onClick={desfazer}
+          onClick={() => exigirIdentidade(desfazer)}
         >
           Sim, desfazer
         </Button>
@@ -1516,5 +1788,79 @@ function BotaoDesfazer({
         </Button>
       </div>
     </div>
+  )
+}
+
+// -----------------------------------------------------------------
+// Parada, na estação
+// -----------------------------------------------------------------
+
+// O DIÁLOGO DA /fabrica, com o que muda pro tablet: os cinco motivos do
+// operador, a frase que diz QUANDO registrar, tamanho de quem está de pé e a
+// trava. É o mesmo componente (src/components/maquinas/parada-dialog.tsx) —
+// uma cópia aqui era o começo de duas maneiras de registrar a mesma parada.
+function ParadaDoOperador({
+  maquina,
+  modo,
+  onClose,
+}: {
+  maquina: MaquinaDaEstacao
+  modo: 'abrir' | 'fechar'
+  onClose: () => void
+}) {
+  const { travarEPerguntar } = useTravaDoTablet()
+  return (
+    <ParadaDialog
+      maquina={maquina}
+      modo={modo}
+      onClose={onClose}
+      motivos={OPCOES_DE_MOTIVO_DO_OPERADOR}
+      // A REGRA ESCRITA: parada é o que tira ele da frente da máquina ou o
+      // deixa esperando. Uma troca de rolo de um minuto não é parada — e sem
+      // a frase, cada operador decidiria por conta própria o que registrar.
+      descricaoAoAbrir="Registre se você vai sair da frente da máquina ou esperar alguém ou alguma coisa."
+      paradaAberta={maquina.paradaAberta}
+      variante="tablet"
+      onTabletTravado={travarEPerguntar}
+    />
+  )
+}
+
+// -----------------------------------------------------------------
+// A observação da OP, aberta pelo cartão
+// -----------------------------------------------------------------
+
+// MESMO QUADRO DO PASSO DE CONFIRMAR O INÍCIO, em letra grande: é o mesmo
+// texto do gerente, e quem lê no cartão tem que ver o que quem iniciou viu.
+function ObservacaoDialog({
+  op,
+  onClose,
+}: {
+  op: OpNaMaquina
+  onClose: () => void
+}) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-2xl">{op.produtoNome}</DialogTitle>
+          <DialogDescription className="text-base">
+            {variacaoDe(op) && `${variacaoDe(op)} · `}
+            {op.quantidade} peças · OP {op.numero}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="border-primary/40 bg-primary/5 rounded-lg border-2 p-3">
+          <p className="text-muted-foreground text-sm font-medium">
+            Observação do gerente
+          </p>
+          <p className="mt-1 text-lg whitespace-pre-wrap">{op.observacoes}</p>
+        </div>
+
+        <Button className="h-14 text-lg" onClick={onClose}>
+          Fechar
+        </Button>
+      </DialogContent>
+    </Dialog>
   )
 }

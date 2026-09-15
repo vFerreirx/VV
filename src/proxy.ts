@@ -8,6 +8,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import {
   COOKIE_ATIVIDADE,
   COOKIE_OPERADOR,
+  COOKIE_TRAVADO,
   expirouPorInatividade,
 } from '@/lib/auth/inatividade'
 
@@ -53,30 +54,41 @@ export async function proxy(request: NextRequest) {
 
   const { pathname } = request.nextUrl
 
-  // INATIVIDADE NO TABLET DA ESTAÇÃO — o backstop.
+  // INATIVIDADE NO TABLET DA ESTAÇÃO — o proxy TRAVA, não desloga.
   //
-  // O aviso e o logoff normais acontecem no cliente, que tem o contador na
-  // tela. Isto aqui pega o que o cliente não pega: aba restaurada do
-  // bfcache, JS que morreu, tablet que dormiu com a página aberta. Sem esta
-  // checagem, qualquer um desses devolve a sessão do operador anterior
-  // inteira, que é justamente o que o PIN foi construído pra evitar.
+  // Antes isto fazia `signOut` e mandava pro /login. Agora a sessão fica e o
+  // tablet trava: a leitura segue (a grade continua atualizando), e a escrita
+  // pede PIN. A regra inteira está em src/lib/auth/inatividade.ts.
   //
-  // Só vale pra sessão de OPERADOR (o cookie é escrito no login), e o cookie
-  // de atividade é escrito pelo TOQUE, não pela request — ver
-  // src/lib/auth/inatividade.ts.
-  if (
-    user &&
+  // ⚠️ O QUE ESTE BLOCO FAZ É GRAVAR `vv_travado`, httpOnly. O cookie de
+  // atividade é escrito pelo cliente, e com trava isso deixa de bastar: se
+  // tocar na tela reescrevesse a atividade, qualquer toque destravaria o
+  // servidor sem PIN. A marca httpOnly o JavaScript não apaga — só a
+  // confirmação de PIN, a troca de operador e o login por senha.
+  //
+  // É aqui que continuam cobertos os casos que o cliente não pega: aba
+  // restaurada do bfcache, JS que morreu, tablet que dormiu com a página
+  // aberta. A primeira request depois disso chega com a atividade velha, e o
+  // tablet acorda travado. (A guarda das actions também recusa por atividade
+  // vencida mesmo sem esta marca, pra action que chega antes de qualquer
+  // outra request.)
+  //
+  // Só vale pra sessão de OPERADOR — o cookie é escrito no login.
+  const travarAgora =
+    user !== null &&
     request.cookies.get(COOKIE_OPERADOR)?.value === '1' &&
+    request.cookies.get(COOKIE_TRAVADO)?.value !== '1' &&
     expirouPorInatividade(request.cookies.get(COOKIE_ATIVIDADE)?.value)
-  ) {
-    await supabase.auth.signOut()
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.search = '?expirado=1'
-    const saida = NextResponse.redirect(url)
-    saida.cookies.delete(COOKIE_OPERADOR)
-    saida.cookies.delete(COOKIE_ATIVIDADE)
-    return saida
+
+  function comTrava(res: NextResponse): NextResponse {
+    if (travarAgora) {
+      res.cookies.set(COOKIE_TRAVADO, '1', {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+      })
+    }
+    return res
   }
 
   // Não autenticado tentando acessar área logada → /login?next=...
@@ -84,7 +96,7 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('next', pathname)
-    return NextResponse.redirect(url)
+    return comTrava(NextResponse.redirect(url))
   }
 
   // Autenticado em rota de auth → /dashboard
@@ -92,10 +104,10 @@ export async function proxy(request: NextRequest) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     url.search = ''
-    return NextResponse.redirect(url)
+    return comTrava(NextResponse.redirect(url))
   }
 
-  return response
+  return comTrava(response)
 }
 
 export const config = {

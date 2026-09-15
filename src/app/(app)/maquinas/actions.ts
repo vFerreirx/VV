@@ -5,6 +5,7 @@ import { alias } from 'drizzle-orm/pg-core'
 import { revalidatePath } from 'next/cache'
 
 import { podeEscrever } from '@/lib/auth/permissoes'
+import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
@@ -501,6 +502,9 @@ export async function trocarStatusAction(
   input: TrocarStatusMaquinaInput,
 ): Promise<ActionResult> {
   const user = await requireAuth()
+  // Tablet travado não grava — ver src/lib/auth/inatividade.ts.
+  const travado = await recusaSeTabletTravado()
+  if (travado) return travado
 
   const parsed = trocarStatusMaquinaSchema.safeParse(input)
   if (!parsed.success) {

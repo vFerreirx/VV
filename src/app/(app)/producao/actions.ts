@@ -24,6 +24,7 @@ import {
 import {
   apontamentosProducao,
   cores,
+  maquinaParadas,
   estacaoOperadores,
   estacoes,
   eventosKanban,
@@ -358,6 +359,18 @@ export type MaquinaDaEstacao = {
   status: MaquinaStatus
   /** A OP em produção nesta máquina, ou null. No máximo uma — ver acima. */
   op: OpNaMaquina | null
+  /**
+   * A parada ABERTA, quando existe — é dela que sai a manchete "Parada: falta
+   * de fio · há 2 h" no lugar do genérico "Em manutenção". Mesmo join de
+   * `listarMaquinas` (maquinas/actions.ts), e pelo mesmo motivo: o índice
+   * parcial `maquina_paradas_aberta_uidx` garante no máximo uma por máquina,
+   * então a linha da máquina não duplica.
+   */
+  paradaAberta: {
+    iniciadaEm: Date
+    motivo: string | null
+    observacaoAbertura: string | null
+  } | null
 }
 
 export type VisaoDaEstacao = {
@@ -397,6 +410,9 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
       variacaoTamanho: variacoesProduto.tamanho,
       corHex: cores.codigoHex,
       corHex2: cores.codigoHex2,
+      paradaIniciadaEm: maquinaParadas.iniciadaEm,
+      paradaMotivo: maquinaParadas.motivo,
+      paradaObservacao: maquinaParadas.observacaoAbertura,
       // Mesma correlação qualificada à mão de `listarOrdensProducao`, e pelo
       // mesmo motivo: sem `"ordens_producao"."id"` explícito o Postgres
       // correlaciona com o `id` da própria subquery e o total sai sempre 0.
@@ -431,6 +447,13 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
     )
     .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
+    .leftJoin(
+      maquinaParadas,
+      and(
+        eq(maquinaParadas.maquinaId, maquinas.id),
+        isNull(maquinaParadas.encerradaEm),
+      ),
+    )
     .where(and(eq(maquinas.estacaoId, estacao.id), isNull(maquinas.deletedAt)))
     // POSIÇÃO ESTÁVEL. O cartão da TC-01 é sempre o primeiro, ocupada ou
     // livre: quem trabalha aqui aprende a estação pela posição, e uma grade
@@ -462,6 +485,14 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
               responsavelId: r.opResponsavelId,
               responsavelNome: r.responsavelNome ?? null,
               observacoes: r.opObservacoes,
+            },
+      paradaAberta:
+        r.paradaIniciadaEm === null
+          ? null
+          : {
+              iniciadaEm: r.paradaIniciadaEm,
+              motivo: r.paradaMotivo,
+              observacaoAbertura: r.paradaObservacao,
             },
     })),
   }

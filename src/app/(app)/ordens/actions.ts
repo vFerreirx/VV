@@ -22,6 +22,7 @@ import {
   requireAreaEscrita,
 } from '@/lib/auth/require-auth'
 import { podeEscrever } from '@/lib/auth/permissoes'
+import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { db } from '@/lib/db'
 import {
@@ -621,6 +622,9 @@ export async function mudarStatusOrdemAction(
   input: MudarStatusOrdemInput,
 ): Promise<ActionResult> {
   const user = await requireAuth()
+  // Tablet travado não grava — ver src/lib/auth/inatividade.ts.
+  const travado = await recusaSeTabletTravado()
+  if (travado) return travado
 
   const parsed = mudarStatusOrdemSchema.safeParse(input)
   if (!parsed.success) {
@@ -1089,6 +1093,9 @@ export async function pegarOrdemAction(
   opcoes: { materiaPrimaConfirmada?: boolean } = {},
 ): Promise<ActionResult> {
   const user = await requireAuth()
+  // Tablet travado não grava — ver src/lib/auth/inatividade.ts.
+  const travado = await recusaSeTabletTravado()
+  if (travado) return travado
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
 
   if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
@@ -1385,6 +1392,9 @@ export async function iniciarProducaoAction(
 
 export async function soltarOrdemAction(id: string): Promise<ActionResult> {
   const user = await requireAuth()
+  // Tablet travado não grava — ver src/lib/auth/inatividade.ts.
+  const travado = await recusaSeTabletTravado()
+  if (travado) return travado
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
 
   if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
@@ -1484,6 +1494,9 @@ export async function apontarProducaoAction(
   input: ApontamentoInput,
 ): Promise<ActionResult> {
   const user = await requireAuth()
+  // Tablet travado não grava — ver src/lib/auth/inatividade.ts.
+  const travado = await recusaSeTabletTravado()
+  if (travado) return travado
   if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
 
   const parsed = apontamentoSchema.safeParse(input)
@@ -1588,6 +1601,9 @@ export async function concluirProducaoAction(
   // desfazer a segunda apagaria a conclusão de outra pessoa.
 ): Promise<ActionResult<{ concluiu: true }>> {
   const user = await requireAuth()
+  // Tablet travado não grava — ver src/lib/auth/inatividade.ts.
+  const travado = await recusaSeTabletTravado()
+  if (travado) return travado
   if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
 
   if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
@@ -1808,6 +1824,9 @@ export async function desfazerConclusaoAction(
   ordemId: string,
 ): Promise<ActionResult> {
   const user = await requireAuth()
+  // Tablet travado não grava — ver src/lib/auth/inatividade.ts.
+  const travado = await recusaSeTabletTravado()
+  if (travado) return travado
   if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
 
   if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {

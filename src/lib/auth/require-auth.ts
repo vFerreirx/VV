@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser, type AuthUser } from './get-user'
 import { carregarOverrides } from './permissoes-db'
 import { nivelEfetivo, podeEscrever, type AreaKey } from './permissoes'
+import { sessaoDeOperadorTravada } from './tablet-travado'
 import type { User } from '@/lib/db/schema'
 import { createClient } from '@/lib/supabase/server'
 
@@ -56,11 +57,20 @@ export async function requireArea(area: AreaKey): Promise<AuthUser> {
 // /permissoes) precisa ser total/próprio. É o guard das actions de
 // escrita — assim o que a tela de permissões promete é o que as actions
 // entregam. Admin é sempre total (travado no nivelEfetivo).
+//
+// ⚠️ E CONFERE A TRAVA DO TABLET, de reserva. As actions de produção que o
+// operador alcança chamam `recusaSeTabletTravado()` direto, com resposta de
+// erro que a tela entende; esta é a rede pras áreas que o admin libere ao
+// operador em /permissoes. Aqui é redirect (é o contrato desta função), e vai
+// pra /producao porque é lá que existe o "Destravar".
 export async function requireAreaEscrita(area: AreaKey): Promise<AuthUser> {
   const user = await requireAuth()
   const overrides = await carregarOverrides()
   if (!podeEscrever(nivelEfetivo(user.role, area, overrides))) {
     redirect('/dashboard')
+  }
+  if (await sessaoDeOperadorTravada()) {
+    redirect('/producao')
   }
   return user
 }

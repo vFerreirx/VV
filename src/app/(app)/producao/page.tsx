@@ -19,6 +19,10 @@ import { podeEscrever } from '@/lib/auth/permissoes'
 import { contarMaquinas, situacaoDaMaquina } from '@/lib/producao/estado-maquina'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { isManager, requireArea } from '@/lib/auth/require-auth'
+import {
+  horaDoServidorAgora,
+  sessaoDeOperadorTravada,
+} from '@/lib/auth/tablet-travado'
 import { canalValues } from '@/lib/validators/ordens'
 
 export const metadata: Metadata = { title: 'Produção — Vanvest' }
@@ -68,13 +72,15 @@ export default async function ProducaoPage({
   // A OP em produção vem pendurada na máquina, então ela nem passa por
   // aqui — o cartão da máquina já é o lugar dela.
   if (user.role === 'operador') {
-    const [visao, contagens] = await Promise.all([
+    const [visao, contagens, travado] = await Promise.all([
       listarMaquinasDaEstacao(),
       contarOpsDaEstacao(),
+      sessaoDeOperadorTravada(),
     ])
 
     return (
       <PainelOperador
+        operadorId={user.id}
         nomeOperador={user.nome}
         estacaoNome={visao.estacao?.nome ?? null}
         maquinas={visao.maquinas}
@@ -82,6 +88,12 @@ export default async function ProducaoPage({
         podeAgir={podeMover}
         // Booleano, nunca o hash — o painel é componente de cliente.
         temPin={user.pinHash !== null}
+        // A TRAVA DO TABLET: o horário do servidor (o cliente grava e decide
+        // nele, pra relógio de tablet errado não travar a cada toque nem
+        // nunca) e se o servidor já considera a sessão travada. Ver
+        // src/lib/auth/inatividade.ts.
+        horaDoServidor={horaDoServidorAgora()}
+        travadoNoServidor={travado}
       />
     )
   }
