@@ -939,6 +939,7 @@ function DetalheBody({
             status: ordem.status,
             quantidade: ordem.quantidade,
             produzido,
+            maquinaId: ordem.maquinaId,
           }}
           onFeito={aoConcluir}
           onClose={() => setPorta(null)}

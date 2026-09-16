@@ -44,6 +44,7 @@
 // cima do que já existe dobraria a produção do dia em silêncio.
 
 import { diaEmBrasilia, diasEntre } from '../dia-brasil.ts'
+import type { StatusDaOrdem } from './destino-da-ordem'
 
 export type Conclusao = {
   /** A quantidade da OP — o que o gerente pediu. */
@@ -121,11 +122,11 @@ export function erroDeQuantidade(
  * da máquina (esta linha) e receber baixa (`enviado`). Com a palavra solta, o
  * gerente lendo o histórico não distingue um do outro.
  *
- * `semMaquina` marca a conclusão que o gerente faz direto da fila — a OP que
- * saiu do tear enquanto o board ainda não sabia dela (a virada do Trello). A
- * análise futura não precisa desta frase pra achá-las: a transição do evento
- * já diz (`status_anterior` diferente de `em_producao`). A frase é pra quem
- * lê o histórico e estranha a OP sem máquina.
+ * `maquinaInformada` marca a conclusão que o gerente faz de uma OP que não
+ * estava numa máquina — a que saiu do tear enquanto o board ainda não sabia
+ * dela. A máquina foi DITA na conclusão, e a frase separa isso de uma OP que
+ * rodou pelo board: "máquina TC-03 informada na conclusão". A transição do
+ * evento (`status_anterior`) continua dizendo de onde a OP veio.
  */
 export function resumoDaConclusao(
   produzida: number,
@@ -133,9 +134,9 @@ export function resumoDaConclusao(
   { meta, jaRegistrado }: Conclusao,
   iniciadaPor?: string | null,
   {
-    semMaquina = false,
+    maquinaInformada = null,
     diasDeAtraso = 0,
-  }: { semMaquina?: boolean; diasDeAtraso?: number } = {},
+  }: { maquinaInformada?: string | null; diasDeAtraso?: number } = {},
 ): string {
   const total = jaRegistrado + produzida
   const diferenca = meta - total
@@ -146,7 +147,9 @@ export function resumoDaConclusao(
   if (diferenca < 0) partes.push(`(${-diferenca} a mais)`)
   if (refugo > 0) partes.push(`· ${refugo} refugo`)
   if (iniciadaPor) partes.push(`· iniciada por ${iniciadaPor}`)
-  if (semMaquina) partes.push('· sem passar por máquina')
+  if (maquinaInformada) {
+    partes.push(`· máquina ${maquinaInformada} informada na conclusão`)
+  }
   // O ATRASO FICA NO HISTÓRICO. Depois da conclusão a OP deixa de ser
   // "atrasada" nas telas (atraso-da-op.ts) — sem esta linha, o fato de ter
   // saído depois do prazo sumiria junto com o vermelho.
@@ -209,4 +212,19 @@ export function erroDoAutorDoDesfazer(
   }
   if (autor.id === operadorId) return null
   return `Quem concluiu foi ${autor.nome ?? 'outra pessoa'}. Só essa pessoa ou o gerente podem desfazer.`
+}
+
+/**
+ * A conclusão precisa que o gerente DIGA em qual máquina a OP foi feita?
+ *
+ * Sim quando a OP não está numa máquina: fora de `em_producao` (a fila, os
+ * legados) ou em produção sem máquina (legado). Antes ela saía concluída sem
+ * máquina nenhuma, e a produção por máquina ficava com buraco. OP rodando
+ * numa máquina usa a dela — perguntar seria abrir espaço pra divergir.
+ */
+export function conclusaoPedeMaquina(
+  status: StatusDaOrdem,
+  maquinaId: string | null,
+): boolean {
+  return status !== 'em_producao' || maquinaId === null
 }

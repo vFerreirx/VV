@@ -12,6 +12,7 @@ import { test } from 'node:test'
 
 import {
   calcularConclusao,
+  conclusaoPedeMaquina,
   erroDeQuantidade,
   diasDeAtrasoNaConclusao,
   erroDoAutorDoDesfazer,
@@ -420,11 +421,22 @@ test('atrasada e so a producao que nao foi concluida', () => {
   assert.equal(producaoAtrasada('em_producao', null, depois), false)
 })
 
-test('conclusao direto da fila avisa que nao passou por maquina', () => {
+test('conclusao fora da maquina registra a maquina informada', () => {
   assert.equal(
-    resumoDaConclusao(27, 1, calcularConclusao(30, 0), null, { semMaquina: true }),
-    'Produção concluída com 27 de 30 peças (3 a menos) · 1 refugo · sem passar por máquina',
+    resumoDaConclusao(27, 1, calcularConclusao(30, 0), null, { maquinaInformada: 'TC-03' }),
+    'Produção concluída com 27 de 30 peças (3 a menos) · 1 refugo · máquina TC-03 informada na conclusão',
   )
+})
+
+test('conclusao pede a maquina quando a OP nao esta numa maquina', () => {
+  assert.equal(conclusaoPedeMaquina('programado', null), true)
+  assert.equal(conclusaoPedeMaquina('programado', 'm1'), true)
+  assert.equal(conclusaoPedeMaquina('aguardando_materia_prima', null), true)
+  assert.equal(conclusaoPedeMaquina('acabamento', 'm1'), true)
+  // Legado: em producao sem maquina.
+  assert.equal(conclusaoPedeMaquina('em_producao', null), true)
+  // Rodando numa maquina: usa a dela.
+  assert.equal(conclusaoPedeMaquina('em_producao', 'm1'), false)
 })
 
 test('desfazer no tablet: so quem concluiu', () => {

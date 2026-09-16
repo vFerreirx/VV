@@ -63,6 +63,7 @@ import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
 import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import {
   calcularConclusao,
+  conclusaoPedeMaquina,
   diasDeAtrasoNaConclusao,
   erroDeQuantidade,
   erroDoAutorDoDesfazer,
@@ -1837,7 +1838,15 @@ export async function apontarProducaoAction(
 // que continua sendo do gerente. (E `ordens_producao` não tem ligação
 // nenhuma com orçamento ou pedido, então não há o que disparar.)
 
-export type ConclusaoInput = { produzida: number; refugo: number }
+export type ConclusaoInput = {
+  produzida: number
+  refugo: number
+  /**
+   * Em qual máquina a OP foi feita — obrigatória quando ela não está numa
+   * máquina (`conclusaoPedeMaquina`). Ignorada quando está: vale a dela.
+   */
+  maquinaId?: string
+}
 
 export async function concluirProducaoAction(
   ordemId: string,
@@ -1880,10 +1889,27 @@ export async function concluirProducaoAction(
   if (!podeConcluirProducao(op.status, gestor)) {
     return concluidaAntes(op.status)
   }
-  // Concluída direto da fila, sem ter passado por máquina. A OP sai SEM
-  // máquina: a planejada não foi onde a peça saiu, e deixá-la ali faria o
-  // card mostrar um tear que nunca tocou nesta OP.
-  const semMaquina = op.status !== 'em_producao'
+  // ⚠️ A OP QUE NÃO ESTÁ NUMA MÁQUINA CONCLUI COM A MÁQUINA DITA. Antes ela
+  // saía concluída sem máquina nenhuma (a virada do Trello), e a produção por
+  // máquina ficava com buraco. Agora o gerente diz onde a peça foi feita, e a
+  // máquina vai pra OP e pro apontamento. Não precisa estar livre nem apta:
+  // a produção já aconteceu. Quem está numa máquina usa a dela.
+  const semMaquina = conclusaoPedeMaquina(op.status, op.maquinaId)
+  let maquinaDaConclusao: { id: string; codigo: string } | null = null
+  if (semMaquina) {
+    if (!input.maquinaId || !uuidRe.test(input.maquinaId)) {
+      return { success: false, error: 'Escolha em qual máquina a OP foi feita' }
+    }
+    const [m] = await db
+      .select({ id: maquinas.id, codigo: maquinas.codigo })
+      .from(maquinas)
+      .where(and(eq(maquinas.id, input.maquinaId), isNull(maquinas.deletedAt)))
+      .limit(1)
+    if (!m) {
+      return { success: false, error: 'Máquina não encontrada. Escolha outra.' }
+    }
+    maquinaDaConclusao = m
+  }
 
   // Mesma regra do mover e do apontar: é da estação dele, e concluir TOMA a
   // OP — a virada de turno fica registrada sozinha.
@@ -1916,7 +1942,7 @@ export async function concluirProducaoAction(
         .set({
           status: 'pronto_envio' as const,
           ...(assumiu ? { responsavelId: user.id } : {}),
-          ...(semMaquina ? { maquinaId: null } : {}),
+          ...(maquinaDaConclusao ? { maquinaId: maquinaDaConclusao.id } : {}),
         })
         .where(
           and(
@@ -1956,7 +1982,7 @@ export async function concluirProducaoAction(
         const agora = new Date()
         await tx.insert(apontamentosProducao).values({
           ordemId,
-          maquinaId: semMaquina ? null : op.maquinaId,
+          maquinaId: maquinaDaConclusao?.id ?? op.maquinaId,
           operadorId: user.id,
           inicio: agora,
           fim: agora,
@@ -1982,9 +2008,10 @@ export async function concluirProducaoAction(
         )
         .orderBy(desc(eventosKanban.createdAt))
         .limit(1)
-      // Sem máquina não houve início a nomear.
+      // Só houve início a nomear se a OP estava em produção — a da fila não
+      // passou por ninguém antes da conclusão.
       const iniciadaPor =
-        !semMaquina && inicio && inicio.usuarioId !== user.id
+        op.status === 'em_producao' && inicio && inicio.usuarioId !== user.id
           ? inicio.nome
           : null
 
@@ -1994,7 +2021,7 @@ export async function concluirProducaoAction(
         conclusao,
         iniciadaPor,
         {
-          semMaquina,
+          maquinaInformada: maquinaDaConclusao?.codigo ?? null,
           // Depois da conclusão a OP deixa de aparecer como atrasada; o
           // atraso fica registrado aqui, em dias de calendário de Brasília.
           diasDeAtraso: diasDeAtrasoNaConclusao(op.dataPrevistaFim, new Date()),

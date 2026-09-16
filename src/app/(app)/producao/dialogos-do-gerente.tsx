@@ -34,7 +34,11 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { calcularConclusao, erroDeQuantidade } from '@/lib/producao/conclusao'
+import {
+  calcularConclusao,
+  conclusaoPedeMaquina,
+  erroDeQuantidade,
+} from '@/lib/producao/conclusao'
 import type { StatusDaOrdem } from '@/lib/producao/destino-da-ordem'
 import { cn } from '@/lib/utils'
 
@@ -214,6 +218,8 @@ export type OrdemParaConcluir = {
   quantidade: number
   /** Soma dos apontamentos que já existem. Zero no fluxo novo. */
   produzido: number
+  /** A máquina da OP (em produção) ou a planejada (fila), se houver. */
+  maquinaId: string | null
 }
 
 // O MESMO CONTEÚDO DO DIÁLOGO DO OPERADOR — peças boas sugeridas com o que
@@ -248,16 +254,27 @@ export function ConcluirProducaoDialog({
     teto: false,
   })
   const aMais = conclusao.jaRegistrado + produzida - conclusao.meta
-  const semMaquina = ordem.status !== 'em_producao'
+  // A OP não está numa máquina: o gerente diz onde ela foi feita. A planejada,
+  // se houver, vem marcada.
+  const pedeMaquina = conclusaoPedeMaquina(ordem.status, ordem.maquinaId)
+  const [maquinaId, setMaquinaId] = useState<string | null>(ordem.maquinaId)
 
   function concluir() {
+    if (pedeMaquina && !maquinaId) {
+      setErro('Escolha em qual máquina a OP foi feita')
+      return
+    }
     if (erroLocal) {
       setErro(erroLocal)
       return
     }
     setErro(null)
     startTransition(async () => {
-      const r = await concluirProducaoAction(ordem.id, { produzida, refugo })
+      const r = await concluirProducaoAction(ordem.id, {
+        produzida,
+        refugo,
+        ...(pedeMaquina && maquinaId ? { maquinaId } : {}),
+      })
       if (!r.success) {
         setErro(r.error)
         return
@@ -288,6 +305,17 @@ export function ConcluirProducaoDialog({
             concluir()
           }}
         >
+          {pedeMaquina && (
+            <MaquinaDaConclusao
+              escolhida={maquinaId}
+              planejada={ordem.maquinaId}
+              onEscolher={(id) => {
+                setErro(null)
+                setMaquinaId(id)
+              }}
+              disabled={isPending}
+            />
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="concluir-boas">
@@ -334,11 +362,6 @@ export function ConcluirProducaoDialog({
             </p>
           )}
 
-          {semMaquina && (
-            <p className="text-muted-foreground text-xs">
-              Esta OP não passou por máquina. O histórico vai registrar isso.
-            </p>
-          )}
 
           {erro && <p className="text-destructive text-sm">{erro}</p>}
 
@@ -351,12 +374,132 @@ export function ConcluirProducaoDialog({
             >
               Cancelar
             </Button>
-            <Button type="submit" loading={isPending} disabled={isPending}>
+            <Button
+              type="submit"
+              loading={isPending}
+              disabled={isPending || (pedeMaquina && !maquinaId)}
+            >
               Concluir produção
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// "EM QUAL MÁQUINA FOI FEITA?" — a OP concluída sem estar numa máquina.
+//
+// ⚠️ TODAS AS MÁQUINAS, inclusive ocupadas, em manutenção e desativadas. É o
+// oposto do "Em qual máquina?" de iniciar: lá a pergunta é "onde pode rodar
+// agora", aqui é "onde rodou". A peça já foi feita; ocupação e impedimento de
+// hoje só aparecem como texto de apoio, pra ajudar a lembrar.
+function MaquinaDaConclusao({
+  escolhida,
+  planejada,
+  onEscolher,
+  disabled,
+}: {
+  escolhida: string | null
+  planejada: string | null
+  onEscolher: (maquinaId: string) => void
+  disabled: boolean
+}) {
+  const [dados, setDados] = useState<MaquinasParaPegar | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    let vivo = true
+    listarMaquinasParaPegar().then((r) => {
+      if (!vivo) return
+      if (r.success) setDados(r.data ?? null)
+      else setErro(r.error)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  const grupos = useMemo(() => {
+    const mapa = new Map<string, MaquinaParaPegar[]>()
+    for (const m of dados?.maquinas ?? []) {
+      const chave = m.estacaoNome ?? SEM_ESTACAO
+      const lista = mapa.get(chave)
+      if (lista) lista.push(m)
+      else mapa.set(chave, [m])
+    }
+    return [...mapa.entries()].sort(([a], [b]) =>
+      a === SEM_ESTACAO
+        ? 1
+        : b === SEM_ESTACAO
+          ? -1
+          : a.localeCompare(b, 'pt-BR', { numeric: true }),
+    )
+  }, [dados])
+
+  return (
+    <div className="space-y-1.5">
+      <Label>
+        Em qual máquina foi feita? <span className="text-destructive">*</span>
+      </Label>
+      {dados === null && erro === null && (
+        <p className="text-muted-foreground text-sm">Carregando máquinas…</p>
+      )}
+      {erro && <p className="text-destructive text-sm">{erro}</p>}
+      {grupos.length > 0 && (
+        <div className="max-h-56 space-y-2 overflow-y-auto">
+          {grupos.map(([estacao, lista]) => (
+            <section key={estacao} className="space-y-1">
+              {grupos.length > 1 && (
+                <h3 className="text-muted-foreground text-xs font-medium">
+                  {estacao}
+                </h3>
+              )}
+              <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                {lista.map((m) => {
+                  const ativa = m.id === escolhida
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => onEscolher(m.id)}
+                      aria-pressed={ativa}
+                      title={
+                        m.ocupadaPorOp
+                          ? `Agora com a OP ${m.ocupadaPorOp}`
+                          : (m.impedimento ?? m.nome)
+                      }
+                      className={cn(
+                        'flex flex-col items-start rounded-lg border px-2 py-1.5 text-left text-sm transition-colors',
+                        ativa
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'hover:border-primary hover:bg-primary/5',
+                      )}
+                    >
+                      <span className="font-medium tabular-nums">{m.codigo}</span>
+                      <span
+                        className={cn(
+                          'text-[11px]',
+                          ativa ? 'text-primary-foreground/80' : 'text-muted-foreground',
+                        )}
+                      >
+                        {m.id === planejada
+                          ? 'planejada'
+                          : m.ocupadaPorOp
+                            ? 'ocupada agora'
+                            : m.impedimento
+                              ? 'indisponível agora'
+                              : ' '}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
