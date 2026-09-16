@@ -312,12 +312,11 @@ function DescartarDialog({
         )}
         <div className="space-y-1.5">
           <Label htmlFor="descarte-motivo">
-            Motivo <span className="text-destructive">*</span>
+            Motivo <span className="text-muted-foreground font-normal">(opcional)</span>
           </Label>
           <Textarea
             id="descarte-motivo"
             rows={3}
-            autoFocus
             value={motivo}
             onChange={(e) => setMotivo(e.target.value)}
             placeholder="Ex.: contaram errado, ainda tem no depósito"
@@ -332,7 +331,7 @@ function DescartarDialog({
           <Button
             loading={isPending}
             onClick={descartar}
-            disabled={isPending || motivo.trim() === ''}
+            disabled={isPending}
           >
             Descartar
           </Button>

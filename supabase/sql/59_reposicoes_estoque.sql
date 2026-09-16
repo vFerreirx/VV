@@ -62,7 +62,13 @@ ALTER TABLE public.reposicoes_estoque
   ADD CONSTRAINT reposicoes_estoque_reposto_ck
   CHECK ((estado = 'reposto') = (reposto_em IS NOT NULL));
 
--- Descarte: data, autor e motivo andam juntos, e o motivo não pode ser vazio.
+-- Descarte: data e autor andam juntos. O motivo é OPCIONAL: só pode existir
+-- num item descartado e, quando existe, não pode ser vazio.
+--
+-- ⚠️ ALTERADO NO PRÓPRIO 59 (16/09/2026), e não num 60. Na primeira versão o
+-- motivo era obrigatório. Como o db:setup roda todos os arquivos em ordem, um
+-- 60 separado não bastaria: este DROP+ADD recolocaria a regra antiga antes
+-- dele, e falharia assim que existisse um descarte sem motivo.
 ALTER TABLE public.reposicoes_estoque
   DROP CONSTRAINT IF EXISTS reposicoes_estoque_descarte_ck;
 ALTER TABLE public.reposicoes_estoque
@@ -70,8 +76,10 @@ ALTER TABLE public.reposicoes_estoque
   CHECK (
     (estado = 'descartado') = (descartado_em IS NOT NULL)
     AND (descartado_em IS NULL) = (descartado_por IS NULL)
-    AND (descartado_em IS NULL) = (motivo_descarte IS NULL)
-    AND (motivo_descarte IS NULL OR length(btrim(motivo_descarte)) > 0)
+    AND (
+      motivo_descarte IS NULL
+      OR (descartado_em IS NOT NULL AND length(btrim(motivo_descarte)) > 0)
+    )
   );
 
 -- ⚠️ NO MÁXIMO UM ITEM ATIVO POR VARIAÇÃO. Índice, e não checagem na action:

@@ -56,10 +56,12 @@ export function podeSubirSituacao(
   return atual === 'acabando' && nova === 'acabou'
 }
 
-/** Descartar é dizer "alarme falso" — e precisa dizer por quê. */
+/**
+ * Descartar é dizer "alarme falso". O motivo é OPCIONAL: em branco é gravado
+ * como nulo (o banco recusa texto vazio). Só o tamanho é conferido.
+ */
 export function erroDoDescarte(motivo: string | null | undefined): string | null {
-  if (!motivo || motivo.trim() === '') return 'Diga por que o item foi descartado'
-  if (motivo.trim().length > 300) return 'Motivo muito longo'
+  if (motivo && motivo.trim().length > 300) return 'Motivo muito longo'
   return null
 }
 

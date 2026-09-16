@@ -985,11 +985,12 @@ test('reposicao: marcar de novo so sobe de acabando pra acabou', () => {
   assert.equal(podeSubirSituacao('acabou', 'acabou'), false)
 })
 
-test('reposicao: descartar exige motivo', () => {
-  assert.notEqual(erroDoDescarte(''), null)
-  assert.notEqual(erroDoDescarte('   '), null)
-  assert.notEqual(erroDoDescarte(null), null)
+test('reposicao: motivo do descarte e opcional', () => {
+  assert.equal(erroDoDescarte(''), null)
+  assert.equal(erroDoDescarte('   '), null)
+  assert.equal(erroDoDescarte(null), null)
   assert.equal(erroDoDescarte('contaram errado'), null)
+  assert.notEqual(erroDoDescarte('x'.repeat(301)), null)
 })
 
 test('reposicao: fila com acabou antes, e o mais antigo primeiro', () => {

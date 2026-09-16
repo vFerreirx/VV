@@ -323,7 +323,8 @@ const uuidRe =
 
 export async function descartarReposicaoAction(
   id: string,
-  motivo: string,
+  /** Opcional: em branco vira nulo. */
+  motivo?: string | null,
 ): Promise<ActionResult> {
   // Mesma permissão do "Produzir": decidir que a peça não precisa ser feita
   // é decisão de quem decide o que se produz.
@@ -341,7 +342,7 @@ export async function descartarReposicaoAction(
       estado: 'descartado',
       descartadoEm: new Date(),
       descartadoPor: user.id,
-      motivoDescarte: motivo.trim(),
+      motivoDescarte: motivo?.trim() || null,
     })
     .where(
       and(eq(reposicoesEstoque.id, id), eq(reposicoesEstoque.estado, 'aberto')),
