@@ -12,7 +12,7 @@ import {
 // /dashboard, que devolve pra casa quem não é da gestão.
 //
 //   operador   → /producao  (o tablet da estação)
-//   vendas     → /vendas
+//   vendas     → /remessas  (quem cuida do marketplace — as remessas Full)
 //   estoquista → /estoque
 //   admin, gerente_producao → /dashboard
 //
@@ -23,8 +23,11 @@ export function rotaInicial(role: Role | undefined): string {
   switch (role) {
     case 'operador':
       return '/producao'
+    // ⚠️ O CARGO "VENDAS" NÃO É A ÁREA "VENDAS". O cargo é de quem cuida do
+    // marketplace; a área Vendas (/vendas) é o faturamento, pra admin e CEO.
+    // A casa dele é a das remessas Full.
     case 'vendas':
-      return '/vendas'
+      return '/remessas'
     case 'estoquista':
       return '/estoque'
     default:

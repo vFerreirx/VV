@@ -208,7 +208,12 @@ export const AREAS: Area[] = [
     descricao: 'Registro diário e fechamento mensal (relatório).',
     href: '/vendas',
     editavel: true,
-    nivelPadrao: padrao({ [G]: 'total', [V]: 'total' }),
+    // ⚠️ O CARGO "vendas" FICA DE FORA POR PADRÃO. Apesar do nome, ele é de
+    // quem cuida do marketplace; esta área é o FATURAMENTO, pra admin e CEO.
+    // Em produção isso já estava assim por override em /permissoes — o
+    // padrão agora conta a mesma história, pra um banco novo não nascer com o
+    // faturamento aberto.
+    nivelPadrao: padrao({ [G]: 'total' }),
   },
   {
     // A CHAVE continua 'compradores' de propósito: ela é usada em todo
