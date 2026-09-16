@@ -44,9 +44,9 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 // -----------------------------------------------------------------
 //
 // ⚠️ TODO CAMINHO QUE ESCREVE `maquinas.status` PASSA POR AQUI. São três:
-// o botão Manutenção do cartão (`trocarStatusAction`), o formulário de
-// cadastro (`atualizarMaquinaAction`, que tem um select com setup/manutenção/
-// desativada) e a exclusão (`excluirMaquinaAction`, que grava 'desativada').
+// o "Registrar parada" / "Voltou" do cartão e do tablet (`trocarStatusAction`),
+// o formulário de cadastro (`atualizarMaquinaAction`, que tem um select com
+// apta/setup/desativada) e a exclusão (`excluirMaquinaAction`, que grava 'desativada').
 // Se um deles escrevesse o status por fora, a máquina apareceria "Livre" no
 // cartão com uma parada correndo há dias no histórico — e o relatório de
 // disponibilidade contaria horas que nunca existiram.
@@ -448,7 +448,7 @@ export async function atualizarMaquinaAction(
   const data = parsed.data
 
   // ⚠️ O STATUS ANTERIOR ENTRA NA CONSULTA, e não é detalhe: este formulário
-  // tem um select com setup/manutenção/desativada, então editar o cadastro é
+  // tem um select com apta/setup/desativada, então editar o cadastro é
   // um dos caminhos que impedem e liberam a máquina. Sem saber de onde veio,
   // não dá pra abrir nem fechar a parada certa.
   const [atual] = await db

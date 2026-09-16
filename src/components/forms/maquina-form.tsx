@@ -43,12 +43,12 @@ export type MaquinaFormDefaults = {
   observacoes: string | null
 }
 
-// 'parada' como padrão do cadastro novo — vale "apta, e ninguém afirmou que
-// está rodando". Declarar produção é coisa da OP, nunca do formulário.
+// Máquina nova nasce APTA ('operando', que significa só "pode produzir").
+// Declarar produção é coisa da OP, nunca do formulário.
 const VAZIO: MaquinaFormDefaults = {
   codigo: '',
   nome: '',
-  status: 'parada',
+  status: 'operando',
   observacoes: null,
 }
 
@@ -56,7 +56,9 @@ function toFormValues(d: MaquinaFormDefaults): MaquinaInput {
   return {
     codigo: d.codigo ?? '',
     nome: d.nome ?? '',
-    status: d.status,
+    // 'parada' é o apto histórico: o campo mostra "Apta" e salva 'operando',
+    // que tem o mesmo sentido — nenhuma parada abre nem fecha por isso.
+    status: d.status === 'parada' ? 'operando' : d.status,
     observacoes: d.observacoes ?? '',
   }
 }
@@ -129,17 +131,18 @@ export function MaquinaForm({
             />
           </Field>
 
-          {/* ⚠️ SEM 'Operando' NA LISTA. Este campo declara DISPONIBILIDADE
-              (a máquina pode produzir?), não ocupação — quem diz se ela está
-              produzindo é a OP, e era escolher "Operando" aqui que fazia a
-              aba inteira mentir. A situação que a tela mostra é derivada:
-              ver src/lib/producao/estado-maquina.ts. */}
+          {/* DISPONIBILIDADE, NÃO OCUPAÇÃO: "Apta", "Setup", "Desativada".
+              Quem diz se a máquina está produzindo é a OP — ver
+              STATUS_ESCOLHIVEIS em src/lib/validators/maquinas.ts. */}
           <Field label="Situação" id="status" error={errs.status?.message} required>
             <Controller
               control={form.control}
               name="status"
               render={({ field: ctl }) => (
                 <Select
+                  // Com `items`, o campo fechado mostra o RÓTULO ("Apta"), e
+                  // não o valor cru ("operando").
+                  items={STATUS_LABEL}
                   value={ctl.value}
                   onValueChange={(v) => v && ctl.onChange(v)}
                   disabled={isPending}

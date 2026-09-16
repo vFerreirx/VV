@@ -27,23 +27,29 @@ export const maquinaStatusValues = [
 
 // OS STATUS QUE ALGUÉM ESCOLHE NUM FORMULÁRIO.
 //
-// ⚠️ 'operando' e 'parada' ficam DE FORA, e não é omissão. Este campo declara
-// DISPONIBILIDADE — a máquina pode produzir? —, nunca ocupação. Escolher
-// "Operando" à mão era o que fazia a aba Máquinas dizer que as 18 estavam
-// produzindo com a fábrica parada. Quem diz que a máquina está produzindo é a
-// OP, e o rótulo da tela é derivado (src/lib/producao/estado-maquina.ts).
+// Este campo declara DISPONIBILIDADE — a máquina pode produzir? —, nunca
+// ocupação. Quem diz que a máquina está produzindo é a OP, e o rótulo da tela
+// é derivado (src/lib/producao/estado-maquina.ts).
 //
-// Os dois continuam VÁLIDOS no enum e no banco: 'operando' é o valor que as
-// 18 linhas têm e o que o botão "Ativar" grava; 'parada' é histórico. O
-// schema segue aceitando os cinco — isto aqui é só o que a TELA oferece.
+// ⚠️ 'operando' ENTRA, MAS COMO "APTA". O valor do banco continua 'operando'
+// (é o que as 18 máquinas têm e o que o botão "Ativar" grava), e ele passou a
+// significar só "pode produzir". Com o rótulo "Operando", escolher aqui era
+// o que fazia a aba Máquinas dizer que as 18 estavam produzindo com a fábrica
+// parada; com "Apta" a pergunta é a certa. Sem ele na lista, a máquina posta
+// em setup pelo cadastro só voltava pelo cartão, e editar uma apta mostrava o
+// valor cru no campo.
 //
-// ⚠️ 'manutencao' TAMBÉM SAIU. Manutenção é PARADA, e parada tem motivo: pelo
-// cadastro ela entrava sem motivo nenhum, e o histórico ganhava linhas "Sem
-// motivo registrado" que ninguém sabe ler. Parar e liberar é pelo cartão
-// ("Registrar parada" / "Voltou"). Máquina que já está em manutenção mostra o
-// status desabilitado, com "(histórico)", e salva sem mexer nele —
+// 'parada' fica DE FORA: é valor histórico do enum com o mesmo sentido de
+// apto (`disponibilidadeDe`), e o formulário o lê como 'operando'.
+//
+// ⚠️ 'manutencao' TAMBÉM FICA DE FORA. Manutenção é PARADA, e parada tem
+// motivo: pelo cadastro ela entrava sem motivo nenhum, e o histórico ganhava
+// linhas "Sem motivo registrado" que ninguém sabe ler. Parar e liberar é pelo
+// cartão ("Registrar parada" / "Voltou"). Máquina que já está em manutenção
+// mostra o status desabilitado, com "(histórico)", e salva sem mexer nele —
 // `atualizarMaquinaAction` só recusa ENTRAR em manutenção por aqui.
 export const STATUS_ESCOLHIVEIS = [
+  'operando',
   'setup',
   'desativada',
 ] as const satisfies readonly (typeof maquinaStatusValues)[number][]
@@ -117,8 +123,10 @@ export const STATUS_LABEL: Record<
   (typeof maquinaStatusValues)[number],
   string
 > = {
-  operando: 'Operando',
-  parada: 'Parada',
+  // "Apta", e não "Operando": o valor diz que a máquina PODE produzir, não
+  // que está produzindo — ver STATUS_ESCOLHIVEIS.
+  operando: 'Apta',
+  parada: 'Apta',
   manutencao: 'Manutenção',
   setup: 'Setup',
   desativada: 'Desativada',
