@@ -187,7 +187,7 @@ export const AREAS: Area[] = [
     key: 'estoque',
     secao: 'Estoque & Vendas',
     label: 'Estoque',
-    descricao: 'Saldo, entradas, saídas e ajustes.',
+    descricao: 'Fila de reposição: peças acabando que viram OP.',
     href: '/estoque',
     editavel: true,
     nivelPadrao: padrao({ [G]: 'total', [E]: 'total' }),

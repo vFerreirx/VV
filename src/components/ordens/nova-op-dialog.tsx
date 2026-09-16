@@ -14,6 +14,11 @@
 // (produto e modelo, canal, prioridade, prazo, situação) e limpa o que é da
 // peça (tamanho, cor, quantidade) e as observações — instrução levada pra OP
 // errada é pior que redigitar. Fecha pelo X ou Esc.
+//
+// ⚠️ VINDO DA FILA DE REPOSIÇÃO (/estoque), É OUTRO GESTO: a peça e o canal
+// Estoque já vêm escolhidos e TRAVADOS, a quantidade fica em branco (é decisão
+// do gerente) e o diálogo FECHA ao criar — um item da fila vira uma OP, e a
+// action liga as duas na mesma transação.
 
 import { ChevronDown, Search, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -72,10 +77,13 @@ type StatusInicial = (typeof STATUS_INICIAIS)[number]
 export function NovaOpDialog({
   produtos,
   onClose,
+  reposicao,
 }: {
   /** Sempre `listarProdutosParaOrdem({ somenteAtivas: true })`. */
   produtos: Produto[]
   onClose: () => void
+  /** O item da fila de reposição que esta OP vai atender. */
+  reposicao?: { id: string; variacaoId: string }
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -85,7 +93,14 @@ export function NovaOpDialog({
   const [escopo, setEscopo] = useState<EscopoDaBusca | null>(null)
   const [termo, setTermo] = useState('')
   const [destaque, setDestaque] = useState(0)
-  const [escolha, setEscolha] = useState<Escolha | null>(null)
+  const [escolha, setEscolha] = useState<Escolha | null>(() => {
+    if (!reposicao) return null
+    for (const produto of produtos) {
+      const variacao = produto.variacoes.find((v) => v.id === reposicao.variacaoId)
+      if (variacao) return { produto, variacao }
+    }
+    return null
+  })
   const [navegando, setNavegando] = useState(false)
   // ⚠️ O CATÁLOGO É CONTROLADO: ele sabe qual produto está escolhido pelas
   // props, não por estado próprio. Passar `produtoId=""` fixo fazia o clique
@@ -185,9 +200,18 @@ export function NovaOpDialog({
     }
 
     startTransition(async () => {
-      const r = await criarOrdemAction(entrada)
+      const r = await criarOrdemAction(
+        entrada,
+        reposicao ? { reposicaoId: reposicao.id } : undefined,
+      )
       if (!r.success) {
         setErro(r.error)
+        return
+      }
+      if (reposicao) {
+        toast.success('OP criada — a peça está em produção')
+        router.refresh()
+        onClose()
         return
       }
       const agora = criadas + 1
@@ -215,9 +239,11 @@ export function NovaOpDialog({
     <Dialog open onOpenChange={(o) => !o && !isPending && onClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Nova OP</DialogTitle>
+          <DialogTitle>{reposicao ? 'Produzir pra repor' : 'Nova OP'}</DialogTitle>
           <DialogDescription>
-            {criadas > 0 ? (
+            {reposicao ? (
+              'OP de canal Estoque pra peça que está acabando. Informe a quantidade.'
+            ) : criadas > 0 ? (
               <span className="text-foreground font-medium">
                 {criadas} {criadas === 1 ? 'OP criada' : 'OPs criadas'}
               </span>
@@ -241,14 +267,16 @@ export function NovaOpDialog({
               <Label htmlFor="nova-op-busca">
                 Variação <span className="text-destructive">*</span>
               </Label>
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
-                onClick={() => setNavegando((v) => !v)}
-                disabled={isPending}
-              >
-                {navegando ? 'Buscar variação' : 'Navegar pelo catálogo'}
-              </button>
+              {!reposicao && (
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
+                  onClick={() => setNavegando((v) => !v)}
+                  disabled={isPending}
+                >
+                  {navegando ? 'Buscar variação' : 'Navegar pelo catálogo'}
+                </button>
+              )}
             </div>
 
             {escolha ? (
@@ -258,16 +286,20 @@ export function NovaOpDialog({
                   hex2={escolha.variacao.corHex2}
                 />
                 <TituloDaVariacao produto={escolha.produto} variacao={escolha.variacao} />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto shrink-0"
-                  onClick={trocarPeca}
-                  disabled={isPending}
-                >
-                  Trocar
-                </Button>
+                {/* Na reposição a peça é a do item da fila: trocar criaria
+                    uma OP que não repõe o que foi pedido. */}
+                {!reposicao && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto shrink-0"
+                    onClick={trocarPeca}
+                    disabled={isPending}
+                  >
+                    Trocar
+                  </Button>
+                )}
               </div>
             ) : navegando ? (
               // O PERCURSO PASSO A PASSO continua, pra quem não sabe o nome do
@@ -401,6 +433,8 @@ export function NovaOpDialog({
                 min="1"
                 step="1"
                 placeholder="peças"
+                // Na reposição a peça já vem escolhida: o que falta é isto.
+                autoFocus={reposicao !== undefined}
                 value={quantidade}
                 onChange={(e) => setQuantidade(e.target.value)}
                 disabled={isPending}
@@ -412,7 +446,8 @@ export function NovaOpDialog({
                 items={CANAL_LABEL}
                 value={canal}
                 onValueChange={(v) => v && trocarCanal(v as Canal)}
-                disabled={isPending}
+                // Repor estoque é canal Estoque: só nele a baixa dá entrada.
+                disabled={isPending || reposicao !== undefined}
               >
                 <SelectTrigger id="nova-op-canal" className="w-full">
                   <SelectValue />

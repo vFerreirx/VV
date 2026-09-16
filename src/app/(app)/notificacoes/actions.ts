@@ -3,6 +3,7 @@
 import { and, asc, eq, isNull, lte, ne, or } from 'drizzle-orm'
 
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
+import { resumoDaReposicao } from '../estoque/actions'
 import { requireAuth } from '@/lib/auth/require-auth'
 import { condicaoDeProducaoAtrasada } from '@/lib/db/atraso-da-op'
 import { db } from '@/lib/db'
@@ -23,7 +24,7 @@ import { situacaoDaParcela } from '@/lib/parcela-estado'
 
 export type Notificacao = {
   id: string
-  tipo: 'op_atrasada' | 'parcela_a_conferir'
+  tipo: 'op_atrasada' | 'parcela_a_conferir' | 'reposicao_estoque'
   titulo: string
   descricao: string
   href: string
@@ -165,6 +166,34 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
         referenciaEm: new Date(`${p.vencimento}T00:00:00Z`),
       })
     }
+  }
+
+  // 3) REPOSIÇÃO DE ESTOQUE — peças que alguém avisou que estão acabando e
+  // que ainda não viraram OP. UMA notificação agregada, e não uma por peça:
+  // vinte peças acabando são um assunto só ("olhe a fila"), e vinte linhas
+  // enterrariam as OPs atrasadas no sino.
+  //
+  // Só pra quem tem escrita em Ordens — quem decide produzir; o resumo volta
+  // vazio pros outros. Some sozinha quando a fila de abertos esvazia.
+  const reposicao = await resumoDaReposicao()
+  if (reposicao.acabou + reposicao.acabando > 0) {
+    const partes: string[] = []
+    if (reposicao.acabando > 0) {
+      partes.push(
+        `${reposicao.acabando} ${reposicao.acabando === 1 ? 'peça acabando' : 'peças acabando'}`,
+      )
+    }
+    if (reposicao.acabou > 0) partes.push(`${reposicao.acabou} acabou`)
+    notificacoes.push({
+      id: 'reposicao-estoque',
+      tipo: 'reposicao_estoque',
+      titulo: partes.join(' · '),
+      descricao: 'Fila de reposição de estoque esperando virar OP.',
+      href: '/estoque',
+      // Peça que ACABOU é venda perdida: crítico. Só "acabando" é aviso.
+      severidade: reposicao.acabou > 0 ? 'critico' : 'aviso',
+      referenciaEm: reposicao.maisAntigoEm ?? new Date(),
+    })
   }
 
   // Ordena por mais atrasado primeiro

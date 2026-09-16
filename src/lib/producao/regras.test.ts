@@ -18,6 +18,12 @@ import {
   resumoDaConclusao,
 } from './conclusao.ts'
 import { producaoAtrasada } from './atraso-da-op.ts'
+import {
+  erroDoDescarte,
+  estadoDaReposicaoPelaOp,
+  ordenarFila,
+  podeSubirSituacao,
+} from './reposicao.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
 import {
   erroDaExclusao,
@@ -970,4 +976,41 @@ test('producao concluida com envio passado e pendencia de baixa, nao atraso', ()
 test('rotulo da remessa: canal e dia/mes', () => {
   assert.equal(rotuloDaRemessa('full_ml', '2026-09-30'), 'Full ML · 30/09')
   assert.equal(rotuloDaRemessa('full_shopee', '2026-10-02'), 'Full Shopee · 02/10')
+})
+
+test('reposicao: marcar de novo so sobe de acabando pra acabou', () => {
+  assert.equal(podeSubirSituacao('acabando', 'acabou'), true)
+  assert.equal(podeSubirSituacao('acabou', 'acabando'), false)
+  assert.equal(podeSubirSituacao('acabando', 'acabando'), false)
+  assert.equal(podeSubirSituacao('acabou', 'acabou'), false)
+})
+
+test('reposicao: descartar exige motivo', () => {
+  assert.notEqual(erroDoDescarte(''), null)
+  assert.notEqual(erroDoDescarte('   '), null)
+  assert.notEqual(erroDoDescarte(null), null)
+  assert.equal(erroDoDescarte('contaram errado'), null)
+})
+
+test('reposicao: fila com acabou antes, e o mais antigo primeiro', () => {
+  const itens = [
+    { id: 'a', situacao: 'acabando', marcadoEm: new Date('2026-09-10T10:00:00Z') },
+    { id: 'b', situacao: 'acabou', marcadoEm: new Date('2026-09-12T10:00:00Z') },
+    { id: 'c', situacao: 'acabando', marcadoEm: new Date('2026-09-08T10:00:00Z') },
+    { id: 'd', situacao: 'acabou', marcadoEm: new Date('2026-09-11T10:00:00Z') },
+  ]
+  assert.deepEqual(ordenarFila(itens).map((i) => i.id), ['d', 'b', 'c', 'a'])
+})
+
+test('reposicao: o estado do item segue a OP ligada', () => {
+  const op = { status: 'programado' as const, excluida: false, variacaoId: 'v1', canalDestino: 'estoque' }
+  assert.equal(estadoDaReposicaoPelaOp(op, 'v1'), 'em_producao')
+  assert.equal(estadoDaReposicaoPelaOp({ ...op, status: 'pronto_envio' }, 'v1'), 'em_producao')
+  assert.equal(estadoDaReposicaoPelaOp({ ...op, status: 'enviado' }, 'v1'), 'reposto')
+  // A OP deixou de repor esta peca: o item volta pra fila.
+  assert.equal(estadoDaReposicaoPelaOp({ ...op, status: 'cancelado' }, 'v1'), 'aberto')
+  assert.equal(estadoDaReposicaoPelaOp({ ...op, excluida: true }, 'v1'), 'aberto')
+  assert.equal(estadoDaReposicaoPelaOp({ ...op, variacaoId: 'v2' }, 'v1'), 'aberto')
+  assert.equal(estadoDaReposicaoPelaOp({ ...op, canalDestino: 'full_ml' }, 'v1'), 'aberto')
+  assert.equal(estadoDaReposicaoPelaOp(null, 'v1'), 'aberto')
 })

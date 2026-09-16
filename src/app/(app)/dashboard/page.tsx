@@ -17,6 +17,10 @@ import {
 } from './actions'
 import { OpsUrgentesLista } from './ops-urgentes-lista'
 import { TarefasCard } from './tarefas-card'
+import {
+  resumoDaReposicao,
+  type ResumoDaReposicao,
+} from '../estoque/actions'
 import { listarRemessasAbertas, type RemessaAberta } from '../remessas/actions'
 import {
   contarTarefasPendentes,
@@ -30,6 +34,8 @@ import { CountUp } from '@/components/ui/count-up'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { destinoInicial, nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { ROTULO_DA_SITUACAO } from '@/lib/producao/reposicao'
+import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
 import { cn } from '@/lib/utils'
 import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
 
@@ -63,6 +69,7 @@ export default async function DashboardPage() {
     remessas,
     tarefas,
     tarefasPendentes,
+    reposicao,
   ] = await Promise.all([
     obterKPIs(),
     listarOpsUrgentes(5),
@@ -71,6 +78,8 @@ export default async function DashboardPage() {
     nivelRemessas !== 'nenhum' ? listarRemessasAbertas() : Promise.resolve([]),
     ehAdmin ? listarTarefasDoPainel(5) : Promise.resolve([]),
     ehAdmin ? contarTarefasPendentes() : Promise.resolve(0),
+    // Volta vazio pra quem não tem escrita em Ordens.
+    resumoDaReposicao(),
   ])
 
   // Entrada do reveal de Suspense: par do exit no loading.tsx desta rota.
@@ -142,6 +151,10 @@ export default async function DashboardPage() {
 
           {/* Remessas Full em risco/atrasadas (quem tem acesso à área) */}
           {nivelRemessas !== 'nenhum' && <RemessasAlerta remessas={remessas} />}
+
+          {/* Reposição de estoque: pra quem decide produzir (escrita em
+              Ordens). */}
+          {podeEscrever(nivelOrdens) && <ReposicaoAlerta resumo={reposicao} />}
 
           <div className="vv-reveal grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
@@ -250,6 +263,81 @@ function KPICard({
         </CardContent>
       </Card>
     </Link>
+  )
+}
+
+// AS PEÇAS QUE ESTÃO ACABANDO E AINDA NÃO VIRARAM OP. Mesmo desenho do alerta
+// de remessas: a contagem numa linha e os primeiros itens embaixo, "Acabou"
+// antes. As que já têm OP não aparecem — não pedem nada do gerente.
+function ReposicaoAlerta({ resumo }: { resumo: ResumoDaReposicao }) {
+  const total = resumo.acabou + resumo.acabando
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle>Reposição de estoque</CardTitle>
+          <Link
+            href="/estoque"
+            className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+          >
+            Ver fila →
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {total === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            Nada pendente de reposição.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">
+              {resumo.acabou > 0 && (
+                <span className="text-destructive">{resumo.acabou} acabou</span>
+              )}
+              {resumo.acabou > 0 && resumo.acabando > 0 && ' · '}
+              {resumo.acabando > 0 && (
+                <span className="text-amber-600">
+                  {resumo.acabando} acabando
+                </span>
+              )}
+            </p>
+            <ul className="divide-y">
+              {resumo.itens.slice(0, 5).map((i) => {
+                const t = tituloDaOp(i.produtoNome, {
+                  cor: i.variacaoCor,
+                  modelo: i.variacaoModelo,
+                  tamanho: i.variacaoTamanho,
+                })
+                return (
+                  <li
+                    key={i.id}
+                    className="flex items-center justify-between gap-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{t.familia}</span>
+                      {t.variacao && (
+                        <span className="text-muted-foreground"> · {t.variacao}</span>
+                      )}
+                    </span>
+                    <Badge
+                      className={cn(
+                        'shrink-0 text-[11px]',
+                        i.situacao === 'acabou'
+                          ? 'bg-destructive/15 text-destructive'
+                          : 'bg-amber-500/15 text-amber-600',
+                      )}
+                    >
+                      {ROTULO_DA_SITUACAO[i.situacao]}
+                    </Badge>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

@@ -26,6 +26,7 @@ import {
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
 import { gravarBaixa } from '@/lib/db/baixa-da-op'
+import { sincronizarReposicaoDaOp } from '@/lib/db/reposicao-da-op'
 import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   prazoDaOp,
@@ -48,6 +49,7 @@ import {
   ordensProducao,
   produtos,
   remessasFull,
+  reposicoesEstoque,
   users,
   variacoesProduto,
   type Maquina,
@@ -470,8 +472,22 @@ export async function listarResponsaveis(): Promise<
 // Criar
 // -----------------------------------------------------------------
 
+// O item da fila de reposição que esta OP atende já não está aberto (outra
+// pessoa produziu ou descartou no meio). Classe própria pra desfazer a
+// transação: a OP não pode nascer sem o item que justificou criá-la.
+class ReposicaoIndisponivel extends Error {}
+
 export async function criarOrdemAction(
   input: OrdemInput,
+  {
+    reposicaoId,
+  }: {
+    /**
+     * O item da fila de reposição (/estoque) que esta OP vai atender. A OP
+     * nasce ligada a ele, e o item passa a "Em produção" na mesma transação.
+     */
+    reposicaoId?: string
+  } = {},
 ): Promise<ActionResult<{ id: string }>> {
   const user = await requireAreaEscrita('ordens')
 
@@ -483,6 +499,16 @@ export async function criarOrdemAction(
     }
   }
   const data = parsed.data
+
+  if (reposicaoId !== undefined) {
+    if (!uuidRe.test(reposicaoId)) return { success: false, error: 'ID inválido' }
+    // REPOR ESTOQUE É CANAL ESTOQUE. A baixa só dá entrada no estoque nesse
+    // canal (gravarBaixa); com outro, o item viraria "Reposto" sem nenhuma
+    // peça ter entrado.
+    if (data.canalDestino !== 'estoque') {
+      return { success: false, error: 'A OP de reposição é do canal Estoque' }
+    }
+  }
 
   // O catálogo pode mudar entre abrir a tela e salvar. Valida novamente o
   // produto e a variação no servidor; a FK sozinha aceita variação de outro produto.
@@ -525,11 +551,42 @@ export async function criarOrdemAction(
       observacao: 'OP criada',
     })
 
+    // A OP NASCE LIGADA AO ITEM DA FILA. O UPDATE é condicional: só pega o
+    // item ainda ABERTO e da MESMA variação. Se ninguém casar, a OP é desfeita
+    // junto — nada de OP de reposição sem a reposição.
+    if (reposicaoId !== undefined) {
+      const ligados = await tx
+        .update(reposicoesEstoque)
+        .set({ estado: 'em_producao', ordemId: inserted!.id })
+        .where(
+          and(
+            eq(reposicoesEstoque.id, reposicaoId),
+            eq(reposicoesEstoque.estado, 'aberto'),
+            eq(reposicoesEstoque.variacaoId, data.variacaoId!),
+          ),
+        )
+        .returning({ id: reposicoesEstoque.id })
+      if (ligados.length === 0) throw new ReposicaoIndisponivel()
+    }
+
     return inserted!.id
+  }).catch((erro: unknown) => {
+    if (erro instanceof ReposicaoIndisponivel) return null
+    throw erro
   })
+  if (novoId === null) {
+    return {
+      success: false,
+      error: 'Esse item da reposição já foi atendido ou descartado. Atualize a tela.',
+    }
+  }
 
   revalidatePath('/ordens')
   revalidatePath('/producao')
+  if (reposicaoId !== undefined) {
+    revalidatePath('/estoque')
+    revalidatePath('/dashboard')
+  }
   return { success: true, data: { id: novoId }, message: 'OP criada' }
 }
 
@@ -629,11 +686,16 @@ export async function atualizarOrdemAction(
         usuarioId: user.id,
       })
     }
+    // O formulário cancela e troca variação e canal: qualquer um dos três
+    // tira a OP da reposição da peça, e o item volta pra fila.
+    await sincronizarReposicaoDaOp(tx, [id])
   })
 
   revalidatePath('/ordens')
   revalidatePath(`/ordens/${id}`)
   revalidatePath('/producao')
+  revalidatePath('/estoque')
+  revalidatePath('/dashboard')
   return { success: true, message: 'OP atualizada' }
 }
 
@@ -727,6 +789,7 @@ export async function mudarStatusOrdemAction(
     revalidatePath('/producao')
     revalidatePath('/estoque')
     revalidatePath('/remessas')
+    revalidatePath('/dashboard')
     return { success: true, message: 'Status atualizado', assumiu }
   }
 
@@ -758,12 +821,16 @@ export async function mudarStatusOrdemAction(
       usuarioId: user.id,
       observacao: data.observacao ?? null,
     })
+    // Cancelar pelo board devolve o item à fila; tirar a OP de `enviado`
+    // (baixa desfeita) devolve o item a "Em produção".
+    await sincronizarReposicaoDaOp(tx, [id])
   })
 
   revalidatePath('/ordens')
   revalidatePath(`/ordens/${id}`)
   revalidatePath('/producao')
   revalidatePath('/estoque')
+  revalidatePath('/dashboard')
   return { success: true, message: 'Status atualizado', assumiu }
 }
 
@@ -2327,6 +2394,8 @@ export async function cancelarOrdemAction(id: string): Promise<ActionResult> {
       usuarioId: user.id,
       observacao: 'OP cancelada',
     })
+    // Se a OP repunha uma peça da fila, o item volta pra fila.
+    await sincronizarReposicaoDaOp(tx, [id])
     return linhas.length
   })
   if (gravadas === 0) {
@@ -2337,6 +2406,8 @@ export async function cancelarOrdemAction(id: string): Promise<ActionResult> {
   revalidatePath(`/ordens/${id}`)
   revalidatePath('/producao')
   revalidatePath('/fabrica')
+  revalidatePath('/estoque')
+  revalidatePath('/dashboard')
   return { success: true, message: 'OP cancelada' }
 }
 
@@ -2394,10 +2465,13 @@ export async function excluirOrdemAction(id: string): Promise<ActionResult> {
       usuarioId: user.id,
       observacao: 'OP excluída',
     })
+    await sincronizarReposicaoDaOp(tx, [id])
   })
 
   revalidatePath('/ordens')
   revalidatePath('/producao')
+  revalidatePath('/estoque')
+  revalidatePath('/dashboard')
   return { success: true, message: 'OP excluída' }
 }
 
@@ -2451,9 +2525,15 @@ export async function excluirMultiplasOrdensAction(
           observacao: 'OP excluída em lote',
         })),
       )
+      await sincronizarReposicaoDaOp(
+        tx,
+        podem.map((o) => o.id),
+      )
     })
     revalidatePath('/ordens')
     revalidatePath('/producao')
+    revalidatePath('/estoque')
+    revalidatePath('/dashboard')
   }
 
   const recusadas = ops.length - podem.length

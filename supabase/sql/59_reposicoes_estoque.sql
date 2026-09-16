@@ -1,0 +1,112 @@
+-- ============================================================
+-- 59_reposicoes_estoque.sql
+-- A FILA DE REPOSIÇÃO: peças que alguém avisou que estão acabando, e que
+-- terminam em OP.
+--
+-- O /estoque mostrava saldo, mas nada registra saída — o saldo era maior que
+-- o estoque real. Em vez de um número que mente, a tela passa a ser a lista
+-- do que precisa ser produzido. O saldo (`movimentacoes_estoque`) continua
+-- existindo e recebendo a entrada da baixa; volta a ser mostrado quando as
+-- estoquistas usarem o sistema.
+--
+-- ⚠️ O ESTADO ACOMPANHA A OP, e quem sincroniza é o app
+-- (src/lib/db/reposicao-da-op.ts), dentro da mesma transação que muda a OP.
+--
+-- Idempotente. Só aditivo: nada de DROP TABLE, DELETE, TRUNCATE ou UPDATE.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.reposicoes_estoque (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  produto_id uuid NOT NULL REFERENCES public.produtos (id),
+  variacao_id uuid NOT NULL REFERENCES public.variacoes_produto (id),
+
+  -- Texto com CHECK, e não enum: mesmo motivo de maquina_paradas.motivo (57).
+  situacao text NOT NULL,
+  observacao text,
+  marcado_por uuid REFERENCES public.users (id),
+  marcado_em timestamptz NOT NULL DEFAULT now(),
+
+  estado text NOT NULL DEFAULT 'aberto',
+  -- Sem ON DELETE: a OP só é apagada de vez pela lixeira, que confere
+  -- dependências antes.
+  ordem_id uuid REFERENCES public.ordens_producao (id),
+  reposto_em timestamptz,
+
+  descartado_em timestamptz,
+  descartado_por uuid REFERENCES public.users (id),
+  motivo_descarte text
+);
+
+ALTER TABLE public.reposicoes_estoque
+  DROP CONSTRAINT IF EXISTS reposicoes_estoque_situacao_ck;
+ALTER TABLE public.reposicoes_estoque
+  ADD CONSTRAINT reposicoes_estoque_situacao_ck
+  CHECK (situacao IN ('acabando','acabou'));
+
+ALTER TABLE public.reposicoes_estoque
+  DROP CONSTRAINT IF EXISTS reposicoes_estoque_estado_ck;
+ALTER TABLE public.reposicoes_estoque
+  ADD CONSTRAINT reposicoes_estoque_estado_ck
+  CHECK (estado IN ('aberto','em_producao','reposto','descartado'));
+
+-- OP ligada se e somente se está em produção ou foi reposto por ela.
+ALTER TABLE public.reposicoes_estoque
+  DROP CONSTRAINT IF EXISTS reposicoes_estoque_ordem_ck;
+ALTER TABLE public.reposicoes_estoque
+  ADD CONSTRAINT reposicoes_estoque_ordem_ck
+  CHECK ((estado IN ('em_producao','reposto')) = (ordem_id IS NOT NULL));
+
+ALTER TABLE public.reposicoes_estoque
+  DROP CONSTRAINT IF EXISTS reposicoes_estoque_reposto_ck;
+ALTER TABLE public.reposicoes_estoque
+  ADD CONSTRAINT reposicoes_estoque_reposto_ck
+  CHECK ((estado = 'reposto') = (reposto_em IS NOT NULL));
+
+-- Descarte: data, autor e motivo andam juntos, e o motivo não pode ser vazio.
+ALTER TABLE public.reposicoes_estoque
+  DROP CONSTRAINT IF EXISTS reposicoes_estoque_descarte_ck;
+ALTER TABLE public.reposicoes_estoque
+  ADD CONSTRAINT reposicoes_estoque_descarte_ck
+  CHECK (
+    (estado = 'descartado') = (descartado_em IS NOT NULL)
+    AND (descartado_em IS NULL) = (descartado_por IS NULL)
+    AND (descartado_em IS NULL) = (motivo_descarte IS NULL)
+    AND (motivo_descarte IS NULL OR length(btrim(motivo_descarte)) > 0)
+  );
+
+-- ⚠️ NO MÁXIMO UM ITEM ATIVO POR VARIAÇÃO. Índice, e não checagem na action:
+-- duas pessoas marcando a mesma peça ao mesmo tempo passam por qualquer
+-- verificação feita antes do INSERT.
+CREATE UNIQUE INDEX IF NOT EXISTS reposicoes_estoque_variacao_ativa_uidx
+  ON public.reposicoes_estoque (variacao_id)
+  WHERE estado IN ('aberto','em_producao');
+
+-- Uma OP atende um item só.
+CREATE UNIQUE INDEX IF NOT EXISTS reposicoes_estoque_ordem_uidx
+  ON public.reposicoes_estoque (ordem_id)
+  WHERE ordem_id IS NOT NULL;
+
+-- A fila (estado ativo, mais antigo primeiro) e os atendidos recentes.
+CREATE INDEX IF NOT EXISTS reposicoes_estoque_estado_idx
+  ON public.reposicoes_estoque (estado, marcado_em);
+
+-- RLS: todos leem; gestão e estoquista escrevem; ninguém apaga.
+ALTER TABLE public.reposicoes_estoque ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS reposicoes_estoque_select ON public.reposicoes_estoque;
+CREATE POLICY reposicoes_estoque_select ON public.reposicoes_estoque
+  FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS reposicoes_estoque_insert ON public.reposicoes_estoque;
+CREATE POLICY reposicoes_estoque_insert ON public.reposicoes_estoque
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    (public.is_manager() OR public.user_role() = 'estoquista')
+    AND (marcado_por IS NULL OR marcado_por = auth.uid())
+  );
+
+DROP POLICY IF EXISTS reposicoes_estoque_update ON public.reposicoes_estoque;
+CREATE POLICY reposicoes_estoque_update ON public.reposicoes_estoque
+  FOR UPDATE TO authenticated
+  USING (public.is_manager() OR public.user_role() = 'estoquista')
+  WITH CHECK (public.is_manager() OR public.user_role() = 'estoquista');

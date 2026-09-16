@@ -9,6 +9,7 @@ import {
   movimentacoesEstoque,
   ordensProducao,
 } from '@/lib/db/schema'
+import { sincronizarReposicaoDaOp } from '@/lib/db/reposicao-da-op'
 
 // A BAIXA DE UMA OP — o que acontece quando ela vai pra `enviado`.
 //
@@ -25,7 +26,8 @@ import {
 // ⚠️ QUEM CONFERE SE PODE DAR BAIXA NÃO É ESTA FUNÇÃO. A regra
 // (`erroDaTransicaoGenerica`, src/lib/producao/transicoes-da-op.ts — só a
 // partir de Produção concluída, e com apontamento) é conferida por quem chama.
-// Aqui fica o EFEITO: status, data de fim, histórico e estoque.
+// Aqui fica o EFEITO: status, data de fim, histórico, estoque e a fila de
+// reposição (o item ligado a esta OP vira "Reposto" na mesma transação).
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -119,5 +121,9 @@ export async function gravarBaixa(
       }
     }
   }
+
+  // A PEÇA QUE ESTAVA NA FILA DE REPOSIÇÃO FOI REPOSTA — na mesma transação
+  // da baixa, pra fila nunca mostrar "Em produção" de uma OP já baixada.
+  await sincronizarReposicaoDaOp(tx, [op.id])
   return true
 }

@@ -20,6 +20,7 @@ import {
   ordensProducao,
   produtos,
   remessasFull,
+  reposicoesEstoque,
   tamanhos,
   tarefas,
   tarefasDiarias,
@@ -413,6 +414,13 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
       contagem: conta(sql`SELECT count(*) FROM ${kitItens} k WHERE k.produto_id = ${produtos.id}`),
     },
     {
+      // `reposicoes_estoque` aponta pro produto e pra variação com FK que
+      // bloqueia: o histórico da fila de reposição não some junto.
+      curto: 'está na fila de reposição',
+      frase: (n) => `tem ${n} registro${n > 1 ? 's' : ''} na fila de reposição de estoque`,
+      contagem: conta(sql`SELECT count(*) FROM ${reposicoesEstoque} r WHERE r.produto_id = ${produtos.id}`),
+    },
+    {
       // As variações somem por cascata junto com o produto, mas o de-para do
       // Full aponta pra VARIAÇÃO com FK que bloqueia — sem esta checagem o
       // DELETE falharia direto no banco.
@@ -439,6 +447,13 @@ const CHECAGENS: Record<TipoLixeira, Checagem[]> = {
       frase: (n) => `gerou ${n} entrada${n > 1 ? 's' : ''} no estoque — apagar deixaria a movimentação sem origem`,
       contagem: conta(sql`SELECT count(*) FROM ${movimentacoesEstoque} m
         WHERE m.referencia_tipo = 'ordem' AND m.referencia_id = ${ordensProducao.id}`),
+    },
+    {
+      // A OP que repôs uma peça da fila fica ligada ao item (FK sem cascata):
+      // é ela que diz como a peça foi reposta.
+      curto: 'repôs uma peça da fila',
+      frase: () => 'está ligada a um item da fila de reposição de estoque',
+      contagem: conta(sql`SELECT count(*) FROM ${reposicoesEstoque} r WHERE r.ordem_id = ${ordensProducao.id}`),
     },
   ],
   // kit_itens some por cascata; de_para_full.kit_id e orcamento_itens.kit_id
