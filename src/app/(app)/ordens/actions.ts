@@ -58,8 +58,10 @@ import {
 } from '@/lib/db/schema'
 import { erroDaVariacao } from '@/lib/producao/catalogo-op'
 import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
+import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import {
   calcularConclusao,
+  diasDeAtrasoNaConclusao,
   erroDeQuantidade,
   erroDoAutorDoDesfazer,
   resumoDaConclusao,
@@ -248,11 +250,8 @@ export async function listarOrdens(
       remessaData: remessaDataEnvio
         ? `${remessaDataEnvio.slice(8, 10)}/${remessaDataEnvio.slice(5, 7)}`
         : null,
-      atrasada:
-        op.dataPrevistaFim !== null &&
-        op.status !== 'enviado' &&
-        op.status !== 'cancelado' &&
-        new Date(op.dataPrevistaFim).getTime() < now,
+      // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
+      atrasada: producaoAtrasada(op.status, op.dataPrevistaFim, now),
       produzido: produzido ?? 0,
       refugo: refugo ?? 0,
     }),
@@ -1797,6 +1796,8 @@ export async function concluirProducaoAction(
       quantidade: ordensProducao.quantidade,
       responsavelId: ordensProducao.responsavelId,
       maquinaId: ordensProducao.maquinaId,
+      // Pra dizer no histórico se saiu depois do prazo.
+      dataPrevistaFim: ordensProducao.dataPrevistaFim,
     })
     .from(ordensProducao)
     .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
@@ -1925,7 +1926,12 @@ export async function concluirProducaoAction(
         input.refugo,
         conclusao,
         iniciadaPor,
-        { semMaquina },
+        {
+          semMaquina,
+          // Depois da conclusão a OP deixa de aparecer como atrasada; o
+          // atraso fica registrado aqui, em dias de calendário de Brasília.
+          diasDeAtraso: diasDeAtrasoNaConclusao(op.dataPrevistaFim, new Date()),
+        },
       )
       // `statusAnterior` é a ORIGEM real. É ela que identifica, numa análise
       // futura, as conclusões que não passaram por máquina — e é ela que

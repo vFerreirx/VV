@@ -13,9 +13,11 @@ import { test } from 'node:test'
 import {
   calcularConclusao,
   erroDeQuantidade,
+  diasDeAtrasoNaConclusao,
   erroDoAutorDoDesfazer,
   resumoDaConclusao,
 } from './conclusao.ts'
+import { producaoAtrasada } from './atraso-da-op.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
 import {
   erroDaExclusao,
@@ -363,6 +365,54 @@ test('acima da meta o historico diz quanto a mais', () => {
     resumoDaConclusao(32, 0, calcularConclusao(30, 0)),
     'Produção concluída com 32 de 30 peças (2 a mais)',
   )
+})
+
+test('conclusao depois do prazo registra os dias de atraso', () => {
+  assert.equal(
+    resumoDaConclusao(30, 0, calcularConclusao(30, 0), null, { diasDeAtraso: 1 }),
+    'Produção concluída com 30 de 30 peças · concluída com 1 dia de atraso',
+  )
+  assert.equal(
+    resumoDaConclusao(27, 2, calcularConclusao(30, 0), 'teste1', { diasDeAtraso: 3 }),
+    'Produção concluída com 27 de 30 peças (3 a menos) · 2 refugo · iniciada por teste1 · concluída com 3 dias de atraso',
+  )
+  // No prazo, nada muda no texto.
+  assert.equal(
+    resumoDaConclusao(30, 0, calcularConclusao(30, 0), null, { diasDeAtraso: 0 }),
+    'Produção concluída com 30 de 30 peças',
+  )
+})
+
+test('dias de atraso na conclusao: dias de calendario em Brasilia', () => {
+  // Prazo: fim do dia 27/09 em Brasilia.
+  const prazo = new Date('2026-09-28T02:59:59.000Z')
+  // 22h do dia 27 em Brasilia (01h do dia 28 em UTC): no prazo.
+  assert.equal(diasDeAtrasoNaConclusao(prazo, new Date('2026-09-28T01:00:00Z')), 0)
+  // 00h30 do dia 28 em Brasilia: um dia.
+  assert.equal(diasDeAtrasoNaConclusao(prazo, new Date('2026-09-28T03:30:00Z')), 1)
+  assert.equal(diasDeAtrasoNaConclusao(prazo, new Date('2026-09-30T15:00:00Z')), 3)
+  // Antes do prazo e sem prazo: zero.
+  assert.equal(diasDeAtrasoNaConclusao(prazo, new Date('2026-09-20T15:00:00Z')), 0)
+  assert.equal(diasDeAtrasoNaConclusao(null, new Date('2026-09-30T15:00:00Z')), 0)
+})
+
+test('atrasada e so a producao que nao foi concluida', () => {
+  const prazo = new Date('2026-09-28T02:59:59.000Z')
+  const depois = new Date('2026-09-29T12:00:00Z')
+  const antes = new Date('2026-09-27T12:00:00Z')
+  assert.equal(producaoAtrasada('programado', prazo, depois), true)
+  assert.equal(producaoAtrasada('em_producao', prazo, depois), true)
+  assert.equal(producaoAtrasada('aguardando_materia_prima', prazo, depois), true)
+  // Legados contam como nao concluidos.
+  assert.equal(producaoAtrasada('acabamento', prazo, depois), true)
+  assert.equal(producaoAtrasada('embalagem', prazo, depois), true)
+  // Concluida, com baixa ou cancelada: nunca atrasada — a baixa e ambar.
+  assert.equal(producaoAtrasada('pronto_envio', prazo, depois), false)
+  assert.equal(producaoAtrasada('enviado', prazo, depois), false)
+  assert.equal(producaoAtrasada('cancelado', prazo, depois), false)
+  // Prazo ainda nao venceu, ou sem prazo.
+  assert.equal(producaoAtrasada('em_producao', prazo, antes), false)
+  assert.equal(producaoAtrasada('em_producao', null, depois), false)
 })
 
 test('conclusao direto da fila avisa que nao passou por maquina', () => {

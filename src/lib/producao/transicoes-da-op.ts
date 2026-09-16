@@ -87,7 +87,12 @@ export function erroDaTransicaoPeloFormulario(
 // enquanto o board ainda não sabia dela — a virada do Trello, com os dois
 // rodando em paralelo. O OPERADOR conclui só de `em_producao`: no tablet, a
 // OP sai de uma máquina ou não sai de lugar nenhum.
-const ANTES_DA_CONCLUSAO = [
+//
+// ⚠️ É TAMBÉM A LISTA DO ATRASO (atraso-da-op.ts): só pode estar atrasada a
+// OP cuja produção ainda não foi concluída. Uma lista, duas perguntas — se
+// um status novo entrar aqui, ele passa a poder ser concluído E a poder
+// atrasar, sem uma segunda cópia pra esquecer.
+export const ANTES_DA_CONCLUSAO = [
   'aguardando_materia_prima',
   'programado',
   'em_producao',

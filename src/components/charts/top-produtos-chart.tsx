@@ -1,6 +1,7 @@
 'use client'
 
-// Bar chart horizontal — top produtos do mês por unidades em OPs.
+// Bar chart horizontal — top produtos do mês por PEÇAS BOAS CONCLUÍDAS no mês
+// (apontamentos), e não pela meta das OPs criadas no mês.
 
 import {
   Bar,
@@ -22,7 +23,7 @@ export function TopProdutosChart({ data }: Props) {
   if (data.length === 0) {
     return (
       <div className="text-muted-foreground flex h-56 items-center justify-center text-sm">
-        Sem OPs no mês.
+        Nenhuma peça concluída no mês.
       </div>
     )
   }
@@ -80,14 +81,14 @@ export function TopProdutosChart({ data }: Props) {
               const ops = payload.ops
               const v = typeof value === 'number' ? value : Number(value)
               return [
-                `${v.toLocaleString('pt-BR')} un · ${ops} OP${ops === 1 ? '' : 's'}`,
-                'Produção',
+                `${v.toLocaleString('pt-BR')} peças boas · ${ops} OP${ops === 1 ? '' : 's'}`,
+                'Concluídas',
               ]
             }}
           />
           <Bar
             dataKey="unidades"
-            name="Unidades"
+            name="Peças boas"
             fill="oklch(0.81 0.105 95)"
             radius={[0, 4, 4, 0]}
           />

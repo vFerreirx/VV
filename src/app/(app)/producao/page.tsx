@@ -175,6 +175,7 @@ export default async function ProducaoPage({
         gestor={isManager(user.role)}
         produtos={produtos}
         podeCriar={podeCriar}
+        filtroDaUrl={flat.filtro}
       />
     </div>
   )

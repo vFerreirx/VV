@@ -5,17 +5,19 @@ import {
   asc,
   desc,
   eq,
-  gt,
   gte,
-  isNotNull,
+  inArray,
   isNull,
-  ne,
   or,
   sql,
 } from 'drizzle-orm'
+import { redirect } from 'next/navigation'
 
+import { listarMaquinas } from '../maquinas/actions'
+import { destinoInicial, nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { condicaoDeProducaoAtrasada } from '@/lib/db/atraso-da-op'
 import {
   FUSO_BRASIL,
   hojeEmBrasilia,
@@ -30,11 +32,29 @@ import {
   users,
   variacoesProduto,
 } from '@/lib/db/schema'
+import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import {
-  STATUS_KANBAN,
-  type canalValues,
-  type statusValues,
-} from '@/lib/validators/ordens'
+  contarMaquinas,
+  situacaoDaMaquina,
+} from '@/lib/producao/estado-maquina'
+import {
+  VALORES_DE_MOTIVO,
+  rotuloDoMotivo,
+} from '@/lib/producao/parada-de-maquina'
+import { ANTES_DA_CONCLUSAO } from '@/lib/producao/transicoes-da-op'
+import { type statusValues } from '@/lib/validators/ordens'
+
+// ⚠️ O DASHBOARD É DA GESTÃO, e cada leitura daqui confere isso. O arquivo é
+// 'use server': toda função exportada é um endpoint público, alcançável sem
+// passar pela página. A guarda é a mesma da página — a área `dashboard`,
+// travada em admin e gerente — e quem não é da gestão vai pra casa dele.
+async function exigirDashboard() {
+  const user = await requireAuth()
+  if ((await nivelDaAreaPara(user.role, 'dashboard')) === 'nenhum') {
+    redirect(await destinoInicial(user.role))
+  }
+  return user
+}
 
 // O instante em que o mês corrente COMEÇOU em Brasília.
 //
@@ -47,105 +67,100 @@ function inicioDoMes(): Date {
 }
 
 // -----------------------------------------------------------------
-// KPIs principais
+// Os quatro números do topo
 // -----------------------------------------------------------------
+//
+// CADA UM É UMA PERGUNTA COM TELA PRA RESOLVER. Os de antes ("OPs ativas",
+// "Em produção") eram contagens sem ação, e o "Máquinas operando" lia o
+// CADASTRO (`maquinas.status = 'operando'`) — com a fábrica parada, dizia
+// 100% em uso. O mesmo erro que src/lib/producao/estado-maquina.ts descreve e
+// que as outras telas já tinham corrigido.
 
 export type DashboardKPIs = {
-  opsAtivas: number
-  opsEmProducao: number
-  opsAtrasadas: number
-  opsEnviadasMes: number
-  maquinasOperando: number
-  maquinasTotal: number
-  // distribuição por status (apenas estados ativos do kanban)
-  distribuicaoStatus: Array<{
-    status: (typeof statusValues)[number]
-    total: number
-  }>
+  /** Aptas com OP — a MESMA conta da /fabrica e do kanban. */
+  maquinasProduzindo: number
+  /** Produzindo + livres: as que podem produzir. */
+  maquinasAptas: number
+  /** Em manutenção ou setup, com parada aberta. Desativada não conta. */
+  paradasAgora: number
+  /** O motivo mais comum entre as paradas agora, ou null se nenhuma tem. */
+  motivoMaisComum: string | null
+  /** Prazo vencido e produção não concluída — atraso-da-op.ts. */
+  producaoAtrasada: number
+  /** Produção concluída esperando baixa. */
+  faltaBaixa: number
 }
 
 export async function obterKPIs(): Promise<DashboardKPIs> {
-  await requireAuth()
+  await exigirDashboard()
 
-  const inicioMes = inicioDoMes()
-
-  // Conta OPs por status (excluindo soft-deleted).
-  const distribuicao = await db
-    .select({
-      status: ordensProducao.status,
-      total: sql<number>`count(*)::int`,
-    })
-    .from(ordensProducao)
-    .where(isNull(ordensProducao.deletedAt))
-    .groupBy(ordensProducao.status)
-
-  const distribuicaoMap = new Map(distribuicao.map((d) => [d.status, d.total]))
-
-  const opsAtivas = distribuicao
-    .filter((d) => d.status !== 'enviado' && d.status !== 'cancelado')
-    .reduce((sum, d) => sum + d.total, 0)
-
-  const opsEmProducao = distribuicaoMap.get('em_producao') ?? 0
-  const opsEnviadasMes = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(ordensProducao)
-    .where(
-      and(
-        isNull(ordensProducao.deletedAt),
-        eq(ordensProducao.status, 'enviado'),
-        gt(ordensProducao.dataRealFim, inicioMes),
+  const [lista, [atrasadas], [baixa]] = await Promise.all([
+    // ⚠️ A MESMA CONSULTA E A MESMA REGRA DA /fabrica (`listarMaquinas` +
+    // `situacaoDaMaquina` + `contarMaquinas`). Uma conta escrita à mão aqui
+    // divergiria da tela para onde o card leva.
+    listarMaquinas(),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(ordensProducao)
+      .where(
+        and(isNull(ordensProducao.deletedAt), condicaoDeProducaoAtrasada()),
       ),
-    )
-    .then((r) => r[0]?.total ?? 0)
-
-  // Atrasadas: dataPrevistaFim < now AND não enviado/cancelado.
-  const opsAtrasadas = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(ordensProducao)
-    .where(
-      and(
-        isNull(ordensProducao.deletedAt),
-        ne(ordensProducao.status, 'enviado'),
-        ne(ordensProducao.status, 'cancelado'),
-        isNotNull(ordensProducao.dataPrevistaFim),
-        sql`${ordensProducao.dataPrevistaFim} < now()`,
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(ordensProducao)
+      .where(
+        and(
+          isNull(ordensProducao.deletedAt),
+          eq(ordensProducao.status, 'pronto_envio'),
+        ),
       ),
-    )
-    .then((r) => r[0]?.total ?? 0)
+  ])
 
-  const [{ total: maquinasTotal }] = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(maquinas)
-    .where(isNull(maquinas.deletedAt))
-
-  const [{ total: maquinasOperando }] = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(maquinas)
-    .where(
-      and(isNull(maquinas.deletedAt), eq(maquinas.status, 'operando')),
-    )
-
-  // Distribuição visual (somente estados ativos do kanban). Importa a lista
-  // do board em vez de manter cópia: eram duas, e esta ia divergir calada no
-  // dia em que o board mudasse — que é hoje.
-  const distribuicaoStatus = STATUS_KANBAN.map((s) => ({
-    status: s,
-    total: distribuicaoMap.get(s) ?? 0,
+  const situacoes = lista.map((m) => ({
+    maquina: m,
+    s: situacaoDaMaquina(m.status, m.op !== null),
   }))
+  const contagem = contarMaquinas(situacoes.map((x) => x.s))
+
+  // PARADA AGORA = manutenção ou setup com parada aberta. A DESATIVADA FICA
+  // DE FORA: desativar também abre parada, e uma máquina desativada há meses
+  // ficaria pra sempre neste número, escondendo a que parou hoje.
+  const paradas = situacoes.filter(
+    (x) =>
+      (x.s.disponibilidade === 'manutencao' ||
+        x.s.disponibilidade === 'em_setup') &&
+      x.maquina.paradaAberta !== null,
+  )
+
+  // O motivo mais comum. Empate desempata pela ordem da tupla — estável, sem
+  // depender da ordem em que as máquinas vieram.
+  const porMotivo = new Map<string, number>()
+  for (const p of paradas) {
+    const motivo = p.maquina.paradaAberta?.motivo
+    if (motivo) porMotivo.set(motivo, (porMotivo.get(motivo) ?? 0) + 1)
+  }
+  let motivoMaisComum: string | null = null
+  let maior = 0
+  for (const valor of VALORES_DE_MOTIVO) {
+    const n = porMotivo.get(valor) ?? 0
+    if (n > maior) {
+      maior = n
+      motivoMaisComum = rotuloDoMotivo(valor)
+    }
+  }
 
   return {
-    opsAtivas,
-    opsEmProducao,
-    opsAtrasadas,
-    opsEnviadasMes,
-    maquinasOperando,
-    maquinasTotal: maquinasTotal ?? 0,
-    distribuicaoStatus,
+    maquinasProduzindo: contagem.emProducao,
+    maquinasAptas: contagem.emProducao + contagem.livres,
+    paradasAgora: paradas.length,
+    motivoMaisComum,
+    producaoAtrasada: atrasadas?.total ?? 0,
+    faltaBaixa: baixa?.total ?? 0,
   }
 }
 
 // -----------------------------------------------------------------
-// OPs urgentes / atrasadas (pra widget no dashboard)
+// OPs urgentes / atrasadas
 // -----------------------------------------------------------------
 
 export type OpUrgenteItem = {
@@ -166,15 +181,11 @@ export type OpUrgenteItem = {
 export async function listarOpsUrgentes(
   limit = 5,
 ): Promise<OpUrgenteItem[]> {
-  const user = await requireAuth()
+  await exigirDashboard()
 
-  // OP pega fica privada SÓ entre operadores; demais cargos veem tudo.
-  const visibilidade = user.role !== 'operador'
-    ? undefined
-    : or(
-        isNull(ordensProducao.responsavelId),
-        eq(ordensProducao.responsavelId, user.id),
-      )
+  // ⚠️ SEM FILTRO DE VISIBILIDADE DO OPERADOR. Existia um "OP pega fica
+  // privada entre operadores" aqui, mas o dashboard passou a ser só da
+  // gestão (`exigirDashboard`) — o operador nunca chega nesta consulta.
 
   const rows = await db
     .select({
@@ -201,9 +212,16 @@ export async function listarOpsUrgentes(
     .where(
       and(
         isNull(ordensProducao.deletedAt),
-        ne(ordensProducao.status, 'enviado'),
-        ne(ordensProducao.status, 'cancelado'),
-        visibilidade,
+        // SÓ O QUE PEDE AÇÃO NA PRODUÇÃO: atrasada, ou urgente/alta que
+        // ainda não foi concluída. A urgente já concluída espera só a baixa,
+        // e essa tem o card âmbar "Falta dar baixa".
+        or(
+          condicaoDeProducaoAtrasada(),
+          and(
+            inArray(ordensProducao.status, [...ANTES_DA_CONCLUSAO]),
+            inArray(ordensProducao.prioridade, ['urgente', 'alta']),
+          ),
+        ),
       ),
     )
     // Urgentes/altas primeiro, depois prazos mais próximos.
@@ -231,14 +249,12 @@ export async function listarOpsUrgentes(
     dataPrevistaFim: r.dataPrevistaFim,
     maquinaNome: r.maquinaNome ?? null,
     responsavelNome: r.responsavelNome ?? null,
-    atrasada:
-      r.dataPrevistaFim !== null &&
-      new Date(r.dataPrevistaFim).getTime() < now,
+    atrasada: producaoAtrasada(r.status, r.dataPrevistaFim, now),
   }))
 }
 
 // -----------------------------------------------------------------
-// Produção dos últimos N dias (apontamentos por dia)
+// Peças concluídas por dia (apontamentos por dia)
 // -----------------------------------------------------------------
 
 export type ProducaoDia = {
@@ -250,7 +266,7 @@ export type ProducaoDia = {
 export async function listarProducaoUltimosDias(
   dias = 14,
 ): Promise<ProducaoDia[]> {
-  await requireAuth()
+  await exigirDashboard()
 
   // A série termina HOJE em Brasília e anda pra trás em dias de calendário.
   const ultimoDia = hojeEmBrasilia()
@@ -329,74 +345,58 @@ export async function listarProducaoUltimosDias(
 }
 
 // -----------------------------------------------------------------
-// OPs ativas por canal de destino
-// -----------------------------------------------------------------
-
-export type OpsPorCanal = {
-  canal: (typeof canalValues)[number]
-  total: number
-  unidades: number
-}
-
-export async function listarOpsPorCanal(): Promise<OpsPorCanal[]> {
-  await requireAuth()
-
-  const rows = await db
-    .select({
-      canal: ordensProducao.canalDestino,
-      total: sql<number>`count(*)::int`,
-      unidades: sql<number>`coalesce(sum(${ordensProducao.quantidade}), 0)::int`,
-    })
-    .from(ordensProducao)
-    .where(
-      and(
-        isNull(ordensProducao.deletedAt),
-        ne(ordensProducao.status, 'cancelado'),
-      ),
-    )
-    .groupBy(ordensProducao.canalDestino)
-
-  return rows
-}
-
-// -----------------------------------------------------------------
-// Top produtos do mês (por unidades em OPs criadas no mês corrente)
+// Top produtos do mês (peças boas CONCLUÍDAS no mês corrente)
 // -----------------------------------------------------------------
 
 export type TopProdutoItem = {
   produtoId: string
   produtoNome: string
   produtoSku: string
+  /** Peças boas registradas no mês. */
   unidades: number
+  /** Quantas OPs diferentes somaram essas peças. */
   ops: number
 }
 
 export async function listarTopProdutosMes(
   limit = 5,
 ): Promise<TopProdutoItem[]> {
-  await requireAuth()
+  await exigirDashboard()
 
   const inicioMes = inicioDoMes()
 
+  // ⚠️ O QUE SAIU DA MÁQUINA NO MÊS, e não o que foi PEDIDO no mês. Antes
+  // somava `ordens_producao.quantidade` das OPs criadas no mês: a meta, não a
+  // produção — uma OP de 500 criada ontem e nunca iniciada liderava o ranking.
+  //
+  // Conta pelo `inicio` do apontamento, que no fluxo novo é o momento da
+  // conclusão (o registro é feito só no fim). O mês começa em Brasília
+  // (`inicioDoMes`), o mesmo cuidado de fuso de `listarProducaoUltimosDias`.
+  const soma = sql<number>`coalesce(sum(${apontamentosProducao.quantidadeProduzida}), 0)::int`
   const rows = await db
     .select({
       produtoId: produtos.id,
       produtoNome: produtos.nome,
       produtoSku: produtos.sku,
-      unidades: sql<number>`coalesce(sum(${ordensProducao.quantidade}), 0)::int`,
-      ops: sql<number>`count(${ordensProducao.id})::int`,
+      unidades: soma,
+      ops: sql<number>`count(distinct ${ordensProducao.id})::int`,
     })
-    .from(ordensProducao)
+    .from(apontamentosProducao)
+    // Mesmo motivo do gráfico por dia: OP apagada não soma.
+    .innerJoin(
+      ordensProducao,
+      eq(ordensProducao.id, apontamentosProducao.ordemId),
+    )
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
     .where(
       and(
+        gte(apontamentosProducao.inicio, inicioMes),
         isNull(ordensProducao.deletedAt),
-        ne(ordensProducao.status, 'cancelado'),
-        gte(ordensProducao.createdAt, inicioMes),
       ),
     )
     .groupBy(produtos.id, produtos.nome, produtos.sku)
-    .orderBy(desc(sql`sum(${ordensProducao.quantidade})`))
+    .having(sql`sum(${apontamentosProducao.quantidadeProduzida}) > 0`)
+    .orderBy(desc(sql`sum(${apontamentosProducao.quantidadeProduzida})`))
     .limit(limit)
 
   return rows

@@ -11,6 +11,7 @@ import {
   type OverridesAcesso,
   type Role,
 } from './permissoes'
+import { casaAcessivel } from './rota-inicial'
 import { db } from '@/lib/db'
 import { permissoesAcesso } from '@/lib/db/schema'
 
@@ -46,4 +47,9 @@ export async function nivelDaAreaPara(
 export async function areasBloqueadas(role: Role): Promise<AreaKey[]> {
   const overrides = await carregarOverrides()
   return areasBloqueadasDoRole(role, overrides)
+}
+
+// A casa do cargo que ele consegue abrir — ver `casaAcessivel`.
+export async function destinoInicial(role: Role | undefined): Promise<string> {
+  return casaAcessivel(role, await carregarOverrides())
 }

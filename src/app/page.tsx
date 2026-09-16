@@ -4,12 +4,12 @@ import { redirect } from 'next/navigation'
 import { Logo } from '@/components/brand/logo'
 import { Button } from '@/components/ui/button'
 import { getCurrentUser } from '@/lib/auth/get-user'
-import { rotaInicial } from '@/lib/auth/rota-inicial'
+import { destinoInicial } from '@/lib/auth/permissoes-db'
 
 export default async function HomePage() {
   const user = await getCurrentUser()
   if (user) {
-    redirect(rotaInicial(user.role))
+    redirect(await destinoInicial(user.role))
   }
 
   return (

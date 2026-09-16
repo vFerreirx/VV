@@ -30,7 +30,7 @@ import {
   type LoginInput,
 } from '@/lib/validators/auth'
 import { createClient } from '@/lib/supabase/server'
-import { rotaInicial } from '@/lib/auth/rota-inicial'
+import { destinoInicial } from '@/lib/auth/permissoes-db'
 
 export type ActionResult = { success: true } | { success: false; error: string }
 
@@ -61,7 +61,7 @@ export async function loginAction(
 
   if (next && next.startsWith('/')) redirect(next)
 
-  // Sem destino pedido, cada cargo cai na SUA casa — ver rotaInicial.
+  // Sem destino pedido, cada cargo cai na SUA casa — ver casaAcessivel.
   //
   // O cargo sai da tabela pelo id que o próprio login acabou de devolver, e
   // não de `getCurrentUser()`: aquele monta OUTRO cliente Supabase e releria
@@ -77,7 +77,7 @@ export async function loginAction(
 
   await marcarSessaoDeOperador(perfil?.role === 'operador')
 
-  redirect(rotaInicial(perfil?.role))
+  redirect(await destinoInicial(perfil?.role))
 }
 
 // O cookie que diz ao proxy "esta sessão é de tablet de estação". Existe pra

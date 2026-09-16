@@ -43,6 +43,8 @@
 // FALTA, e o apontamento novo grava só o incremento. Somar a meta cheia por
 // cima do que já existe dobraria a produção do dia em silêncio.
 
+import { diaEmBrasilia, diasEntre } from '../dia-brasil.ts'
+
 export type Conclusao = {
   /** A quantidade da OP — o que o gerente pediu. */
   meta: number
@@ -130,7 +132,10 @@ export function resumoDaConclusao(
   refugo: number,
   { meta, jaRegistrado }: Conclusao,
   iniciadaPor?: string | null,
-  { semMaquina = false }: { semMaquina?: boolean } = {},
+  {
+    semMaquina = false,
+    diasDeAtraso = 0,
+  }: { semMaquina?: boolean; diasDeAtraso?: number } = {},
 ): string {
   const total = jaRegistrado + produzida
   const diferenca = meta - total
@@ -142,7 +147,33 @@ export function resumoDaConclusao(
   if (refugo > 0) partes.push(`· ${refugo} refugo`)
   if (iniciadaPor) partes.push(`· iniciada por ${iniciadaPor}`)
   if (semMaquina) partes.push('· sem passar por máquina')
+  // O ATRASO FICA NO HISTÓRICO. Depois da conclusão a OP deixa de ser
+  // "atrasada" nas telas (atraso-da-op.ts) — sem esta linha, o fato de ter
+  // saído depois do prazo sumiria junto com o vermelho.
+  if (diasDeAtraso > 0) {
+    partes.push(
+      `· concluída com ${diasDeAtraso} ${diasDeAtraso === 1 ? 'dia' : 'dias'} de atraso`,
+    )
+  }
   return partes.join(' ')
+}
+
+/**
+ * Quantos dias DEPOIS do prazo a produção foi concluída. Zero quando foi no
+ * prazo, no próprio dia do prazo, ou quando a OP não tem prazo.
+ *
+ * ⚠️ DIAS DE CALENDÁRIO EM BRASÍLIA, e não horas divididas por 24: o prazo é
+ * "até o dia 27", e concluir às 22h do dia 27 é no prazo — mesmo sendo 01h
+ * do dia 28 em UTC. Compara o dia do prazo com o dia da conclusão, os dois
+ * lidos no fuso da fábrica.
+ */
+export function diasDeAtrasoNaConclusao(
+  prazo: Date | null,
+  concluidaEm: Date,
+): number {
+  if (prazo === null) return 0
+  const dias = diasEntre(diaEmBrasilia(prazo), diaEmBrasilia(concluidaEm))
+  return dias > 0 ? dias : 0
 }
 
 // ─────────────────────────────────────────────────────────────────────────

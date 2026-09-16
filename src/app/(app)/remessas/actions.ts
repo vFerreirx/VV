@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { condicaoDeProducaoAtrasada } from '@/lib/db/atraso-da-op'
 import { gravarBaixa } from '@/lib/db/baixa-da-op'
 import { diasEntre, hojeEmBrasilia, somarDias } from '@/lib/dia-brasil'
 import {
@@ -25,6 +26,7 @@ import {
   rotuloDaRemessa,
   type RiscoDaRemessa,
 } from '@/lib/producao/prazo-da-remessa'
+import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import { erroDaTransicaoGenerica } from '@/lib/producao/transicoes-da-op'
 import {
   STATUS_KANBAN,
@@ -125,9 +127,10 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
           WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
         ))
       ), 0)::int`,
+      // A MESMA REGRA de `producaoAtrasada`, em SQL: concluída e sem baixa
+      // não conta — a baixa pendente tem o âmbar dela.
       atrasadas: sql<number>`count(*) filter (
-        where ${ordensProducao.status} <> 'enviado'
-          and ${ordensProducao.dataPrevistaFim} < now()
+        where ${condicaoDeProducaoAtrasada()}
       )::int`,
       aguardandoMateriaPrima: sql<number>`count(*) filter (
         where ${ordensProducao.status} = 'aguardando_materia_prima'
@@ -293,10 +296,8 @@ export async function listarOpsDasRemessas(
     produzido: r.produzido,
     status: r.status,
     temApontamento: r.temApontamento,
-    atrasada:
-      r.dataPrevistaFim !== null &&
-      r.status !== 'enviado' &&
-      new Date(r.dataPrevistaFim).getTime() < now,
+    // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
+    atrasada: producaoAtrasada(r.status, r.dataPrevistaFim, now),
   }))
 }
 

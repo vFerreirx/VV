@@ -21,12 +21,14 @@ export default function Loading() {
           ))}
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <Skeleton className="h-48 rounded-xl lg:col-span-2" />
-          <Skeleton className="h-48 rounded-xl" />
+        {/* Os dois gráficos lado a lado, e a lista de OPs urgentes embaixo —
+            a mesma ordem da página. */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <Skeleton className="h-72 rounded-xl" />
+          <Skeleton className="h-72 rounded-xl" />
         </div>
 
-        <Skeleton className="h-72 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
       </div>
     </ViewTransition>
   )

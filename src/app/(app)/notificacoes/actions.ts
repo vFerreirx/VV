@@ -1,9 +1,10 @@
 'use server'
 
-import { and, asc, eq, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
+import { and, asc, eq, isNull, lte, ne, or } from 'drizzle-orm'
 
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth } from '@/lib/auth/require-auth'
+import { condicaoDeProducaoAtrasada } from '@/lib/db/atraso-da-op'
 import { db } from '@/lib/db'
 import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
@@ -55,7 +56,8 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
         eq(ordensProducao.responsavelId, user.id),
       )
 
-  // 1) OPs atrasadas (dataPrevistaFim < now e status diferente de enviado/cancelado)
+  // 1) OPs com PRODUÇÃO atrasada: prazo vencido e produção não concluída.
+  // Concluída e sem baixa não é atraso — ver src/lib/producao/atraso-da-op.ts.
   const opsAtrasadas = await db
     .select({
       id: ordensProducao.id,
@@ -68,10 +70,7 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
     .where(
       and(
         isNull(ordensProducao.deletedAt),
-        ne(ordensProducao.status, 'enviado'),
-        ne(ordensProducao.status, 'cancelado'),
-        isNotNull(ordensProducao.dataPrevistaFim),
-        sql`${ordensProducao.dataPrevistaFim} < now()`,
+        condicaoDeProducaoAtrasada(),
         visibilidade,
       ),
     )

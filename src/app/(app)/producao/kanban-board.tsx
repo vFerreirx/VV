@@ -141,6 +141,12 @@ function tempoNaEtapa(
 }
 
 type FiltroChip = 'minhas' | 'urgentes' | 'atrasadas' | 'semDono'
+const FILTROS_CHIP: readonly FiltroChip[] = [
+  'minhas',
+  'urgentes',
+  'atrasadas',
+  'semDono',
+]
 const FILTRO_LABEL: Record<FiltroChip, string> = {
   minhas: 'Minhas',
   urgentes: 'Urgentes',
@@ -161,6 +167,13 @@ type Props = {
   ocupacao: OcupacaoDasMaquinas
   /** Admin ou gerente: as ações de produção do sheet. */
   gestor: boolean
+  /**
+   * `?filtro=` da URL: o chip que já nasce ligado. É por onde o card
+   * "Produção atrasada" do dashboard chega com as atrasadas filtradas.
+   * Validado aqui — valor desconhecido é ignorado. Depois de aberto, os chips
+   * continuam sendo estado da tela.
+   */
+  filtroDaUrl?: string
 }
 
 // Status que a OP pode ter no board — os das colunas.
@@ -174,13 +187,19 @@ export function KanbanBoard({
   podeCriar,
   ocupacao,
   gestor,
+  filtroDaUrl,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [detalheId, setDetalheId] = useState<string | null>(null)
   const [novaOpOpen, setNovaOpOpen] = useState(false)
-  const [filtros, setFiltros] = useState<Set<FiltroChip>>(new Set())
+  const [filtros, setFiltros] = useState<Set<FiltroChip>>(
+    () =>
+      new Set(
+        FILTROS_CHIP.filter((f) => f === filtroDaUrl),
+      ),
+  )
   // O diálogo de uma das duas portas próprias, quando aberto.
   const [porta, setPorta] = useState<
     { tipo: 'maquina' | 'concluir'; ordem: KanbanCardData } | null
@@ -440,7 +459,7 @@ export function KanbanBoard({
     <>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          {(['minhas', 'urgentes', 'atrasadas', 'semDono'] as FiltroChip[]).map(
+          {FILTROS_CHIP.map(
             (f) => {
               const ativo = filtros.has(f)
               return (

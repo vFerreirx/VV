@@ -58,6 +58,7 @@ export const NIVEL_INFO: Record<Nivel, { label: string; descricao: string }> = {
 }
 
 export type AreaKey =
+  | 'dashboard'
   | 'kanban'
   | 'ordens'
   | 'remessas'
@@ -113,6 +114,19 @@ function padrao(p: Partial<Record<Role, Nivel>>): Record<Role, Nivel> {
 const verCatalogo = { [G]: 'total', [O]: 'ver', [E]: 'ver', [V]: 'ver' } as const
 
 export const AREAS: Area[] = [
+  {
+    key: 'dashboard',
+    secao: 'Geral',
+    label: 'Dashboard',
+    descricao: 'Painel da gestão: máquinas, atrasos, baixas e produção.',
+    href: '/dashboard',
+    // ⚠️ TRAVADO EM ADMIN E GERENTE. É painel de gestão — a fábrica inteira,
+    // com o que precisa de decisão. Os outros cargos têm a casa deles
+    // (src/lib/auth/rota-inicial.ts). A página NÃO usa `requireArea` nesta
+    // área: aquela redireciona pra /dashboard, e aqui viraria loop.
+    editavel: false,
+    nivelPadrao: padrao({ [G]: 'total' }),
+  },
   {
     key: 'kanban',
     secao: 'Produção',

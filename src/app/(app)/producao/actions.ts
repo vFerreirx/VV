@@ -41,6 +41,7 @@ import {
   type DestinoNaEstacao,
   type StatusDaOrdem,
 } from '@/lib/producao/destino-da-ordem'
+import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import { erroDoAutorDoDesfazer } from '@/lib/producao/conclusao'
 import type { MaquinaStatus } from '@/lib/producao/estado-maquina'
 import { STATUS_QUE_INICIAM } from '@/lib/producao/inicio-da-op'
@@ -295,10 +296,8 @@ export async function listarOrdensProducao(
       produzido: produzido ?? 0,
       refugo: refugo ?? 0,
       dataPrevistaFim: op.dataPrevistaFim,
-      atrasada:
-        op.dataPrevistaFim !== null &&
-        op.status !== 'enviado' &&
-        new Date(op.dataPrevistaFim).getTime() < now,
+      // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
+      atrasada: producaoAtrasada(op.status, op.dataPrevistaFim, now),
       // Sem fallback de propósito — ver o comentário do tipo.
       desdeStatus: desdeStatus ? new Date(desdeStatus) : null,
       observacoes: op.observacoes,

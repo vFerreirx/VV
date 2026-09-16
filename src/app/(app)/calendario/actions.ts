@@ -15,6 +15,7 @@ import {
   eventoFullSchema,
   type EventoFullInput,
 } from '@/lib/validators/eventos'
+import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import { type prioridadeValues, type statusValues } from '@/lib/validators/ordens'
 
 export type ActionResult<T = undefined> =
@@ -172,7 +173,8 @@ export async function listarOpsComPrazo(
         data: ymd,
         prioridade: r.prioridade,
         status: r.status,
-        atrasada: d.getTime() < now && r.status !== 'enviado',
+        // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
+        atrasada: producaoAtrasada(r.status, d, now),
       }
     })
 }
