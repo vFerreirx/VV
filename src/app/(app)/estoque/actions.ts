@@ -22,7 +22,6 @@ import {
 } from '@/lib/db/schema'
 import {
   DIAS_DE_ATENDIDOS,
-  erroDoDescarte,
   ordenarFila,
   podeSubirSituacao,
   type EstadoDeReposicao,
@@ -158,7 +157,10 @@ export async function listarFilaDeReposicao(): Promise<ItemDeReposicao[]> {
   return ordenarFila(rows.map(paraItem))
 }
 
-/** Repostos e descartados dos últimos 30 dias, o mais recente primeiro. */
+/**
+ * Repostos dos últimos 30 dias, o mais recente primeiro. Descartar apaga o
+ * item, então os `descartado` só aparecem se existirem de antes dessa regra.
+ */
 export async function listarReposicoesAtendidas(): Promise<ItemDeReposicao[]> {
   await requireArea('estoque')
   const desde = new Date(Date.now() - DIAS_DE_ATENDIDOS * 24 * 60 * 60 * 1000)
@@ -315,37 +317,39 @@ export async function marcarReposicaoAction(
 }
 
 // -----------------------------------------------------------------
-// Descartar (alarme falso)
+// Descartar (alarme falso) — apaga o item
 // -----------------------------------------------------------------
 
 const uuidRe =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+/**
+ * ⚠️ DESCARTAR APAGA A LINHA, e não grava `descartado`. Um aviso que foi
+ * engano não tem história a guardar: ele ficava em "Atendidos" sem dizer
+ * nada útil, e alguém precisaria apagar de novo. O estado `descartado` e as
+ * colunas de descarte continuam no banco (59_reposicoes_estoque.sql), sem uso.
+ */
 export async function descartarReposicaoAction(
   id: string,
-  /** Opcional: em branco vira nulo. */
-  motivo?: string | null,
 ): Promise<ActionResult> {
   // Mesma permissão do "Produzir": decidir que a peça não precisa ser feita
   // é decisão de quem decide o que se produz.
-  const user = await requireAreaEscrita('ordens')
+  await requireAreaEscrita('ordens')
   if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
-  const erro = erroDoDescarte(motivo)
-  if (erro) return { success: false, error: erro }
 
-  // ⚠️ SÓ O ITEM ABERTO. O em produção já tem OP: descartar deixaria a OP
-  // rodando pra repor uma peça que "não precisava". Cancela-se a OP, e o
-  // item volta pra fila sozinho (src/lib/db/reposicao-da-op.ts).
+  // ⚠️ SÓ ABERTO OU JÁ DESCARTADO. O em produção e o reposto têm OP ligada
+  // (FK): apagar o primeiro deixaria a OP rodando pra repor uma peça que
+  // ninguém pediu — cancela-se a OP, e o item volta pra fila sozinho
+  // (src/lib/db/reposicao-da-op.ts) —, e o segundo é o registro de como a
+  // peça foi reposta. O `descartado` entra pra limpar os que foram
+  // descartados antes de descartar passar a apagar.
   const linhas = await db
-    .update(reposicoesEstoque)
-    .set({
-      estado: 'descartado',
-      descartadoEm: new Date(),
-      descartadoPor: user.id,
-      motivoDescarte: motivo?.trim() || null,
-    })
+    .delete(reposicoesEstoque)
     .where(
-      and(eq(reposicoesEstoque.id, id), eq(reposicoesEstoque.estado, 'aberto')),
+      and(
+        eq(reposicoesEstoque.id, id),
+        inArray(reposicoesEstoque.estado, ['aberto', 'descartado']),
+      ),
     )
     .returning({ id: reposicoesEstoque.id })
   if (linhas.length === 0) {

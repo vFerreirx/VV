@@ -25,12 +25,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import {
   DIAS_DE_ATENDIDOS,
   ROTULO_DA_SITUACAO,
-  erroDoDescarte,
 } from '@/lib/producao/reposicao'
 import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
 import { cn } from '@/lib/utils'
@@ -107,7 +104,7 @@ export function ReposicaoView({
               ? podeMarcar
                 ? 'Quando uma peça estiver acabando, marque aqui pra ela virar OP.'
                 : 'Quando alguém avisar que uma peça está acabando, ela aparece aqui.'
-              : `Peças repostas e descartadas nos últimos ${DIAS_DE_ATENDIDOS} dias aparecem aqui.`
+              : `Peças repostas nos últimos ${DIAS_DE_ATENDIDOS} dias aparecem aqui.`
           }
         />
       ) : (
@@ -239,6 +236,18 @@ function ItemDaFila({
         )}
       </div>
 
+      {/* Descartado de antes de descartar passar a apagar: só dá pra apagar. */}
+      {item.estado === 'descartado' && podeProduzir && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="shrink-0"
+          onClick={onDescartar}
+        >
+          Apagar
+        </Button>
+      )}
+
       {item.estado === 'aberto' && podeProduzir && (
         <div className="flex shrink-0 gap-2">
           <Button
@@ -259,6 +268,7 @@ function ItemDaFila({
   )
 }
 
+// Confirmação, porque apaga: o item some da fila e não vai pra "Atendidos".
 function DescartarDialog({
   item,
   onClose,
@@ -268,24 +278,17 @@ function DescartarDialog({
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [motivo, setMotivo] = useState('')
   const [erro, setErro] = useState<string | null>(null)
 
   function fechar() {
-    setMotivo('')
     setErro(null)
     onClose()
   }
 
   function descartar() {
     if (!item) return
-    const e = erroDoDescarte(motivo)
-    if (e) {
-      setErro(e)
-      return
-    }
     startTransition(async () => {
-      const r = await descartarReposicaoAction(item.id, motivo)
+      const r = await descartarReposicaoAction(item.id)
       if (!r.success) {
         setErro(r.error)
         return
@@ -300,9 +303,13 @@ function DescartarDialog({
     <Dialog open={item !== null} onOpenChange={(o) => !o && !isPending && fechar()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Descartar da fila?</DialogTitle>
+          <DialogTitle>
+            {item?.estado === 'descartado' ? 'Apagar de Atendidos?' : 'Descartar da fila?'}
+          </DialogTitle>
           <DialogDescription>
-            A peça sai da fila sem virar OP. Use quando o aviso foi engano.
+            {item?.estado === 'descartado'
+              ? 'O registro deste descarte é apagado.'
+              : 'O item é apagado: sai da fila sem virar OP e não aparece em Atendidos. Use quando o aviso foi engano.'}
           </DialogDescription>
         </DialogHeader>
         {item && (
@@ -310,30 +317,18 @@ function DescartarDialog({
             <TituloDoItem item={item} />
           </p>
         )}
-        <div className="space-y-1.5">
-          <Label htmlFor="descarte-motivo">
-            Motivo <span className="text-muted-foreground font-normal">(opcional)</span>
-          </Label>
-          <Textarea
-            id="descarte-motivo"
-            rows={3}
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-            placeholder="Ex.: contaram errado, ainda tem no depósito"
-            disabled={isPending}
-          />
-        </div>
         {erro && <p className="text-destructive text-sm">{erro}</p>}
         <DialogFooter>
           <Button variant="outline" onClick={fechar} disabled={isPending}>
             Cancelar
           </Button>
           <Button
+            variant="destructive"
             loading={isPending}
             onClick={descartar}
             disabled={isPending}
           >
-            Descartar
+            {item?.estado === 'descartado' ? 'Apagar' : 'Descartar'}
           </Button>
         </DialogFooter>
       </DialogContent>

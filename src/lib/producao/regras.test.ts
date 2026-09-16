@@ -19,7 +19,6 @@ import {
 } from './conclusao.ts'
 import { producaoAtrasada } from './atraso-da-op.ts'
 import {
-  erroDoDescarte,
   estadoDaReposicaoPelaOp,
   ordenarFila,
   podeSubirSituacao,
@@ -983,14 +982,6 @@ test('reposicao: marcar de novo so sobe de acabando pra acabou', () => {
   assert.equal(podeSubirSituacao('acabou', 'acabando'), false)
   assert.equal(podeSubirSituacao('acabando', 'acabando'), false)
   assert.equal(podeSubirSituacao('acabou', 'acabou'), false)
-})
-
-test('reposicao: motivo do descarte e opcional', () => {
-  assert.equal(erroDoDescarte(''), null)
-  assert.equal(erroDoDescarte('   '), null)
-  assert.equal(erroDoDescarte(null), null)
-  assert.equal(erroDoDescarte('contaram errado'), null)
-  assert.notEqual(erroDoDescarte('x'.repeat(301)), null)
 })
 
 test('reposicao: fila com acabou antes, e o mais antigo primeiro', () => {

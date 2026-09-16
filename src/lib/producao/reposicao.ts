@@ -57,15 +57,6 @@ export function podeSubirSituacao(
 }
 
 /**
- * Descartar é dizer "alarme falso". O motivo é OPCIONAL: em branco é gravado
- * como nulo (o banco recusa texto vazio). Só o tamanho é conferido.
- */
-export function erroDoDescarte(motivo: string | null | undefined): string | null {
-  if (motivo && motivo.trim().length > 300) return 'Motivo muito longo'
-  return null
-}
-
-/**
  * A ordem da fila: "Acabou" antes de "Acabando" e, dentro de cada grupo, o
  * mais antigo primeiro — quem esperou mais é atendido antes.
  */
