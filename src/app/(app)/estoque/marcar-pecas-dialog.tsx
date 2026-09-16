@@ -11,6 +11,11 @@
 // maiúscula, todo pedaço casando em qualquer campo). Aqui o resultado é
 // agrupado por PRODUTO: quem marca olha a prateleira de uma peça e vê o que
 // falta nela, não uma variação solta.
+//
+// COM A CAIXA VAZIA, O CATÁLOGO: os produtos agrupados por FAMÍLIA (Peseira,
+// Manta, Capa de Almofada) e, dentro dela, um botão por modelo. É o caminho
+// de quem está de frente pra prateleira e não sabe o nome exato — sem
+// digitar nada.
 
 import { ArrowLeft, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -42,6 +47,7 @@ import {
   podeSubirSituacao,
   type SituacaoDeReposicao,
 } from '@/lib/producao/reposicao'
+import { familiaDoProduto } from '@/lib/producao/rotulo-da-op'
 import { cn } from '@/lib/utils'
 
 type Produto = ProdutoComVariacoesParaForm
@@ -148,7 +154,7 @@ export function MarcarPecasDialog({
           <DialogDescription>
             {produto
               ? 'Toque em cada peça que está acabando. Cada uma vira um item da fila.'
-              : 'Busque o produto pelo nome, cor, tamanho ou SKU.'}
+              : 'Escolha no catálogo, ou busque pelo nome, cor, tamanho ou SKU.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -165,7 +171,9 @@ export function MarcarPecasDialog({
                 className="pl-8"
               />
             </div>
-            {encontrados.length > 0 ? (
+            {termo.trim() === '' ? (
+              <Catalogo produtos={produtos} onEscolher={setProdutoId} />
+            ) : encontrados.length > 0 ? (
               <ul className="max-h-80 divide-y overflow-y-auto rounded-lg border">
                 {encontrados.map(({ produto: p }) => (
                   <li key={p.id}>
@@ -184,11 +192,9 @@ export function MarcarPecasDialog({
                 ))}
               </ul>
             ) : (
-              termo.trim() !== '' && (
-                <p className="text-muted-foreground text-sm">
-                  Nenhum produto encontrado.
-                </p>
-              )
+              <p className="text-muted-foreground text-sm">
+                Nenhum produto encontrado.
+              </p>
             )}
           </div>
         ) : (
@@ -276,6 +282,81 @@ export function MarcarPecasDialog({
         )}
       </DialogContent>
     </Dialog>
+  )
+}
+
+// O CATÁLOGO POR FAMÍLIA. A família sai de `familiaDoProduto` (o mesmo corte
+// do tablet e da fila); quando o nome não termina com o modelo cadastrado —
+// "Manta - 3D" com modelo EFEITO 3D —, o corte é pelo " - " do nome, pra
+// peça não virar uma família sozinha.
+function familiaEModelo(produto: Produto): { familia: string; modelo: string } {
+  const modelo = produto.variacoes.find((v) => v.modelo)?.modelo ?? null
+  const familia = familiaDoProduto(produto.nome, modelo)
+  if (familia !== produto.nome) {
+    return { familia, modelo: modelo ?? produto.nome }
+  }
+  const i = produto.nome.lastIndexOf(' - ')
+  if (i > 0) {
+    return {
+      familia: produto.nome.slice(0, i).trim(),
+      modelo: produto.nome.slice(i + 3).trim(),
+    }
+  }
+  return { familia: produto.nome, modelo: produto.nome }
+}
+
+function Catalogo({
+  produtos,
+  onEscolher,
+}: {
+  produtos: Produto[]
+  onEscolher: (produtoId: string) => void
+}) {
+  const grupos = new Map<string, { produto: Produto; modelo: string }[]>()
+  for (const p of produtos) {
+    // Produto sem variação não tem o que marcar.
+    if (p.variacoes.length === 0) continue
+    const { familia, modelo } = familiaEModelo(p)
+    const lista = grupos.get(familia) ?? []
+    lista.push({ produto: p, modelo })
+    grupos.set(familia, lista)
+  }
+  const familias = [...grupos.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'))
+
+  if (familias.length === 0) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        Nenhum produto com variação cadastrada.
+      </p>
+    )
+  }
+
+  return (
+    <div className="max-h-96 space-y-4 overflow-y-auto pr-1">
+      {familias.map((familia) => (
+        <div key={familia} className="space-y-1.5">
+          <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+            {familia}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {grupos
+              .get(familia)!
+              .sort((a, b) => a.modelo.localeCompare(b.modelo, 'pt-BR'))
+              .map(({ produto, modelo }) => (
+                <button
+                  key={produto.id}
+                  type="button"
+                  onClick={() => onEscolher(produto.id)}
+                  title={produto.nome}
+                  className="hover:bg-accent min-h-10 rounded-full border px-3.5 py-1.5 text-sm transition-colors"
+                >
+                  {modelo}
+                </button>
+              ))}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
 
