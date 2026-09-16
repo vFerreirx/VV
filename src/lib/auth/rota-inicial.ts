@@ -45,9 +45,9 @@ const SEM_AREA = '/configuracoes'
  * ⚠️ É ISTO QUE IMPEDE O LOOP DE REDIRECT. `requireArea` manda quem não tem
  * acesso pra /dashboard, e o /dashboard manda quem não é da gestão pra casa.
  * Se a casa fosse redirecionada às cegas e o cargo não tivesse acesso a ela
- * — o vendedor com a área Vendas desligada em /permissoes, que é o caso em
- * 16/09/2026 —, os dois se mandariam um pro outro pra sempre. Aqui a casa só
- * é escolhida quando é acessível.
+ * — um admin que desligue Remessas pro cargo vendas em /permissoes, por
+ * exemplo —, os dois se mandariam um pro outro pra sempre. Aqui a casa só é
+ * escolhida quando é acessível.
  */
 export function casaAcessivel(
   role: Role | undefined,
