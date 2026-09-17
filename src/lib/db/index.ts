@@ -20,11 +20,21 @@ const globalForPg = globalThis as unknown as {
 const opcoes = {
   // ⚠️ POOL PEQUENO DE PROPÓSITO: 3 CONEXÕES POR INSTÂNCIA. O app conecta pelo
   // pooler do Supabase em MODO SESSÃO (porta 5432), e o modo sessão aceita no
-  // máximo 15 clientes no projeto inteiro ("EMAXCONNSESSION ... pool_size:
-  // 15"). Cada instância do Vercel abre o próprio pool: com 10 por instância,
-  // duas instâncias esgotavam as vagas e toda página caía. Com 3, cabem 5
+  // máximo Pool Size clientes no projeto inteiro ("EMAXCONNSESSION ...
+  // pool_size"). Cada instância do Vercel abre o próprio pool: em 17/09/2026,
+  // com Pool Size 15 e 10 por instância, duas instâncias esgotavam as vagas e
+  // toda página caía. Hoje o Pool Size é 30: com 3 por instância, cabem 10
   // instâncias. Página com muita consulta espera um pouco na fila do próprio
   // postgres.js, e não derruba o sistema.
+  //
+  // ⚠️ DUAS COISAS DESTA CONTA MORAM EM PAINEL, NÃO NO CÓDIGO:
+  //   - Supabase → Project Settings → Database → Connection pooling → Pool
+  //     Size. Precisa comportar `max` × instâncias do Vercel. Subiu `max`
+  //     aqui? Suba o Pool Size lá antes.
+  //   - Vercel → Settings → Functions → região. Precisa continuar gru1 (São
+  //     Paulo), a mesma do banco (sa-east-1). Em iad1 cada consulta cruza o
+  //     continente, e a conexão fica presa esse tempo a mais. Sem
+  //     `vercel.json` nem `preferredRegion`: a região fica no painel.
   //
   // ⚠️ POR QUE MODO SESSÃO, e não o modo transação (6543): com `prepare:
   // false` o postgres.js manda toda consulta com parâmetro em DUAS idas (pede
@@ -37,8 +47,8 @@ const opcoes = {
   // Devolve a vaga ao pooler logo que a instância fica ociosa.
   idle_timeout: 10,
   prepare: false,
-  // ⚠️ PIPELINING NO MÍNIMO (1), e não o padrão de 100. Com as 10 conexões
-  // ocupadas, o postgres.js empilha consultas na MESMA conexão sem esperar a
+  // ⚠️ PIPELINING NO MÍNIMO (1), e não o padrão de 100. Com as conexões do
+  // pool ocupadas, o postgres.js empilha consultas na MESMA conexão sem esperar a
   // anterior terminar. Pelo pooler do Supabase em modo transação (porta 6543)
   // isso travava: a consulta ficava pela metade, o banco esperava o resto pra
   // sempre (`ClientRead` em pg_stat_activity), a página nunca terminava e a

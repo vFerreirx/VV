@@ -18,8 +18,10 @@ import { alertaDeTarefas } from '@/lib/db/tarefas'
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAuth()
   // As duas em paralelo: o layout roda em TODA navegação e em todo
-  // `router.refresh()`, então cada ida em série segura a conexão mais tempo. `alertaDeTarefas` é UMA linha por
-  // índice parcial e nem chega ao banco pra quem não é admin.
+  // `router.refresh()`. Função (gru1) e banco (sa-east-1) estão na mesma
+  // região, então a ida é curta — mas cada ida em série ainda segura a
+  // conexão do pool mais tempo. `alertaDeTarefas` é UMA linha por índice
+  // parcial e nem chega ao banco pra quem não é admin.
   const [bloqueadas, alertaTarefas] = await Promise.all([
     areasBloqueadas(user.role),
     alertaDeTarefas(user.role),
