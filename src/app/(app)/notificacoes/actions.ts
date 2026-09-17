@@ -45,8 +45,12 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   // fábrica não tem o que fazer com boleto de cliente: o sino dele ficaria
   // aceso por um assunto que não é dele. Mesma pergunta que a guarda de
   // página faz, só que aqui ela decide se a CONSULTA acontece.
-  const veFinanceiro =
-    (await nivelDaAreaPara(user.role, 'pedidos')) !== 'nenhum'
+  //
+  // AS TRÊS FONTES CORREM EM PARALELO. O sino recarrega a cada mudança de OP
+  // em toda tela aberta; em série, a conexão ficava presa a soma das três.
+  const veFinanceiro = nivelDaAreaPara(user.role, 'pedidos').then(
+    (nivel) => nivel !== 'nenhum',
+  )
 
   // Operador só é alertado de OPs livres ou que ele pegou; os demais
   // cargos veem tudo (mesma regra de visibilidade do kanban).
@@ -59,7 +63,7 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
 
   // 1) OPs com PRODUÇÃO atrasada: prazo vencido e produção não concluída.
   // Concluída e sem baixa não é atraso — ver src/lib/producao/atraso-da-op.ts.
-  const opsAtrasadas = await db
+  const opsAtrasadasP = db
     .select({
       id: ordensProducao.id,
       numero: ordensProducao.numero,
@@ -77,6 +81,16 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
     )
     .orderBy(asc(ordensProducao.dataPrevistaFim))
     .limit(50)
+
+  const hoje = hojeEmBrasilia()
+  const parcelasP = veFinanceiro.then((ve) => (ve ? buscarParcelas(hoje) : []))
+  const reposicaoP = resumoDaReposicao()
+
+  const [opsAtrasadas, parcelas, reposicao] = await Promise.all([
+    opsAtrasadasP,
+    parcelasP,
+    reposicaoP,
+  ])
 
   const notificacoes: Notificacao[] = []
 
@@ -106,66 +120,35 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   //
   // Some sozinha quando dão baixa: `recebido_em IS NULL` é o filtro, e é o
   // mesmo estado que a tela do pedido mostra. Sem tabela de lembrete.
-  if (veFinanceiro) {
-    const hoje = hojeEmBrasilia()
-    const parcelas = await db
-      .select({
-        id: orcamentoParcelas.id,
-        numero: orcamentoParcelas.numero,
-        vencimento: orcamentoParcelas.vencimento,
-        valor: orcamentoParcelas.valor,
-        orcamentoId: orcamentos.id,
-        orcamentoNumero: orcamentos.numero,
-        cliente: orcamentos.cliente,
-        compradorNome: compradores.nome,
-      })
-      .from(orcamentoParcelas)
-      .innerJoin(orcamentos, eq(orcamentos.id, orcamentoParcelas.orcamentoId))
-      .leftJoin(compradores, eq(compradores.id, orcamentos.compradorId))
-      .where(
-        and(
-          isNull(orcamentoParcelas.recebidoEm),
-          // Comparação de `date` com texto 'YYYY-MM-DD': os dois lados são o
-          // mesmo tipo e não há fuso no meio. Ver src/lib/parcela-estado.ts.
-          lte(orcamentoParcelas.vencimento, hoje),
-          isNull(orcamentos.deletedAt),
-          // Pedido cancelado não tem o que cobrar.
-          ne(orcamentos.status, 'cancelado'),
-        ),
-      )
-      .orderBy(asc(orcamentoParcelas.vencimento))
-      .limit(50)
+  for (const p of parcelas) {
+    // A CLASSIFICAÇÃO VEM DO MESMO MÓDULO QUE A TELA usa. Se o sino
+    // contasse os dias por conta própria, ele diria "atrasada há 2 dias"
+    // enquanto o painel do mesmo pedido diria "vence hoje".
+    const s = situacaoDaParcela(p.vencimento, null, hoje)
+    const quanto = Number(p.valor).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    })
+    const quem = p.compradorNome ?? p.cliente
 
-    for (const p of parcelas) {
-      // A CLASSIFICAÇÃO VEM DO MESMO MÓDULO QUE A TELA usa. Se o sino
-      // contasse os dias por conta própria, ele diria "atrasada há 2 dias"
-      // enquanto o painel do mesmo pedido diria "vence hoje".
-      const s = situacaoDaParcela(p.vencimento, null, hoje)
-      const quanto = Number(p.valor).toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-      })
-      const quem = p.compradorNome ?? p.cliente
-
-      notificacoes.push({
-        id: `parcela-${p.id}`,
-        tipo: 'parcela_a_conferir',
-        titulo:
-          s.estado === 'atrasada'
-            ? `Parcela ${p.numero}ª do pedido #${p.orcamentoNumero} venceu há ${s.diasAtraso} dia${s.diasAtraso === 1 ? '' : 's'}`
-            : `Parcela ${p.numero}ª do pedido #${p.orcamentoNumero} vence hoje`,
-        descricao: `${quem} — ${quanto}. Conferir se caiu.`,
-        href: `/pedidos/${p.orcamentoId}`,
-        // Mesmo corte das OPs: 3 dias vira crítico. Dois assuntos diferentes
-        // no mesmo sino precisam graduar igual, senão a cor não quer dizer
-        // nada.
-        severidade: s.diasAtraso >= 3 ? 'critico' : 'aviso',
-        // Meia-noite UTC do dia do vencimento: serve só pra ORDENAR a lista
-        // ao lado das OPs, que trazem instante de verdade. A classificação
-        // (hoje/atrasada) já foi feita em texto, sem fuso.
-        referenciaEm: new Date(`${p.vencimento}T00:00:00Z`),
-      })
-    }
+    notificacoes.push({
+      id: `parcela-${p.id}`,
+      tipo: 'parcela_a_conferir',
+      titulo:
+        s.estado === 'atrasada'
+          ? `Parcela ${p.numero}ª do pedido #${p.orcamentoNumero} venceu há ${s.diasAtraso} dia${s.diasAtraso === 1 ? '' : 's'}`
+          : `Parcela ${p.numero}ª do pedido #${p.orcamentoNumero} vence hoje`,
+      descricao: `${quem} — ${quanto}. Conferir se caiu.`,
+      href: `/pedidos/${p.orcamentoId}`,
+      // Mesmo corte das OPs: 3 dias vira crítico. Dois assuntos diferentes
+      // no mesmo sino precisam graduar igual, senão a cor não quer dizer
+      // nada.
+      severidade: s.diasAtraso >= 3 ? 'critico' : 'aviso',
+      // Meia-noite UTC do dia do vencimento: serve só pra ORDENAR a lista
+      // ao lado das OPs, que trazem instante de verdade. A classificação
+      // (hoje/atrasada) já foi feita em texto, sem fuso.
+      referenciaEm: new Date(`${p.vencimento}T00:00:00Z`),
+    })
   }
 
   // 3) REPOSIÇÃO DE ESTOQUE — peças que alguém avisou que estão acabando e
@@ -175,7 +158,6 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   //
   // Só pra quem tem escrita em Ordens — quem decide produzir; o resumo volta
   // vazio pros outros. Some sozinha quando a fila de abertos esvazia.
-  const reposicao = await resumoDaReposicao()
   if (reposicao.acabou + reposicao.acabando > 0) {
     const partes: string[] = []
     if (reposicao.acabando > 0) {
@@ -203,3 +185,34 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
 
   return notificacoes
 }
+
+function buscarParcelas(hoje: string) {
+  return db
+    .select({
+      id: orcamentoParcelas.id,
+      numero: orcamentoParcelas.numero,
+      vencimento: orcamentoParcelas.vencimento,
+      valor: orcamentoParcelas.valor,
+      orcamentoId: orcamentos.id,
+      orcamentoNumero: orcamentos.numero,
+      cliente: orcamentos.cliente,
+      compradorNome: compradores.nome,
+    })
+    .from(orcamentoParcelas)
+    .innerJoin(orcamentos, eq(orcamentos.id, orcamentoParcelas.orcamentoId))
+    .leftJoin(compradores, eq(compradores.id, orcamentos.compradorId))
+    .where(
+      and(
+        isNull(orcamentoParcelas.recebidoEm),
+        // Comparação de `date` com texto 'YYYY-MM-DD': os dois lados são o
+        // mesmo tipo e não há fuso no meio. Ver src/lib/parcela-estado.ts.
+        lte(orcamentoParcelas.vencimento, hoje),
+        isNull(orcamentos.deletedAt),
+        // Pedido cancelado não tem o que cobrar.
+        ne(orcamentos.status, 'cancelado'),
+      ),
+    )
+    .orderBy(asc(orcamentoParcelas.vencimento))
+    .limit(50)
+}
+

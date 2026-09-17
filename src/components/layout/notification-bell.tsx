@@ -4,8 +4,7 @@ import { format, formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { AlertTriangle, Bell, CircleAlert } from 'lucide-react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { useEffect, useState, useTransition } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { listarNotificacoes, type Notificacao } from '@/app/(app)/notificacoes/actions'
 import { Button } from '@/components/ui/button'
@@ -14,22 +13,35 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
+import { useRecargaAoVivo } from '@/components/realtime/use-recarga-ao-vivo'
 import { cn } from '@/lib/utils'
 
-export function NotificationBell({
-  initial,
-}: {
-  initial: Notificacao[]
-}) {
-  const router = useRouter()
-  const [notificacoes, setNotificacoes] = useState<Notificacao[]>(initial)
-  const [, startTransition] = useTransition()
+const TABELAS = ['ordens_producao', 'orcamento_parcelas'] as const
+
+export function NotificationBell() {
+  // A LISTA CARREGA NO CLIENTE, e não no servidor da Topbar. A Topbar mora no
+  // layout, e o layout re-renderiza em TODO `router.refresh()` de qualquer
+  // tela — era o sino fazendo 5 a 7 consultas a cada mudança de OP em cada
+  // tela aberta, mesmo sem ninguém abrir o popover. Até a primeira carga o
+  // sino aparece sem número.
+  const [notificacoes, setNotificacoes] = useState<Notificacao[]>([])
 
   const count = notificacoes.length
 
-  // Realtime: quando muda o que gera notificação, re-fetcha a lista (que é
-  // derivada do estado atual, sem tabela de lembrete).
+  const carregar = useCallback(() => {
+    listarNotificacoes()
+      .then(setNotificacoes)
+      // Falha de rede não apaga o que já estava na tela; a próxima mudança
+      // tenta de novo.
+      .catch(() => {})
+  }, [])
+
+  useEffect(carregar, [carregar])
+
+  // Realtime: quando muda o que gera notificação, re-busca SÓ A LISTA (que é
+  // derivada do estado atual, sem tabela de lembrete). Nada de
+  // `router.refresh()`: a tela de baixo já cuida de si pelo próprio canal, e o
+  // refresh aqui recarregava a página inteira uma segunda vez.
   //
   // ⚠️ AS DUAS TABELAS SÃO AS DUAS FONTES: `ordens_producao` traz as OPs
   // atrasadas, `orcamento_parcelas` traz os boletos a conferir. Sem a
@@ -40,34 +52,12 @@ export function NotificationBell({
   // canal conecta e nunca recebe evento — falha muda, sem erro no console.
   // `orcamento_parcelas` publica em 55_pedido_parcelas.sql (e não em
   // 05_realtime.sql, que roda antes de a tabela existir).
-  useEffect(() => {
-    const supabase = createBrowserSupabase()
-    const channel = supabase
-      .channel('notificacoes-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ordens_producao' },
-        () => refetch(),
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'orcamento_parcelas' },
-        () => refetch(),
-      )
-      .subscribe()
-
-    function refetch() {
-      startTransition(async () => {
-        const lista = await listarNotificacoes()
-        setNotificacoes(lista)
-        router.refresh()
-      })
-    }
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [router])
+  useRecargaAoVivo({
+    canal: 'notificacoes-realtime',
+    tabelas: TABELAS,
+    decidir: () => 'lista',
+    executar: carregar,
+  })
 
   // Limita o que mostra no popover; conta total fica no badge.
   const visiveis = notificacoes.slice(0, 15)

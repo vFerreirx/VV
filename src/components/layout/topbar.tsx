@@ -1,4 +1,3 @@
-import { listarNotificacoes } from '@/app/(app)/notificacoes/actions'
 import { Logo } from '@/components/brand/logo'
 import { GlobalSearch } from './global-search'
 import { MobileNav } from './mobile-nav'
@@ -10,7 +9,7 @@ import type { AreaKey } from '@/lib/auth/permissoes'
 import type { PrioridadeAlerta } from '@/lib/prioridade'
 import type { User } from '@/lib/db/schema'
 
-export async function Topbar({
+export function Topbar({
   user,
   bloqueadas,
   alertaTarefas,
@@ -19,10 +18,6 @@ export async function Topbar({
   bloqueadas: AreaKey[]
   alertaTarefas: PrioridadeAlerta
 }) {
-  // Server-render dos alertas atuais. O client component assina realtime
-  // e atualiza sozinho conforme o estado muda.
-  const notificacoes = await listarNotificacoes()
-
   return (
     <header
       data-slot="topbar"
@@ -40,7 +35,10 @@ export async function Topbar({
       </div>
       <div className="ml-auto flex items-center gap-1">
         <GlobalSearch />
-        <NotificationBell initial={notificacoes} />
+        {/* O sino não existe no tablet do operador: lá a tela já mostra o
+            que é da estação, e cada tablet ligado o dia inteiro seria mais
+            um canal e mais uma consulta a cada mudança de OP da fábrica. */}
+        {user.role !== 'operador' && <NotificationBell />}
         <ThemeToggle />
         <UserMenu user={user} />
       </div>

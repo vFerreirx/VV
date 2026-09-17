@@ -23,6 +23,7 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import { trocarStatusAction } from '@/app/(app)/maquinas/actions'
+import { marcarEco } from '@/components/realtime/use-recarga-ao-vivo'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -87,6 +88,7 @@ export function ParadaDialog({
   function registrar(motivo?: MotivoDeParada) {
     const obs = texto.trim() === '' ? undefined : texto.trim()
     startTransition(async () => {
+      marcarEco(maquina.id)
       const result = await trocarStatusAction(
         maquina.id,
         modo === 'abrir'

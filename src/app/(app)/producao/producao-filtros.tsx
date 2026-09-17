@@ -2,7 +2,9 @@
 
 import { Search } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
+
+import { opcoesDosFiltrosDoKanban } from './actions'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,8 +22,6 @@ import {
 } from '@/lib/validators/ordens'
 
 type Props = {
-  maquinas: Array<Pick<Maquina, 'id' | 'codigo' | 'nome'>>
-  responsaveis: Array<Pick<User, 'id' | 'nome' | 'role'>>
   filtrosIniciais: {
     q?: string
     canal?: string
@@ -30,16 +30,35 @@ type Props = {
   }
 }
 
-export function ProducaoFiltros({
-  maquinas,
-  responsaveis,
-  filtrosIniciais,
-}: Props) {
+export function ProducaoFiltros({ filtrosIniciais }: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [isPending, startTransition] = useTransition()
   const [busca, setBusca] = useState(filtrosIniciais.q ?? '')
+
+  // AS OPÇÕES CARREGAM UMA VEZ, aqui, e não na página: a página recarrega a
+  // cada mudança de OP da fábrica, e máquinas e responsáveis quase nunca
+  // mudam. Enquanto não chegam, os dois seletores têm só o "Todas/Todos".
+  const [maquinas, setMaquinas] = useState<
+    Array<Pick<Maquina, 'id' | 'codigo' | 'nome'>>
+  >([])
+  const [responsaveis, setResponsaveis] = useState<
+    Array<Pick<User, 'id' | 'nome' | 'role'>>
+  >([])
+  useEffect(() => {
+    let vivo = true
+    opcoesDosFiltrosDoKanban()
+      .then((o) => {
+        if (!vivo) return
+        setMaquinas(o.maquinas)
+        setResponsaveis(o.responsaveis)
+      })
+      .catch(() => {})
+    return () => {
+      vivo = false
+    }
+  }, [])
 
   function aplicar(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(searchParams.toString())

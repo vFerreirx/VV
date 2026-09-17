@@ -7,14 +7,9 @@ import {
   type KanbanFiltros,
 } from './actions'
 import { KanbanBoard } from './kanban-board'
-import { listarMaquinas } from '../maquinas/actions'
+import { situacoesDasMaquinas } from '../maquinas/actions'
 import { PainelOperador } from './painel-operador'
 import { ProducaoFiltros } from './producao-filtros'
-import {
-  listarMaquinasParaOrdem,
-  listarProdutosParaOrdem,
-  listarResponsaveis,
-} from '@/app/(app)/ordens/actions'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { contarMaquinas, situacaoDaMaquina } from '@/lib/producao/estado-maquina'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
@@ -82,6 +77,7 @@ export default async function ProducaoPage({
       <PainelOperador
         operadorId={user.id}
         nomeOperador={user.nome}
+        estacaoId={visao.estacao?.id ?? null}
         estacaoNome={visao.estacao?.nome ?? null}
         maquinas={visao.maquinas}
         contagens={contagens}
@@ -121,26 +117,23 @@ export default async function ProducaoPage({
   // Agora o diálogo é o mesmo da /ordens, com a mesma action e a mesma guarda.
   const podeCriar = podeEscrever(await nivelDaAreaPara(user.role, 'ordens'))
 
-  const [ordens, maquinas, responsaveis, produtos, maquinasDaFabrica] =
-    await Promise.all([
-      listarOrdensProducao(filtros),
-      listarMaquinasParaOrdem(),
-      listarResponsaveis(),
-      // Só com a variação ATIVA: o diálogo de criar não pode oferecer uma
-      // variação apagada. E só pra quem vai ver o botão.
-      podeCriar
-        ? listarProdutosParaOrdem({ somenteAtivas: true })
-        : Promise.resolve([]),
-      listarMaquinas(),
-    ])
+  // ⚠️ SÓ O QUE MUDA COM A OP. Esta página recarrega a cada mudança de OP ou
+  // de máquina na fábrica inteira (o Realtime do board), então o que quase
+  // nunca muda saiu daqui: as opções dos filtros carregam uma vez no
+  // componente deles, e o catálogo da Nova OP quando o diálogo abre.
+  const [ordens, maquinasDaFabrica] = await Promise.all([
+    listarOrdensProducao(filtros),
+    situacoesDasMaquinas(),
+  ])
 
-  // ⚠️ A MESMA CONTA DA /fabrica: a mesma consulta (`listarMaquinas`) e a
-  // mesma regra (`situacaoDaMaquina` + `contarMaquinas`). Produzindo = apta
+  // ⚠️ A MESMA CONTA DA /fabrica: o mesmo recorte de OP (`situacoesDasMaquinas`
+  // espelha o join de `listarMaquinas`) e a mesma regra (`situacaoDaMaquina`
+  // + `contarMaquinas`). Produzindo = apta
   // com OP; aptas = produzindo + livres. A máquina em manutenção com OP dentro
   // não conta em nenhuma das duas — ela não pode produzir, e é o caso em que
   // uma conta escrita à mão aqui divergiria da outra tela.
   const contagem = contarMaquinas(
-    maquinasDaFabrica.map((m) => situacaoDaMaquina(m.status, m.op !== null)),
+    maquinasDaFabrica.map((m) => situacaoDaMaquina(m.status, m.temOp)),
   )
   const ocupacao = {
     produzindo: contagem.emProducao,
@@ -158,11 +151,7 @@ export default async function ProducaoPage({
         </p>
       </div>
 
-      <ProducaoFiltros
-        maquinas={maquinas}
-        responsaveis={responsaveis}
-        filtrosIniciais={filtros}
-      />
+      <ProducaoFiltros filtrosIniciais={filtros} />
 
       <KanbanBoard
         ordens={ordens}
@@ -173,7 +162,6 @@ export default async function ProducaoPage({
         currentUserId={user.id}
         ocupacao={ocupacao}
         gestor={isManager(user.role)}
-        produtos={produtos}
         podeCriar={podeCriar}
         filtroDaUrl={flat.filtro}
       />

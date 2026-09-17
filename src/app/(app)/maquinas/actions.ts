@@ -278,6 +278,36 @@ export async function listarMaquinas(
   }))
 }
 
+/**
+ * SÓ O QUE A OCUPAÇÃO PRECISA: o status de cada máquina e se tem OP em
+ * produção. É o cabeçalho do kanban, que recarrega a cada mudança de OP da
+ * fábrica — `listarMaquinas` traria nome, estação, produto, variação,
+ * responsável e parada de cada máquina pra jogar tudo fora e contar.
+ *
+ * ⚠️ O RECORTE DA OP É O MESMO DE `listarMaquinas`, cláusula por cláusula
+ * (em_producao, não apagada, `deleted_at` da máquina nulo). A conta das duas
+ * telas só bate porque as duas passam por `situacaoDaMaquina` com o mesmo
+ * "tem OP"; mexeu num join, mexa no outro.
+ */
+export async function situacoesDasMaquinas(): Promise<
+  { status: MaquinaListItem['status']; temOp: boolean }[]
+> {
+  await requireAuth()
+  const rows = await db
+    .select({ status: maquinas.status, opId: ordensProducao.id })
+    .from(maquinas)
+    .leftJoin(
+      ordensProducao,
+      and(
+        eq(ordensProducao.maquinaId, maquinas.id),
+        eq(ordensProducao.status, 'em_producao'),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
+    .where(isNull(maquinas.deletedAt))
+  return rows.map((r) => ({ status: r.status, temOp: r.opId !== null }))
+}
+
 // -----------------------------------------------------------------
 // Histórico de paradas de UMA máquina
 // -----------------------------------------------------------------

@@ -40,7 +40,7 @@ import type { User } from '@/lib/db/schema'
 // sessão; `to_char` não depende de nada.
 //
 // UMA IDA AO BANCO, DUAS LINHAS LIDAS. Este código roda no layout, ou seja,
-// em TODA navegação, e a função (iad1) está longe do banco (sa-east-1). As
+// em TODA navegação e em todo `router.refresh()` de qualquer tela. As
 // duas subconsultas são `ORDER BY ... LIMIT 1` sobre os índices parciais que
 // já existem — `tarefas_abertas_prioridade_idx` (por prioridade, migration
 // 46) e `tarefas_pendentes_idx` (por prazo, migration 35) —, então cada uma

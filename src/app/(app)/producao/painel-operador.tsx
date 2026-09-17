@@ -6,6 +6,7 @@ import { useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
+  contarOpsDaEstacao,
   listarOpsDaEstacao,
   listarOpsParaIniciar,
   type ContagensDaEstacao,
@@ -21,6 +22,7 @@ import {
   desfazerConclusaoAction,
   pegarOrdemAction,
 } from '@/app/(app)/ordens/actions'
+import { marcarEco, useRecargaAoVivo } from '@/components/realtime/use-recarga-ao-vivo'
 import { ParadaDialog } from '@/components/maquinas/parada-dialog'
 import { useDuracaoDesde } from '@/components/maquinas/use-duracao-desde'
 import { Button } from '@/components/ui/button'
@@ -47,6 +49,7 @@ import {
 } from '@/lib/producao/conclusao'
 import { situacaoDaMaquina } from '@/lib/producao/estado-maquina'
 import { confirmacaoAntesDeIniciar } from '@/lib/producao/inicio-da-op'
+import { reacaoDaEstacao } from '@/lib/producao/recarga-da-estacao'
 import {
   MOTIVOS_DE_PARADA,
   oQueParou,
@@ -62,7 +65,6 @@ import {
   TrocarOperadorBotao,
   useTravaDoTablet,
 } from './troca-operador'
-import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -173,6 +175,8 @@ type Props = {
   /** Pra "Quem é você?" saber se o nome escolhido é quem já está logado. */
   operadorId: string
   nomeOperador: string
+  /** Pra saber se um evento do Realtime é desta estação. */
+  estacaoId: string | null
   estacaoNome: string | null
   /** As máquinas da estação, já ordenadas por código. A tela é esta lista. */
   maquinas: MaquinaDaEstacao[]
@@ -239,8 +243,11 @@ export function PainelOperador({
   )
 }
 
+const TABELAS_DO_TABLET = ['ordens_producao', 'maquinas'] as const
+
 function Estacao({
   nomeOperador,
+  estacaoId,
   estacaoNome,
   maquinas,
   contagens,
@@ -267,25 +274,45 @@ function Estacao({
   // aparecendo como livre, e o próximo toque leva um erro que a tela poderia
   // ter evitado. Escuta as DUAS tabelas que desenham o cartão — a OP diz se
   // está ocupada, a máquina diz se está indisponível.
-  useEffect(() => {
-    const supabase = createBrowserSupabase()
-    const channel = supabase
-      .channel('painel-operador-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ordens_producao' },
-        () => router.refresh(),
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'maquinas' },
-        () => router.refresh(),
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [router])
+  //
+  // ⚠️ MAS SÓ PELO QUE É DESTA ESTAÇÃO. O tablet fica ligado o dia inteiro, e
+  // recarregar a tela a cada OP da fábrica inteira era cada tablet segurando
+  // conexão do banco por mudança que não aparece nele. Quem decide é
+  // `reacaoDaEstacao` (src/lib/producao/recarga-da-estacao.ts): recarrega a
+  // tela, só recalcula Fila e Terminadas, ou ignora.
+  //
+  // Os contadores vivem em estado pra poderem mudar sem recarregar a tela; a
+  // cada render novo do servidor eles voltam a ser os da página.
+  const [contagensDaPagina, setContagensDaPagina] = useState(contagens)
+  const [contagensVivas, setContagensVivas] = useState(contagens)
+  if (contagensDaPagina !== contagens) {
+    setContagensDaPagina(contagens)
+    setContagensVivas(contagens)
+  }
+
+  useRecargaAoVivo<'tela' | 'contadores'>({
+    canal: 'painel-operador-realtime',
+    tabelas: TABELAS_DO_TABLET,
+    decidir: (evento) =>
+      reacaoDaEstacao(evento, {
+        estacaoId,
+        maquinaIds: new Set(maquinas.map((m) => m.id)),
+        opIdsNosCartoes: new Set(
+          maquinas.flatMap((m) => (m.op ? [m.op.id] : [])),
+        ),
+        opIdsContados: new Set(contagensVivas.ids),
+      }),
+    executar: (tipos) => {
+      // A tela inteira já traz os contadores junto.
+      if (tipos.has('tela')) {
+        router.refresh()
+        return
+      }
+      contarOpsDaEstacao()
+        .then(setContagensVivas)
+        .catch(() => {})
+    },
+  })
 
   // SEM ESTAÇÃO A TELA INTEIRA VIRA O AVISO, e não um toast que some.
   //
@@ -355,14 +382,14 @@ function Estacao({
             className="h-11 text-base"
             onClick={() => setConsultando('fila')}
           >
-            Fila ({contagens.fila})
+            Fila ({contagensVivas.fila})
           </Button>
           <Button
             variant="outline"
             className="h-11 text-base"
             onClick={() => setConsultando('terminadas')}
           >
-            Terminadas ({contagens.terminadas})
+            Terminadas ({contagensVivas.terminadas})
           </Button>
         </div>
       </div>
@@ -436,7 +463,9 @@ function Estacao({
         <ConsultaDialog
           destino={consultando}
           total={
-            consultando === 'fila' ? contagens.fila : contagens.terminadas
+            consultando === 'fila'
+                ? contagensVivas.fila
+                : contagensVivas.terminadas
           }
           onClose={() => setConsultando(null)}
         />
@@ -856,6 +885,7 @@ function IniciarProducaoDialog({
   function iniciar(op: OpParaIniciar, materiaPrimaConfirmada: boolean) {
     setErro(null)
     startTransition(async () => {
+      marcarEco(op.id)
       const r = await pegarOrdemAction(op.id, maquina.id, {
         materiaPrimaConfirmada,
       })
@@ -1517,6 +1547,7 @@ function ConcluirDialog({
   function concluir() {
     setErro(null)
     startTransition(async () => {
+      marcarEco(op.id)
       const r = await concluirProducaoAction(op.id, { produzida, refugo })
       if (!r.success && r.error === ERRO_TABLET_TRAVADO) {
         // O rascunho fica no localStorage; depois do PIN, conclui com os
@@ -1716,6 +1747,7 @@ function BotaoDesfazer({
   function desfazer() {
     setErro(null)
     startTransition(async () => {
+      marcarEco(op.id)
       const r = await desfazerConclusaoAction(op.id)
       if (!r.success && r.error === ERRO_TABLET_TRAVADO) {
         travarEPerguntar(desfazer)

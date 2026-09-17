@@ -58,6 +58,10 @@ import {
 } from '@/lib/producao/estado-maquina'
 import { OpDetailSheet } from '@/app/(app)/producao/op-detail-sheet'
 import { ParadaDialog } from '@/components/maquinas/parada-dialog'
+import {
+  marcarEco,
+  useRecargaAoVivo,
+} from '@/components/realtime/use-recarga-ao-vivo'
 import { useDuracaoDesde } from '@/components/maquinas/use-duracao-desde'
 import {
   duracaoEmPalavras,
@@ -65,7 +69,6 @@ import {
   rotuloDoMotivo,
 } from '@/lib/producao/parada-de-maquina'
 import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
-import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 
 type Props = {
@@ -379,34 +382,19 @@ function useFiltrosNaUrl() {
 // Devolve se o canal está VIVO. O `subscribe` entrega o estado, e é dele que
 // sai o aviso: quando cai, a tela diz que parou de atualizar em vez de
 // continuar mostrando o que era verdade dez minutos atrás.
+//
+// Agrupado, espalhado, parado com a aba escondida e sem eco — ver
+// src/components/realtime/use-recarga-ao-vivo.ts.
+const TABELAS_DA_FABRICA = ['ordens_producao', 'maquinas'] as const
+
 function useAtualizacaoAoVivo(): boolean {
   const router = useRouter()
-  const [conectado, setConectado] = useState(true)
-
-  useEffect(() => {
-    const supabase = createBrowserSupabase()
-    const canal = supabase
-      .channel('maquinas-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'ordens_producao' },
-        () => router.refresh(),
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'maquinas' },
-        () => router.refresh(),
-      )
-      .subscribe((status) => {
-        setConectado(status === 'SUBSCRIBED')
-      })
-
-    return () => {
-      supabase.removeChannel(canal)
-    }
-  }, [router])
-
-  return conectado
+  return useRecargaAoVivo({
+    canal: 'maquinas-realtime',
+    tabelas: TABELAS_DA_FABRICA,
+    decidir: () => 'tela',
+    executar: () => router.refresh(),
+  })
 }
 
 function ContadorFiltro({
@@ -478,6 +466,7 @@ function MaquinaCard({
 
   function definirStatus(novo: 'operando' | 'manutencao' | 'desativada') {
     startTransition(async () => {
+      marcarEco(maquina.id)
       const result = await trocarStatusAction(maquina.id, { status: novo })
       if (!result.success) {
         toast.error(result.error)

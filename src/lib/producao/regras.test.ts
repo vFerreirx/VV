@@ -20,6 +20,7 @@ import {
 } from './conclusao.ts'
 import { producaoAtrasada } from './atraso-da-op.ts'
 import { resolverVariacaoDoFaltante } from './faltante-para-op.ts'
+import { reacaoDaEstacao } from './recarga-da-estacao.ts'
 import { chaveDaPeca, chaveDeTextoLivre } from '../separacao.ts'
 import {
   estadoDaReposicaoPelaOp,
@@ -1056,4 +1057,38 @@ test('faltante do pedido: resolve so quando a peca e inequivoca', () => {
   assert.match(motivo(chaveDaPeca({ produto: 'Capa duplicada', tamanho: null, cor: null }))!, /Mais de um produto/)
   assert.match(motivo(chaveDaPeca({ produto: 'Peseira - ACONCHEGO', tamanho: 'Queen', cor: null }))!, /sem cor/)
   assert.match(motivo(chaveDaPeca({ produto: 'Peseira - ACONCHEGO', tamanho: 'King', cor: 'Areia' }))!, /não existe mais/)
+})
+
+test('tablet: so recarrega pelo que e da estacao', () => {
+  const ctx = {
+    estacaoId: 'e1',
+    maquinaIds: new Set(['m1', 'm2']),
+    opIdsNosCartoes: new Set(['op-card']),
+    opIdsContados: new Set(['op-fila', 'op-terminada']),
+  }
+  const op = (novo: Record<string, unknown> | null, antigo: Record<string, unknown> | null = null) =>
+    reacaoDaEstacao({ tabela: 'ordens_producao', novo, antigo }, ctx)
+  const maq = (novo: Record<string, unknown> | null, antigo: Record<string, unknown> | null = null) =>
+    reacaoDaEstacao({ tabela: 'maquinas', novo, antigo }, ctx)
+
+  // OP de um cartao daqui — inclusive saindo da maquina (o UPDATE nao traz a antiga).
+  assert.equal(op({ id: 'op-card', maquina_id: 'm1', status: 'pronto_envio' }), 'tela')
+  assert.equal(op({ id: 'op-card', maquina_id: null, status: 'programado' }), 'tela')
+  // OP entrando numa maquina daqui.
+  assert.equal(op({ id: 'op-x', maquina_id: 'm2', status: 'em_producao' }), 'tela')
+  // Saiu da fila pra maquina de OUTRA estacao: so os contadores.
+  assert.equal(op({ id: 'op-fila', maquina_id: 'm9', status: 'em_producao' }), 'contadores')
+  // OP nova ou mexida na fila (sem maquina) muda a fila de todas.
+  assert.equal(op({ id: 'op-nova', maquina_id: null, status: 'programado' }), 'contadores')
+  // Exclusao definitiva: so a chave no antigo.
+  assert.equal(op({}, { id: 'op-terminada' }), 'contadores')
+  // OP de maquina de outra estacao, que nunca foi desta: ignora.
+  assert.equal(op({ id: 'op-outra', maquina_id: 'm9', status: 'pronto_envio' }), null)
+  assert.equal(op({}, { id: 'op-outra' }), null)
+
+  // Maquina daqui, maquina que entrou aqui, e maquina de outra estacao.
+  assert.equal(maq({ id: 'm1', status: 'manutencao', estacao_id: 'e1' }), 'tela')
+  assert.equal(maq({ id: 'm1', estacao_id: 'e2' }), 'tela')
+  assert.equal(maq({ id: 'm7', estacao_id: 'e1' }), 'tela')
+  assert.equal(maq({ id: 'm9', estacao_id: 'e2' }), null)
 })

@@ -23,6 +23,7 @@ import {
   type MaquinaParaPegar,
   type MaquinasParaPegar,
 } from '@/app/(app)/ordens/actions'
+import { marcarEco } from '@/components/realtime/use-recarga-ao-vivo'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -101,6 +102,7 @@ export function IniciarNaMaquinaDialog({
 
   function escolher(maquinaId: string) {
     startTransition(async () => {
+      marcarEco(ordem.id)
       const r = await iniciarProducaoAction(ordem.id, maquinaId)
       if (!r.success) {
         // O diálogo fica aberto: a próxima máquina está a um toque.
@@ -270,6 +272,7 @@ export function ConcluirProducaoDialog({
     }
     setErro(null)
     startTransition(async () => {
+      marcarEco(ordem.id)
       const r = await concluirProducaoAction(ordem.id, {
         produzida,
         refugo,

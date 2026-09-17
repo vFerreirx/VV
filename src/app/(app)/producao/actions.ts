@@ -14,6 +14,10 @@ import {
 } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 
+import {
+  listarMaquinasParaOrdem,
+  listarResponsaveis,
+} from '@/app/(app)/ordens/actions'
 import { isManager, requireArea, requireAuth } from '@/lib/auth/require-auth'
 import { PRIORIDADE_NIVEIS, type PrioridadeNivel } from '@/lib/prioridade'
 import { db } from '@/lib/db'
@@ -773,14 +777,27 @@ function ordenarComoOKanban(a: OrdemMagra, b: OrdemMagra): number {
   return prazoA - prazoB
 }
 
-export type ContagensDaEstacao = { fila: number; terminadas: number }
+export type ContagensDaEstacao = {
+  fila: number
+  terminadas: number
+  /**
+   * Os ids que ENTRARAM na conta (fila + terminadas). Não é pra desenhar: é
+   * pro tablet saber, quando chega um evento do Realtime, se a OP mexida
+   * estava num dos dois números — o evento não diz de onde ela saiu. Ver
+   * src/lib/producao/recarga-da-estacao.ts.
+   */
+  ids: string[]
+}
 
 export async function contarOpsDaEstacao(): Promise<ContagensDaEstacao> {
   const user = await requireArea('kanban')
   const porDestino = await opsPorDestino(user.id)
+  const fila = porDestino.get('fila') ?? []
+  const terminadas = porDestino.get('terminadas') ?? []
   return {
-    fila: porDestino.get('fila')?.length ?? 0,
-    terminadas: porDestino.get('terminadas')?.length ?? 0,
+    fila: fila.length,
+    terminadas: terminadas.length,
+    ids: [...fila, ...terminadas].map((o) => o.id),
   }
 }
 
@@ -1027,4 +1044,23 @@ export async function listarEventosOrdem(
     ...evento,
     usuarioNome: usuarioNome ?? null,
   }))
+}
+
+// -----------------------------------------------------------------
+// Opções dos filtros do kanban
+// -----------------------------------------------------------------
+
+/**
+ * As máquinas e os responsáveis dos filtros do kanban, NUMA ida só. O
+ * componente dos filtros busca uma vez ao montar: vindo da página, as duas
+ * listas eram consultadas de novo a cada recarga do Realtime, e elas quase
+ * nunca mudam.
+ */
+export async function opcoesDosFiltrosDoKanban() {
+  await requireArea('kanban')
+  const [maquinas, responsaveis] = await Promise.all([
+    listarMaquinasParaOrdem(),
+    listarResponsaveis(),
+  ])
+  return { maquinas, responsaveis }
 }

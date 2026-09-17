@@ -26,7 +26,7 @@ import {
   Plus,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useOptimistic, useState, useTransition } from 'react'
+import { useMemo, useOptimistic, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import type { KanbanCardData } from './actions'
@@ -35,8 +35,15 @@ import {
   IniciarNaMaquinaDialog,
 } from './dialogos-do-gerente'
 import { OpDetailSheet } from './op-detail-sheet'
-import type { ProdutoComVariacoesParaForm } from '@/app/(app)/ordens/actions'
+import {
+  listarProdutosParaOrdem,
+  type ProdutoComVariacoesParaForm,
+} from '@/app/(app)/ordens/actions'
 import { NovaOpDialog } from '@/components/ordens/nova-op-dialog'
+import {
+  marcarEco,
+  useRecargaAoVivo,
+} from '@/components/realtime/use-recarga-ao-vivo'
 import { Button } from '@/components/ui/button'
 import {
   desfazerConclusaoAction,
@@ -45,7 +52,6 @@ import {
 } from '@/app/(app)/ordens/actions'
 import { Badge } from '@/components/ui/badge'
 import { PRIORIDADE_BADGE } from '@/lib/prioridade'
-import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils'
 import {
   ehStatusKanban,
@@ -162,7 +168,6 @@ type Props = {
   ordens: KanbanCardData[]
   podeMover: boolean
   currentUserId: string
-  produtos: ProdutoComVariacoesParaForm[]
   podeCriar: boolean
   ocupacao: OcupacaoDasMaquinas
   /** Admin ou gerente: as ações de produção do sheet. */
@@ -176,6 +181,8 @@ type Props = {
   filtroDaUrl?: string
 }
 
+const TABELAS_DO_KANBAN = ['ordens_producao', 'maquinas'] as const
+
 // Status que a OP pode ter no board — os das colunas.
 type Status = (typeof statusValues)[number]
 
@@ -183,7 +190,6 @@ export function KanbanBoard({
   ordens,
   podeMover,
   currentUserId,
-  produtos,
   podeCriar,
   ocupacao,
   gestor,
@@ -225,38 +231,40 @@ export function KanbanBoard({
       ),
   )
 
-  // Realtime: outros usuários alterando OPs.
-  useEffect(() => {
-    const supabase = createBrowserSupabase()
-    const channel = supabase
-      .channel('kanban-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'ordens_producao',
-        },
-        () => {
-          // Mais simples: pede ao servidor pra re-renderizar a página.
-          // O useEffect acima sincroniza o estado local depois.
-          router.refresh()
-        },
-      )
-      // A OCUPAÇÃO DO CABEÇALHO também depende da máquina: pôr uma em
-      // manutenção muda o "de 22" sem mexer em OP nenhuma. `maquinas` já está
-      // na publicação (05_realtime.sql).
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'maquinas' },
-        () => router.refresh(),
-      )
-      .subscribe()
+  // Realtime: outros usuários alterando OPs. Pede ao servidor pra
+  // re-renderizar a página; o `useOptimistic` acima segue as `ordens` novas
+  // depois. Agrupado, espalhado e sem eco — ver use-recarga-ao-vivo.ts.
+  //
+  // A OCUPAÇÃO DO CABEÇALHO também depende da máquina: pôr uma em manutenção
+  // muda o "de 22" sem mexer em OP nenhuma. `maquinas` já está na publicação
+  // (05_realtime.sql).
+  useRecargaAoVivo({
+    canal: 'kanban-realtime',
+    tabelas: TABELAS_DO_KANBAN,
+    decidir: () => 'tela',
+    executar: () => router.refresh(),
+  })
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [router])
+  // O CATÁLOGO DA NOVA OP SÓ CARREGA QUANDO O DIÁLOGO ABRE. Vinha na página,
+  // e a página recarrega a cada mudança de OP da fábrica: eram as variações
+  // de todos os produtos buscadas de novo a cada evento, pra um botão que
+  // quase nunca é tocado. Carregado uma vez, fica pra próxima abertura.
+  const [produtos, setProdutos] = useState<
+    ProdutoComVariacoesParaForm[] | null
+  >(null)
+
+  function abrirNovaOp() {
+    setNovaOpOpen(true)
+    if (produtos !== null) return
+    // Só com a variação ATIVA: o diálogo de criar não pode oferecer uma
+    // variação apagada.
+    listarProdutosParaOrdem({ somenteAtivas: true })
+      .then(setProdutos)
+      .catch(() => {
+        toast.error('Não deu pra carregar os produtos. Tente de novo.')
+        setNovaOpOpen(false)
+      })
+  }
 
   const sensors = useSensors(
     // Mouse (desktop): arrasta após pequeno movimento; clicks não viram drag.
@@ -334,6 +342,7 @@ export function KanbanBoard({
     startTransition(async () => {
       // Optimistic update — válido durante toda a transição.
       setOptimisticItems({ id: ordemId, status: para })
+      marcarEco(ordemId)
 
       const result = await mudarStatusOrdemAction(ordemId, { status: para })
       if (!result.success) {
@@ -374,6 +383,7 @@ export function KanbanBoard({
         return
       }
       startTransition(async () => {
+        marcarEco(ordemId)
         const r = await iniciarProducaoAction(ordemId, maquinaId)
         if (!r.success) {
           toast.error(r.error)
@@ -393,6 +403,7 @@ export function KanbanBoard({
 
   function desfazerConclusao(ordemId: string) {
     startTransition(async () => {
+      marcarEco(ordemId)
       const r = await desfazerConclusaoAction(ordemId)
       if (!r.success) {
         toast.error(r.error)
@@ -494,10 +505,11 @@ export function KanbanBoard({
           <Button
             size="sm"
             className="ml-auto"
-            onClick={() => setNovaOpOpen(true)}
+            onClick={abrirNovaOp}
+            disabled={novaOpOpen && produtos === null}
           >
             <Plus />
-            Nova OP
+            {novaOpOpen && produtos === null ? 'Carregando…' : 'Nova OP'}
           </Button>
         )}
       </div>
@@ -542,7 +554,7 @@ export function KanbanBoard({
         podeEditarOrdens={podeCriar}
       />
 
-      {novaOpOpen && (
+      {novaOpOpen && produtos !== null && (
         <NovaOpDialog produtos={produtos} onClose={() => setNovaOpOpen(false)} />
       )}
 

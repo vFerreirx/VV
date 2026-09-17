@@ -42,18 +42,21 @@ export default async function FabricaPage({
   // do operador nessa área é `nenhum` (src/lib/auth/permissoes.ts) — e
   // `trocarStatusAction` continua aceitando o operador da estação, porque é
   // a mesma action que o tablet chama.
-  const maquinas = verMaquinas ? await listarMaquinas() : []
-
-  let estacoes: EstacaoComDetalhes[] = []
-  let operadores: OperadorOpcao[] = []
-  let maquinasOpcoes: MaquinaOpcao[] = []
-  if (verEstacoes) {
-    ;[estacoes, operadores, maquinasOpcoes] = await Promise.all([
-      listarEstacoes(),
-      listarOperadores(),
-      listarMaquinasOpcoes(),
-    ])
-  }
+  //
+  // TUDO EM PARALELO: a tela recarrega a cada mudança de OP ou de máquina, e
+  // as máquinas em série antes das estações seguravam a conexão pela soma.
+  const vazio = Promise.resolve([])
+  const [maquinas, estacoes, operadores, maquinasOpcoes]: [
+    Awaited<ReturnType<typeof listarMaquinas>>,
+    EstacaoComDetalhes[],
+    OperadorOpcao[],
+    MaquinaOpcao[],
+  ] = await Promise.all([
+    verMaquinas ? listarMaquinas() : vazio,
+    verEstacoes ? listarEstacoes() : vazio,
+    verEstacoes ? listarOperadores() : vazio,
+    verEstacoes ? listarMaquinasOpcoes() : vazio,
+  ])
 
   // O PASSO 2, só pra quem monta as estações. As listas já vieram acima; o
   // PIN chega como booleano (`temPin`), nunca o hash.
