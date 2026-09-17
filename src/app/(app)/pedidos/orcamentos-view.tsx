@@ -4,18 +4,14 @@ import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
   ChevronDown,
-  ClipboardList,
-  Copy,
-  FileSignature,
   FileText,
   PackageX,
-  Pencil,
   Plus,
-  Printer,
-  Trash2,
+  Search,
   X,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Fragment, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
@@ -24,7 +20,6 @@ import {
   criarOrcamentoAction,
   excluirOrcamentoAction,
   mudarStatusOrcamentoAction,
-  obterOrcamento,
   type OrcamentoComItens,
   type OrcamentoListItem,
 } from './actions'
@@ -88,7 +83,13 @@ import {
   tamanhoDoKit,
   type EscolhasDeTamanho,
 } from '@/lib/kit-tamanhos'
-import { ehExcecao, ROTULO_STATUS, statusAlcancaveis, type StatusPedido } from '@/lib/pedido-status'
+import {
+  ehExcecao,
+  ROTULO_STATUS,
+  STATUS_ABERTOS,
+  statusAlcancaveis,
+  type StatusPedido,
+} from '@/lib/pedido-status'
 import { centavosParaMoeda, precoDeKit, precoDeProduto, type TabelaDePrecos } from '@/lib/preco'
 import {
   DESCONTO_PIX_PADRAO,
@@ -107,12 +108,22 @@ type Props = {
   precos: Record<string, string>
   // Preço de TABELA do catálogo (produto/kit × tamanho). Primeira escolha.
   tabela: TabelaDePrecos
-  // Clientes de orçamentos anteriores (autocomplete).
-  clientes: string[]
-  // Compradores cadastrados (vínculo opcional). Vem vazio quando o cargo não
-  // tem acesso à área de compradores.
+  // Compradores cadastrados. Vem vazio quando o cargo não tem acesso à área
+  // de clientes — aí o diálogo só oferece "Cliente avulso".
   compradores: CompradorOpcao[]
   podeEditar: boolean
+  /**
+   * "Fazer pedido pra este cliente" (ficha do cliente, na outra aba): abre o
+   * diálogo com o cadastro já escolhido. Cada clique manda um objeto NOVO, e
+   * é a troca de objeto que abre — o mesmo cliente duas vezes abre duas.
+   */
+  novoPedidoPara?: CompradorOpcao | null
+  /**
+   * O diálogo aberto por `novoPedidoPara` fechou. Quem manda o pedido limpa
+   * aqui — as abas remontam o conteúdo, e sem limpar ele reabriria a cada
+   * volta pra aba Pedidos.
+   */
+  onNovoPedidoFechado?: () => void
 }
 
 // Token interno pra tamanho/cor nulos.
@@ -126,13 +137,33 @@ const distintos = <T,>(arr: T[]): T[] => [...new Set(arr)]
 // outro componente renderiza — o React avisava
 // "Cannot update a component (Router) while rendering a different component".
 // De quebra, sumiu o formulário vazio que piscava até os dados chegarem.
-type Edicao =
-  | { modo: 'novo' }
+export type Edicao =
+  | { modo: 'novo'; comprador?: CompradorOpcao | null }
   | { modo: 'editar' | 'duplicar'; id: string; dados: OrcamentoComItens }
 
 function reais(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
+
+// OS CHIPS DA LISTA. Os status de cada um saem de src/lib/pedido-status.ts,
+// nunca redigitados aqui.
+type Chip = 'abertos' | 'finalizados' | 'cancelados' | 'todos'
+const CHIPS: { valor: Chip; rotulo: string }[] = [
+  { valor: 'abertos', rotulo: 'Abertos' },
+  { valor: 'finalizados', rotulo: 'Finalizados' },
+  { valor: 'cancelados', rotulo: 'Cancelados' },
+  { valor: 'todos', rotulo: 'Todos' },
+]
+
+function noChip(status: StatusPedido, chip: Chip): boolean {
+  if (chip === 'todos') return true
+  if (chip === 'abertos') return STATUS_ABERTOS.includes(status)
+  if (chip === 'finalizados') return status === 'finalizado'
+  return status === 'cancelado'
+}
+
+const semAcento = (t: string) =>
+  t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('pt-BR')
 
 export function OrcamentosView({
   orcamentos,
@@ -140,35 +171,51 @@ export function OrcamentosView({
   kits,
   precos,
   tabela,
-  clientes,
   compradores,
   podeEditar,
+  novoPedidoPara = null,
+  onNovoPedidoFechado,
 }: Props) {
+  const router = useRouter()
   const [editando, setEditando] = useState<Edicao | null>(null)
-  const [excluindo, setExcluindo] = useState<OrcamentoListItem | null>(null)
-  const [mesSel, setMesSel] = useState('todos')
-  // Id em carregamento, pra desabilitar só a linha clicada.
-  const [abrindo, setAbrindo] = useState<string | null>(null)
+  // A TELA ABRE EM "ABERTOS": é o que ainda pede trabalho. Finalizado e
+  // cancelado estão a um toque.
+  const [chip, setChip] = useState<Chip>('abertos')
+  const [busca, setBusca] = useState('')
 
-  // Busca o pedido e SÓ ENTÃO abre o diálogo.
-  function abrirEdicao(modo: 'editar' | 'duplicar', id: string) {
-    setAbrindo(id)
-    void obterOrcamento(id)
-      .then((dados) => {
-        if (!dados) {
-          toast.error('Pedido não encontrado')
-          return
-        }
-        setEditando({ modo, id, dados })
-      })
-      .finally(() => setAbrindo(null))
+  // A FICHA DO CLIENTE PEDIU UM PEDIDO NOVO: abre o diálogo com o cadastro
+  // escolhido. Ajustado na renderização (e não num efeito), comparando com o
+  // último pedido atendido — o padrão "ajustar estado quando a prop muda" da
+  // documentação do React. Só mexe em estado DESTE componente.
+  const [pedidoAtendido, setPedidoAtendido] = useState<CompradorOpcao | null>(null)
+  if (novoPedidoPara && novoPedidoPara !== pedidoAtendido) {
+    setPedidoAtendido(novoPedidoPara)
+    setEditando({ modo: 'novo', comprador: novoPedidoPara })
   }
 
-  // Agrupa por mês/ano de criação, mantendo a ordem de chegada (a lista já
-  // vem por número desc, ou seja, mês mais recente primeiro).
-  const gruposMes = useMemo(() => {
+  const visiveis = useMemo(() => {
+    const q = semAcento(busca.trim()).replace(/^#/, '')
+    return orcamentos.filter((o) => {
+      if (!noChip(o.status, chip)) return false
+      if (!q) return true
+      // Número com ou sem os zeros da formatação ("#0042" ou "42").
+      const numero = formatarNumeroPedido(o.numero)
+      return (
+        numero.includes(q) ||
+        String(o.numero).includes(q) ||
+        semAcento(o.cliente).includes(q)
+      )
+    })
+  }, [orcamentos, chip, busca])
+
+  // O AGRUPAMENTO POR MÊS só existe onde a lista atravessa meses de verdade:
+  // Finalizados e Todos. Nos Abertos e Cancelados a lista é curta, e o
+  // cabeçalho de mês só empurraria as linhas pra baixo.
+  const agrupar = chip === 'finalizados' || chip === 'todos'
+  const grupos = useMemo(() => {
+    if (!agrupar) return [{ key: 'tudo', label: null as string | null, itens: visiveis }]
     const mapa = new Map<string, { label: string; itens: OrcamentoListItem[] }>()
-    for (const o of orcamentos) {
+    for (const o of visiveis) {
       const d = new Date(o.createdAt)
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
       if (!mapa.has(key)) {
@@ -180,28 +227,15 @@ export function OrcamentosView({
       }
       mapa.get(key)!.itens.push(o)
     }
-    return mapa
-  }, [orcamentos])
-
-  const meses = useMemo(
-    () => [...gruposMes.entries()].map(([key, g]) => ({ key, label: g.label })),
-    [gruposMes],
-  )
-
-  const gruposFiltrados = useMemo(() => {
-    const entradas = [...gruposMes.entries()]
-    return mesSel === 'todos' ? entradas : entradas.filter(([key]) => key === mesSel)
-  }, [gruposMes, mesSel])
+    return [...mapa.entries()].map(([key, g]) => ({ key, ...g }))
+  }, [visiveis, agrupar])
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Pedidos</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Monte o pedido pro cliente e imprima/envie em PDF.
-          </p>
-        </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-muted-foreground text-sm">
+          Monte o pedido pro cliente e imprima/envie em PDF.
+        </p>
         {podeEditar && (
           <Button onClick={() => setEditando({ modo: 'novo' })}>
             <Plus />
@@ -218,20 +252,35 @@ export function OrcamentosView({
         />
       ) : (
         <>
-          <div className="flex justify-end">
-            <Select value={mesSel} onValueChange={(v) => setMesSel(v ?? 'todos')}>
-              <SelectTrigger size="sm" className="w-48">
-                <SelectValue placeholder="Mês" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos os meses</SelectItem>
-                {meses.map((m) => (
-                  <SelectItem key={m.key} value={m.key}>
-                    {m.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Número ou cliente"
+                className="pl-8"
+                aria-label="Buscar pedido"
+              />
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {CHIPS.map((c) => (
+                <button
+                  key={c.valor}
+                  type="button"
+                  onClick={() => setChip(c.valor)}
+                  aria-pressed={chip === c.valor}
+                  className={cn(
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                    chip === c.valor
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  {c.rotulo}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="rounded-lg border">
@@ -244,130 +293,88 @@ export function OrcamentosView({
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Itens</TableHead>
                   <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="w-36" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {gruposFiltrados.map(([key, grupo]) => (
-                  <Fragment key={key}>
-                    <TableRow className="bg-muted/40 hover:bg-muted/40">
-                      <TableCell
-                        colSpan={7}
-                        className="text-muted-foreground py-2 text-xs font-semibold tracking-wide uppercase"
-                      >
-                        {grupo.label}
-                      </TableCell>
-                    </TableRow>
-                    {grupo.itens.map((o) => (
-                      <TableRow key={o.id}>
-                        <TableCell className="font-mono text-xs">
-                          #{formatarNumeroPedido(o.numero)}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          <Link href={`/pedidos/${o.id}`} className="hover:underline">
+                {visiveis.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="text-muted-foreground py-8 text-center text-sm"
+                    >
+                      {busca.trim()
+                        ? `Nenhum pedido encontrado para “${busca}”.`
+                        : 'Nenhum pedido neste filtro.'}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  grupos.map((grupo) => (
+                    <Fragment key={grupo.key}>
+                      {grupo.label && (
+                        <TableRow className="bg-muted/40 hover:bg-muted/40">
+                          <TableCell
+                            colSpan={6}
+                            className="text-muted-foreground py-2 text-xs font-semibold tracking-wide uppercase"
+                          >
+                            {grupo.label}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {grupo.itens.map((o) => (
+                        // A LINHA INTEIRA ABRE O PEDIDO. Os seis ícones saíram:
+                        // documentos, duplicar, editar e excluir moram no topo
+                        // da página do pedido. O status e o aviso de faltantes
+                        // continuam clicáveis aqui, sem abrir o pedido.
+                        <TableRow
+                          key={o.id}
+                          onClick={() => router.push(`/pedidos/${o.id}`)}
+                          className="cursor-pointer"
+                        >
+                          <TableCell className="font-mono text-xs">
+                            #{formatarNumeroPedido(o.numero)}
+                          </TableCell>
+                          <TableCell className="font-medium">
                             {o.cliente}
-                          </Link>
-                          {/* Indicador DISCRETO de item faltante. Sem ele,
-                              descobrir o que está esperando produção exige
-                              abrir pedido por pedido. Só o aviso: filtrar por
-                              isso ficou de fora desta rodada. */}
-                          {o.faltantes > 0 && (
-                            <Link
-                              href={`/pedidos/${o.id}/faltantes`}
-                              title={`${o.faltantes} peça(s) faltando — ver a via de faltantes`}
-                              className="ml-2 inline-flex translate-y-0.5 items-center gap-1 align-baseline text-xs font-normal text-amber-700 hover:underline dark:text-amber-400"
-                            >
-                              <PackageX className="size-3.5" />
-                              {o.faltantes}
-                            </Link>
-                          )}
-                        </TableCell>
-                        <TableCell className="tabular-nums">
-                          {format(new Date(o.createdAt), 'dd/MM/yyyy', {
-                            locale: ptBR,
-                          })}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge orcamento={o} podeEditar={podeEditar} />
-                        </TableCell>
-                        <TableCell className="text-right tabular-nums">{o.itensCount}</TableCell>
-                        {/* COM frete, e sem coluna separada pra ele — foi
-                            decidido assim. `o.total` (mercadoria) continua
-                            existindo pra quem precisa dele.
-
-                            E SEM O DESCONTO, também de propósito: esta coluna
-                            é `totalComFrete` e não `o.totalFinal`. Não é bug
-                            — o documento do pedido é que mostra o que o
-                            cliente paga. */}
-                        <TableCell className="text-right font-medium tabular-nums">
-                          {reais(o.totalComFrete)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-1">
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              render={<Link href={`/pedidos/${o.id}`} />}
-                              aria-label="Abrir / imprimir"
-                              title="Abrir / imprimir"
-                            >
-                              <Printer />
-                            </Button>
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              render={<Link href={`/pedidos/${o.id}/separacao`} />}
-                              aria-label="Via de separação"
-                              title="Via de separação (sem preço)"
-                            >
-                              <ClipboardList />
-                            </Button>
-                            <Button
-                              size="icon-sm"
-                              variant="ghost"
-                              render={<Link href={`/pedidos/${o.id}/romaneio`} />}
-                              aria-label="Romaneio"
-                              title="Romaneio (com valores e assinatura)"
-                            >
-                              <FileSignature />
-                            </Button>
-                            {podeEditar && (
-                              <>
-                                <Button
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  onClick={() => abrirEdicao('duplicar', o.id)}
-                                  disabled={abrindo === o.id}
-                                  aria-label="Duplicar"
-                                  title="Duplicar (novo pedido com os mesmos itens)"
-                                >
-                                  <Copy />
-                                </Button>
-                                <Button
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  onClick={() => abrirEdicao('editar', o.id)}
-                                  disabled={abrindo === o.id}
-                                  aria-label="Editar"
-                                >
-                                  <Pencil />
-                                </Button>
-                                <Button
-                                  size="icon-sm"
-                                  variant="ghost"
-                                  onClick={() => setExcluindo(o)}
-                                  aria-label="Excluir"
-                                >
-                                  <Trash2 className="text-destructive" />
-                                </Button>
-                              </>
+                            {/* Indicador DISCRETO de item faltante. Sem ele,
+                                descobrir o que está esperando produção exige
+                                abrir pedido por pedido. */}
+                            {o.faltantes > 0 && (
+                              <Link
+                                href={`/pedidos/${o.id}/faltantes`}
+                                onClick={(e) => e.stopPropagation()}
+                                title={`${o.faltantes} peça(s) faltando — ver a via de faltantes`}
+                                className="ml-2 inline-flex translate-y-0.5 items-center gap-1 align-baseline text-xs font-normal text-amber-700 hover:underline dark:text-amber-400"
+                              >
+                                <PackageX className="size-3.5" />
+                                {o.faltantes}
+                              </Link>
                             )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </Fragment>
-                ))}
+                          </TableCell>
+                          <TableCell className="tabular-nums">
+                            {format(new Date(o.createdAt), 'dd/MM/yyyy', {
+                              locale: ptBR,
+                            })}
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <StatusBadge orcamento={o} podeEditar={podeEditar} />
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">{o.itensCount}</TableCell>
+                          {/* COM frete, e sem coluna separada pra ele — foi
+                              decidido assim. `o.total` (mercadoria) continua
+                              existindo pra quem precisa dele.
+
+                              E SEM O DESCONTO, também de propósito: esta
+                              coluna é `totalComFrete` e não `o.totalFinal`.
+                              Não é bug — o documento do pedido é que mostra o
+                              que o cliente paga. */}
+                          <TableCell className="text-right font-medium tabular-nums">
+                            {reais(o.totalComFrete)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </Fragment>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
@@ -381,12 +388,15 @@ export function OrcamentosView({
           kits={kits}
           precos={precos}
           tabela={tabela}
-          clientes={clientes}
           compradores={compradores}
-          onClose={() => setEditando(null)}
+          onClose={() => {
+            if (editando.modo === 'novo' && editando.comprador) {
+              onNovoPedidoFechado?.()
+            }
+            setEditando(null)
+          }}
         />
       )}
-      <ExcluirDialog orcamento={excluindo} onClose={() => setExcluindo(null)} />
     </div>
   )
 }
@@ -433,24 +443,25 @@ const linhaVazia = (): LinhaItem => ({
   preco: '',
 })
 
-function OrcamentoDialog({
+export function OrcamentoDialog({
   edicao,
   produtos,
   kits,
   precos,
   tabela,
-  clientes,
   compradores,
   onClose,
+  onSalvo,
 }: {
   edicao: Edicao
   produtos: ProdutoComVariacoesParaForm[]
   kits: KitComItens[]
   precos: Record<string, string>
   tabela: TabelaDePrecos
-  clientes: string[]
   compradores: CompradorOpcao[]
   onClose: () => void
+  /** Depois de salvar, com o id do pedido (o novo, quando cria ou duplica). */
+  onSalvo?: (id: string) => void
 }) {
   // 'duplicar' carrega os dados mas salva como orçamento NOVO.
   const isEdit = edicao.modo === 'editar'
@@ -458,10 +469,36 @@ function OrcamentoDialog({
   // antes de abrir. Aqui é só o estado inicial dos campos.
   const dados = edicao.modo === 'novo' ? null : edicao.dados
   const [isPending, startTransition] = useTransition()
-  const [cliente, setCliente] = useState(dados?.cliente ?? '')
-  // Vínculo opcional com o cadastro. Digitar um nome livre no campo de texto
-  // limpa o vínculo — o `cliente` continua sendo o que vai pro documento.
-  const [compradorId, setCompradorId] = useState<string | null>(dados?.compradorId ?? null)
+  const compradorInicial = edicao.modo === 'novo' ? (edicao.comprador ?? null) : null
+  const [cliente, setCliente] = useState(dados?.cliente ?? compradorInicial?.nome ?? '')
+  // O vínculo com o cadastro. `cliente` continua sendo o nome que vai pro
+  // documento.
+  const [compradorId, setCompradorId] = useState<string | null>(
+    dados?.compradorId ?? compradorInicial?.id ?? null,
+  )
+  // CADASTRO É O PADRÃO de pedido novo pra quem tem a lista de clientes; o
+  // pedido já salvo abre no modo em que foi feito.
+  const [modoCliente, setModoCliente] = useState<'cadastro' | 'avulso'>(() => {
+    if (compradores.length === 0) return 'avulso'
+    if (dados) return dados.compradorId ? 'cadastro' : 'avulso'
+    return 'cadastro'
+  })
+  const [buscaCliente, setBuscaCliente] = useState('')
+  const clientesEncontrados = useMemo(() => {
+    const q = semAcento(buscaCliente.trim())
+    const lista = q
+      ? compradores.filter((c) => semAcento(c.nome).includes(q))
+      : compradores
+    return lista.slice(0, 30)
+  }, [compradores, buscaCliente])
+
+  function trocarModoCliente(novo: 'cadastro' | 'avulso') {
+    if (novo === modoCliente) return
+    setModoCliente(novo)
+    setCompradorId(null)
+    // Do avulso pro cadastro, o nome digitado não vale: vai ser o do cadastro.
+    if (novo === 'cadastro') setCliente('')
+  }
   const [observacao, setObservacao] = useState(dados?.observacao ?? '')
   // FRETE DIGITADO: campo comum, editável sempre. Cotar pelo Melhor Envio
   // (na tela do pedido) é ATALHO — a cotação escolhida preenche esta mesma
@@ -566,6 +603,10 @@ function OrcamentoDialog({
       toast.error('Adicione ao menos um item')
       return
     }
+    if (modoCliente === 'cadastro' && !compradorId) {
+      toast.error('Escolha o cliente do cadastro, ou use “Cliente avulso”')
+      return
+    }
 
     startTransition(async () => {
       const payload = {
@@ -588,7 +629,9 @@ function OrcamentoDialog({
         return
       }
       toast.success(result.message ?? 'Salvo')
+      const id = isEdit ? edicao.id : (result.data?.id ?? null)
       onClose()
+      if (id) onSalvo?.(id)
     })
   }
 
@@ -618,90 +661,127 @@ function OrcamentoDialog({
         </DialogHeader>
 
         <div className="max-h-[68vh] space-y-4 overflow-y-auto p-6">
-          {/* Cliente do cadastro: opcional. Escolher preenche o nome abaixo e
-              grava o vínculo; digitar livre continua valendo.
+          {/* O CLIENTE DO PEDIDO. O caminho principal é o CADASTRO: é ele que
+              traz documento e endereço pro romaneio e junta os pedidos na
+              ficha do cliente. O nome livre com cadastro opcional fazia o
+              mesmo cliente virar três grafias.
 
-              OS DOIS RÓTULOS SÃO IRMÃOS E PRECISAM SE DIFERENCIAR: este aqui
-              ESCOLHE do cadastro (traz documento e endereço pro romaneio), e o
-              de baixo é o NOME QUE SAI NO DOCUMENTO. Chamar os dois de
-              "cliente" deixaria "Cliente cadastrado" logo acima de "Cliente",
-              que é justamente a confusão que se quer evitar. */}
-          {compradores.length > 0 && (
-            <div className="space-y-1.5">
-              <Label htmlFor="orc-comprador">
-                Cliente do cadastro{' '}
-                <span className="text-muted-foreground font-normal">(opcional)</span>
+              "Cliente avulso" continua existindo pra venda de balcão: só o
+              nome, sem criar cadastro. Quem não tem a área de clientes não
+              recebe a lista e só vê esse modo.
+
+              O nome gravado no pedido (`orcamentos.cliente`) é o que sai no
+              documento — no cadastro, é o nome de AGORA; editar o cadastro
+              depois não muda pedido antigo. */}
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label htmlFor="orc-cliente">
+                Cliente <span className="text-destructive">*</span>
               </Label>
-              <div className="flex gap-2">
-                <Select
-                  // `null` em vez de undefined: com undefined o Base UI trata
-                  // o Select como uncontrolled e não mostraria o comprador de
-                  // um orçamento carregado pra edição.
-                  value={compradorId}
-                  onValueChange={(v) => {
-                    if (!v) return
-                    const c = compradores.find((x) => x.id === v)
-                    if (!c) return
-                    setCompradorId(c.id)
-                    setCliente(c.nome)
-                  }}
-                  disabled={isPending}
-                >
-                  <SelectTrigger id="orc-comprador" className="w-full">
-                    <SelectValue placeholder="Escolher do cadastro…" />
-                  </SelectTrigger>
-                  <SelectContent className="w-auto max-w-[92vw] min-w-(--anchor-width)">
-                    {compradores.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.nome}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {compradorId && (
+              {compradores.length > 0 && (
+                <div className="bg-muted inline-flex rounded-md p-0.5 text-xs">
+                  {(
+                    [
+                      ['cadastro', 'Do cadastro'],
+                      ['avulso', 'Cliente avulso'],
+                    ] as const
+                  ).map(([valor, rotulo]) => (
+                    <button
+                      key={valor}
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => trocarModoCliente(valor)}
+                      aria-pressed={modoCliente === valor}
+                      className={cn(
+                        'rounded px-2 py-1 transition-colors',
+                        modoCliente === valor
+                          ? 'bg-background text-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground',
+                      )}
+                    >
+                      {rotulo}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {modoCliente === 'cadastro' ? (
+              compradorId ? (
+                <div className="bg-muted/40 flex items-center gap-2 rounded-lg border px-3 py-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                    {cliente}
+                  </span>
                   <Button
                     variant="ghost"
-                    size="icon"
-                    onClick={() => setCompradorId(null)}
+                    size="sm"
+                    onClick={() => {
+                      setCompradorId(null)
+                      setCliente('')
+                    }}
                     disabled={isPending}
-                    aria-label="Desvincular cliente do cadastro"
-                    title="Desvincular (mantém o nome digitado)"
                   >
-                    <X />
+                    Trocar
                   </Button>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-1.5">
-            <Label htmlFor="orc-cliente">Nome no pedido</Label>
-            <Input
-              id="orc-cliente"
-              value={cliente}
-              onChange={(e) => {
-                setCliente(e.target.value)
-                // Nome editado à mão desfaz o vínculo com o cadastro.
-                setCompradorId(null)
-              }}
-              disabled={isPending}
-              autoFocus
-              placeholder="Nome do cliente / empresa"
-              list="orc-clientes"
-            />
-            {/* Autocomplete com clientes de orçamentos anteriores */}
-            <datalist id="orc-clientes">
-              {clientes.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
-            {/* A segunda frase só faz sentido com o select acima na tela —
-                quem não tem acesso à área de clientes não o enxerga. */}
-            <p className="text-muted-foreground text-xs">
-              É esse nome que sai no documento.
-              {compradores.length > 0 &&
-                ' Escolher do cadastro preenche este campo; editar à mão desfaz o vínculo.'}
-            </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Input
+                    id="orc-cliente"
+                    value={buscaCliente}
+                    onChange={(e) => setBuscaCliente(e.target.value)}
+                    disabled={isPending}
+                    autoFocus
+                    autoComplete="off"
+                    placeholder="Buscar cliente do cadastro"
+                  />
+                  {clientesEncontrados.length > 0 ? (
+                    <ul className="max-h-48 divide-y overflow-y-auto rounded-lg border">
+                      {clientesEncontrados.map((c) => (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            disabled={isPending}
+                            onClick={() => {
+                              setCompradorId(c.id)
+                              setCliente(c.nome)
+                              setBuscaCliente('')
+                            }}
+                            className="hover:bg-accent/50 w-full px-3 py-2 text-left text-sm"
+                          >
+                            {c.nome}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-muted-foreground text-xs">
+                      Nenhum cliente encontrado. Cadastre em Clientes, ou use
+                      “Cliente avulso”.
+                    </p>
+                  )}
+                </div>
+              )
+            ) : (
+              <>
+                <Input
+                  id="orc-cliente"
+                  value={cliente}
+                  onChange={(e) => {
+                    setCliente(e.target.value)
+                    // Nome digitado à mão não é vínculo com cadastro nenhum.
+                    setCompradorId(null)
+                  }}
+                  disabled={isPending}
+                  autoFocus
+                  autoComplete="off"
+                  placeholder="Nome do cliente / empresa"
+                />
+                <p className="text-muted-foreground text-xs">
+                  É esse nome que sai no documento. Não cria cadastro.
+                </p>
+              </>
+            )}
           </div>
 
           {/* Builder: produto/kit + tamanho + VÁRIAS cores de uma vez */}
@@ -1437,12 +1517,14 @@ function CatalogoBuilder({
 // Dialog: excluir
 // -----------------------------------------------------------------
 
-function ExcluirDialog({
+export function ExcluirDialog({
   orcamento,
   onClose,
+  onExcluido,
 }: {
-  orcamento: OrcamentoListItem | null
+  orcamento: { id: string; numero: number; cliente: string } | null
   onClose: () => void
+  onExcluido?: () => void
 }) {
   const [isPending, startTransition] = useTransition()
 
@@ -1456,6 +1538,7 @@ function ExcluirDialog({
       }
       toast.success(result.message ?? 'Excluído')
       onClose()
+      onExcluido?.()
     })
   }
 

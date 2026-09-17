@@ -29,6 +29,13 @@ export const ordensProducao = pgTable(
     // Remessa Full a que a OP pertence (opcional).
     remessaFullId: uuid().references(() => remessasFull.id),
 
+    // O PEDIDO cujo faltante esta OP produz, e a chave da linha de faltante
+    // (produto|tamanho|cor, src/lib/separacao.ts). Nulas pra OP sem pedido.
+    // A FK e o CHECK moram em supabase/sql/60_op_do_pedido.sql; aqui fica sem
+    // `.references` porque o schema de orçamentos já depende deste arquivo.
+    orcamentoId: uuid(),
+    orcamentoFaltanteChave: text(),
+
     canalDestino: ordemCanalEnum().notNull().default('estoque'),
     prioridade: ordemPrioridadeEnum().notNull().default('normal'),
     status: ordemStatusEnum().notNull().default('aguardando_materia_prima'),

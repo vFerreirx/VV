@@ -2,7 +2,18 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 
 import { obterEmpresaPrincipal } from '../../empresas/actions'
-import { obterCatalogoDePesos, obterOrcamento } from '../actions'
+import { listarCompradoresParaSelecao } from '../../clientes/actions'
+import { listarKitsComItens } from '../../kits/actions'
+import { listarProdutosParaOrdem } from '../../ordens/actions'
+import {
+  listarOpsDoPedido,
+  listarPrecosRecentes,
+  obterCatalogoDePesos,
+  obterCatalogoDePrecos,
+  obterOrcamento,
+} from '../actions'
+import { AcoesDoPedido } from './acoes-do-pedido'
+import { OpsDoPedido } from './ops-do-pedido'
 import { listarFaltantes } from '../faltantes-actions'
 import { obterSituacaoFrete } from '../frete-actions'
 import {
@@ -28,7 +39,7 @@ export default async function OrcamentoPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const user = await requireArea('vendas')
+  const user = await requireArea('pedidos')
   const { id } = await params
 
   // A empresa é carregada AQUI, no server component — o componente de
@@ -37,6 +48,13 @@ export default async function OrcamentoPage({
   // `obterOrcamento`: aquela serve também o romaneio e a via de separação,
   // que não têm o que fazer com vencimento. Mesmo raciocínio de
   // `listarFaltantes`, logo ao lado.
+  const [nivelPedidos, nivelCompradores] = await Promise.all([
+    nivelDaAreaPara(user.role, 'pedidos'),
+    nivelDaAreaPara(user.role, 'compradores'),
+  ])
+  const podeEditar = podeEscrever(nivelPedidos)
+  const verClientes = nivelCompradores !== 'nenhum'
+
   const [
     orcamento,
     empresa,
@@ -45,6 +63,9 @@ export default async function OrcamentoPage({
     faltantes,
     parcelas,
     sugestaoVencimento,
+    ops,
+    // O que o diálogo de Duplicar/Editar precisa — só pra quem pode editar.
+    paraEditar,
   ] = await Promise.all([
     obterOrcamento(id),
     obterEmpresaPrincipal(),
@@ -53,6 +74,16 @@ export default async function OrcamentoPage({
     listarFaltantes(id),
     listarParcelas(id),
     sugestaoDePrimeiroVencimento(),
+    listarOpsDoPedido(id),
+    podeEditar
+      ? Promise.all([
+          listarProdutosParaOrdem(),
+          listarKitsComItens(),
+          listarPrecosRecentes(),
+          obterCatalogoDePrecos(),
+          verClientes ? listarCompradoresParaSelecao() : Promise.resolve([]),
+        ])
+      : null,
   ])
   if (!orcamento) notFound()
 
@@ -60,7 +91,6 @@ export default async function OrcamentoPage({
   // não é snapshot como o preço. Ver o comentário em src/lib/peso.ts.
   const pesos = calcularPesos(orcamento.itens, catalogo)
 
-  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'vendas'))
 
   // CEP do comprador vinculado, quando há — é o destino padrão da cotação.
   let cepDoComprador: string | null = null
@@ -93,7 +123,29 @@ export default async function OrcamentoPage({
         empresa={empresa}
         pesos={pesos}
         faltantes={faltantes.reduce((s, f) => s + f.quantidade, 0)}
+        clienteHref={
+          orcamento.compradorId && verClientes
+            ? `/pedidos?tab=clientes&cliente=${orcamento.compradorId}`
+            : null
+        }
+        acoes={
+          paraEditar && (
+            <AcoesDoPedido
+              pedido={{
+                id: orcamento.id,
+                numero: orcamento.numero,
+                cliente: orcamento.cliente,
+              }}
+              produtos={paraEditar[0]}
+              kits={paraEditar[1]}
+              precos={paraEditar[2]}
+              tabela={paraEditar[3]}
+              compradores={paraEditar[4]}
+            />
+          )
+        }
       />
+      <OpsDoPedido ops={ops} />
       {/* Entre o documento e o frete: é o que foi COMBINADO com o cliente
           (forma e desconto), enquanto o painel abaixo cota o custo do envio.
           O desconto sai daqui e não encosta no frete. */}

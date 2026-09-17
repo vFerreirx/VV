@@ -3,7 +3,6 @@
 // item segue o mapa de permissões (áreas bloqueadas vêm do servidor).
 
 import {
-  BookUser,
   Boxes,
   Building2,
   CalendarDays,
@@ -103,14 +102,9 @@ export const NAV_GROUPS: NavGroup[] = [
         href: '/pedidos',
         label: 'Pedidos',
         icon: FileText,
-        area: 'vendas',
-      },
-      {
-        href: '/clientes',
-        label: 'Clientes',
-        icon: BookUser,
-        // A chave da área continua 'compradores' (ver permissoes.ts).
-        area: 'compradores',
+        // A tela tem duas abas — Pedidos e Clientes —, e cada uma segue a
+        // própria área. O item aparece pra quem tem qualquer uma das duas.
+        areas: ['pedidos', 'compradores'],
       },
       {
         href: '/contas-marketplace',

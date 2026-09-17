@@ -47,12 +47,21 @@ export function OrcamentoDoc({
   empresa,
   pesos,
   faltantes,
+  acoes,
+  clienteHref,
 }: {
   orcamento: OrcamentoComItens
   empresa: EmpresaDoDocumento | null
   pesos: ResumoPeso
   /** Peças já marcadas como faltantes — só pro contador do botão. */
   faltantes: number
+  /** Duplicar, Editar e Excluir — só pra quem tem escrita em Pedidos. */
+  acoes?: React.ReactNode
+  /**
+   * A ficha do cliente, quando o pedido tem vínculo com o cadastro e a
+   * pessoa tem a área de clientes. Na impressão o nome sai como texto.
+   */
+  clienteHref?: string | null
 }) {
   const aviso = avisoSemPeso(pesos.itensSemPeso)
   const comFrete = temFrete(orcamento.freteValor)
@@ -81,7 +90,8 @@ export function OrcamentoDoc({
         >
           <ArrowLeft />
         </Button>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          {acoes}
           <Button
             variant="outline"
             render={<Link href={`/pedidos/${orcamento.id}/separacao`} />}
@@ -151,7 +161,18 @@ export function OrcamentoDoc({
         <div className="text-muted-foreground text-xs tracking-wide uppercase">
           Cliente
         </div>
-        <div className="mt-0.5 text-base font-medium">{orcamento.cliente}</div>
+        <div className="mt-0.5 text-base font-medium">
+          {clienteHref ? (
+            <Link
+              href={clienteHref}
+              className="underline-offset-2 hover:underline print:no-underline"
+            >
+              {orcamento.cliente}
+            </Link>
+          ) : (
+            orcamento.cliente
+          )}
+        </div>
       </div>
 
       {/* Itens — descrição QUEBRA LINHA (nada de cortar no PDF) */}

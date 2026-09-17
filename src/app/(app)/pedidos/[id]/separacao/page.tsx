@@ -16,7 +16,7 @@ export default async function SeparacaoPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const user = await requireArea('vendas')
+  const user = await requireArea('pedidos')
   const { id } = await params
 
   // A empresa e o catálogo são carregados AQUI, no server component — o
@@ -30,9 +30,9 @@ export default async function SeparacaoPage({
   ])
   if (!orcamento) notFound()
 
-  // Marcar faltante é ESCRITA na área de vendas, igual ao resto do pedido:
+  // Marcar faltante é ESCRITA na área de pedidos, igual ao resto do pedido:
   // quem só tem "ver" enxerga a via e não os campos.
-  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'vendas'))
+  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'pedidos'))
 
   return (
     <SeparacaoDoc

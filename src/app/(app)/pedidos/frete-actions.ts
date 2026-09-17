@@ -43,7 +43,7 @@ export type SituacaoFrete = {
 }
 
 export async function obterSituacaoFrete(): Promise<SituacaoFrete> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
   const impedimentos: string[] = []
 
   const config = configMelhorEnvio()
@@ -115,7 +115,7 @@ export async function cotarFreteAction(
   orcamentoId: string,
   cepDigitado: string | null,
 ): Promise<ActionResult<CotacaoFeita>> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
 
   const config = configMelhorEnvio()
   if (!config) {
@@ -244,7 +244,7 @@ export async function definirFreteManualAction(
   orcamentoId: string,
   valor: string | null,
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
 
   const [atual] = await db
     .select({ id: orcamentos.id })
@@ -300,7 +300,7 @@ export async function salvarFreteAction(
     cepDestino: string
   },
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
 
   const [atual] = await db
     .select({ id: orcamentos.id })

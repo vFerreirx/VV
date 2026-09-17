@@ -15,6 +15,9 @@
 // peça (tamanho, cor, quantidade) e as observações — instrução levada pra OP
 // errada é pior que redigitar. Fecha pelo X ou Esc.
 //
+// ⚠️ VINDO DO FALTANTE DE UM PEDIDO, idem, com canal Venda direta travado e
+// a quantidade que falta já preenchida (editável), sem prazo.
+//
 // ⚠️ VINDO DA FILA DE REPOSIÇÃO (/estoque), É OUTRO GESTO: a peça e o canal
 // Estoque já vêm escolhidos e TRAVADOS, a quantidade fica em branco (é decisão
 // do gerente) e o diálogo FECHA ao criar — um item da fila vira uma OP, e a
@@ -78,12 +81,21 @@ export function NovaOpDialog({
   produtos,
   onClose,
   reposicao,
+  pedido,
 }: {
   /** Sempre `listarProdutosParaOrdem({ somenteAtivas: true })`. */
   produtos: Produto[]
   onClose: () => void
   /** O item da fila de reposição que esta OP vai atender. */
   reposicao?: { id: string; variacaoId: string }
+  /** O faltante de pedido que esta OP produz. */
+  pedido?: {
+    orcamentoId: string
+    numero: string
+    chave: string
+    variacaoId: string
+    quantidade: number
+  }
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -93,10 +105,12 @@ export function NovaOpDialog({
   const [escopo, setEscopo] = useState<EscopoDaBusca | null>(null)
   const [termo, setTermo] = useState('')
   const [destaque, setDestaque] = useState(0)
+  // Reposição e faltante de pedido: a peça já vem escolhida, e travada.
+  const pecaFixa = reposicao?.variacaoId ?? pedido?.variacaoId ?? null
   const [escolha, setEscolha] = useState<Escolha | null>(() => {
-    if (!reposicao) return null
+    if (!pecaFixa) return null
     for (const produto of produtos) {
-      const variacao = produto.variacoes.find((v) => v.id === reposicao.variacaoId)
+      const variacao = produto.variacoes.find((v) => v.id === pecaFixa)
       if (variacao) return { produto, variacao }
     }
     return null
@@ -107,10 +121,12 @@ export function NovaOpDialog({
   // no produto não carregar nada — o catálogo avisava a escolha, ninguém
   // guardava, e ele continuava sem produto pra mostrar tamanho e cor.
   const [noCatalogo, setNoCatalogo] = useState({ produtoId: '', variacaoId: '' })
-  const [quantidade, setQuantidade] = useState('')
+  const [quantidade, setQuantidade] = useState(
+    pedido ? String(pedido.quantidade) : '',
+  )
 
   // O planejamento — o que se repete de uma OP pra próxima
-  const [canal, setCanal] = useState<Canal>('estoque')
+  const [canal, setCanal] = useState<Canal>(pedido ? 'venda_direta' : 'estoque')
   const [prioridade, setPrioridade] = useState<Prioridade>('normal')
   const [maisDetalhes, setMaisDetalhes] = useState(false)
   const [prazo, setPrazo] = useState('')
@@ -202,14 +218,22 @@ export function NovaOpDialog({
     startTransition(async () => {
       const r = await criarOrdemAction(
         entrada,
-        reposicao ? { reposicaoId: reposicao.id } : undefined,
+        reposicao
+          ? { reposicaoId: reposicao.id }
+          : pedido
+            ? { pedido: { orcamentoId: pedido.orcamentoId, chave: pedido.chave } }
+            : undefined,
       )
       if (!r.success) {
         setErro(r.error)
         return
       }
-      if (reposicao) {
-        toast.success('OP criada — a peça está em produção')
+      if (reposicao || pedido) {
+        toast.success(
+          reposicao
+            ? 'OP criada — a peça está em produção'
+            : 'OP criada e ligada ao pedido',
+        )
         router.refresh()
         onClose()
         return
@@ -239,10 +263,18 @@ export function NovaOpDialog({
     <Dialog open onOpenChange={(o) => !o && !isPending && onClose()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{reposicao ? 'Produzir pra repor' : 'Nova OP'}</DialogTitle>
+          <DialogTitle>
+            {reposicao
+              ? 'Produzir pra repor'
+              : pedido
+                ? `Produzir pro pedido #${pedido.numero}`
+                : 'Nova OP'}
+          </DialogTitle>
           <DialogDescription>
             {reposicao ? (
               'OP de canal Estoque pra peça que está acabando. Informe a quantidade.'
+            ) : pedido ? (
+              'OP de venda direta pra peça que faltou na separação. Confira a quantidade.'
             ) : criadas > 0 ? (
               <span className="text-foreground font-medium">
                 {criadas} {criadas === 1 ? 'OP criada' : 'OPs criadas'}
@@ -267,7 +299,7 @@ export function NovaOpDialog({
               <Label htmlFor="nova-op-busca">
                 Variação <span className="text-destructive">*</span>
               </Label>
-              {!reposicao && (
+              {!pecaFixa && (
                 <button
                   type="button"
                   className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
@@ -288,7 +320,7 @@ export function NovaOpDialog({
                 <TituloDaVariacao produto={escolha.produto} variacao={escolha.variacao} />
                 {/* Na reposição a peça é a do item da fila: trocar criaria
                     uma OP que não repõe o que foi pedido. */}
-                {!reposicao && (
+                {!pecaFixa && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -434,7 +466,7 @@ export function NovaOpDialog({
                 step="1"
                 placeholder="peças"
                 // Na reposição a peça já vem escolhida: o que falta é isto.
-                autoFocus={reposicao !== undefined}
+                autoFocus={pecaFixa !== null}
                 value={quantidade}
                 onChange={(e) => setQuantidade(e.target.value)}
                 disabled={isPending}
@@ -446,8 +478,9 @@ export function NovaOpDialog({
                 items={CANAL_LABEL}
                 value={canal}
                 onValueChange={(v) => v && trocarCanal(v as Canal)}
-                // Repor estoque é canal Estoque: só nele a baixa dá entrada.
-                disabled={isPending || reposicao !== undefined}
+                // Repor estoque é canal Estoque (só nele a baixa dá entrada);
+                // faltante de pedido é Venda direta. Os dois vêm travados.
+                disabled={isPending || reposicao !== undefined || pedido !== undefined}
               >
                 <SelectTrigger id="nova-op-canal" className="w-full">
                   <SelectValue />

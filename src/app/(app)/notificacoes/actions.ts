@@ -40,13 +40,13 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   const user = await requireAuth()
   const now = Date.now()
 
-  // QUEM VÊ FINANCEIRO. As parcelas são da área de vendas, e o operador do
-  // chão de fábrica não tem o que fazer com boleto de cliente — o sino dele
-  // ficaria aceso por um assunto que não é dele e que ele não consegue
-  // resolver. Mesma pergunta que a guarda de página faz, só que aqui ela
-  // decide se a CONSULTA acontece.
+  // QUEM VÊ AS PARCELAS. Elas moram na página do PEDIDO, então seguem a área
+  // `pedidos` — e não `vendas`, que é só o faturamento. O operador do chão de
+  // fábrica não tem o que fazer com boleto de cliente: o sino dele ficaria
+  // aceso por um assunto que não é dele. Mesma pergunta que a guarda de
+  // página faz, só que aqui ela decide se a CONSULTA acontece.
   const veFinanceiro =
-    (await nivelDaAreaPara(user.role, 'vendas')) !== 'nenhum'
+    (await nivelDaAreaPara(user.role, 'pedidos')) !== 'nenhum'
 
   // Operador só é alertado de OPs livres ou que ele pegou; os demais
   // cargos veem tudo (mesma regra de visibilidade do kanban).

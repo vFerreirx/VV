@@ -100,7 +100,8 @@ export async function criarCompradorAction(
     throw err
   }
 
-  revalidatePath('/clientes')
+  // A lista vive na aba Clientes de /pedidos.
+  revalidatePath('/pedidos')
   revalidatePath('/pedidos')
   return {
     success: true,
@@ -168,7 +169,8 @@ export async function atualizarCompradorAction(
     throw err
   }
 
-  revalidatePath('/clientes')
+  // A lista vive na aba Clientes de /pedidos.
+  revalidatePath('/pedidos')
   revalidatePath('/pedidos')
   return { success: true, message: 'Cliente atualizado' }
 }
@@ -197,7 +199,8 @@ export async function excluirCompradorAction(
     .set({ deletedAt: new Date() })
     .where(eq(compradores.id, id))
 
-  revalidatePath('/clientes')
+  // A lista vive na aba Clientes de /pedidos.
+  revalidatePath('/pedidos')
   revalidatePath('/pedidos')
   return { success: true, message: 'Cliente excluído' }
 }

@@ -19,6 +19,8 @@ import {
   resumoDaConclusao,
 } from './conclusao.ts'
 import { producaoAtrasada } from './atraso-da-op.ts'
+import { resolverVariacaoDoFaltante } from './faltante-para-op.ts'
+import { chaveDaPeca, chaveDeTextoLivre } from '../separacao.ts'
 import {
   estadoDaReposicaoPelaOp,
   ordenarFila,
@@ -1017,4 +1019,41 @@ test('reposicao: o estado do item segue a OP ligada', () => {
   assert.equal(estadoDaReposicaoPelaOp({ ...op, variacaoId: 'v2' }, 'v1'), 'aberto')
   assert.equal(estadoDaReposicaoPelaOp({ ...op, canalDestino: 'full_ml' }, 'v1'), 'aberto')
   assert.equal(estadoDaReposicaoPelaOp(null, 'v1'), 'aberto')
+})
+
+test('faltante do pedido: resolve so quando a peca e inequivoca', () => {
+  const produtos = [
+    {
+      id: 'p1',
+      nome: 'Peseira - ACONCHEGO',
+      variacoes: [
+        { id: 'v1', cor: 'Marsala', tamanho: 'Queen' },
+        { id: 'v2', cor: 'Areia', tamanho: 'Queen' },
+      ],
+    },
+    { id: 'p2', nome: 'Manta - SIENA', variacoes: [{ id: 'v3', cor: 'Areia', tamanho: null }] },
+    { id: 'p3', nome: 'Capa  duplicada', variacoes: [] },
+    { id: 'p4', nome: 'capa duplicada', variacoes: [] },
+  ]
+  // A chave montada pela via de separacao casa, sem diferenca de caixa/espaco.
+  assert.deepEqual(
+    resolverVariacaoDoFaltante(
+      chaveDaPeca({ produto: 'Peseira - ACONCHEGO', tamanho: 'Queen', cor: ' marsala ' }),
+      produtos,
+    ),
+    { ok: true, produtoId: 'p1', variacaoId: 'v1' },
+  )
+  assert.deepEqual(
+    resolverVariacaoDoFaltante(chaveDaPeca({ produto: 'Manta - SIENA', tamanho: null, cor: 'Areia' }), produtos),
+    { ok: true, produtoId: 'p2', variacaoId: 'v3' },
+  )
+  const motivo = (chave: string) => {
+    const r = resolverVariacaoDoFaltante(chave, produtos)
+    return r.ok ? null : r.motivo
+  }
+  assert.match(motivo(chaveDeTextoLivre('Peseira marsala escrita a mao'))!, /escrito à mão/)
+  assert.match(motivo(chaveDaPeca({ produto: 'Produto X', tamanho: 'Queen', cor: 'Areia' }))!, /fora do catálogo/)
+  assert.match(motivo(chaveDaPeca({ produto: 'Capa duplicada', tamanho: null, cor: null }))!, /Mais de um produto/)
+  assert.match(motivo(chaveDaPeca({ produto: 'Peseira - ACONCHEGO', tamanho: 'Queen', cor: null }))!, /sem cor/)
+  assert.match(motivo(chaveDaPeca({ produto: 'Peseira - ACONCHEGO', tamanho: 'King', cor: 'Areia' }))!, /não existe mais/)
 })

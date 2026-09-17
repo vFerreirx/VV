@@ -49,7 +49,7 @@ const MAX_PARCELAS = 36
 // o extra, e o caminho das outras não muda. A página do pedido chama esta em
 // paralelo, junto de `listarFaltantes`.
 export async function listarParcelas(orcamentoId: string): Promise<Parcela[]> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
   const rows = await db
     .select({
       id: orcamentoParcelas.id,
@@ -95,7 +95,7 @@ export async function gerarParcelasAction(
     intervaloDias: number
   },
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
 
   const quantidade = Math.floor(Number(entrada.quantidade))
   if (!Number.isFinite(quantidade) || quantidade < 1) {
@@ -180,7 +180,7 @@ export async function salvarParcelaAction(
   parcelaId: string,
   dados: { vencimento: string; valor: string; observacao: string | null },
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
 
   const [atual] = await db
     .select({ orcamentoId: orcamentoParcelas.orcamentoId })
@@ -216,7 +216,7 @@ export async function salvarParcelaAction(
 export async function removerParcelaAction(
   parcelaId: string,
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
 
   const [atual] = await db
     .select({
@@ -255,7 +255,7 @@ export async function removerParcelaAction(
 export async function marcarRecebidaAction(
   parcelaId: string,
 ): Promise<ActionResult> {
-  const user = await requireAreaEscrita('vendas')
+  const user = await requireAreaEscrita('pedidos')
 
   const [atual] = await db
     .select({
@@ -288,7 +288,7 @@ export async function marcarRecebidaAction(
 export async function desfazerRecebimentoAction(
   parcelaId: string,
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
 
   const [atual] = await db
     .select({ orcamentoId: orcamentoParcelas.orcamentoId })

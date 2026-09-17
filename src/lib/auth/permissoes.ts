@@ -68,6 +68,7 @@ export type AreaKey =
   | 'estoque'
   | 'estoqueFios'
   | 'vendas'
+  | 'pedidos'
   | 'compradores'
   | 'contasMarketplace'
   | 'produtos'
@@ -205,7 +206,9 @@ export const AREAS: Area[] = [
     key: 'vendas',
     secao: 'Estoque & Vendas',
     label: 'Vendas',
-    descricao: 'Registro diário e fechamento mensal (relatório).',
+    // SÓ O FATURAMENTO (/vendas e o relatório). Os pedidos têm área própria,
+    // `pedidos`, logo abaixo.
+    descricao: 'Faturamento: registro diário e fechamento mensal (relatório).',
     href: '/vendas',
     editavel: true,
     // ⚠️ O CARGO "vendas" FICA DE FORA POR PADRÃO. Apesar do nome, ele é de
@@ -216,6 +219,18 @@ export const AREAS: Area[] = [
     nivelPadrao: padrao({ [G]: 'total' }),
   },
   {
+    key: 'pedidos',
+    secao: 'Estoque & Vendas',
+    label: 'Pedidos',
+    descricao: 'Pedidos de atacado: montar, separar, frete, pagamento e faltantes.',
+    href: '/pedidos',
+    editavel: true,
+    // ⚠️ ÁREA PRÓPRIA, SEPARADA DO FATURAMENTO. Os pedidos usavam a área
+    // `vendas`, e quando o cargo vendas perdeu o faturamento (fe4e807) perdeu
+    // os pedidos junto — mas quem monta pedido é justamente ele.
+    nivelPadrao: padrao({ [G]: 'total', [V]: 'total' }),
+  },
+  {
     // A CHAVE continua 'compradores' de propósito: ela é usada em todo
     // requireArea/requireAreaEscrita e fica GRAVADA em `permissoes_acesso`.
     // Trocar a chave só criaria override órfã. Só o rótulo mudou.
@@ -223,7 +238,8 @@ export const AREAS: Area[] = [
     secao: 'Estoque & Vendas',
     label: 'Clientes',
     descricao: 'Cadastro dos clientes (documento, telefone e endereço).',
-    href: '/clientes',
+    // A aba Clientes da tela de Pedidos (/clientes só redireciona pra cá).
+    href: '/pedidos?tab=clientes',
     editavel: true,
     // Mais fechado que as outras áreas de propósito: guarda dado pessoal
     // (CPF/CNPJ, endereço, telefone), então não abre pro chão de fábrica.

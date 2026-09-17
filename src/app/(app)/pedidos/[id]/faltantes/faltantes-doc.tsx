@@ -2,12 +2,18 @@
 
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ArrowLeft, ClipboardList, Printer, TriangleAlert } from 'lucide-react'
+import { ArrowLeft, ClipboardList, Factory, Printer, TriangleAlert } from 'lucide-react'
 import Link from 'next/link'
+import { useState } from 'react'
 
 import type { EmpresaDoDocumento } from '../../../empresas/actions'
 import type { OrcamentoComItens } from '../../actions'
+import type { OpDoPedido } from '../../actions'
 import type { Faltante } from '../../faltantes-actions'
+import type { ProdutoComVariacoesParaForm } from '../../../ordens/actions'
+import { ListaDeOpsDoPedido } from '../ops-do-pedido'
+import { NovaOpDialog } from '@/components/ordens/nova-op-dialog'
+import { resolverVariacaoDoFaltante } from '@/lib/producao/faltante-para-op'
 import { IdentidadeEmpresa } from '../empresa-doc'
 import { Logo } from '@/components/brand/logo'
 import { Button } from '@/components/ui/button'
@@ -34,19 +40,36 @@ import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 // pelo que ficou marcado. Quem produz encontra as peças no mesmo lugar da
 // folha em que quem separou as procurou.
 //
-// ESTE DOCUMENTO NÃO GERA OP. Ele diz o que fazer; abrir ordem de produção
-// continua sendo decisão de gente, na tela de ordens.
+// FALTANTE VIRA PRODUÇÃO, mas por decisão de gente: cada linha tem um
+// "Produzir" (pra quem tem escrita em Ordens) que abre a Nova OP com a peça, a
+// quantidade e o canal Venda direta, e a OP nasce ligada ao pedido. Nada sai
+// do papel: o botão e as OPs ligadas não vão pra impressão. Criar OP não
+// mexe na marcação de faltante, que continua manual.
 export function FaltantesDoc({
   orcamento,
   empresa,
   catalogo,
   faltantes,
+  producao,
 }: {
   orcamento: OrcamentoComItens
   empresa: EmpresaDoDocumento | null
   catalogo: CatalogoSeparacao
   faltantes: Faltante[]
+  producao: {
+    /** As OPs já ligadas a este pedido. */
+    ops: OpDoPedido[]
+    /** Catálogo ativo — vazio pra quem não pode produzir. */
+    produtos: ProdutoComVariacoesParaForm[]
+    podeProduzir: boolean
+  }
 }) {
+  const [produzindo, setProduzindo] = useState<{
+    chave: string
+    variacaoId: string
+    quantidade: number
+  } | null>(null)
+
   // A via de separação inteira, e só depois o filtro: é ela que dá a ORDEM e
   // é contra ela que se sabe o que ainda existe no pedido.
   const daSeparacao = montarLinhasSeparacao(orcamento.itens, catalogo)
@@ -179,16 +202,69 @@ export function FaltantesDoc({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {linhas.map((l) => (
+              {linhas.map((l) => {
+                const opsDaLinha = producao.ops.filter((o) => o.chave === l.chave)
+                // Quanto já está em OP que não foi cancelada: a sugestão é o
+                // que ainda falta, e volta pro total do faltante se já cobre.
+                const emOp = opsDaLinha
+                  .filter((o) => o.status !== 'cancelado')
+                  .reduce((s, o) => s + o.quantidade, 0)
+                const sugestao = l.faltam - emOp > 0 ? l.faltam - emOp : l.faltam
+                const resolucao = producao.podeProduzir
+                  ? resolverVariacaoDoFaltante(l.chave, producao.produtos)
+                  : null
+                return (
                 <TableRow key={l.chave}>
                   <TableCell className="font-medium break-words whitespace-normal">
                     {l.descricao}
+                    {(opsDaLinha.length > 0 || resolucao) && (
+                      <div className="mt-2 space-y-2 font-normal print:hidden">
+                        {opsDaLinha.length > 0 && (
+                          <ListaDeOpsDoPedido ops={opsDaLinha} />
+                        )}
+                        {resolucao && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!resolucao.ok}
+                              onClick={() =>
+                                resolucao.ok &&
+                                setProduzindo({
+                                  chave: l.chave,
+                                  variacaoId: resolucao.variacaoId,
+                                  quantidade: sugestao,
+                                })
+                              }
+                            >
+                              <Factory />
+                              Produzir
+                            </Button>
+                            {/* NÃO CHUTA: sem uma variação inequívoca, o botão
+                                fica desabilitado e diz por quê. */}
+                            {!resolucao.ok && (
+                              <span className="text-muted-foreground text-xs">
+                                {resolucao.motivo}
+                              </span>
+                            )}
+                            {resolucao.ok && emOp > 0 && (
+                              <span className="text-muted-foreground text-xs">
+                                {emOp >= l.faltam
+                                  ? 'As OPs acima já cobrem o que falta'
+                                  : `${emOp} já em OP`}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="align-top text-right tabular-nums">
                     {l.faltam.toLocaleString('pt-BR')}
                   </TableCell>
                 </TableRow>
-              ))}
+                )
+              })}
             </TableBody>
             <TableFooter>
               <TableRow>
@@ -207,6 +283,20 @@ export function FaltantesDoc({
         {format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })} — o que
         faltou na separação deste pedido, sem valores.
       </p>
+
+      {produzindo && (
+        <NovaOpDialog
+          produtos={producao.produtos}
+          pedido={{
+            orcamentoId: orcamento.id,
+            numero: formatarNumeroPedido(orcamento.numero),
+            chave: produzindo.chave,
+            variacaoId: produzindo.variacaoId,
+            quantidade: produzindo.quantidade,
+          }}
+          onClose={() => setProduzindo(null)}
+        />
+      )}
     </div>
   )
 }

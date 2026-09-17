@@ -1,19 +1,8 @@
-import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
 
-import { listarCompradores } from './actions'
-import { CompradoresList } from './compradores-list'
-import { podeEscrever } from '@/lib/auth/permissoes'
-import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
-import { requireArea } from '@/lib/auth/require-auth'
-
-export const metadata: Metadata = { title: 'Clientes — Vanvest' }
-
-export default async function ClientesPage() {
-  const user = await requireArea('compradores')
-  const nivel = await nivelDaAreaPara(user.role, 'compradores')
-  const podeEditar = podeEscrever(nivel)
-
-  const compradores = await listarCompradores()
-
-  return <CompradoresList compradores={compradores} podeEditar={podeEditar} />
+// Clientes virou uma aba da tela de Pedidos (/pedidos?tab=clientes): o
+// cadastro e os pedidos de cada cliente ficam juntos. Esta rota só leva pra
+// lá, pra link antigo e favorito continuarem funcionando.
+export default function ClientesPage() {
+  redirect('/pedidos?tab=clientes')
 }

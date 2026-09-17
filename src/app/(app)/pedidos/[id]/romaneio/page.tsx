@@ -14,7 +14,7 @@ export default async function RomaneioPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  await requireArea('vendas')
+  await requireArea('pedidos')
   const { id } = await params
 
   // A empresa é carregada AQUI, no server component — o componente de

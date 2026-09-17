@@ -49,6 +49,8 @@ import {
   ordensProducao,
   produtos,
   remessasFull,
+  orcamentoFaltantes,
+  orcamentos,
   reposicoesEstoque,
   users,
   variacoesProduto,
@@ -59,6 +61,7 @@ import {
   type VariacaoProduto,
 } from '@/lib/db/schema'
 import { erroDaVariacao } from '@/lib/producao/catalogo-op'
+import { resolverVariacaoDoFaltante } from '@/lib/producao/faltante-para-op'
 import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
 import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import {
@@ -482,12 +485,18 @@ export async function criarOrdemAction(
   input: OrdemInput,
   {
     reposicaoId,
+    pedido,
   }: {
     /**
      * O item da fila de reposição (/estoque) que esta OP vai atender. A OP
      * nasce ligada a ele, e o item passa a "Em produção" na mesma transação.
      */
     reposicaoId?: string
+    /**
+     * O faltante de pedido que esta OP produz: o pedido e a chave da linha
+     * (src/lib/separacao.ts). A OP nasce com os dois gravados.
+     */
+    pedido?: { orcamentoId: string; chave: string }
   } = {},
 ): Promise<ActionResult<{ id: string }>> {
   const user = await requireAreaEscrita('ordens')
@@ -508,6 +517,48 @@ export async function criarOrdemAction(
     // peça ter entrado.
     if (data.canalDestino !== 'estoque') {
       return { success: false, error: 'A OP de reposição é do canal Estoque' }
+    }
+  }
+
+  // ⚠️ O FALTANTE É CONFERIDO AQUI, e não confiado à tela: o pedido existe, a
+  // linha continua marcada como faltante nele, o canal é venda direta e a
+  // variação da OP é a que a chave resolve AGORA no catálogo. Sem isso,
+  // qualquer chamada poderia ligar uma OP de outra peça a um pedido.
+  if (pedido !== undefined) {
+    if (reposicaoId !== undefined || !uuidRe.test(pedido.orcamentoId)) {
+      return { success: false, error: 'ID inválido' }
+    }
+    if (data.canalDestino !== 'venda_direta') {
+      return { success: false, error: 'A OP de faltante de pedido é do canal Venda direta' }
+    }
+    const [marcado] = await db
+      .select({ chave: orcamentoFaltantes.chave })
+      .from(orcamentoFaltantes)
+      .innerJoin(orcamentos, eq(orcamentos.id, orcamentoFaltantes.orcamentoId))
+      .where(
+        and(
+          eq(orcamentoFaltantes.orcamentoId, pedido.orcamentoId),
+          eq(orcamentoFaltantes.chave, pedido.chave),
+          isNull(orcamentos.deletedAt),
+        ),
+      )
+      .limit(1)
+    if (!marcado) {
+      return {
+        success: false,
+        error: 'Essa peça não está mais marcada como faltante no pedido. Atualize a tela.',
+      }
+    }
+    const resolucao = resolverVariacaoDoFaltante(
+      pedido.chave,
+      await listarProdutosParaOrdem({ somenteAtivas: true }),
+    )
+    if (!resolucao.ok) return { success: false, error: resolucao.motivo }
+    if (resolucao.variacaoId !== data.variacaoId) {
+      return {
+        success: false,
+        error: 'A peça da OP não é a do faltante. Atualize a tela.',
+      }
     }
   }
 
@@ -540,6 +591,9 @@ export async function criarOrdemAction(
         criadoPor: user.id,
         responsavelId: data.responsavelId,
         observacoes: data.observacoes ?? null,
+        // O faltante de pedido que esta OP produz (conferido acima).
+        orcamentoId: pedido?.orcamentoId ?? null,
+        orcamentoFaltanteChave: pedido?.chave ?? null,
       })
       .returning({ id: ordensProducao.id, numero: ordensProducao.numero })
 
@@ -587,6 +641,10 @@ export async function criarOrdemAction(
   if (reposicaoId !== undefined) {
     revalidatePath('/estoque')
     revalidatePath('/dashboard')
+  }
+  if (pedido !== undefined) {
+    revalidatePath(`/pedidos/${pedido.orcamentoId}`)
+    revalidatePath(`/pedidos/${pedido.orcamentoId}/faltantes`)
   }
   return { success: true, data: { id: novoId }, message: 'OP criada' }
 }

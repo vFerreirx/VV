@@ -13,6 +13,7 @@ import {
   criarCompradorAction,
   excluirCompradorAction,
 } from './actions'
+import { FichaDoCliente } from './ficha-do-cliente'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Button } from '@/components/ui/button'
 import {
@@ -61,13 +62,34 @@ import {
 type Props = {
   compradores: Comprador[]
   podeEditar: boolean
+  /** Com a área `pedidos`: a ficha mostra os pedidos do cliente. */
+  podeVerPedidos?: boolean
+  /**
+   * "Fazer pedido pra este cliente", pra quem tem escrita em Pedidos. Null
+   * esconde o botão.
+   */
+  onFazerPedido?: ((c: Comprador) => void) | null
+  /** Id do cliente cuja ficha já abre (o `?cliente=` da URL). */
+  clienteInicial?: string | null
 }
 
-export function CompradoresList({ compradores, podeEditar }: Props) {
+export function CompradoresList({
+  compradores,
+  podeEditar,
+  podeVerPedidos = false,
+  onFazerPedido = null,
+  clienteInicial = null,
+}: Props) {
   const [corpoTabela] = useListaAnimada<HTMLTableSectionElement>()
   const [busca, setBusca] = useState('')
   const [editando, setEditando] = useState<Comprador | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<Comprador | null>(null)
+  // A FICHA: tocar na linha abre. O `?cliente=` (link da página do pedido)
+  // já chega com ela aberta.
+  const [fichaId, setFichaId] = useState<string | null>(clienteInicial)
+  const ficha = fichaId
+    ? (compradores.find((c) => c.id === fichaId) ?? null)
+    : null
 
   // Busca por nome, documento ou telefone. Documento/telefone comparam só os
   // caracteres normalizados, então achar "529.982" ou "52998224725" dá o mesmo.
@@ -88,13 +110,10 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Clientes</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Quem compra de você. Só o nome é obrigatório — o resto pode ser
-            completado depois.
-          </p>
-        </div>
+        {/* O título da página mora nas abas (Pedidos | Clientes). */}
+        <p className="text-muted-foreground text-sm">
+          Quem compra de você. Toque no cliente pra ver a ficha e os pedidos.
+        </p>
         {podeEditar && (
           <Button onClick={() => setEditando('novo')}>
             <Plus />
@@ -145,7 +164,11 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
                   </TableRow>
                 ) : (
                   filtrados.map((c) => (
-                    <TableRow key={c.id}>
+                    <TableRow
+                      key={c.id}
+                      onClick={() => setFichaId(c.id)}
+                      className="cursor-pointer"
+                    >
                       <TableCell className="font-medium">{c.nome}</TableCell>
                       <TableCell className="tabular-nums">
                         {formatarDocumento(c.documento) || (
@@ -166,7 +189,11 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
                       </TableCell>
                       {podeEditar && (
                         <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
+                          {/* Os botões não abrem a ficha: o clique fica neles. */}
+                          <div
+                            className="flex justify-end gap-1"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <Button
                               size="icon-sm"
                               variant="ghost"
@@ -195,6 +222,21 @@ export function CompradoresList({ compradores, podeEditar }: Props) {
         </>
       )}
 
+      <FichaDoCliente
+        comprador={ficha}
+        onClose={() => setFichaId(null)}
+        podeEditar={podeEditar}
+        onEditar={(c) => setEditando(c)}
+        podeVerPedidos={podeVerPedidos}
+        onFazerPedido={
+          onFazerPedido
+            ? (c) => {
+                setFichaId(null)
+                onFazerPedido(c)
+              }
+            : null
+        }
+      />
       <CompradorDialog
         comprador={editando}
         onClose={() => setEditando(null)}

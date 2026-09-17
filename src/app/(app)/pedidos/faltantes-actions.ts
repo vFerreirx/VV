@@ -35,7 +35,7 @@ export type Faltante = {
 export async function listarFaltantes(
   orcamentoId: string,
 ): Promise<Faltante[]> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
   return db
     .select({
       chave: orcamentoFaltantes.chave,
@@ -67,7 +67,7 @@ export async function salvarFaltantesAction(
   orcamentoId: string,
   marcacoes: Faltante[],
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
 
   const [orcamento, catalogo] = await Promise.all([
     obterOrcamento(orcamentoId),

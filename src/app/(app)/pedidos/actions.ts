@@ -11,10 +11,12 @@ import {
   orcamentoFaltantes,
   orcamentoItens,
   orcamentos,
+  ordensProducao,
   produtos,
   produtoTamanhoPeso,
   produtoTamanhoPreco,
   tamanhos,
+  variacoesProduto,
   type Comprador,
   type Orcamento,
   type OrcamentoItem,
@@ -78,7 +80,7 @@ export type OrcamentoComItens = Orcamento & {
 }
 
 export async function listarOrcamentos(): Promise<OrcamentoListItem[]> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
   const rows = await db
     .select()
     .from(orcamentos)
@@ -130,7 +132,7 @@ export async function listarOrcamentos(): Promise<OrcamentoListItem[]> {
 }
 
 export async function obterOrcamento(id: string): Promise<OrcamentoComItens | null> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
   const [o] = await db
     .select()
     .from(orcamentos)
@@ -197,7 +199,7 @@ export async function obterOrcamentoParaRomaneio(
 // Inclui produto/tamanho excluído — um pedido antigo pode apontar pra um
 // item que saiu do catálogo, e o peso dele continua valendo.
 export async function obterCatalogoDePesos(): Promise<CatalogoPesos> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
 
   const [pares, prods, tams] = await Promise.all([
     db
@@ -246,7 +248,7 @@ export async function obterCatalogoDePesos(): Promise<CatalogoPesos> {
 // Também inclui produto/tamanho EXCLUÍDO — um pedido antigo pode apontar pra
 // item que saiu do catálogo, e ele continua tendo que ser agrupado.
 export async function obterCatalogoDeSeparacao(): Promise<CatalogoSeparacao> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
 
   const [prods, tams] = await Promise.all([
     db.select({ id: produtos.id, nome: produtos.nome }).from(produtos),
@@ -274,7 +276,7 @@ export async function obterCatalogoDeSeparacao(): Promise<CatalogoSeparacao> {
 // esta função passar a aceitar um marketplace, é porque alguém ligou a
 // tabela errada.
 export async function obterCatalogoDePrecos(): Promise<TabelaDePrecos> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
 
   const [deProduto, deKit] = await Promise.all([
     db
@@ -307,33 +309,101 @@ export async function obterCatalogoDePrecos(): Promise<TabelaDePrecos> {
   return tabela
 }
 
-// Clientes já usados (distintos, mais recentes primeiro) — autocomplete.
-export async function listarClientesOrcamentos(): Promise<string[]> {
-  await requireArea('vendas')
-  const rows = await db
-    .select({ cliente: orcamentos.cliente })
-    .from(orcamentos)
-    .where(isNull(orcamentos.deletedAt))
-    .orderBy(desc(orcamentos.createdAt))
-    .limit(200)
+// ⚠️ SEM AUTOCOMPLETE DE NOMES ANTIGOS. `listarClientesOrcamentos` oferecia
+// os nomes digitados em pedidos anteriores, e era isso que mantinha o
+// cadastro opcional: o mesmo cliente virava três grafias. O cliente do pedido
+// agora vem do cadastro; o "Cliente avulso" digita o nome e não cria cadastro.
 
-  const vistos = new Set<string>()
-  const clientes: string[] = []
-  for (const r of rows) {
-    const nome = r.cliente.trim()
-    const chave = nome.toLowerCase()
-    if (nome && !vistos.has(chave)) {
-      vistos.add(chave)
-      clientes.push(nome)
-    }
-  }
-  return clientes.slice(0, 50)
+// -----------------------------------------------------------------
+// Pedidos de um cliente (ficha do cliente, aba Clientes)
+// -----------------------------------------------------------------
+
+export type PedidoDoCliente = {
+  id: string
+  numero: number
+  createdAt: Date
+  status: Orcamento['status']
+  totalFinal: number
+}
+
+/** Do mais recente pro mais antigo. Reaproveita os totais da lista. */
+export async function listarPedidosDoComprador(
+  compradorId: string,
+): Promise<PedidoDoCliente[]> {
+  await requireArea('pedidos')
+  const todos = await listarOrcamentos()
+  return todos
+    .filter((o) => o.compradorId === compradorId)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map((o) => ({
+      id: o.id,
+      numero: o.numero,
+      createdAt: o.createdAt,
+      status: o.status,
+      totalFinal: o.totalFinal,
+    }))
+}
+
+// -----------------------------------------------------------------
+// As OPs ligadas ao pedido (faltantes que viraram produção)
+// -----------------------------------------------------------------
+
+export type OpDoPedido = {
+  id: string
+  numero: string
+  status: (typeof ordensProducao.$inferSelect)['status']
+  quantidade: number
+  chave: string | null
+  produtoNome: string
+  variacaoCor: string | null
+  variacaoModelo: string | null
+  variacaoTamanho: string | null
+}
+
+/**
+ * As OPs criadas pelo "Produzir" dos faltantes deste pedido.
+ *
+ * A EXCLUÍDA SOME (foi engano de cadastro); a CANCELADA fica, e a tela a
+ * mostra esmaecida — diz que alguém já tentou produzir aquela peça.
+ */
+export async function listarOpsDoPedido(
+  orcamentoId: string,
+): Promise<OpDoPedido[]> {
+  await requireArea('pedidos')
+  const rows = await db
+    .select({
+      id: ordensProducao.id,
+      numero: ordensProducao.numero,
+      status: ordensProducao.status,
+      quantidade: ordensProducao.quantidade,
+      chave: ordensProducao.orcamentoFaltanteChave,
+      produtoNome: produtos.nome,
+      variacaoCor: variacoesProduto.cor,
+      variacaoModelo: variacoesProduto.modelo,
+      variacaoTamanho: variacoesProduto.tamanho,
+    })
+    .from(ordensProducao)
+    .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
+    .leftJoin(variacoesProduto, eq(variacoesProduto.id, ordensProducao.variacaoId))
+    .where(
+      and(
+        eq(ordensProducao.orcamentoId, orcamentoId),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
+    .orderBy(asc(ordensProducao.createdAt))
+  return rows.map((r) => ({
+    ...r,
+    variacaoCor: r.variacaoCor ?? null,
+    variacaoModelo: r.variacaoModelo ?? null,
+    variacaoTamanho: r.variacaoTamanho ?? null,
+  }))
 }
 
 // Último preço usado por descrição (em qualquer orçamento não excluído).
 // Serve pra pré-preencher o preço ao puxar produto/kit do catálogo.
 export async function listarPrecosRecentes(): Promise<Record<string, string>> {
-  await requireArea('vendas')
+  await requireArea('pedidos')
   const rows = await db
     .select({
       descricao: orcamentoItens.descricao,
@@ -367,7 +437,7 @@ function revalidarVendas() {
 export async function criarOrcamentoAction(
   input: OrcamentoInput,
 ): Promise<ActionResult<{ id: string }>> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
   const parsed = orcamentoSchema.safeParse(input)
   if (!parsed.success) {
     return {
@@ -418,7 +488,7 @@ export async function atualizarOrcamentoAction(
   id: string,
   input: OrcamentoInput,
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
   const parsed = orcamentoSchema.safeParse(input)
   if (!parsed.success) {
     return {
@@ -505,7 +575,7 @@ export async function atualizarOrcamentoAction(
 }
 
 export async function excluirOrcamentoAction(id: string): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
   const [atual] = await db
     .select({ id: orcamentos.id })
     .from(orcamentos)
@@ -542,7 +612,7 @@ export async function mudarStatusOrcamentoAction(
   destino: StatusPedido,
   dataVenda?: string,
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
   const parsed = mudarStatusPedidoSchema.safeParse({ id, destino, dataVenda })
   if (!parsed.success) {
     return { success: false, error: parsed.error.issues[0]?.message ?? 'Dados inválidos' }
@@ -616,7 +686,7 @@ export async function definirPagamentoAction(
     descontoPercentual: string | number | null
   },
 ): Promise<ActionResult> {
-  await requireAreaEscrita('vendas')
+  await requireAreaEscrita('pedidos')
 
   if (pagamento.forma !== null && !ehFormaPagamento(pagamento.forma)) {
     return { success: false, error: 'Forma de pagamento inválida' }

@@ -38,6 +38,15 @@ export const STATUS_PEDIDO = [
 
 export type StatusPedido = (typeof STATUS_PEDIDO)[number]
 
+/**
+ * Os status de um pedido EM ANDAMENTO — o chip "Abertos" da lista. Derivado
+ * de `STATUS_PEDIDO` (tudo menos o fim e a exceção), pra um status novo
+ * entrar aqui sozinho.
+ */
+export const STATUS_ABERTOS: readonly StatusPedido[] = STATUS_PEDIDO.filter(
+  (s) => s !== 'finalizado' && s !== 'cancelado',
+)
+
 export const ROTULO_STATUS: Record<StatusPedido, string> = {
   aguardando: 'Aguardando',
   aprovado: 'Aprovado',
