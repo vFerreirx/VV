@@ -18,8 +18,24 @@ const globalForPg = globalThis as unknown as {
 // runtime do postgres.js (src/index.js, junto de `idle_timeout`), mas não nos
 // tipos dele — literal na chamada, o TypeScript recusa a propriedade.
 const opcoes = {
-  max: 10,
-  idle_timeout: 20,
+  // ⚠️ POOL PEQUENO DE PROPÓSITO: 3 CONEXÕES POR INSTÂNCIA. O app conecta pelo
+  // pooler do Supabase em MODO SESSÃO (porta 5432), e o modo sessão aceita no
+  // máximo 15 clientes no projeto inteiro ("EMAXCONNSESSION ... pool_size:
+  // 15"). Cada instância do Vercel abre o próprio pool: com 10 por instância,
+  // duas instâncias esgotavam as vagas e toda página caía. Com 3, cabem 5
+  // instâncias. Página com muita consulta espera um pouco na fila do próprio
+  // postgres.js, e não derruba o sistema.
+  //
+  // ⚠️ POR QUE MODO SESSÃO, e não o modo transação (6543): com `prepare:
+  // false` o postgres.js manda toda consulta com parâmetro em DUAS idas (pede
+  // os tipos, depois executa). O modo transação pode entregar a conexão do
+  // banco a outra requisição ENTRE as duas idas, e a consulta fica presa pra
+  // sempre (`ClientRead` em pg_stat_activity). Em 17/09/2026 isso travou o
+  // dashboard e a página do pedido, e as conexões presas derrubaram o sistema
+  // inteiro. A mesma versão, no modo sessão, funcionou.
+  max: 3,
+  // Devolve a vaga ao pooler logo que a instância fica ociosa.
+  idle_timeout: 10,
   prepare: false,
   // ⚠️ PIPELINING NO MÍNIMO (1), e não o padrão de 100. Com as 10 conexões
   // ocupadas, o postgres.js empilha consultas na MESMA conexão sem esperar a
