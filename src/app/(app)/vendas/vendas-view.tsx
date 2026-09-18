@@ -14,6 +14,7 @@ import { toast } from 'sonner'
 
 import {
   historicoRecente,
+  obterVendaDoDia,
   salvarVendaDiaAction,
   type VendaDia,
 } from './actions'
@@ -672,6 +673,15 @@ function EditarDialog({
   // salvamento contínuo não encosta no banco (ver `useEffect` abaixo).
   const gravadoRef = useRef<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // QUAL DIA ESTÁ NOS CAMPOS. Trocar a data no campo acima trocava o alvo do
+  // salvamento sem trocar o conteúdo: o formulário continuava com o dia
+  // anterior na tela (ou vazio), acusava todas as contas como "faltou
+  // lançar" e o botão gravaria isso POR CIMA do dia escolhido. Agora a troca
+  // de data recarrega o dia.
+  const [carregado, setCarregado] = useState<{
+    dia: string
+    venda: VendaDia | null
+  } | null>(null)
 
   // Sincroniza os campos com a venda atual sempre que o dialog abre.
   const [abertoPara, setAbertoPara] = useState<string | null>(null)
@@ -695,6 +705,7 @@ function EditarDialog({
     setObservacao(venda?.observacao ?? '')
     setMostrarParadas(false)
     setSalvamento({ tipo: 'limpo' })
+    setCarregado({ dia: data, venda })
     // A BASE DE COMPARAÇÃO É O QUE ESTÁ GRAVADO. Só a partir daqui o
     // salvamento contínuo sabe distinguir "o usuário mexeu" de "o formulário
     // acabou de carregar" — e é essa distinção que impede uma gravação vazia
@@ -703,8 +714,49 @@ function EditarDialog({
   }
   if (!open && abertoPara !== null) {
     setAbertoPara(null)
+    setCarregado(null)
     gravadoRef.current = null
   }
+
+  // TROCOU A DATA: busca o dia escolhido e reseeda os campos. Enquanto a
+  // busca não volta, `gravadoRef` fica nulo — ou seja, o salvamento contínuo
+  // não grava nada, pelo mesmo motivo de sempre: formulário que ainda não
+  // sabe o que está no banco não pode escrever no banco.
+  useEffect(() => {
+    if (!open || carregado === null || dataEdit === carregado.dia) return
+    let vivo = true
+    gravadoRef.current = null
+    obterVendaDoDia(dataEdit)
+      .then((v) => {
+        if (!vivo) return
+        const init: Record<string, CampoConta> = {}
+        for (const c of v?.contas ?? []) {
+          if (!contaEhManual(c.conta)) continue
+          init[c.conta] = {
+            q: c.quantidade ? String(c.quantidade) : '',
+            f: decimalParaMoeda(c.faturamento),
+          }
+        }
+        setValores(init)
+        setObservacao(v?.observacao ?? '')
+        setCarregado({ dia: dataEdit, venda: v })
+        setSalvamento({ tipo: 'limpo' })
+        gravadoRef.current = assinatura(init, v?.observacao ?? '')
+      })
+      .catch(() => {
+        // Não deu pra ler o dia: o formulário fica como está e o automático
+        // segue travado (gravadoRef nulo). O botão diz o erro se ele tentar.
+        if (vivo) toast.error('Não deu pra carregar esse dia. Tente de novo.')
+      })
+    return () => {
+      vivo = false
+    }
+  }, [open, dataEdit, carregado])
+
+  // Derivado, não estado: "os campos ainda são de outro dia". Guardar isso em
+  // estado obrigaria a um setState dentro do efeito, que é justamente o tipo
+  // de render em cascata que o lint barra.
+  const carregandoDia = carregado !== null && carregado.dia !== dataEdit
 
   function set(conta: string, campo: keyof CampoConta, valor: string) {
     const v = campo === 'f' ? mascararMoeda(valor) : valor
@@ -727,7 +779,8 @@ function EditarDialog({
   // preserva a linha espelho), então eles fazem parte do total do dia mesmo
   // sem campo aqui. Só valem enquanto a data não muda: mudando o dia, o que
   // será preservado é o lançamento do OUTRO dia, que esta tela não conhece.
-  const pedidos = dataEdit === data ? (venda?.pedidos ?? []) : []
+  const pedidos =
+    carregado?.dia === dataEdit ? (carregado.venda?.pedidos ?? []) : []
   // UMA VENDA POR PEDIDO, de quantas peças for — é `length`, não a soma de
   // `unidades`. Os campos acima também são vendas, então os dois somam na
   // mesma unidade de medida. Ver src/lib/vendas/lancamento-pedido.ts.
@@ -778,8 +831,10 @@ function EditarDialog({
   // A LINHA ESPELHO DOS PEDIDOS, pra mostrar a origem ao lado do campo
   // manual do atacado. Ela não tem input: quem escreve é o pedido.
   const espelho =
-    dataEdit === data
-      ? (venda?.contas.find((c) => c.conta === CONTA_ATACADO_PEDIDOS) ?? null)
+    carregado?.dia === dataEdit
+      ? (carregado.venda?.contas.find(
+          (c) => c.conta === CONTA_ATACADO_PEDIDOS,
+        ) ?? null)
       : null
   const manualAtacado = valores[CONTA_ATACADO_MANUAL]
   const atacadoDuplo = avisoDeAtacadoDuplo(
@@ -797,6 +852,15 @@ function EditarDialog({
       : null,
   )
 
+  // ⚠️ FORMULÁRIO EM BRANCO NÃO SE CONFERE. Num dia que ninguém começou a
+  // lançar, TODAS as contas estão vazias — acusar cada uma com "faltou
+  // lançar?" é dizer o óbvio treze vezes e enterrar o aviso que importa. O
+  // 'zerado' existe pra conta PULADA no meio do preenchimento, então ele só
+  // começa a valer depois do primeiro número digitado.
+  const comecouAPreencher = Object.values(valores).some(
+    (v) => v.q.trim() !== '' || v.f.trim() !== '',
+  )
+
   // OS AVISOS DA CONFERÊNCIA, por conta visível. Nunca bloqueiam nada: são
   // uma pergunta ("confere?"), e quem sabe a resposta é quem tem o painel do
   // marketplace aberto do lado.
@@ -812,7 +876,9 @@ function EditarDialog({
       )
       const v = valores[conta.key]
       const digitado = v && v.q.trim() !== '' ? Number(v.q) : null
-      const anomalia = foraDoNormal(digitado, ref, 'quantidade')
+      const anomalia = comecouAPreencher
+        ? foraDoNormal(digitado, ref, 'quantidade')
+        : null
       if (!anomalia) continue
       avisos.push({
         conta: conta.key,
@@ -855,8 +921,12 @@ function EditarDialog({
     gravadoRef.current !== null &&
     assinatura(valores, observacao) !== gravadoRef.current
   const esvaziando =
-    contasParaSalvar().length === 0 && (venda?.contas.length ?? 0) > 0
-  const podeSalvarSozinho = mudou && dataEdit === data && !esvaziando
+    contasParaSalvar().length === 0 &&
+    (carregado?.venda?.contas.length ?? 0) > 0
+  // O dia nos campos tem que ser o dia do salvamento: trava contra gravar o
+  // conteúdo de um dia por cima de outro.
+  const podeSalvarSozinho =
+    mudou && carregado?.dia === dataEdit && !carregandoDia && !esvaziando
 
   useEffect(() => {
     if (!open || !podeSalvarSozinho) return
@@ -974,7 +1044,9 @@ function EditarDialog({
                       'quantidade',
                     )
                     const digitado = v.q.trim() === '' ? null : Number(v.q)
-                    const anomalia = foraDoNormal(digitado, ref, 'quantidade')
+                    const anomalia = comecouAPreencher
+                      ? foraDoNormal(digitado, ref, 'quantidade')
+                      : null
                     const ehAtacadoManual = conta.key === CONTA_ATACADO_MANUAL
                     return (
                       <div key={conta.key} className="space-y-1">
@@ -1144,9 +1216,12 @@ function EditarDialog({
               {/* "salvando…" enquanto houver mudança pendente: o que a
                   pessoa precisa saber é se o que ela digitou já está gravado,
                   e entre a tecla e a gravação vão 1,5 s. */}
-              {(salvamento.tipo === 'salvando' || podeSalvarSozinho) &&
+              {carregandoDia && 'carregando o dia…'}
+              {!carregandoDia &&
+                (salvamento.tipo === 'salvando' || podeSalvarSozinho) &&
                 'salvando…'}
-              {salvamento.tipo === 'salvo' &&
+              {!carregandoDia &&
+                salvamento.tipo === 'salvo' &&
                 !podeSalvarSozinho &&
                 `salvo às ${salvamento.hora}`}
               {salvamento.tipo === 'erro' && !podeSalvarSozinho && (
@@ -1154,11 +1229,8 @@ function EditarDialog({
                   não salvou — {salvamento.mensagem}
                 </span>
               )}
-              {salvamento.tipo === 'limpo' &&
-                dataEdit !== data &&
-                'data trocada: salve no botão'}
-              {salvamento.tipo === 'limpo' &&
-                dataEdit === data &&
+              {!carregandoDia &&
+                salvamento.tipo === 'limpo' &&
                 esvaziando &&
                 'sem nenhum campo: salve no botão pra esvaziar o dia'}
             </div>
