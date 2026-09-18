@@ -57,15 +57,6 @@ type Props = {
   podeEditar: boolean
 }
 
-// Campo vazio é "não tem", e mostra travessão. Nunca R$ 0,00: zero num
-// campo de dinheiro lê como "fio de graça", não como "não sei quanto foi".
-function formatarReais(v: string | number | null | undefined): string {
-  if (v == null || v === '') return '—'
-  const n = Number(v)
-  if (Number.isNaN(n)) return '—'
-  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-}
-
 function formatarKg(v: string | number | null | undefined): string {
   if (v == null || v === '') return '—'
   const n = Number(v)
@@ -87,10 +78,29 @@ function hojeISO(): string {
   return `${d.getFullYear()}-${mes}-${dia}`
 }
 
+// O LIVRO DE ENTRADAS SÓ TEM ENTRADAS. Os 51 lotes importados são a foto da
+// prateleira no dia da virada (todos com a mesma data de referência): aqui
+// eles fingiriam movimento que não houve, e — com a lista sempre cheia —
+// esconderiam o fato de que desde a importação NÃO ENTROU NADA. Eles contam
+// no estoque, na outra aba. Ver a migration 61.
 export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props) {
   const [editing, setEditing] = useState<LoteFioItem | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<LoteFioItem | null>(null)
   const [verLote, setVerLote] = useState<LoteFioItem | null>(null)
+
+  const entradas = lotes.filter((l) => !l.saldoInicial)
+  const iniciais = lotes.filter((l) => l.saldoInicial)
+  // A data da foto: a mesma em todos os lotes importados, mas lida da lista
+  // e não escrita à mão — número no texto envelhece calado.
+  const dataDoSaldoInicial =
+    iniciais.length > 0
+      ? formatarData(
+          iniciais.reduce(
+            (maior, l) => (l.dataEntrada > maior ? l.dataEntrada : maior),
+            iniciais[0]!.dataEntrada,
+          ),
+        )
+      : null
 
   return (
     <div className="space-y-4">
@@ -104,10 +114,15 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
         </div>
       )}
 
-      {lotes.length === 0 ? (
+      {entradas.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center">
+          {/* O VAZIO TEM QUE DIZER A VERDADE. "Nenhuma entrada cadastrada"
+              seria mentira com 51 partidas no estoque — e o que interessa é
+              justamente o que ele não diria: desde a virada não entrou fio. */}
           <p className="text-muted-foreground text-sm">
-            Nenhuma entrada de lote cadastrada.
+            {dataDoSaldoInicial
+              ? `Nenhuma entrada desde o saldo inicial de ${dataDoSaldoInicial} — as ${iniciais.length} partidas importadas estão em Estoque.`
+              : 'Nenhuma entrada de lote cadastrada.'}
           </p>
           {podeEditar && (
             <Button
@@ -132,30 +147,24 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
             <TableHeader>
               {/* Sem coluna de SALDO, de propósito: o saldo é a pergunta da
                   aba "Estoque", e repeti-lo aqui faria as duas tabelas
-                  dizerem a mesma coisa. Esta responde o que ENTROU e quanto
-                  custou; lá se vê o que restou. */}
+                  dizerem a mesma coisa.
+                  E sem VALOR, R$/kg, VENDEDOR, NOTA e VENCIMENTO: nos 51
+                  lotes de hoje esses quatro campos estão vazios em 51, e o
+                  que a tabela mostrava eram quatro colunas de travessão
+                  empurrando o que importa pra fora da tela. Eles continuam no
+                  formulário e na ficha do lote, que é onde se preenche e onde
+                  se confere um lote específico. */}
               <TableRow>
                 <TableHead>Entrada</TableHead>
-                <TableHead>Lote</TableHead>
+                <TableHead>Partida</TableHead>
                 <TableHead>Cor</TableHead>
                 <TableHead>Caixas</TableHead>
                 <TableHead>Peso total</TableHead>
-                <TableHead>Valor total</TableHead>
-                <TableHead>R$/kg</TableHead>
-                <TableHead>Vendedor</TableHead>
-                <TableHead>Nota fiscal</TableHead>
-                <TableHead>Vencimento</TableHead>
                 <TableHead className="w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {lotes.map((l) => {
-                // Sem valor cadastrado não há R$/kg — e `Number(null)` é 0,
-                // que sairia como "R$ 0,00" e leria como fio de graça.
-                const rsPorKg =
-                  l.valorTotal != null && Number(l.pesoTotalKg) > 0
-                    ? Number(l.valorTotal) / Number(l.pesoTotalKg)
-                    : null
+              {entradas.map((l) => {
                 return (
                   <TableRow key={l.id}>
                     <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
@@ -195,21 +204,6 @@ export function LotesFioList({ lotes, coresFornecedorAtivas, podeEditar }: Props
                     </TableCell>
                     <TableCell className="whitespace-nowrap tabular-nums">
                       {formatarKg(l.pesoTotalKg)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
-                      {formatarReais(l.valorTotal)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
-                      {rsPorKg == null ? '—' : formatarReais(rsPorKg)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {l.vendedor ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {l.notaFiscal ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground whitespace-nowrap tabular-nums">
-                      {formatarData(l.vencimentoPagamento)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

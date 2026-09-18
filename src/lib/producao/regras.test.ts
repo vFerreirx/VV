@@ -21,6 +21,13 @@ import {
 import { producaoAtrasada } from './atraso-da-op.ts'
 import { resolverVariacaoDoFaltante } from './faltante-para-op.ts'
 import { reacaoDaEstacao } from './recarga-da-estacao.ts'
+import {
+  ordenarParaGrade,
+  planoDeRetirada,
+  resumoPorCor,
+  totalDaGrade,
+  type LoteComSaldo,
+} from '../fios/saldo.ts'
 import { chaveDaPeca, chaveDeTextoLivre } from '../separacao.ts'
 import {
   estadoDaReposicaoPelaOp,
@@ -1091,4 +1098,194 @@ test('tablet: so recarrega pelo que e da estacao', () => {
   assert.equal(maq({ id: 'm1', estacao_id: 'e2' }), 'tela')
   assert.equal(maq({ id: 'm7', estacao_id: 'e1' }), 'tela')
   assert.equal(maq({ id: 'm9', estacao_id: 'e2' }), null)
+})
+
+// -----------------------------------------------------------------
+// Estoque de fios: resumo por cor, plano de retirada, grade
+// (src/lib/fios/saldo.ts)
+// -----------------------------------------------------------------
+
+// Lote do jeito que a tela entrega: saldo ja calculado pelo banco.
+// Os 51 lotes reais tem TODOS a mesma data de entrada — por isso o padrao
+// aqui e a mesma data, que e o caso que o desempate precisa resolver.
+function lote(p: Partial<LoteComSaldo> & { id: string }): LoteComSaldo {
+  const caixas = p.caixas ?? p.saldoCaixas ?? 10
+  const saldoCaixas = p.saldoCaixas ?? caixas
+  return {
+    id: p.id,
+    numeroLote: p.numeroLote ?? null,
+    corFornecedorId: p.corFornecedorId ?? 'cf-caqui',
+    corId: p.corId ?? 'cor-caqui',
+    corNome: p.corNome ?? 'Caqui',
+    corHex: p.corHex ?? null,
+    corFornecedorNome: p.corFornecedorNome ?? 'Caqui',
+    caixas,
+    pesoTotalKg: p.pesoTotalKg ?? String(caixas * 32),
+    dataEntrada: p.dataEntrada ?? '2025-08-31',
+    saldoCaixas,
+    saldoPesoKg: p.saldoPesoKg ?? saldoCaixas * 32,
+  }
+}
+
+test('fios: retirada FIFO cruza duas partidas e sugere o kg de cada lote', () => {
+  const lotes = [
+    // 25 kg/caixa contra 32: o kg sugerido nao pode ser proporcional ao total.
+    lote({ id: 'l1', numeroLote: '1193', saldoCaixas: 2, saldoPesoKg: 50 }),
+    lote({ id: 'l2', numeroLote: '4660', saldoCaixas: 5, saldoPesoKg: 160 }),
+  ]
+  const plano = planoDeRetirada(lotes, 4)
+
+  assert.equal(plano.faltou, 0)
+  assert.deepEqual(
+    plano.partes.map((p) => [p.numeroLote, p.caixas, p.kgSugerido]),
+    [
+      ['1193', 2, 50],
+      ['4660', 2, 64],
+    ],
+  )
+})
+
+test('fios: pedido maior que o saldo da cor devolve o que faltou', () => {
+  const plano = planoDeRetirada(
+    [lote({ id: 'l1', numeroLote: '1193', saldoCaixas: 3, saldoPesoKg: 96 })],
+    5,
+  )
+  assert.equal(plano.partes.length, 1)
+  assert.equal(plano.partes[0]!.caixas, 3)
+  assert.equal(plano.faltou, 2)
+
+  // Lote esgotado nao entra no plano nem vira parte de zero caixa.
+  const semSaldo = planoDeRetirada(
+    [lote({ id: 'l0', saldoCaixas: 0, saldoPesoKg: 0 })],
+    2,
+  )
+  assert.deepEqual(semSaldo.partes, [])
+  assert.equal(semSaldo.faltou, 2)
+})
+
+test('fios: lote sem partida vai pro fim e a ordem e sempre a mesma', () => {
+  const entrada = [
+    lote({ id: 'l-sem', numeroLote: null, saldoCaixas: 9 }),
+    lote({ id: 'l-80450', numeroLote: '80450', saldoCaixas: 9 }),
+    lote({ id: 'l-1193', numeroLote: '1193', saldoCaixas: 9 }),
+    // Mesma partida repetida existe de verdade na planilha (Caqui 4660).
+    lote({ id: 'l-4660-b', numeroLote: '4660', saldoCaixas: 9 }),
+    lote({ id: 'l-4660-a', numeroLote: '4660', saldoCaixas: 9 }),
+  ]
+  const ordem = (ls: LoteComSaldo[]) =>
+    planoDeRetirada(ls, 45).partes.map((p) => p.loteId)
+
+  // 1193 antes de 4660 antes de 80450 (numerico, nao alfabetico), e o lote
+  // sem partida no fim.
+  assert.deepEqual(ordem(entrada), [
+    'l-1193',
+    'l-4660-a',
+    'l-4660-b',
+    'l-80450',
+    'l-sem',
+  ])
+  // Mesma entrada embaralhada da a MESMA ordem — sem isso o plano mudaria
+  // entre duas aberturas do dialogo, porque a data de todos e igual.
+  assert.deepEqual(ordem([...entrada].reverse()), ordem(entrada))
+})
+
+test('fios: data de entrada vence a partida no FIFO', () => {
+  const lotes = [
+    lote({
+      id: 'novo',
+      numeroLote: '1000',
+      dataEntrada: '2026-09-01',
+      saldoCaixas: 5,
+    }),
+    lote({
+      id: 'velho',
+      numeroLote: '9999',
+      dataEntrada: '2025-08-31',
+      saldoCaixas: 5,
+    }),
+  ]
+  assert.deepEqual(
+    planoDeRetirada(lotes, 10).partes.map((p) => p.loteId),
+    ['velho', 'novo'],
+  )
+})
+
+test('fios: os tres estados do minimo, e cor sem minimo nunca acende', () => {
+  const lotes = [
+    lote({ id: 'a1', corFornecedorId: 'cf-caqui', corFornecedorNome: 'Caqui', saldoCaixas: 3, saldoPesoKg: 96 }),
+    lote({ id: 'a2', corFornecedorId: 'cf-caqui', corFornecedorNome: 'Caqui', saldoCaixas: 2, saldoPesoKg: 64 }),
+    lote({ id: 'b1', corFornecedorId: 'cf-black', corFornecedorNome: 'Black', saldoCaixas: 0, saldoPesoKg: 0 }),
+    lote({ id: 'c1', corFornecedorId: 'cf-cru', corFornecedorNome: 'Cru La', saldoCaixas: 40, saldoPesoKg: 1280 }),
+    // Zerada, mas ninguem cadastrou minimo: continua 'ok' e some do topo.
+    lote({ id: 'd1', corFornecedorId: 'cf-rosa', corFornecedorNome: 'Rosa Prata', saldoCaixas: 0, saldoPesoKg: 0 }),
+  ]
+  const minimos = new Map<string, number | null>([
+    ['cf-caqui', 10],
+    ['cf-black', 5],
+    ['cf-cru', 40],
+    ['cf-rosa', null],
+  ])
+  const resumo = resumoPorCor(lotes, minimos)
+
+  assert.deepEqual(
+    resumo.map((r) => [r.corFornecedorNome, r.caixas, r.estado]),
+    [
+      ['Black', 0, 'acabou'],
+      ['Caqui', 5, 'abaixo'],
+      ['Rosa Prata', 0, 'ok'],
+      ['Cru La', 40, 'ok'],
+    ],
+  )
+  // Uma linha por cor, somando os lotes dela — e o minimo junto.
+  const caqui = resumo.find((r) => r.corFornecedorId === 'cf-caqui')!
+  assert.equal(caqui.lotes, 2)
+  assert.equal(caqui.pesoKg, 160)
+  assert.equal(caqui.minimoCaixas, 10)
+  // No limite nao acende: 40 de minimo 40 e 'ok'.
+  assert.equal(resumo.find((r) => r.corFornecedorId === 'cf-cru')!.estado, 'ok')
+})
+
+test('fios: o resumo somado bate com o total da grade', () => {
+  const lotes = [
+    lote({ id: 'a1', corFornecedorId: 'cf-caqui', corFornecedorNome: 'Caqui', caixas: 10, saldoCaixas: 3, saldoPesoKg: 95.55 }),
+    lote({ id: 'b1', corFornecedorId: 'cf-black', corFornecedorNome: 'Black', caixas: 8, saldoCaixas: 8, saldoPesoKg: 247.04 }),
+    lote({ id: 'b2', corFornecedorId: 'cf-black', corFornecedorNome: 'Black', caixas: 4, saldoCaixas: 0, saldoPesoKg: 0 }),
+  ]
+  const resumo = resumoPorCor(lotes, new Map())
+  const total = totalDaGrade(lotes)
+
+  assert.equal(
+    resumo.reduce((s, r) => s + r.caixas, 0),
+    total.saldoCaixas,
+  )
+  assert.equal(
+    Math.round(resumo.reduce((s, r) => s + r.pesoKg, 0) * 100) / 100,
+    total.saldoPesoKg,
+  )
+  assert.equal(
+    resumo.reduce((s, r) => s + r.lotes, 0),
+    total.lotes,
+  )
+})
+
+test('fios: a grade ordena por cor, partida e id, e o rodape sai das linhas', () => {
+  const lotes = [
+    lote({ id: 'z', corFornecedorNome: 'Caqui', numeroLote: '80450', caixas: 5, saldoCaixas: 5, saldoPesoKg: 160 }),
+    lote({ id: 'y', corFornecedorNome: 'Black', numeroLote: null, caixas: 2, saldoCaixas: 1, saldoPesoKg: 32 }),
+    lote({ id: 'x', corFornecedorNome: 'Black', numeroLote: '1193', caixas: 3, saldoCaixas: 3, saldoPesoKg: 96.25 }),
+  ]
+  assert.deepEqual(
+    ordenarParaGrade(lotes).map((l) => l.id),
+    ['x', 'y', 'z'],
+  )
+
+  const total = totalDaGrade(lotes)
+  assert.deepEqual(total, {
+    lotes: 3,
+    caixas: 10,
+    // O que saiu: 10 de entrada menos 9 de saldo.
+    retiradaCaixas: 1,
+    saldoCaixas: 9,
+    saldoPesoKg: 288.25,
+  })
 })

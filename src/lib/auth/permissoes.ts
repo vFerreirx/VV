@@ -197,10 +197,14 @@ export const AREAS: Area[] = [
     key: 'estoqueFios',
     secao: 'Estoque & Vendas',
     label: 'Estoque de fios',
-    descricao: 'Entradas de lote de fio, saldo por cor e cores do fornecedor.',
+    descricao:
+      'Saldo de fio por cor, retirada, entradas de lote e cores do fornecedor.',
     href: '/estoque-fios',
     editavel: true,
-    nivelPadrao: padrao({ [G]: 'ver', [E]: 'total' }),
+    // O GERENTE REGISTRA A RETIRADA, então precisa de escrita — era 'ver', de
+    // quando a tela só mostrava a planilha importada. Quem tira fio da
+    // prateleira é a produção, e ele é quem responde por ela.
+    nivelPadrao: padrao({ [G]: 'total', [E]: 'total' }),
   },
   {
     key: 'vendas',

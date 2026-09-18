@@ -28,6 +28,15 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { saidaFioSchema, type SaidaFioInput } from '@/lib/validators/fios'
 
+// Campo vazio é "não tem", e mostra travessão. Nunca R$ 0,00: zero num campo
+// de dinheiro lê como "fio de graça", não como "não sei quanto foi".
+function formatarReais(v: string | number | null | undefined): string {
+  if (v == null || v === '') return '—'
+  const n = Number(v)
+  if (Number.isNaN(n)) return '—'
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
 function formatarKg(v: string | number | null | undefined): string {
   if (v == null || v === '') return '—'
   const n = Number(v)
@@ -35,7 +44,8 @@ function formatarKg(v: string | number | null | undefined): string {
   return `${n.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} kg`
 }
 
-function formatarData(iso: string): string {
+function formatarData(iso: string | null): string {
+  if (!iso) return '—'
   const [ano, mes, dia] = iso.split('-')
   if (!ano || !mes || !dia) return iso
   return `${dia}/${mes}/${ano}`
@@ -120,6 +130,54 @@ function DetalheBody({
             <div className="flex items-center gap-2 font-medium">
               {lote.saldoCaixas} cx · {formatarKg(lote.saldoPesoKg)}
               {esgotado && <Badge variant="secondary">Esgotado</Badge>}
+            </div>
+          </div>
+        </div>
+
+        {/* OS DADOS DA COMPRA MORAM AQUI, e não na tabela de entradas: em 51
+            de 51 lotes esses quatro campos estão vazios, e como colunas eram
+            quatro travessões empurrando cor e partida pra fora da tela. Numa
+            ficha eles não atrapalham ninguém — e quem procura a nota de um
+            lote específico abre justamente a ficha dele. */}
+        <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 text-sm">
+          <div>
+            <div className="text-muted-foreground text-xs">Valor total</div>
+            <div className="tabular-nums">{formatarReais(lote.valorTotal)}</div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs">R$/kg</div>
+            <div className="tabular-nums">
+              {lote.valorTotal != null && Number(lote.pesoTotalKg) > 0
+                ? formatarReais(
+                    Number(lote.valorTotal) / Number(lote.pesoTotalKg),
+                  )
+                : '—'}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs">Vendedor</div>
+            <div>{lote.vendedor ?? '—'}</div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs">Nota fiscal</div>
+            <div>{lote.notaFiscal ?? '—'}</div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs">Entrada em</div>
+            <div className="tabular-nums">
+              {formatarData(lote.dataEntrada)}
+              {lote.saldoInicial && (
+                <span className="text-muted-foreground">
+                  {' '}
+                  · saldo inicial
+                </span>
+              )}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs">Vencimento</div>
+            <div className="tabular-nums">
+              {formatarData(lote.vencimentoPagamento)}
             </div>
           </div>
         </div>

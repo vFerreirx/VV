@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, eq, isNull, lte, ne, or } from 'drizzle-orm'
+import { and, asc, eq, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
 
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { resumoDaReposicao } from '../estoque/actions'
@@ -10,6 +10,9 @@ import { db } from '@/lib/db'
 import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   compradores,
+  coresFornecedorFio,
+  lotesFio,
+  movimentacoesFio,
   orcamentoParcelas,
   orcamentos,
   ordensProducao,
@@ -24,7 +27,11 @@ import { situacaoDaParcela } from '@/lib/parcela-estado'
 
 export type Notificacao = {
   id: string
-  tipo: 'op_atrasada' | 'parcela_a_conferir' | 'reposicao_estoque'
+  tipo:
+    | 'op_atrasada'
+    | 'parcela_a_conferir'
+    | 'reposicao_estoque'
+    | 'fio_abaixo_do_minimo'
   titulo: string
   descricao: string
   href: string
@@ -46,9 +53,14 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   // aceso por um assunto que não é dele. Mesma pergunta que a guarda de
   // página faz, só que aqui ela decide se a CONSULTA acontece.
   //
-  // AS TRÊS FONTES CORREM EM PARALELO. O sino recarrega a cada mudança de OP
-  // em toda tela aberta; em série, a conexão ficava presa a soma das três.
+  // AS QUATRO FONTES CORREM EM PARALELO. O sino recarrega a cada mudança de
+  // OP em toda tela aberta; em série, a conexão ficava presa à soma delas.
   const veFinanceiro = nivelDaAreaPara(user.role, 'pedidos').then(
+    (nivel) => nivel !== 'nenhum',
+  )
+  // Mesma regra pro fio: quem não tem a área não recebe o aviso — e a
+  // CONSULTA nem acontece. O padrão do operador em `estoqueFios` é 'nenhum'.
+  const veFio = nivelDaAreaPara(user.role, 'estoqueFios').then(
     (nivel) => nivel !== 'nenhum',
   )
 
@@ -85,11 +97,13 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   const hoje = hojeEmBrasilia()
   const parcelasP = veFinanceiro.then((ve) => (ve ? buscarParcelas(hoje) : []))
   const reposicaoP = resumoDaReposicao()
+  const fiosP = veFio.then((ve) => (ve ? coresAbaixoDoMinimo() : []))
 
-  const [opsAtrasadas, parcelas, reposicao] = await Promise.all([
+  const [opsAtrasadas, parcelas, reposicao, fios] = await Promise.all([
     opsAtrasadasP,
     parcelasP,
     reposicaoP,
+    fiosP,
   ])
 
   const notificacoes: Notificacao[] = []
@@ -178,6 +192,35 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
     })
   }
 
+  // 4) FIO ABAIXO DO MÍNIMO — uma notificação por COR, que é a unidade em
+  // que se compra e em que se conta na prateleira.
+  //
+  // Só as cores com mínimo cadastrado entram: sem mínimo, ninguém disse que
+  // essa cor faz falta, e várias das 24 cores do fornecedor são de peça que
+  // não se faz mais. Inventar um limiar acenderia o sino de vinte cores no
+  // dia em que isto subisse.
+  //
+  // Some sozinha quando entra lote: é derivada do saldo de agora, como as
+  // outras três — não há linha de lembrete pra apagar.
+  for (const f of fios) {
+    const acabou = f.saldo <= 0
+    notificacoes.push({
+      id: `fio-${f.id}`,
+      tipo: 'fio_abaixo_do_minimo',
+      titulo: acabou
+        ? `${f.nome}: fio acabou`
+        : `${f.nome}: ${f.saldo} caixa${f.saldo === 1 ? '' : 's'} de fio`,
+      descricao: acabou
+        ? `Mínimo de ${f.minimo} caixas. Sem saldo em nenhuma partida.`
+        : `Abaixo do mínimo de ${f.minimo} caixas.`,
+      href: '/estoque-fios?tab=saldo',
+      // Fio que ACABOU para máquina; abaixo do mínimo ainda dá tempo de
+      // comprar. Mesma graduação das OPs e das parcelas.
+      severidade: acabou ? 'critico' : 'aviso',
+      referenciaEm: new Date(now),
+    })
+  }
+
   // Ordena por mais atrasado primeiro
   notificacoes.sort(
     (a, b) => a.referenciaEm.getTime() - b.referenciaEm.getTime(),
@@ -216,3 +259,67 @@ function buscarParcelas(hoje: string) {
     .limit(50)
 }
 
+
+
+/**
+ * As cores de fio abaixo do mínimo — UMA CONSULTA, e não uma por cor.
+ *
+ * O sino roda em toda tela aberta e a cada mudança de OP: um N+1 aqui seriam
+ * 24 consultas por sino, vezes cada tela da fábrica. O saldo de cada lote sai
+ * da mesma subconsulta correlacionada que a tela de fios usa
+ * (`listarLotesFio`), somada por cor.
+ *
+ * ⚠️ A subconsulta precisa qualificar "lotes_fio"."id": interpolar a coluna
+ * pelo Drizzle gera o identificador sem tabela, e como `movimentacoes_fio`
+ * também tem `id`, o Postgres resolve pro escopo interno em vez de
+ * correlacionar. Mesmo motivo comentado em estoque-fios/actions.ts.
+ */
+async function coresAbaixoDoMinimo(): Promise<
+  { id: string; nome: string; minimo: number; saldo: number }[]
+> {
+  const saldoSql = sql<number>`COALESCE(SUM(${lotesFio.caixas} - (
+    SELECT COALESCE(SUM(${movimentacoesFio.caixas}), 0)::int
+    FROM ${movimentacoesFio}
+    WHERE ${movimentacoesFio.loteId} = "lotes_fio"."id"
+  )), 0)::int`
+
+  const rows = await db
+    .select({
+      id: coresFornecedorFio.id,
+      nome: coresFornecedorFio.nomeFornecedor,
+      minimo: coresFornecedorFio.minimoCaixas,
+      saldo: saldoSql,
+    })
+    .from(coresFornecedorFio)
+    // LEFT JOIN, e não INNER: cor com mínimo e NENHUM lote é o caso mais
+    // grave que existe — zero caixas —, e um inner join a esconderia.
+    .leftJoin(
+      lotesFio,
+      and(
+        eq(lotesFio.corFornecedorId, coresFornecedorFio.id),
+        isNull(lotesFio.deletedAt),
+      ),
+    )
+    .where(
+      and(
+        isNull(coresFornecedorFio.deletedAt),
+        eq(coresFornecedorFio.ativo, true),
+        isNotNull(coresFornecedorFio.minimoCaixas),
+      ),
+    )
+    .groupBy(
+      coresFornecedorFio.id,
+      coresFornecedorFio.nomeFornecedor,
+      coresFornecedorFio.minimoCaixas,
+    )
+    .having(sql`${saldoSql} < ${coresFornecedorFio.minimoCaixas}`)
+
+  // A ordem e o corte ficam aqui: são poucas linhas (uma por cor com mínimo)
+  // e ordenar por agregado no SQL exigiria repetir a expressão inteira.
+  // Pior primeiro, e no máximo 10 — vinte cores acabando são um assunto só,
+  // e enterrariam as OPs atrasadas no sino.
+  return rows
+    .filter((r): r is typeof r & { minimo: number } => r.minimo !== null)
+    .sort((a, b) => a.saldo - b.saldo || a.nome.localeCompare(b.nome, 'pt-BR'))
+    .slice(0, 10)
+}

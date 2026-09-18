@@ -96,6 +96,7 @@ export function CoresFornecedorList({
               <TableRow>
                 <TableHead>Cor do fornecedor</TableHead>
                 <TableHead>Nossa cor equivalente</TableHead>
+                <TableHead>Mínimo</TableHead>
                 <TableHead>Status</TableHead>
                 {podeEditar && <TableHead className="w-24" />}
               </TableRow>
@@ -114,6 +115,17 @@ export function CoresFornecedorList({
                       />
                       {c.corNome}
                     </div>
+                  </TableCell>
+                  {/* O mínimo mora AQUI, junto do de-para, e não numa
+                      tabela só dele: é atributo da cor, e quem vai definir
+                      "abaixo de 40 caixas me avise" está olhando a cor. Sem
+                      mínimo mostra travessão — é "ninguém disse", não zero. */}
+                  <TableCell className="tabular-nums">
+                    {c.minimoCaixas == null ? (
+                      <span className="text-muted-foreground">—</span>
+                    ) : (
+                      `${c.minimoCaixas} cx`
+                    )}
                   </TableCell>
                   <TableCell>
                     <Badge variant={c.ativo ? 'default' : 'secondary'}>
@@ -181,6 +193,7 @@ function CorFornecedorDialog({
     values: {
       nomeFornecedor: isEdit ? cor.nomeFornecedor : '',
       corId: isEdit ? cor.corId : '',
+      minimoCaixas: isEdit ? (cor.minimoCaixas ?? '') : '',
       ativo: isEdit ? cor.ativo : true,
     },
   })
@@ -264,6 +277,32 @@ function CorFornecedorDialog({
             />
             {errs.corId && (
               <p className="text-destructive text-xs">{errs.corId.message}</p>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="cf-minimo">Mínimo na prateleira (caixas)</Label>
+            <Input
+              id="cf-minimo"
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              placeholder="sem mínimo"
+              disabled={isPending}
+              {...form.register('minimoCaixas')}
+            />
+            {/* CAIXAS, e não kg: caixa é o que se conta na prateleira. O kg
+                aparece ao lado no resumo, como referência, mas quem dispara o
+                aviso é a caixa. Vazio quer dizer "não avise" — nunca 0. */}
+            <p className="text-muted-foreground text-xs">
+              Abaixo disso, a cor sobe no resumo e acende o sino. Deixe vazio
+              pra não acompanhar esta cor.
+            </p>
+            {errs.minimoCaixas && (
+              <p className="text-destructive text-xs">
+                {errs.minimoCaixas.message}
+              </p>
             )}
           </div>
 

@@ -25,7 +25,10 @@ export default async function EstoqueFiosPage({
   ])
 
   const sp = await searchParams
-  const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'entradas'
+  // O PADRÃO É O ESTOQUE, e não o livro de entradas. A pergunta de quem abre
+  // esta tela é "quanto tem de cada cor?"; entrada de lote é trabalho de
+  // escritório, com a nota na mão, e acontece de vez em quando.
+  const tabInicial = typeof sp.tab === 'string' ? sp.tab : 'saldo'
 
   // Uma lista só alimenta as duas primeiras abas: `listarLotesFio` já traz o
   // saldo de cada lote pela consulta agregada, e a grade só ordena e soma.

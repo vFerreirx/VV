@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 import type { LoteFioItem } from './actions'
 import {
@@ -65,8 +65,21 @@ const NUMERO = 'text-right tabular-nums'
 // outras colunas passa por baixo e some atrás do texto.
 const COR_FIXA = 'sticky left-0 z-10'
 
-export function GradeFios({ lotes }: { lotes: LoteFioItem[] }) {
-  const [cor, setCor] = useState<string>(TODAS)
+// O FILTRO DE COR É DA ABA, não da grade: o resumo por cor em cima e a grade
+// aqui embaixo respondem a mesma pergunta em dois níveis, e clicar numa cor
+// lá tem que descer até as partidas dela aqui. Por isso ele chega por prop —
+// duas caixas de filtro, uma em cada lista, seriam duas verdades na mesma
+// tela.
+export function GradeFios({
+  lotes,
+  cor: corFiltrada,
+  onCor,
+}: {
+  lotes: LoteFioItem[]
+  cor: string | null
+  onCor: (cor: string | null) => void
+}) {
+  const cor = corFiltrada ?? TODAS
 
   const ordenados = useMemo(() => ordenarParaGrade(lotes), [lotes])
   const cores = useMemo(() => coresDaGrade(lotes), [lotes])
@@ -97,7 +110,10 @@ export function GradeFios({ lotes }: { lotes: LoteFioItem[] }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Select value={cor} onValueChange={(v) => setCor(v ?? TODAS)}>
+        <Select
+          value={cor}
+          onValueChange={(v) => onCor(!v || v === TODAS ? null : v)}
+        >
           <SelectTrigger size="sm" className="w-56" aria-label="Filtrar por cor">
             <SelectValue />
           </SelectTrigger>

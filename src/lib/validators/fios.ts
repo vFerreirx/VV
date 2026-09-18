@@ -69,6 +69,19 @@ export const corFornecedorSchema = z.object({
     .max(120, 'Nome muito longo'),
   corId: uuidCampo,
   ativo: z.boolean().default(true),
+  // Mínimo de CAIXAS. Campo vazio vira null ("sem mínimo"), e nunca 0 pelo
+  // mesmo motivo do valor do lote: zero é um número e mentiria — diria "o
+  // mínimo é zero", ou seja, "nunca avise". O banco repete a regra num CHECK
+  // (migration 61), porque a tela não é o único caminho até a coluna.
+  minimoCaixas: z
+    .union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((v) =>
+      v == null || String(v).trim() === '' ? null : Number(v),
+    )
+    .refine(
+      (v) => v === null || (Number.isInteger(v) && v > 0),
+      'O mínimo é em caixas inteiras, a partir de 1 (deixe vazio pra não ter mínimo)',
+    ),
 })
 
 export type CorFornecedorInput = z.input<typeof corFornecedorSchema>
@@ -122,3 +135,45 @@ export const saidaFioSchema = z.object({
 
 export type SaidaFioInput = z.input<typeof saidaFioSchema>
 export type SaidaFioOutput = z.output<typeof saidaFioSchema>
+
+// -----------------------------------------------------------------
+// Retirada por COR — o caminho de quem tira fio da prateleira
+// -----------------------------------------------------------------
+
+// QUEM VAI PEGAR FIO PENSA NA COR, não no lote: "preciso de 4 caixas de
+// Cáqui". Qual partida sai é consequência (FIFO, `planoDeRetirada`), e o
+// resultado é uma movimentação POR LOTE — o saldo continua morando no lote,
+// e o histórico de cada partida continua inteiro.
+//
+// Cada parte traz o peso REAL, e não o proporcional: o kg por caixa varia de
+// lote pra lote e dentro do mesmo lote (caixa começada). A tela sugere, a
+// balança corrige.
+export const retiradaPorCorSchema = z.object({
+  corFornecedorId: uuidCampo,
+  partes: z
+    .array(
+      z.object({
+        loteId: uuidCampo,
+        caixas: z
+          .union([z.string(), z.number()])
+          .transform((v) => (v === '' ? NaN : Number(v)))
+          .refine(
+            (v) => Number.isInteger(v) && v > 0,
+            'Informe um número de caixas válido',
+          ),
+        pesoKg: decimalPositivoObrigatorio('Informe o peso retirado'),
+      }),
+    )
+    .min(1, 'Escolha de qual partida sai o fio'),
+  data: dataSchema,
+  motivo: z.string().trim().min(1, 'Informe o motivo').max(120),
+  observacao: textoLivreOpt,
+})
+
+export type RetiradaPorCorInput = z.input<typeof retiradaPorCorSchema>
+export type RetiradaPorCorOutput = z.output<typeof retiradaPorCorSchema>
+
+// O motivo que o diálogo sugere. Fio sai pra produção em quase todo caso;
+// os outros se escrevem na mão, e não viram lista fechada porque ninguém
+// mapeou ainda o que mais faz fio sair daqui.
+export const MOTIVO_RETIRADA_PADRAO = 'Produção'

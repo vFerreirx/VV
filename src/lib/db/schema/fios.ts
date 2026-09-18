@@ -28,6 +28,12 @@ export const coresFornecedorFio = pgTable(
       .notNull()
       .references(() => cores.id),
     ativo: boolean().notNull().default(true),
+    // Mínimo de CAIXAS desta cor na prateleira — é o que se conta lá, e o kg
+    // é consequência do que sobrou dentro delas. NULL quer dizer "sem
+    // mínimo", NUNCA zero: zero é um número e mentiria, dizendo "o mínimo é
+    // zero, então nunca avise" (mesma regra do `valorTotal` do lote).
+    // Ver `supabase/sql/61_fios_saldo_inicial_e_minimo.sql`.
+    minimoCaixas: integer(),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })
@@ -84,6 +90,13 @@ export const lotesFio = pgTable(
 
     notaFiscal: text(),
     observacao: text(),
+
+    // ESTE LOTE É FOTO DA PRATELEIRA, não entrada. Os 51 lotes importados da
+    // planilha entraram todos num dia só, com a mesma data de referência: no
+    // livro de entradas eles fingiriam movimento que não houve — e, com ele
+    // sempre cheio, ninguém nota que desde a importação não entrou nada.
+    // Contam no estoque igual; só saem do livro. Ver a migration 61.
+    saldoInicial: boolean().notNull().default(false),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true })

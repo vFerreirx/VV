@@ -24,9 +24,11 @@ import {
 import {
   corFornecedorSchema,
   loteFioSchema,
+  retiradaPorCorSchema,
   saidaFioSchema,
   type CorFornecedorInput,
   type LoteFioInput,
+  type RetiradaPorCorInput,
   type SaidaFioInput,
 } from '@/lib/validators/fios'
 
@@ -102,6 +104,7 @@ export async function criarCorFornecedorAction(
         nomeFornecedor: data.nomeFornecedor,
         corId: data.corId,
         ativo: data.ativo,
+        minimoCaixas: data.minimoCaixas,
       })
       .returning({ id: coresFornecedorFio.id })
   } catch (err) {
@@ -149,6 +152,7 @@ export async function atualizarCorFornecedorAction(
         nomeFornecedor: data.nomeFornecedor,
         corId: data.corId,
         ativo: data.ativo,
+        minimoCaixas: data.minimoCaixas,
       })
       .where(eq(coresFornecedorFio.id, id))
   } catch (err) {
@@ -210,6 +214,11 @@ export type LoteFioItem = {
   vencimentoPagamento: string | null
   notaFiscal: string | null
   observacao: string | null
+  /**
+   * Foto da prateleira (import da planilha), e não uma entrada. Conta no
+   * estoque; fica fora do livro de entradas. Ver a migration 61.
+   */
+  saldoInicial: boolean
   saidaCaixas: number
   saidaPesoKg: string
   saldoCaixas: number
@@ -252,6 +261,7 @@ export async function listarLotesFio(): Promise<LoteFioItem[]> {
       vencimentoPagamento: lotesFio.vencimentoPagamento,
       notaFiscal: lotesFio.notaFiscal,
       observacao: lotesFio.observacao,
+      saldoInicial: lotesFio.saldoInicial,
       saidaCaixas: saidaCaixasSql,
       saidaPesoKg: saidaPesoSql,
     })
@@ -488,6 +498,126 @@ export async function registrarSaidaFioAction(
 
   revalidatePath('/estoque-fios')
   return { success: true, data: { id: inserted!.id }, message: 'Saída registrada' }
+}
+
+/**
+ * RETIRADA POR COR: uma chamada, N movimentações, uma transação.
+ *
+ * O diálogo monta o plano (FIFO, `planoDeRetirada`) e manda as partes
+ * prontas. Aqui não se refaz o plano: quem pega a caixa pode ter trocado de
+ * partida na mão — o tom do lote importa —, e recalcular jogaria fora a
+ * escolha dele. O que se refaz é a CONFERÊNCIA, lote por lote, porque entre
+ * abrir o diálogo e confirmar outra pessoa pode ter tirado fio.
+ *
+ * ⚠️ SALDO NEGATIVO NÃO PODE EXISTIR. A conferência é feita DENTRO da
+ * transação e sobre o saldo de agora; passar de qualquer lote derruba a
+ * retirada inteira. Meia retirada gravada seria pior que nenhuma: o estoque
+ * ficaria dizendo um número que ninguém pediu.
+ *
+ * As movimentações continuam IMOBILIZADAS (sem editar nem apagar): erro se
+ * corrige com lançamento novo. Ver o comentário de `movimentacoesFio`.
+ */
+export async function registrarRetiradaPorCorAction(
+  input: RetiradaPorCorInput,
+): Promise<ActionResult<{ movimentacoes: number }>> {
+  const user = await requireAreaEscrita('estoqueFios')
+
+  const parsed = retiradaPorCorSchema.safeParse(input)
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.message ?? 'Dados inválidos',
+    }
+  }
+  const data = parsed.data
+
+  // Duas partes do MESMO lote viriam de um plano montado à mão e passariam
+  // pela conferência uma a uma, cada uma "cabendo" no saldo cheio — juntas,
+  // estourariam. Somar antes é o que fecha essa porta.
+  const porLote = new Map<string, { caixas: number; pesoKg: number }>()
+  for (const parte of data.partes) {
+    const atual = porLote.get(parte.loteId) ?? { caixas: 0, pesoKg: 0 }
+    atual.caixas += parte.caixas
+    atual.pesoKg += Number(parte.pesoKg)
+    porLote.set(parte.loteId, atual)
+  }
+
+  const erro = await db.transaction(async (tx) => {
+    for (const [loteId, pedido] of porLote) {
+      const [lote] = await tx
+        .select({
+          caixas: lotesFio.caixas,
+          pesoTotalKg: lotesFio.pesoTotalKg,
+          numeroLote: lotesFio.numeroLote,
+          corFornecedorNome: coresFornecedorFio.nomeFornecedor,
+        })
+        .from(lotesFio)
+        .innerJoin(
+          coresFornecedorFio,
+          eq(coresFornecedorFio.id, lotesFio.corFornecedorId),
+        )
+        .where(and(eq(lotesFio.id, loteId), isNull(lotesFio.deletedAt)))
+        .limit(1)
+      if (!lote) return 'Lote não encontrado — recarregue a tela'
+
+      const [saidas] = await tx
+        .select({
+          caixas: sql<number>`COALESCE(SUM(${movimentacoesFio.caixas}), 0)::int`,
+          pesoKg: sql<string>`COALESCE(SUM(${movimentacoesFio.pesoKg}), 0)`,
+        })
+        .from(movimentacoesFio)
+        .where(eq(movimentacoesFio.loteId, loteId))
+
+      const saldoCaixas = lote.caixas - (saidas?.caixas ?? 0)
+      const saldoKg =
+        Number(lote.pesoTotalKg) - Number(saidas?.pesoKg ?? 0)
+      const onde = lote.numeroLote
+        ? `a partida ${lote.numeroLote}`
+        : `o lote sem partida de ${lote.corFornecedorNome}`
+
+      if (pedido.caixas > saldoCaixas) {
+        return (
+          `${lote.corFornecedorNome}: ${onde} só tem ${saldoCaixas} ` +
+          `caixa(s), e a retirada pede ${pedido.caixas}.`
+        )
+      }
+      // 1 centésimo de folga: o kg vem de digitação e de arredondamento de 2
+      // casas, e barrar por 0,004kg seria recusar uma retirada correta.
+      if (pedido.pesoKg > saldoKg + 0.01) {
+        return (
+          `${lote.corFornecedorNome}: ${onde} só tem ` +
+          `${saldoKg.toFixed(2)}kg, e a retirada pede ` +
+          `${pedido.pesoKg.toFixed(2)}kg.`
+        )
+      }
+    }
+
+    for (const parte of data.partes) {
+      await tx.insert(movimentacoesFio).values({
+        loteId: parte.loteId,
+        caixas: parte.caixas,
+        pesoKg: parte.pesoKg,
+        data: data.data,
+        motivo: data.motivo,
+        observacao: data.observacao ?? null,
+        usuarioId: user.id,
+      })
+    }
+    return null
+  })
+
+  if (erro) return { success: false, error: erro }
+
+  revalidatePath('/estoque-fios')
+  const n = data.partes.length
+  return {
+    success: true,
+    data: { movimentacoes: n },
+    message:
+      n === 1
+        ? 'Retirada registrada'
+        : `Retirada registrada em ${n} partidas`,
+  }
 }
 
 // -----------------------------------------------------------------

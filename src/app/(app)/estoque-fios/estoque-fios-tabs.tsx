@@ -5,6 +5,8 @@ import { useState, useTransition, ViewTransition } from 'react'
 import { CoresFornecedorList } from './cores-fornecedor-list'
 import { GradeFios } from './grade-fios'
 import { LotesFioList } from './lotes-fio-list'
+import { ResumoPorCor } from './resumo-por-cor'
+import { RetiradaDialog } from './retirada-dialog'
 import type { CorFornecedorItem, LoteFioItem } from './actions'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Cor } from '@/lib/db/schema'
@@ -22,23 +24,26 @@ export function EstoqueFiosTabs({
   coresAtivas: Cor[]
   podeEditar: boolean
 }) {
-  // As duas primeiras abas listam os mesmos lotes, e é de propósito — o que
+  // Duas das abas comem da mesma lista de lotes, e é de propósito — o que
   // muda é a PERGUNTA que cada uma responde, e por isso as colunas não se
   // repetem:
   //
-  //  - "Entradas de lote" responde "o que entrou, de quem e por quanto":
-  //    é o caminho de cadastro/edição e o lugar dos dados de compra (valor,
-  //    R$/kg, vendedor, nota, vencimento) que a planilha da fábrica nunca
-  //    teve. Ordenada por data de entrada, como um livro de lançamentos.
-  //  - "Estoque" responde "quanto tem de Cáqui?": é a grade no formato da
-  //    planilha, só leitura, com RETIRADA/TOTAL CAIXA/KG e a linha de TOTAL
-  //    que se confere contra o rodapé dela.
+  //  - "Estoque" responde "quanto tem de Cáqui?": o resumo por cor em cima
+  //    (a manchete) e, embaixo, a grade no formato da planilha, com
+  //    RETIRADA/TOTAL CAIXA/KG e a linha de TOTAL que se confere contra o
+  //    rodapé dela. É a PRIMEIRA porque é a pergunta de quem abre a tela.
+  //  - "Entradas de lote" responde "o que entrou, de quem e por quanto": é o
+  //    caminho de cadastro e o lugar dos dados de compra (valor, R$/kg,
+  //    vendedor, nota, vencimento) que a planilha da fábrica nunca teve.
+  //    Trabalho de escritório, com a nota na mão — e por isso não é a
+  //    primeira. Mostra só o que ENTROU DE VERDADE: os 51 lotes importados
+  //    são saldo inicial e ficam de fora (ver a migration 61).
   //
-  // O saldo aparece só na segunda; a compra, só na primeira. Se um dia uma
+  // O saldo aparece só na primeira; a compra, só na segunda. Se um dia uma
   // das duas ganhar a coluna da outra, elas voltam a dizer a mesma coisa.
   const abas = [
-    { value: 'entradas', label: 'Entradas de lote' },
     { value: 'saldo', label: 'Estoque' },
+    { value: 'entradas', label: 'Entradas de lote' },
     { value: 'cores', label: 'Cores do fornecedor' },
   ]
   const def = abas.some((a) => a.value === tabInicial)
@@ -49,6 +54,10 @@ export function EstoqueFiosTabs({
 
   const [aba, setAba] = useState(def)
   const [, startTransition] = useTransition()
+  // O filtro de cor mora AQUI porque serve os dois: clicar no Cáqui do
+  // resumo desce até as partidas de Cáqui na grade.
+  const [cor, setCor] = useState<string | null>(null)
+  const [retirando, setRetirando] = useState(false)
 
   return (
     <div className="space-y-6">
@@ -87,16 +96,27 @@ export function EstoqueFiosTabs({
           default="none"
         >
           <div>
+            <TabsContent value="saldo" className="mt-2 space-y-6">
+              <ResumoPorCor
+                lotes={lotes}
+                coresFornecedor={coresFornecedor}
+                corFiltrada={cor}
+                onFiltrarCor={setCor}
+                podeEditar={podeEditar}
+                onRegistrarRetirada={() => setRetirando(true)}
+                onIrParaCores={() =>
+                  startTransition(() => setAba('cores'))
+                }
+              />
+              <GradeFios lotes={lotes} cor={cor} onCor={setCor} />
+            </TabsContent>
+
             <TabsContent value="entradas" className="mt-2">
               <LotesFioList
                 lotes={lotes}
                 coresFornecedorAtivas={coresFornecedorAtivas}
                 podeEditar={podeEditar}
               />
-            </TabsContent>
-
-            <TabsContent value="saldo" className="mt-2">
-              <GradeFios lotes={lotes} />
             </TabsContent>
 
             <TabsContent value="cores" className="mt-2">
@@ -109,6 +129,13 @@ export function EstoqueFiosTabs({
           </div>
         </ViewTransition>
       </Tabs>
+
+      <RetiradaDialog
+        aberto={retirando}
+        lotes={lotes}
+        corInicial={cor}
+        onClose={() => setRetirando(false)}
+      />
     </div>
   )
 }
