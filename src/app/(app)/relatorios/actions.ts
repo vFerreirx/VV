@@ -22,7 +22,19 @@ export type RelatorioMensal = {
     unidades: number
     faturamento: number
   }[]
-  porDia: { data: string; unidades: number; faturamento: number | null }[]
+  porDia: {
+    data: string
+    unidades: number
+    faturamento: number | null
+    /**
+     * A observação daquele dia, quando existe.
+     *
+     * Ela era escrita no formulário do dia e não aparecia em lugar nenhum
+     * depois — 27 dias em 717 com um recado que ninguém mais leu. É uma
+     * COLUNA A MAIS na consulta que já lê `vendas`, não uma consulta nova.
+     */
+    observacao: string | null
+  }[]
 }
 
 // Dia seguinte a um YYYY-MM-DD (limite exclusivo do período).
@@ -77,6 +89,7 @@ export async function obterRelatorioPeriodo(
         data: vendas.data,
         unidades: vendas.quantidade,
         faturamento: vendas.faturamento,
+        observacao: vendas.observacao,
       })
       .from(vendas)
       .where(noMesVendas)
@@ -110,6 +123,7 @@ export async function obterRelatorioPeriodo(
       data: r.data,
       unidades: r.unidades,
       faturamento: r.faturamento === null ? null : num(r.faturamento),
+      observacao: r.observacao,
     })),
   }
 }

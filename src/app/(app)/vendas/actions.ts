@@ -1,6 +1,6 @@
 'use server'
 
-import { and, desc, eq, isNull, ne } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, isNull, lte, ne } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { podeEscrever } from '@/lib/auth/permissoes'
@@ -14,6 +14,10 @@ import {
   vendaDiaSchema,
   type VendaDiaInput,
 } from '@/lib/validators/vendas'
+import {
+  somarDias,
+  type LinhaDoHistorico,
+} from '@/lib/vendas/conferencia'
 import { CONTA_PEDIDOS } from '@/lib/vendas/lancamento-pedido'
 import { parseVendasCSV, type ResultadoImport } from '@/lib/vendas/importar-csv'
 
@@ -116,6 +120,54 @@ export async function listarVendasRecentes(limit = 14): Promise<VendaDia[]> {
     .orderBy(desc(vendas.data))
     .limit(limit)
   return linhas.map((l) => ({ ...l, contas: [], pedidos: [] }))
+}
+
+/**
+ * UMA CONSULTA SERVE TRÊS COISAS: as contas paradas, a referência de cada
+ * campo e a comparação do total do dia. São ~350 linhas (35 dias × 10 contas
+ * vivas), uma consulta só — o alternativo seria uma por conta, 13 idas ao
+ * banco cada vez que alguém troca de dia.
+ *
+ * ⚠️ ANCORADA NO DIA ABERTO, e não em hoje. Editar um dia de 2025 tem que
+ * comparar com o que era normal em 2025: a Amazon nem existia no começo do
+ * histórico, e a Shein 5 vendia até julho. Ancorar em hoje diria "esta conta
+ * está parada" sobre um dia em que ela estava viva.
+ *
+ * 35 dias porque a referência é POR DIA DA SEMANA (ver
+ * src/lib/vendas/conferencia.ts): 35 dias dão 4 a 5 quintas-feiras, que é o
+ * mínimo pra uma mediana dizer alguma coisa.
+ */
+export async function historicoRecente(
+  diaAberto: string,
+  dias = 35,
+): Promise<LinhaDoHistorico[]> {
+  await requireAreaEscrita('vendas')
+  const inicio = somarDias(diaAberto, -dias)
+
+  const linhas = await db
+    .select({
+      data: vendas.data,
+      conta: vendasMarketplace.conta,
+      quantidade: vendasMarketplace.quantidade,
+      faturamento: vendasMarketplace.faturamento,
+    })
+    .from(vendasMarketplace)
+    .innerJoin(vendas, eq(vendas.id, vendasMarketplace.vendaId))
+    .where(
+      and(
+        gt(vendas.data, inicio),
+        lte(vendas.data, diaAberto),
+        isNull(vendas.deletedAt),
+      ),
+    )
+    .orderBy(asc(vendas.data))
+
+  return linhas.map((l) => ({
+    data: l.data,
+    conta: l.conta,
+    quantidade: l.quantidade,
+    faturamento: l.faturamento === null ? null : Number(l.faturamento),
+  }))
 }
 
 // -----------------------------------------------------------------

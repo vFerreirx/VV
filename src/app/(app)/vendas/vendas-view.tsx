@@ -9,10 +9,14 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { Fragment, useRef, useState, useTransition } from 'react'
+import { Fragment, useEffect, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
-import { salvarVendaDiaAction, type VendaDia } from './actions'
+import {
+  historicoRecente,
+  salvarVendaDiaAction,
+  type VendaDia,
+} from './actions'
 import { ImportarCSVDialog } from './importar-csv-dialog'
 import { Button } from '@/components/ui/button'
 import {
@@ -35,7 +39,22 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
-import { somarContasParaExibicao } from '@/lib/vendas/contas'
+import { cn } from '@/lib/utils'
+import {
+  CONTA_ATACADO_MANUAL,
+  CONTA_ATACADO_PEDIDOS,
+  somarContasParaExibicao,
+} from '@/lib/vendas/contas'
+import {
+  avisoDeAtacadoDuplo,
+  contasParadas,
+  diasEmAberto,
+  foraDoNormal,
+  referenciaDaConta,
+  somarDias,
+  type Anomalia,
+  type LinhaDoHistorico,
+} from '@/lib/vendas/conferencia'
 import { formatarNumeroPedido } from '@/lib/validators/orcamentos'
 import {
   CONTAS_MARKETPLACE,
@@ -49,7 +68,11 @@ import {
 
 type Props = {
   data: string
+  /** Hoje em Brasília, do servidor: a faixa de dias em aberto sai daqui. */
+  hoje: string
   vendaDoDia: VendaDia | null
+  /** 35 dias terminando no dia aberto — ver `historicoRecente`. */
+  historico: LinhaDoHistorico[]
   recentes: VendaDia[]
   podeEditar: boolean
 }
@@ -127,6 +150,44 @@ const ORDEM_CONTA: Record<string, number> = Object.fromEntries(
   CONTAS_MARKETPLACE.map((c, i) => [c.key, i]),
 )
 
+// O DIA DA SEMANA POR EXTENSO, pro aviso falar a língua de quem confere:
+// "o normal nesta quinta", e não "o normal no dia 4 da semana".
+const DIA_SEMANA = [
+  'domingo',
+  'segunda',
+  'terça',
+  'quarta',
+  'quinta',
+  'sexta',
+  'sábado',
+]
+
+function diaDaSemanaPorExtenso(iso: string): string {
+  const [ano, mes, dia] = iso.split('-').map(Number)
+  return DIA_SEMANA[new Date(Date.UTC(ano!, mes! - 1, dia!)).getUTCDay()] ?? ''
+}
+
+/**
+ * O texto do aviso. Diz o que foi digitado, o que é normal e termina em
+ * PERGUNTA — a conferência avisa, nunca bloqueia: o número estranho pode ser
+ * um dia de campanha, e quem sabe é quem está com o painel aberto do lado.
+ */
+function textoDoAviso(
+  anomalia: Anomalia,
+  digitado: number | null,
+  mediana: number,
+  dia: string,
+): string {
+  const normal = `o normal nesta ${diaDaSemanaPorExtenso(dia)} é ~${Math.round(mediana)}`
+  if (anomalia === 'zerado') {
+    return `Sem número, e ${normal}. Faltou lançar?`
+  }
+  const valor = (digitado ?? 0).toLocaleString('pt-BR')
+  return anomalia === 'alto'
+    ? `${valor} peças, e ${normal}. Confere?`
+    : `${valor} peças, e ${normal}. Confere?`
+}
+
 // Agrupa as contas do dia por marketplace (na ordem do catálogo), com
 // subtotal por marketplace — mesmo formato da aba Mensal.
 function agruparContasDoDia(venda: VendaDia | null) {
@@ -151,7 +212,14 @@ function agruparContasDoDia(venda: VendaDia | null) {
   }).filter((g) => g.contas.length > 0)
 }
 
-export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
+export function VendasView({
+  data,
+  hoje: hojeDoServidor,
+  vendaDoDia,
+  historico,
+  recentes,
+  podeEditar,
+}: Props) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -163,9 +231,33 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
     venda: VendaDia | null
   } | null>(null)
 
-  const hoje = hojeISO()
+  const hoje = hojeDoServidor || hojeISO()
   const ehHoje = data === hoje
   const grupos = agruparContasDoDia(vendaDoDia)
+
+  // OS DIAS EM ABERTO APARECEM NA PRÓPRIA TELA, e não no sino: quem lança
+  // vendas abre esta tela justamente pra isso, e um sino aceso em toda tela
+  // do sistema cobraria a fábrica inteira por um trabalho que é de uma
+  // pessoa. `recentes` já vem carregado e ordenado por data desc.
+  const emAberto = diasEmAberto(
+    recentes.map((r) => r.data),
+    hoje,
+  )
+
+  // O MESMO DIA DA SEMANA PASSADA, ao lado do total: 200 peças só quer dizer
+  // alguma coisa comparado com a quinta passada. Sai do histórico que já foi
+  // carregado — sem consulta nova.
+  const diaAnterior = somarDias(data, -7)
+  const semanaPassada = historico
+    .filter((l) => l.data === diaAnterior)
+    .reduce(
+      (acc, l) => ({
+        quantidade: acc.quantidade + l.quantidade,
+        faturamento: acc.faturamento + (l.faturamento ?? 0),
+      }),
+      { quantidade: 0, faturamento: 0 },
+    )
+  const temSemanaPassada = historico.some((l) => l.data === diaAnterior)
 
   // "Registrar venda" (topo) sempre lança um dia NOVO: o dia seguinte ao
   // último dia com venda lançada (recentes vem ordenado por data desc).
@@ -208,6 +300,32 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
             Registrar venda
           </Button>
           <ImportarCSVDialog />
+        </div>
+      )}
+
+      {emAberto.length > 0 && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm">
+          <span className="font-medium">
+            {emAberto.length === 1
+              ? '1 dia sem lançamento: '
+              : `${emAberto.length} dias sem lançamento: `}
+          </span>
+          {emAberto.map((d, i) => (
+            <Fragment key={d}>
+              {i > 0 && <span className="text-muted-foreground">, </span>}
+              <button
+                type="button"
+                className="underline underline-offset-2"
+                onClick={() => irPara(d)}
+                disabled={isPending}
+              >
+                {formatarDataCurta(d)}
+              </button>
+            </Fragment>
+          ))}
+          <p className="text-muted-foreground mt-1 text-xs">
+            O lançamento é sempre do dia anterior — hoje não entra nesta conta.
+          </p>
         </div>
       )}
 
@@ -283,6 +401,11 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
             <div className="mt-1 text-3xl font-semibold tabular-nums">
               {vendaDoDia?.quantidade ?? 0}
             </div>
+            {temSemanaPassada && (
+              <div className="text-muted-foreground mt-1 text-xs tabular-nums">
+                {semanaPassada.quantidade} na semana passada
+              </div>
+            )}
           </div>
           <div>
             <div className="text-muted-foreground text-xs tracking-wide uppercase">
@@ -291,6 +414,12 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
             <div className="mt-1 text-3xl font-semibold tabular-nums">
               {formatarReais(vendaDoDia?.faturamento ?? null)}
             </div>
+            {temSemanaPassada && (
+              <div className="text-muted-foreground mt-1 text-xs tabular-nums">
+                {formatarReais(semanaPassada.faturamento || null)} na semana
+                passada
+              </div>
+            )}
           </div>
         </div>
 
@@ -475,6 +604,8 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
         onClose={() => setRegistro(null)}
         data={registro?.data ?? data}
         venda={registro?.venda ?? null}
+        historico={historico}
+        historicoDe={data}
       />
     </div>
   )
@@ -486,22 +617,55 @@ export function VendasView({ data, vendaDoDia, recentes, podeEditar }: Props) {
 
 type CampoConta = { q: string; f: string }
 
+// O estado do salvamento contínuo, pro indicador do rodapé.
+type EstadoDoSalvamento =
+  | { tipo: 'limpo' }
+  | { tipo: 'salvando' }
+  | { tipo: 'salvo'; hora: string }
+  | { tipo: 'erro'; mensagem: string }
+
+// A assinatura do que está na tela. Salvar só acontece quando ela MUDA — sem
+// isso, abrir e fechar o formulário abriria uma transação por foco perdido.
+function assinatura(
+  valores: Record<string, CampoConta>,
+  observacao: string,
+): string {
+  const contas = Object.entries(valores)
+    .map(([k, v]) => `${k}:${v.q.trim()}:${v.f.trim()}`)
+    .sort()
+    .join('|')
+  return `${contas}#${observacao.trim()}`
+}
+
 function EditarDialog({
   open,
   onClose,
   data,
   venda,
+  historico,
+  historicoDe,
 }: {
   open: boolean
   onClose: () => void
   data: string
   venda: VendaDia | null
+  historico: LinhaDoHistorico[]
+  /** O dia em que o histórico da página está ancorado. */
+  historicoDe: string
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [valores, setValores] = useState<Record<string, CampoConta>>({})
   const [observacao, setObservacao] = useState('')
   const [dataEdit, setDataEdit] = useState(data)
+  const [mostrarParadas, setMostrarParadas] = useState(false)
+  const [salvamento, setSalvamento] = useState<EstadoDoSalvamento>({
+    tipo: 'limpo',
+  })
+  // A assinatura do que já está GRAVADO. Começa nula: enquanto for nula, o
+  // salvamento contínuo não encosta no banco (ver `useEffect` abaixo).
+  const gravadoRef = useRef<string | null>(null)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Sincroniza os campos com a venda atual sempre que o dialog abre.
   const [abertoPara, setAbertoPara] = useState<string | null>(null)
@@ -523,8 +687,18 @@ function EditarDialog({
     }
     setValores(init)
     setObservacao(venda?.observacao ?? '')
+    setMostrarParadas(false)
+    setSalvamento({ tipo: 'limpo' })
+    // A BASE DE COMPARAÇÃO É O QUE ESTÁ GRAVADO. Só a partir daqui o
+    // salvamento contínuo sabe distinguir "o usuário mexeu" de "o formulário
+    // acabou de carregar" — e é essa distinção que impede uma gravação vazia
+    // por cima de um dia cheio.
+    gravadoRef.current = assinatura(init, venda?.observacao ?? '')
   }
-  if (!open && abertoPara !== null) setAbertoPara(null)
+  if (!open && abertoPara !== null) {
+    setAbertoPara(null)
+    gravadoRef.current = null
+  }
 
   function set(conta: string, campo: keyof CampoConta, valor: string) {
     const v = campo === 'f' ? mascararMoeda(valor) : valor
@@ -554,27 +728,185 @@ function EditarDialog({
   const pedidosQtd = pedidos.length
   const pedidosFat = pedidos.reduce((s, p) => s + Number(p.faturamento), 0)
 
-  function salvar() {
-    const contas = Object.entries(valores)
+  // O HISTÓRICO SÓ VALE PRO DIA EM QUE FOI ANCORADO. Abrindo o formulário
+  // num dia diferente do que a página carregou (o botão "Registrar venda"
+  // abre o dia seguinte ao último), ele é buscado de novo — uma consulta,
+  // e só quando o dia muda de verdade.
+  const [hist, setHist] = useState<LinhaDoHistorico[]>(historico)
+  const [histDe, setHistDe] = useState(historicoDe)
+  useEffect(() => {
+    if (!open) return
+    if (dataEdit === histDe) return
+    let vivo = true
+    historicoRecente(dataEdit)
+      .then((h) => {
+        if (!vivo) return
+        setHist(h)
+        setHistDe(dataEdit)
+      })
+      // Sem histórico a tela continua inteira: some a referência, não o
+      // formulário.
+      .catch(() => {})
+    return () => {
+      vivo = false
+    }
+  }, [open, dataEdit, histDe])
+
+  const historicoDoDia = histDe === dataEdit ? hist : []
+
+  // CONTAS PARADAS SAEM DO FORMULÁRIO. Das 13 contas, 8 estão vivas: a
+  // shein_5 parou em julho, e ela aparecia entre a shein_1 e o TikTok como se
+  // esperasse número todo dia. Some a LINHA, não a conta: o catálogo não muda
+  // e ela volta sozinha assim que voltar a vender.
+  const contasManuais = MARKETPLACES_AGRUPADOS.flatMap((g) =>
+    g.contas.map((c) => c.key as string),
+  )
+  const paradas = new Set(
+    contasParadas(historicoDoDia, contasManuais, dataEdit),
+  )
+  // Conta com algo digitado agora nunca some no meio da digitação.
+  for (const [conta, v] of Object.entries(valores)) {
+    if (v.q.trim() !== '' || v.f.trim() !== '') paradas.delete(conta)
+  }
+
+  // A LINHA ESPELHO DOS PEDIDOS, pra mostrar a origem ao lado do campo
+  // manual do atacado. Ela não tem input: quem escreve é o pedido.
+  const espelho =
+    dataEdit === data
+      ? (venda?.contas.find((c) => c.conta === CONTA_ATACADO_PEDIDOS) ?? null)
+      : null
+  const manualAtacado = valores[CONTA_ATACADO_MANUAL]
+  const atacadoDuplo = avisoDeAtacadoDuplo(
+    manualAtacado
+      ? {
+          quantidade: Number(manualAtacado.q) || 0,
+          faturamento: Number(moedaParaDecimal(manualAtacado.f) ?? 0),
+        }
+      : null,
+    espelho
+      ? {
+          quantidade: espelho.quantidade,
+          faturamento: Number(espelho.faturamento ?? 0),
+        }
+      : null,
+  )
+
+  // OS AVISOS DA CONFERÊNCIA, por conta visível. Nunca bloqueiam nada: são
+  // uma pergunta ("confere?"), e quem sabe a resposta é quem tem o painel do
+  // marketplace aberto do lado.
+  const avisos: { conta: string; label: string; texto: string }[] = []
+  for (const grupo of MARKETPLACES_AGRUPADOS) {
+    for (const conta of grupo.contas) {
+      if (paradas.has(conta.key)) continue
+      const ref = referenciaDaConta(
+        historicoDoDia,
+        conta.key,
+        dataEdit,
+        'quantidade',
+      )
+      const v = valores[conta.key]
+      const digitado = v && v.q.trim() !== '' ? Number(v.q) : null
+      const anomalia = foraDoNormal(digitado, ref, 'quantidade')
+      if (!anomalia) continue
+      avisos.push({
+        conta: conta.key,
+        label: `${grupo.label} · ${conta.label}`,
+        texto: textoDoAviso(anomalia, digitado, ref.mediana, dataEdit),
+      })
+    }
+  }
+
+  /** O payload do dia, do jeito que a action espera. */
+  function contasParaSalvar() {
+    return Object.entries(valores)
       .map(([conta, v]) => ({
         conta: conta as ContaKey,
         quantidade: v.q.trim() === '' ? 0 : v.q,
         faturamento: moedaParaDecimal(v.f),
       }))
       .filter((c) => Number(c.quantidade) > 0 || c.faturamento !== undefined)
+  }
 
+  // SALVAMENTO CONTÍNUO — o trabalho é abrir os painéis dos marketplaces, não
+  // digitar. Entre uma conta e outra a pessoa sai da tela, atende telefone,
+  // troca de aba; o formulário tem que aguentar sair e voltar.
+  //
+  // ⚠️ QUATRO TRAVAS, porque esta action SUBSTITUI o dia inteiro e uma
+  // gravação indevida apaga lançamento de verdade:
+  //
+  //   1. Só depois de carregado (`gravadoRef` preenchido). Antes disso o
+  //      formulário está vazio, e gravar vazio por cima de um dia cheio seria
+  //      apagar tudo em silêncio.
+  //   2. Só se ALGO MUDOU de verdade (assinatura diferente da gravada) — nada
+  //      de uma transação por foco perdido.
+  //   3. Só no dia em que o formulário abriu. Trocar a data no campo e deixar
+  //      o relógio salvar escreveria o conteúdo deste dia POR CIMA de outro.
+  //      Com a data trocada, só o botão grava.
+  //   4. Nunca esvazia sozinho: se o dia tem lançamento e a tela ficou sem
+  //      nenhum campo preenchido, o automático não grava. Apagar um dia é
+  //      decisão, e decisão passa pelo botão.
+  const mudou =
+    gravadoRef.current !== null &&
+    assinatura(valores, observacao) !== gravadoRef.current
+  const esvaziando =
+    contasParaSalvar().length === 0 && (venda?.contas.length ?? 0) > 0
+  const podeSalvarSozinho = mudou && dataEdit === data && !esvaziando
+
+  useEffect(() => {
+    if (!open || !podeSalvarSozinho) return
+    if (timerRef.current) clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      void gravar({ automatico: true })
+    }, 1500)
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+    // A assinatura é o que dispara: qualquer tecla muda ela.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, podeSalvarSozinho, assinatura(valores, observacao)])
+
+  async function gravar({ automatico }: { automatico: boolean }) {
+    const contas = contasParaSalvar()
+    const assinaturaEnviada = assinatura(valores, observacao)
+    setSalvamento({ tipo: 'salvando' })
+
+    const result = await salvarVendaDiaAction({
+      data: dataEdit,
+      observacao: observacao.trim() || undefined,
+      contas,
+    })
+
+    if (!result.success) {
+      setSalvamento({ tipo: 'erro', mensagem: result.error })
+      // No automático o toast não aparece: o indicador do rodapé já diz, e um
+      // toast de erro a cada 1,5 s durante uma queda de rede seria pior que o
+      // problema. No manual, ele aparece porque houve um clique esperando
+      // resposta.
+      if (!automatico) toast.error(result.error)
+      return false
+    }
+
+    gravadoRef.current = assinaturaEnviada
+    setSalvamento({
+      tipo: 'salvo',
+      hora: new Date().toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    })
+    router.refresh()
+    return true
+  }
+
+  // O BOTÃO CONTINUA EXISTINDO, como rede: é ele que fecha o dia, é ele que
+  // grava quando a data foi trocada, e é por ele que se esvazia um dia de
+  // propósito — os três casos que o automático não faz.
+  function salvar() {
+    if (timerRef.current) clearTimeout(timerRef.current)
     startTransition(async () => {
-      const result = await salvarVendaDiaAction({
-        data: dataEdit,
-        observacao: observacao.trim() || undefined,
-        contas,
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success(result.message ?? 'Salvo')
-      router.refresh()
+      const ok = await gravar({ automatico: false })
+      if (!ok) return
+      toast.success('Vendas do dia salvas')
       onClose()
     })
   }
@@ -611,60 +943,144 @@ function EditarDialog({
             />
           </div>
 
-          {MARKETPLACES_AGRUPADOS.map((grupo) => (
-            <div key={grupo.marketplace} className="space-y-2">
-              <div className="text-sm font-semibold">{grupo.label}</div>
-              {grupo.marketplace === 'vendas_atacado' && (
-                <p className="text-muted-foreground text-xs">
-                  Informe somente vendas ainda não lançadas por um pedido. Os
-                  pedidos finalizados são somados automaticamente a esta conta.
-                </p>
-              )}
-              <div className="space-y-2">
-                {grupo.contas.map((conta) => {
-                  const v = valores[conta.key] ?? { q: '', f: '' }
-                  return (
-                    <div
-                      key={conta.key}
-                      className="grid grid-cols-[1fr_5.5rem_7rem] items-center gap-2"
-                    >
-                      <Label
-                        htmlFor={`q-${conta.key}`}
-                        className="text-muted-foreground text-sm font-normal"
-                      >
-                        {conta.label}
-                      </Label>
-                      <Input
-                        id={`q-${conta.key}`}
-                        inputMode="numeric"
-                        placeholder="qtd"
-                        value={v.q}
-                        onChange={(e) =>
-                          set(conta.key, 'q', e.target.value.replace(/\D/g, ''))
-                        }
-                        disabled={isPending}
-                        className="h-9"
-                      />
-                      <div className="relative">
-                        <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
-                          R$
-                        </span>
-                        <Input
-                          aria-label={`Faturamento ${grupo.label} ${conta.label}`}
-                          inputMode="decimal"
-                          placeholder="0,00"
-                          value={v.f}
-                          onChange={(e) => set(conta.key, 'f', e.target.value)}
-                          disabled={isPending}
-                          className="h-9 pl-7 text-right"
-                        />
+          {MARKETPLACES_AGRUPADOS.map((grupo) => {
+            const visiveis = grupo.contas.filter(
+              (c) => mostrarParadas || !paradas.has(c.key),
+            )
+            if (visiveis.length === 0) return null
+            return (
+              <div key={grupo.marketplace} className="space-y-2">
+                <div className="text-sm font-semibold">{grupo.label}</div>
+                {grupo.marketplace === 'vendas_atacado' && (
+                  <p className="text-muted-foreground text-xs">
+                    Informe somente vendas ainda não lançadas por um pedido. Os
+                    pedidos finalizados são somados automaticamente a esta
+                    conta.
+                  </p>
+                )}
+                <div className="space-y-2">
+                  {visiveis.map((conta) => {
+                    const v = valores[conta.key] ?? { q: '', f: '' }
+                    const ref = referenciaDaConta(
+                      historicoDoDia,
+                      conta.key,
+                      dataEdit,
+                      'quantidade',
+                    )
+                    const digitado = v.q.trim() === '' ? null : Number(v.q)
+                    const anomalia = foraDoNormal(digitado, ref, 'quantidade')
+                    const ehAtacadoManual = conta.key === CONTA_ATACADO_MANUAL
+                    return (
+                      <div key={conta.key} className="space-y-1">
+                        <div className="grid grid-cols-[1fr_5.5rem_7rem] items-center gap-2">
+                          <Label
+                            htmlFor={`q-${conta.key}`}
+                            className="text-muted-foreground text-sm font-normal"
+                          >
+                            {conta.label}
+                            {/* A REFERÊNCIA FICA DO LADO DO CAMPO, discreta:
+                                é o número que ele usaria pra conferir de
+                                cabeça, e de cabeça ninguém lembra o que a
+                                Conta 1 fez na quinta passada. */}
+                            {ref.amostras >= 3 && ref.mediana > 0 && (
+                              <span className="text-muted-foreground/70 ml-1 text-xs tabular-nums">
+                                (~{Math.round(ref.mediana)})
+                              </span>
+                            )}
+                          </Label>
+                          <Input
+                            id={`q-${conta.key}`}
+                            inputMode="numeric"
+                            placeholder="qtd"
+                            value={v.q}
+                            onChange={(e) =>
+                              set(
+                                conta.key,
+                                'q',
+                                e.target.value.replace(/\D/g, ''),
+                              )
+                            }
+                            disabled={isPending}
+                            className={cn(
+                              'h-9',
+                              anomalia && 'border-amber-500/60',
+                            )}
+                          />
+                          <div className="relative">
+                            <span className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-xs">
+                              R$
+                            </span>
+                            <Input
+                              aria-label={`Faturamento ${grupo.label} ${conta.label}`}
+                              inputMode="decimal"
+                              placeholder="0,00"
+                              value={v.f}
+                              onChange={(e) => set(conta.key, 'f', e.target.value)}
+                              disabled={isPending}
+                              className="h-9 pl-7 text-right"
+                            />
+                          </div>
+                        </div>
+
+                        {anomalia && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            {textoDoAviso(
+                              anomalia,
+                              digitado,
+                              ref.mediana,
+                              dataEdit,
+                            )}
+                          </p>
+                        )}
+
+                        {/* A ORIGEM À VISTA. O campo manual continua aberto —
+                            nem todo pedido de atacado passa pelo sistema, e
+                            fechá-lo apagaria faturamento real do mês. O que
+                            faltava era saber o que JÁ veio pelos pedidos. */}
+                        {ehAtacadoManual && espelho && (
+                          <p className="text-muted-foreground text-xs">
+                            Dos pedidos finalizados: {espelho.quantidade} venda
+                            {espelho.quantidade === 1 ? '' : 's'} ·{' '}
+                            {formatarReais(espelho.faturamento)}
+                            {pedidos.length > 0 && (
+                              <>
+                                {' '}
+                                (
+                                {pedidos.reduce((t, x) => t + x.unidades, 0)}{' '}
+                                peças)
+                              </>
+                            )}{' '}
+                            — lançado pelo pedido, não editável aqui.
+                          </p>
+                        )}
+                        {ehAtacadoManual && atacadoDuplo && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400">
+                            As duas origens têm número neste dia. Se este
+                            pedido já entrou pelo sistema, o dia conta a venda
+                            duas vezes.
+                          </p>
+                        )}
                       </div>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
+
+          {paradas.size > 0 && (
+            // CONTA PARADA NÃO É CONTA APAGADA. Ela sai da lista pra não
+            // pedir número todo dia, e volta sozinha quando voltar a vender.
+            <button
+              type="button"
+              className="text-muted-foreground text-xs underline underline-offset-2"
+              onClick={() => setMostrarParadas((v) => !v)}
+            >
+              {mostrarParadas
+                ? 'esconder contas paradas'
+                : `mostrar contas paradas (${paradas.size})`}
+            </button>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="v-obs">Observação (opcional)</Label>
@@ -679,6 +1095,31 @@ function EditarDialog({
           </div>
         </div>
 
+        {avisos.length > 0 && (
+          // O MESMO AVISO, JUNTO, ANTES DE SALVAR: numa lista de 26 campos o
+          // aviso da terceira linha some da vista quando se chega na última.
+          <div className="border-t bg-amber-500/5 px-6 py-3">
+            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              {avisos.length === 1
+                ? '1 conta pra conferir'
+                : `${avisos.length} contas pra conferir`}
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {avisos.map((a) => (
+                <li
+                  key={a.conta}
+                  className="text-xs text-amber-700 dark:text-amber-400"
+                >
+                  {a.label}: {a.texto}
+                </li>
+              ))}
+            </ul>
+            <p className="text-muted-foreground mt-1 text-xs">
+              Isto não impede de salvar — é só uma conferida.
+            </p>
+          </div>
+        )}
+
         <DialogFooter className="flex-row items-center justify-between border-t p-6 sm:justify-between">
           <div className="text-sm leading-tight">
             {pedidos.length > 0 && (
@@ -690,6 +1131,31 @@ function EditarDialog({
                 — lançados pelo pedido, não editáveis aqui
               </div>
             )}
+            {/* O INDICADOR DO SALVAMENTO CONTÍNUO. Sem ele, "salva sozinho"
+                vira fé: a pessoa fecha a aba sem saber se o que digitou está
+                gravado. */}
+            <div className="text-muted-foreground text-xs">
+              {/* "salvando…" enquanto houver mudança pendente: o que a
+                  pessoa precisa saber é se o que ela digitou já está gravado,
+                  e entre a tecla e a gravação vão 1,5 s. */}
+              {(salvamento.tipo === 'salvando' || podeSalvarSozinho) &&
+                'salvando…'}
+              {salvamento.tipo === 'salvo' &&
+                !podeSalvarSozinho &&
+                `salvo às ${salvamento.hora}`}
+              {salvamento.tipo === 'erro' && !podeSalvarSozinho && (
+                <span className="text-destructive">
+                  não salvou — {salvamento.mensagem}
+                </span>
+              )}
+              {salvamento.tipo === 'limpo' &&
+                dataEdit !== data &&
+                'data trocada: salve no botão'}
+              {salvamento.tipo === 'limpo' &&
+                dataEdit === data &&
+                esvaziando &&
+                'sem nenhum campo: salve no botão pra esvaziar o dia'}
+            </div>
             <div>
               <span className="text-muted-foreground">Total: </span>
               <span className="font-semibold tabular-nums">

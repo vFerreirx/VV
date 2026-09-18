@@ -779,6 +779,10 @@ export function RelatorioView({
                   <TableHead>Dia</TableHead>
                   <TableHead className="text-right">Vendas</TableHead>
                   <TableHead className="text-right">Faturamento</TableHead>
+                  {/* A OBSERVAÇÃO DO DIA, que só existia no formulário: é
+                      aqui, olhando o mês, que "chuva o dia todo" ou "Shopee
+                      fora do ar" explica a linha que destoa. */}
+                  <TableHead>Observação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -792,6 +796,15 @@ export function RelatorioView({
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {reais(d.faturamento)}
+                    </TableCell>
+                    {/* Uma linha só, cortada no fim: a observação explica o
+                        dia, não pode empurrar os números pra fora da folha na
+                        impressão. O texto inteiro fica no title. */}
+                    <TableCell
+                      className="text-muted-foreground max-w-[22rem] truncate text-xs"
+                      title={d.observacao ?? undefined}
+                    >
+                      {d.observacao ?? ''}
                     </TableCell>
                   </TableRow>
                 ))}

@@ -3,6 +3,7 @@
 import { useState, useTransition, ViewTransition } from 'react'
 
 import type { VendaDia } from './actions'
+import type { LinhaDoHistorico } from '@/lib/vendas/conferencia'
 import { VendasView } from './vendas-view'
 import type { RelatorioMensal } from '../relatorios/actions'
 import { RelatorioView } from '../relatorios/relatorio-view'
@@ -11,7 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 export function VendasTabs({
   tabInicial,
   data,
+  hoje,
   vendaDoDia,
+  historico,
   recentes,
   podeEditar,
   relatorio,
@@ -19,7 +22,10 @@ export function VendasTabs({
 }: {
   tabInicial: 'diario' | 'mensal'
   data: string
+  /** O dia de hoje em Brasília — a faixa de dias em aberto sai dele. */
+  hoje: string
   vendaDoDia: VendaDia | null
+  historico: LinhaDoHistorico[]
   recentes: VendaDia[]
   podeEditar: boolean
   relatorio: RelatorioMensal
@@ -65,7 +71,9 @@ export function VendasTabs({
             <TabsContent value="diario" className="mt-2">
               <VendasView
                 data={data}
+                hoje={hoje}
                 vendaDoDia={vendaDoDia}
+                historico={historico}
                 recentes={recentes}
                 podeEditar={podeEditar}
               />

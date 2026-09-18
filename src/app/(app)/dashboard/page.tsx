@@ -21,6 +21,10 @@ import {
   resumoDaReposicao,
   type ResumoDaReposicao,
 } from '../estoque/actions'
+import {
+  obterRelatorioPeriodo,
+  type RelatorioMensal,
+} from '../relatorios/actions'
 import { listarRemessasAbertas, type RemessaAberta } from '../remessas/actions'
 import {
   contarTarefasPendentes,
@@ -34,6 +38,7 @@ import { CountUp } from '@/components/ui/count-up'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { destinoInicial, nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import { ROTULO_DA_SITUACAO } from '@/lib/producao/reposicao'
 import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
 import { cn } from '@/lib/utils'
@@ -48,18 +53,37 @@ export default async function DashboardPage() {
   // (src/lib/auth/permissoes.ts); os outros cargos vão pra casa deles.
   // `requireArea` não serve aqui: ela redireciona pra /dashboard, e seria
   // loop. `destinoInicial` só devolve uma casa que o cargo consegue abrir.
-  const [nivelDashboard, nivelRemessas, nivelOrdens, nivelKanban] =
-    await Promise.all([
-      nivelDaAreaPara(user.role, 'dashboard'),
-      nivelDaAreaPara(user.role, 'remessas'),
-      nivelDaAreaPara(user.role, 'ordens'),
-      nivelDaAreaPara(user.role, 'kanban'),
-    ])
+  const [
+    nivelDashboard,
+    nivelRemessas,
+    nivelOrdens,
+    nivelKanban,
+    nivelVendas,
+  ] = await Promise.all([
+    nivelDaAreaPara(user.role, 'dashboard'),
+    nivelDaAreaPara(user.role, 'remessas'),
+    nivelDaAreaPara(user.role, 'ordens'),
+    nivelDaAreaPara(user.role, 'kanban'),
+    nivelDaAreaPara(user.role, 'vendas'),
+  ])
   if (nivelDashboard === 'nenhum') redirect(await destinoInicial(user.role))
 
   // Tarefas são da administração: só admin. Pros demais cargos nem a
   // consulta acontece — a action redirecionaria.
   const ehAdmin = user.role === 'admin'
+
+  // O BLOCO DE VENDAS SÓ PRA QUEM TEM A ÁREA — e a checagem vem ANTES da
+  // chamada, não depois: `obterRelatorioPeriodo` tem `requireArea('vendas')`
+  // dentro, que REDIRECIONA. Chamar e descartar o resultado jogaria pra fora
+  // do dashboard quem não tem vendas. Mesmo cuidado que o sino toma com as
+  // parcelas.
+  //
+  // DOIS PERÍODOS, não três: o mês corrente e o mês passado inteiro. Os
+  // últimos 7 dias saem do `porDia` dos dois — a janela de 7 dias sempre cai
+  // dentro deles —, então o dashboard não ganha uma terceira consulta.
+  const hojeBr = hojeEmBrasilia()
+  const inicioDoMes = `${hojeBr.slice(0, 7)}-01`
+  const mesPassado = mesAnteriorDe(hojeBr)
 
   const [
     kpis,
@@ -70,6 +94,8 @@ export default async function DashboardPage() {
     tarefas,
     tarefasPendentes,
     reposicao,
+    vendasDoMes,
+    vendasMesPassado,
   ] = await Promise.all([
     obterKPIs(),
     listarOpsUrgentes(5),
@@ -80,6 +106,12 @@ export default async function DashboardPage() {
     ehAdmin ? contarTarefasPendentes() : Promise.resolve(0),
     // Volta vazio pra quem não tem escrita em Ordens.
     resumoDaReposicao(),
+    nivelVendas !== 'nenhum'
+      ? obterRelatorioPeriodo(inicioDoMes, hojeBr)
+      : Promise.resolve(null),
+    nivelVendas !== 'nenhum'
+      ? obterRelatorioPeriodo(mesPassado.inicio, mesPassado.fim)
+      : Promise.resolve(null),
   ])
 
   // Entrada do reveal de Suspense: par do exit no loading.tsx desta rota.
@@ -144,6 +176,17 @@ export default async function DashboardPage() {
               tom={kpis.faltaBaixa > 0 ? 'ambar' : undefined}
             />
           </div>
+
+          {/* VENDAS NO PAINEL. O dashboard não citava faturamento em lugar
+              nenhum, e é o número que a gestão abre a tela pra ver — ele
+              existia só dentro de /vendas, atrás de duas abas. */}
+          {vendasDoMes && (
+            <VendasCard
+              mes={vendasDoMes}
+              mesPassado={vendasMesPassado}
+              hoje={hojeBr}
+            />
+          )}
 
           {/* Tarefas da administração — SÓ admin. Pros demais cargos o card
               nem existe: nada de espaço vazio no lugar. */}
@@ -423,6 +466,131 @@ function RemessasAlerta({ remessas }: { remessas: RemessaAberta[] }) {
             </ul>
           </div>
         )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// -----------------------------------------------------------------
+// Vendas
+// -----------------------------------------------------------------
+
+/** O mês anterior inteiro (primeiro e último dia), a partir de um YYYY-MM-DD. */
+function mesAnteriorDe(iso: string): { inicio: string; fim: string } {
+  const [ano, mes] = iso.split('-').map(Number)
+  const anoAnt = mes === 1 ? ano! - 1 : ano!
+  const mesAnt = mes === 1 ? 12 : mes! - 1
+  const mm = String(mesAnt).padStart(2, '0')
+  // Dia 0 do mês seguinte = último dia deste mês, sem tabela de 30/31.
+  const ultimo = new Date(Date.UTC(anoAnt, mesAnt, 0)).getUTCDate()
+  return { inicio: `${anoAnt}-${mm}-01`, fim: `${anoAnt}-${mm}-${ultimo}` }
+}
+
+function somarDiasIso(iso: string, n: number): string {
+  const [ano, mes, dia] = iso.split('-').map(Number)
+  return new Date(Date.UTC(ano!, mes! - 1, dia! + n)).toISOString().slice(0, 10)
+}
+
+const reaisCurtos = (v: number): string =>
+  v.toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    maximumFractionDigits: 0,
+  })
+
+function VendasCard({
+  mes,
+  mesPassado,
+  hoje,
+}: {
+  mes: RelatorioMensal
+  mesPassado: RelatorioMensal | null
+  hoje: string
+}) {
+  // ⚠️ A COMPARAÇÃO É ATÉ O MESMO DIA DO MÊS PASSADO. Comparar 18 dias contra
+  // 31 diria "caiu 40%" todo mês, e a queda seria só o calendário.
+  const diaDoMes = Number(hoje.slice(8, 10))
+  const mesmoPeriodo = (mesPassado?.porDia ?? [])
+    .filter((d) => Number(d.data.slice(8, 10)) <= diaDoMes)
+    .reduce((s, d) => s + (d.faturamento ?? 0), 0)
+
+  // Os últimos 7 dias, do `porDia` dos dois períodos já carregados: a janela
+  // atravessa a virada do mês nos primeiros dias, e é por isso que o mês
+  // passado entra na conta.
+  const desde = somarDiasIso(hoje, -6)
+  const ultimos7 = [...(mesPassado?.porDia ?? []), ...mes.porDia]
+    .filter((d) => d.data >= desde && d.data <= hoje)
+    .reduce(
+      (acc, d) => ({
+        faturamento: acc.faturamento + (d.faturamento ?? 0),
+        unidades: acc.unidades + d.unidades,
+      }),
+      { faturamento: 0, unidades: 0 },
+    )
+
+  const variacao =
+    mesmoPeriodo > 0
+      ? ((mes.vendas.faturamento - mesmoPeriodo) / mesmoPeriodo) * 100
+      : null
+
+  return (
+    <Card className="vv-reveal">
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle>Vendas do mês</CardTitle>
+          <Link
+            href="/vendas"
+            className="text-muted-foreground hover:text-foreground text-xs underline-offset-4 hover:underline"
+          >
+            Ver diário →
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div>
+            <div className="text-muted-foreground text-xs tracking-wide uppercase">
+              Faturamento do mês
+            </div>
+            <div className="mt-1 text-2xl font-semibold tabular-nums">
+              {reaisCurtos(mes.vendas.faturamento)}
+            </div>
+            <div className="text-muted-foreground text-xs tabular-nums">
+              {mes.vendas.unidades.toLocaleString('pt-BR')} peças em{' '}
+              {mes.vendas.dias} dia{mes.vendas.dias === 1 ? '' : 's'}
+            </div>
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs tracking-wide uppercase">
+              Até dia {diaDoMes} do mês passado
+            </div>
+            <div className="mt-1 text-2xl font-semibold tabular-nums">
+              {mesmoPeriodo > 0 ? reaisCurtos(mesmoPeriodo) : '—'}
+            </div>
+            {variacao !== null && (
+              <div
+                className={cn(
+                  'text-xs tabular-nums',
+                  variacao >= 0 ? 'text-emerald-600' : 'text-destructive',
+                )}
+              >
+                {variacao >= 0 ? '+' : ''}
+                {variacao.toFixed(1)}% neste mês
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-muted-foreground text-xs tracking-wide uppercase">
+              Últimos 7 dias
+            </div>
+            <div className="mt-1 text-2xl font-semibold tabular-nums">
+              {reaisCurtos(ultimos7.faturamento)}
+            </div>
+            <div className="text-muted-foreground text-xs tabular-nums">
+              {ultimos7.unidades.toLocaleString('pt-BR')} peças
+            </div>
+          </div>
+        </div>
       </CardContent>
     </Card>
   )

@@ -1,6 +1,10 @@
 import type { Metadata } from 'next'
 
-import { listarVendasRecentes, obterVendaDoDia } from './actions'
+import {
+  historicoRecente,
+  listarVendasRecentes,
+  obterVendaDoDia,
+} from './actions'
 import { VendasTabs } from './vendas-tabs'
 import { obterRelatorioPeriodo } from '../relatorios/actions'
 import { podeEscrever } from '@/lib/auth/permissoes'
@@ -47,8 +51,11 @@ export default async function VendasPage({
     ;[inicioComp, fimComp] = [fimComp, inicioComp]
   }
 
-  const [vendaDoDia, relatorio, comparacao] = await Promise.all([
+  const [vendaDoDia, historico, relatorio, comparacao] = await Promise.all([
     obterVendaDoDia(data),
+    // O histórico do dia ABERTO: contas paradas, referência de cada campo e a
+    // comparação do total. Uma consulta, em paralelo com o resto.
+    historicoRecente(data),
     obterRelatorioPeriodo(inicio, fim),
     inicioComp && fimComp
       ? obterRelatorioPeriodo(inicioComp, fimComp)
@@ -59,7 +66,9 @@ export default async function VendasPage({
     <VendasTabs
       tabInicial={tabInicial}
       data={data}
+      hoje={hoje}
       vendaDoDia={vendaDoDia}
+      historico={historico}
       recentes={recentes}
       podeEditar={podeEditar}
       relatorio={relatorio}

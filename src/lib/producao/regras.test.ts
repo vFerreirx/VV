@@ -28,6 +28,14 @@ import {
   totalDaGrade,
   type LoteComSaldo,
 } from '../fios/saldo.ts'
+import {
+  avisoDeAtacadoDuplo,
+  contasParadas,
+  diasEmAberto,
+  foraDoNormal,
+  referenciaDaConta,
+  type LinhaDoHistorico,
+} from '../vendas/conferencia.ts'
 import { chaveDaPeca, chaveDeTextoLivre } from '../separacao.ts'
 import {
   estadoDaReposicaoPelaOp,
@@ -1288,4 +1296,153 @@ test('fios: a grade ordena por cor, partida e id, e o rodape sai das linhas', ()
     saldoCaixas: 9,
     saldoPesoKg: 288.25,
   })
+})
+
+// -----------------------------------------------------------------
+// Vendas: dias em aberto, contas paradas, conferencia
+// (src/lib/vendas/conferencia.ts)
+// -----------------------------------------------------------------
+
+// Historico do jeito que a consulta entrega: uma linha por (dia, conta).
+function hist(
+  data: string,
+  conta: string,
+  quantidade: number,
+  faturamento: number | null = null,
+): LinhaDoHistorico {
+  return { data, conta, quantidade, faturamento }
+}
+
+// As quintas anteriores a 2026-09-17 (que e uma quinta).
+const QUINTAS = ['2026-09-10', '2026-09-03', '2026-08-27', '2026-08-20']
+
+function quintasDe(conta: string, valores: number[]): LinhaDoHistorico[] {
+  return valores.map((v, i) => hist(QUINTAS[i]!, conta, v))
+}
+
+test('vendas: dia em aberto no meio de dias lancados, e hoje nunca entra', () => {
+  // Hoje e 18/09; lancados: 17, 15, 14, 13, 12 (faltam 16 e 11).
+  const lancados = [
+    '2026-09-17',
+    '2026-09-15',
+    '2026-09-14',
+    '2026-09-13',
+    '2026-09-12',
+  ]
+  assert.deepEqual(diasEmAberto(lancados, '2026-09-18'), [
+    '2026-09-16',
+    '2026-09-11',
+  ])
+
+  // Hoje fica de fora mesmo sem lancamento nenhum: o dia ainda nao fechou.
+  assert.ok(!diasEmAberto([], '2026-09-18').includes('2026-09-18'))
+  assert.equal(diasEmAberto([], '2026-09-18').length, 7)
+  // Sabado (12) e domingo (13) contam: eles lancam todo dia, e a segunda e
+  // justamente quando o buraco do fim de semana aparece.
+  assert.deepEqual(
+    diasEmAberto(['2026-09-11', '2026-09-10'], '2026-09-14', 3),
+    ['2026-09-13', '2026-09-12'],
+  )
+})
+
+test('vendas: conta parada some, mas nao se tiver valor no dia aberto', () => {
+  const catalogo = ['ml_1', 'shein_5', 'temu']
+  const historico = [
+    hist('2026-09-17', 'ml_1', 60),
+    hist('2026-09-16', 'ml_1', 55),
+    // shein_5 parou em julho — fora da janela de 30 dias.
+    hist('2026-07-13', 'shein_5', 4),
+    hist('2026-09-08', 'temu', 1),
+  ]
+  assert.deepEqual(contasParadas(historico, catalogo, '2026-09-17'), [
+    'shein_5',
+  ])
+
+  // Editando o dia em que a shein_5 TEM valor, ela nao pode sumir: o numero
+  // esta gravado ali, e o rodape deixaria de fechar com os campos visiveis.
+  assert.deepEqual(contasParadas(historico, catalogo, '2026-07-13'), [
+    'ml_1',
+    'temu',
+  ])
+  // Sem historico nenhum, todas param — e o formulario oferece o "mostrar".
+  assert.deepEqual(contasParadas([], catalogo, '2026-09-17'), catalogo)
+})
+
+test('vendas: referencia e a mediana das ate 4 ultimas do mesmo dia da semana', () => {
+  const historico = [
+    ...quintasDe('ml_1', [200, 180, 220, 190]),
+    // Quinta mais antiga, fora das 4 ultimas: nao entra.
+    hist('2026-08-13', 'ml_1', 5000),
+    // Outros dias da semana nao entram.
+    hist('2026-09-16', 'ml_1', 900),
+    hist('2026-09-15', 'ml_1', 950),
+  ]
+  const ref = referenciaDaConta(historico, 'ml_1', '2026-09-17', 'quantidade')
+  assert.equal(ref.amostras, 4)
+  assert.equal(ref.mediana, 195)
+})
+
+test('vendas: sem 3 valores, ou em conta miuda, a conferencia se cala', () => {
+  const duas = referenciaDaConta(
+    quintasDe('ml_1', [200, 180]),
+    'ml_1',
+    '2026-09-17',
+    'quantidade',
+  )
+  assert.equal(duas.amostras, 2)
+  assert.equal(foraDoNormal(9999, duas), null)
+  assert.equal(foraDoNormal(0, duas), null)
+
+  // Temu: 3 amostras, mediana 1 — abaixo do piso de 10 pecas.
+  const temu = referenciaDaConta(
+    quintasDe('temu', [1, 1, 2]),
+    'temu',
+    '2026-09-17',
+    'quantidade',
+  )
+  assert.equal(temu.amostras, 3)
+  assert.equal(foraDoNormal(0, temu), null)
+  assert.equal(foraDoNormal(30, temu), null)
+
+  // Mesmo piso em reais, mas em outra escala: R$ 900 de mediana nao opina.
+  const miudo = { mediana: 900, amostras: 4 }
+  assert.equal(foraDoNormal(0, miudo, 'faturamento'), null)
+  const gordo = { mediana: 12000, amostras: 4 }
+  assert.equal(foraDoNormal(0, gordo, 'faturamento'), 'zerado')
+})
+
+test('vendas: 3x pra cima, 1/3 pra baixo, e o zerado', () => {
+  const ref = { mediana: 200, amostras: 4 }
+  assert.equal(foraDoNormal(2400, ref), 'alto')
+  assert.equal(foraDoNormal(600, ref), 'alto')
+  assert.equal(foraDoNormal(66, ref), 'baixo')
+  assert.equal(foraDoNormal(60, ref), 'baixo')
+  // Dentro da faixa: nao opina.
+  assert.equal(foraDoNormal(210, ref), null)
+  assert.equal(foraDoNormal(599, ref), null)
+  assert.equal(foraDoNormal(67, ref), null)
+  // Zerado e campo vazio sao a mesma coisa — e o aviso mais util, porque o
+  // erro comum e PULAR a conta.
+  assert.equal(foraDoNormal(0, ref), 'zerado')
+  assert.equal(foraDoNormal(null, ref), 'zerado')
+  // Sem referencia, nem zerado avisa: a conta pode nunca ter vendido.
+  assert.equal(foraDoNormal(0, { mediana: 0, amostras: 4 }), null)
+})
+
+test('vendas: atacado com as duas origens no mesmo dia avisa', () => {
+  const com = { quantidade: 3, faturamento: 4200 }
+  const semNada = { quantidade: 0, faturamento: null }
+  assert.equal(avisoDeAtacadoDuplo(com, { quantidade: 9, faturamento: 16195 }), true)
+  assert.equal(avisoDeAtacadoDuplo(com, semNada), false)
+  assert.equal(avisoDeAtacadoDuplo(semNada, com), false)
+  assert.equal(avisoDeAtacadoDuplo(null, com), false)
+  assert.equal(avisoDeAtacadoDuplo(com, null), false)
+  // So faturamento, sem quantidade, ja conta como "tem numero".
+  assert.equal(
+    avisoDeAtacadoDuplo(
+      { quantidade: 0, faturamento: 500 },
+      { quantidade: 0, faturamento: 16195 },
+    ),
+    true,
+  )
 })
