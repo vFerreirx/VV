@@ -1320,29 +1320,59 @@ function quintasDe(conta: string, valores: number[]): LinhaDoHistorico[] {
   return valores.map((v, i) => hist(QUINTAS[i]!, conta, v))
 }
 
-test('vendas: dia em aberto no meio de dias lancados, e hoje nunca entra', () => {
-  // Hoje e 18/09; lancados: 17, 15, 14, 13, 12 (faltam 16 e 11).
+test('vendas: so e pendencia depois de 3 dias, e hoje nunca entra', () => {
+  // Hoje e 18/09 (sexta); lancados ate 17, e faltam o 16 e o 11.
   const lancados = [
     '2026-09-17',
     '2026-09-15',
     '2026-09-14',
     '2026-09-13',
     '2026-09-12',
+    '2026-09-10',
+    '2026-09-09',
+    '2026-09-08',
   ]
-  assert.deepEqual(diasEmAberto(lancados, '2026-09-18'), [
-    '2026-09-16',
-    '2026-09-11',
-  ])
+  // O 16 tem 2 dias: ainda e rotina, nao aparece. O 11 tem 7: aparece.
+  assert.deepEqual(diasEmAberto(lancados, '2026-09-18'), ['2026-09-11'])
 
   // Hoje fica de fora mesmo sem lancamento nenhum: o dia ainda nao fechou.
   assert.ok(!diasEmAberto([], '2026-09-18').includes('2026-09-18'))
+  // Sem nada lancado, a janela de 10 dias mostra os 7 que passaram da folga.
   assert.equal(diasEmAberto([], '2026-09-18').length, 7)
-  // Sabado (12) e domingo (13) contam: eles lancam todo dia, e a segunda e
-  // justamente quando o buraco do fim de semana aparece.
-  assert.deepEqual(
-    diasEmAberto(['2026-09-11', '2026-09-10'], '2026-09-14', 3),
-    ['2026-09-13', '2026-09-12'],
-  )
+  assert.equal(diasEmAberto([], '2026-09-18')[0], '2026-09-14')
+})
+
+test('vendas: sexta e fim de semana lancados na segunda nao viram pendencia', () => {
+  // O ritmo da casa: quarta se lanca na quinta; sexta, sabado e domingo se
+  // lancam todos na segunda. Na segunda (21/09), com tudo lancado ate a
+  // quinta (17), nada disso pode aparecer como atraso.
+  const ateQuinta = [
+    '2026-09-17',
+    '2026-09-16',
+    '2026-09-15',
+    '2026-09-14',
+    '2026-09-13',
+    '2026-09-12',
+    '2026-09-11',
+    '2026-09-10',
+    '2026-09-09',
+    '2026-09-08',
+  ]
+  assert.deepEqual(diasEmAberto(ateQuinta, '2026-09-21'), [])
+
+  // Na terca, a sexta (18) passou de 3 dias e vira pendencia — junto com o
+  // fim de semana, que tambem ficou pra tras.
+  assert.deepEqual(diasEmAberto(ateQuinta, '2026-09-22'), [
+    '2026-09-18',
+  ])
+  assert.deepEqual(diasEmAberto(ateQuinta, '2026-09-23'), [
+    '2026-09-19',
+    '2026-09-18',
+  ])
+
+  // E a quarta lancada so na quinta continua fora da faixa o tempo todo em
+  // que isso e rotina.
+  assert.deepEqual(diasEmAberto(ateQuinta, '2026-09-18'), [])
 })
 
 test('vendas: conta parada some, mas nao se tiver valor no dia aberto', () => {

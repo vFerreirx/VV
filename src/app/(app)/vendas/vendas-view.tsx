@@ -239,6 +239,11 @@ export function VendasView({
   // vendas abre esta tela justamente pra isso, e um sino aceso em toda tela
   // do sistema cobraria a fábrica inteira por um trabalho que é de uma
   // pessoa. `recentes` já vem carregado e ordenado por data desc.
+  //
+  // ⚠️ SÓ DEPOIS DE 3 DIAS. O ritmo da casa é lançar a quarta na quinta (pra
+  // o dia fechar inteiro) e lançar sexta, sábado e domingo todos na segunda.
+  // Cobrar a sexta na segunda é cobrar quem está em dia — e a faixa acenderia
+  // toda semana. A folga está em `diasEmAberto`.
   const emAberto = diasEmAberto(
     recentes.map((r) => r.data),
     hoje,
@@ -324,7 +329,8 @@ export function VendasView({
             </Fragment>
           ))}
           <p className="text-muted-foreground mt-1 text-xs">
-            O lançamento é sempre do dia anterior — hoje não entra nesta conta.
+            Só aparece o que passou de 3 dias. Lançar a sexta na segunda, ou a
+            quarta na quinta, continua sendo estar em dia.
           </p>
         </div>
       )}

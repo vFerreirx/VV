@@ -30,25 +30,33 @@ export type CampoDaConferencia = 'quantidade' | 'faturamento'
 // -----------------------------------------------------------------
 
 /**
- * Os dias sem lançamento entre ONTEM e `janela` dias atrás, mais recente
- * primeiro.
+ * Os dias sem lançamento que JÁ PASSARAM DA ROTINA, mais recente primeiro.
  *
- * ⚠️ HOJE NÃO ENTRA. O dia ainda não fechou, e o lançamento é sempre depois:
- * em 717 dias, só 6 foram lançados no próprio dia. Cobrar o dia corrente
- * deixaria a faixa acesa todo dia — e faixa que está sempre acesa ninguém lê.
+ * ⚠️ TRÊS DIAS DE FOLGA, E NÃO UM. O lançamento é sempre depois — em 717
+ * dias, só 6 foram lançados no próprio dia —, e o ritmo normal da casa é:
+ * quarta se lança na quinta (pra o dia fechar inteiro), e sexta, sábado e
+ * domingo se lançam todos na segunda. Cobrar a sexta na segunda é cobrar
+ * alguém que está em dia; a faixa ficaria acesa toda semana, e faixa que vive
+ * acesa ninguém lê.
  *
- * FIM DE SEMANA ENTRA. Eles lançam sábado e domingo também (zero dias sem
- * lançamento em dois anos), então pular o fim de semana esconderia justamente
- * o buraco que a segunda-feira costuma ter.
+ * Com a folga de 3 dias, a sexta só vira pendência na terça — quando ela
+ * realmente ficou pra trás.
+ *
+ * ⚠️ HOJE NÃO ENTRA, pelo mesmo motivo: o dia ainda nem fechou.
+ *
+ * FIM DE SEMANA ENTRA na conta de dias. Eles lançam sábado e domingo também
+ * (zero dias sem lançamento em dois anos), então sábado não é "dia que não
+ * conta" — ele só chega junto com a sexta, na segunda, e a folga cobre isso.
  */
 export function diasEmAberto(
   datasComLancamento: readonly string[],
   hoje: string,
-  janela = 7,
+  janela = 10,
+  tolerancia = 3,
 ): string[] {
   const tem = new Set(datasComLancamento)
   const faltando: string[] = []
-  for (let i = 1; i <= janela; i++) {
+  for (let i = tolerancia + 1; i <= janela; i++) {
     const dia = somarDias(hoje, -i)
     if (!tem.has(dia)) faltando.push(dia)
   }
