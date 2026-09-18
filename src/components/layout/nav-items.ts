@@ -7,7 +7,6 @@ import {
   Building2,
   CalendarDays,
   Cog,
-  Combine,
   Factory,
   FileText,
   KanbanSquare,
@@ -118,7 +117,6 @@ export const NAV_GROUPS: NavGroup[] = [
     titulo: 'Catálogo',
     items: [
       { href: '/produtos', label: 'Produtos', icon: Package, area: 'produtos' },
-      { href: '/kits', label: 'Kits', icon: Combine, area: 'produtos' },
       {
         href: '/precos-marketplace',
         label: 'Preços de marketplace',

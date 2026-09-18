@@ -1,22 +1,13 @@
-import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
 
-import { listarKitsComItens } from './actions'
-import { KitsView } from './kits-view'
-import { listarProdutosParaOrdem } from '../ordens/actions'
-import { requireArea } from '@/lib/auth/require-auth'
-import { podeEscrever } from '@/lib/auth/permissoes'
-import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
-
-export const metadata: Metadata = { title: 'Kits — Vanvest' }
-
-export default async function KitsPage() {
-  const user = await requireArea('produtos')
-  const podeEditar = podeEscrever(await nivelDaAreaPara(user.role, 'produtos'))
-
-  const [kits, produtos] = await Promise.all([
-    listarKitsComItens(),
-    listarProdutosParaOrdem(),
-  ])
-
-  return <KitsView kits={kits} produtos={produtos} podeEditar={podeEditar} />
+// Os kits viraram aba dentro de /produtos — kit é combinação de produto, e as
+// duas telas já dividiam a MESMA área de permissão.
+//
+// A rota fica de pé (e não vira 404) porque ela está em link e em favorito de
+// gente que usa o sistema todo dia; mesma escolha do /relatorios.
+//
+// ⚠️ `kits/actions.ts` CONTINUA: `listarKitsComItens` é importado pela página
+// do pedido e agora também por /produtos. O que saiu daqui foi a tela.
+export default function KitsPage() {
+  redirect('/produtos?tab=kits')
 }

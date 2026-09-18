@@ -11,7 +11,10 @@ import {
   type KitComItens,
   type KitItemDetalhe,
 } from './actions'
-import type { ProdutoComVariacoesParaForm } from '../ordens/actions'
+import {
+  listarProdutosParaOrdem,
+  type ProdutoComVariacoesParaForm,
+} from '../ordens/actions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -63,28 +66,55 @@ import {
 
 type Props = {
   kits: KitComItens[]
-  produtos: ProdutoComVariacoesParaForm[]
   podeEditar: boolean
+  /** Vê o preço de ATACADO (área `precosCatalogo`). */
+  vePreco: boolean
+  /** Edita o preço FECHADO do kit (nível 'total' na mesma área). */
+  podeEditarPreco: boolean
 }
 
-export function KitsView({ kits, produtos, podeEditar }: Props) {
+export function KitsView({
+  kits,
+  podeEditar,
+  vePreco,
+  podeEditarPreco,
+}: Props) {
   const [editando, setEditando] = useState<KitComItens | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<KitComItens | null>(null)
+
+  // O CATÁLOGO DO DIÁLOGO SÓ CARREGA QUANDO O DIÁLOGO ABRE. São 26 produtos
+  // com 471 variações; vindo da página, essa lista seria buscada em todo
+  // render de /produtos — inclusive pra quem nunca vai abrir um kit. Mesmo
+  // caminho que a Nova OP do kanban passou a fazer.
+  const [produtos, setProdutos] = useState<
+    ProdutoComVariacoesParaForm[] | null
+  >(null)
+  const [carregando, setCarregando] = useState(false)
+
+  function abrir(alvo: KitComItens | 'novo') {
+    setEditando(alvo)
+    if (produtos !== null || carregando) return
+    setCarregando(true)
+    listarProdutosParaOrdem()
+      .then(setProdutos)
+      .catch(() => {
+        toast.error('Não deu pra carregar os produtos. Tente de novo.')
+        setEditando(null)
+      })
+      .finally(() => setCarregando(false))
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">Kits</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            Combos de venda (ex.: 1 peseira + 2 capas). O tamanho e a cor são escolhidos na hora de
-            gerar as OPs, lá em Ordens.
-          </p>
-        </div>
+        <p className="text-muted-foreground text-sm">
+          Combos de venda (ex.: 1 peseira + 2 capas). O tamanho e a cor são
+          escolhidos na hora de gerar as OPs, lá em Ordens.
+        </p>
         {podeEditar && (
-          <Button onClick={() => setEditando('novo')}>
+          <Button onClick={() => abrir('novo')} disabled={carregando}>
             <Plus />
-            Novo kit
+            {carregando ? 'Carregando…' : 'Novo kit'}
           </Button>
         )}
       </div>
@@ -116,7 +146,7 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
                       <Button
                         size="icon-sm"
                         variant="ghost"
-                        onClick={() => setEditando(kit)}
+                        onClick={() => abrir(kit)}
                         aria-label="Editar"
                       >
                         <Pencil />
@@ -141,7 +171,7 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
                   ))}
                 </div>
 
-                <PrecoDoKit kit={kit} />
+                {vePreco && <PrecoDoKit kit={kit} />}
                 <PesoDoKit itens={kit.itens} />
               </article>
             )
@@ -149,10 +179,11 @@ export function KitsView({ kits, produtos, podeEditar }: Props) {
         </div>
       )}
 
-      {editando && (
+      {editando && produtos !== null && (
         <KitDialog
           kit={editando === 'novo' ? null : editando}
           produtos={produtos}
+          podeEditarPreco={podeEditarPreco}
           onClose={() => setEditando(null)}
         />
       )}
@@ -206,13 +237,27 @@ function PrecoDoKit({ kit }: { kit: KitComItens }) {
   const aviso = avisoPrecoDeKit(preco)
   const fechado = Object.keys(kit.precos).length > 0
 
+  // DE ONDE VEM O NÚMERO, na própria linha. Nenhum dos 13 kits de hoje tem
+  // preço fechado: todos caem na SOMA dos componentes, e sem dizer isso o
+  // valor parece um preço de kit cadastrado — que é o que alguém procuraria
+  // em vão pra corrigir. Quando o preço fechado existe, ele vence a soma
+  // (mesma regra do pedido) e aparece em destaque.
   return (
     <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-t pt-2 text-xs">
       <span className="text-muted-foreground">Preço do kit</span>
-      <span className="font-medium tabular-nums" title={detalhePreco(kit, tamanhosDe)}>
+      <span
+        className={
+          fechado
+            ? 'text-foreground font-semibold tabular-nums'
+            : 'font-medium tabular-nums'
+        }
+        title={detalhePreco(kit, tamanhosDe)}
+      >
         {formatarPrecoDeKit(preco)}
       </span>
-      {fechado && <span className="text-muted-foreground">(fechado)</span>}
+      <span className="text-muted-foreground">
+        {fechado ? '(preço fechado)' : '(soma dos componentes)'}
+      </span>
       {aviso && <span className="text-amber-600 dark:text-amber-500">{aviso}</span>}
     </div>
   )
@@ -318,10 +363,18 @@ const linhaVazia = (): LinhaItem => ({
 function KitDialog({
   kit,
   produtos,
+  podeEditarPreco,
   onClose,
 }: {
   kit: KitComItens | null
   produtos: ProdutoComVariacoesParaForm[]
+  /**
+   * ⚠️ FALSO = O PAYLOAD NÃO LEVA PREÇO NENHUM (lista vazia, não lista de
+   * vazios): preço vazio APAGA a linha, e lista vazia é o único jeito de não
+   * mexer em nada. Mesma trava do formulário de produto. A action confere de
+   * novo do lado dela.
+   */
+  podeEditarPreco: boolean
   onClose: () => void
 }) {
   const isEdit = kit !== null
@@ -411,10 +464,12 @@ function KitDialog({
         // neste tamanho", e ai vale a soma dos componentes.
         // Vazio apaga: e o usuario dizendo "este kit nao tem preco fechado
         // nesta combinacao", e ai vale a soma dos componentes.
-        precos: combinacoesDoKit.map((c) => ({
-          combinacao: c.combinacao,
-          preco: precos[c.combinacao] ?? '',
-        })),
+        precos: podeEditarPreco
+          ? combinacoesDoKit.map((c) => ({
+              combinacao: c.combinacao,
+              preco: precos[c.combinacao] ?? '',
+            }))
+          : [],
       }
       const result = isEdit
         ? await atualizarKitAction(kit.id, payload)
@@ -517,7 +572,7 @@ function KitDialog({
             </Button>
           </div>
 
-          <div className="space-y-2">
+          <div className={podeEditarPreco ? 'space-y-2' : 'hidden'}>
             <Label>Preço fechado por combinação de tamanhos (opcional)</Label>
             <p className="text-muted-foreground text-xs">
               Deixe vazio no caso normal — o pedido soma o preço dos componentes. Preencha só quando

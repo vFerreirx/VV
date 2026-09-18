@@ -29,6 +29,11 @@ import {
   type LoteComSaldo,
 } from '../fios/saldo.ts'
 import {
+  chaveOverride,
+  nivelEfetivo,
+  podeEscrever,
+} from '../auth/permissoes.ts'
+import {
   avisoDeAtacadoDuplo,
   contasParadas,
   diasEmAberto,
@@ -1475,4 +1480,52 @@ test('vendas: atacado com as duas origens no mesmo dia avisa', () => {
     ),
     true,
   )
+})
+
+// -----------------------------------------------------------------
+// Permissoes: a area de PRECO DO CATALOGO
+// (src/lib/auth/permissoes.ts)
+// -----------------------------------------------------------------
+
+test('permissoes: preco do catalogo nasce so pro admin', () => {
+  // O catalogo e aberto de proposito (operador, estoquista e vendas consultam
+  // SKU, variacao e peso), mas o preco de ATACADO e a margem da casa: ele sai
+  // dessa abertura e passa a ter linha propria em /permissoes.
+  const semOverride = {}
+  assert.equal(nivelEfetivo('admin', 'precosCatalogo', semOverride), 'total')
+  for (const cargo of [
+    'gerente_producao',
+    'operador',
+    'estoquista',
+    'vendas',
+  ] as const) {
+    assert.equal(nivelEfetivo(cargo, 'precosCatalogo', semOverride), 'nenhum')
+    // E o cargo continua vendo o catalogo: o que fechou foi o preco.
+    assert.notEqual(nivelEfetivo(cargo, 'produtos', semOverride), 'nenhum')
+  }
+})
+
+test('permissoes: override em permissoes_acesso vence o padrao', () => {
+  // E o que a tela de /permissoes promete: o admin libera caso a caso, e o
+  // padrao do codigo so vale enquanto ninguem escolheu nada.
+  const soVer = {
+    [chaveOverride('vendas', 'precosCatalogo')]: 'ver' as const,
+  }
+  assert.equal(nivelEfetivo('vendas', 'precosCatalogo', soVer), 'ver')
+  assert.equal(podeEscrever(nivelEfetivo('vendas', 'precosCatalogo', soVer)), false)
+
+  const total = {
+    [chaveOverride('gerente_producao', 'precosCatalogo')]: 'total' as const,
+  }
+  assert.equal(
+    podeEscrever(nivelEfetivo('gerente_producao', 'precosCatalogo', total)),
+    true,
+  )
+  // O override de um cargo nao vaza pros outros.
+  assert.equal(nivelEfetivo('vendas', 'precosCatalogo', total), 'nenhum')
+  // E o admin nao e afetado nem por override que tente fecha-lo.
+  const tentaFechar = {
+    [chaveOverride('admin', 'precosCatalogo')]: 'nenhum' as const,
+  }
+  assert.equal(nivelEfetivo('admin', 'precosCatalogo', tentaFechar), 'total')
 })

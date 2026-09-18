@@ -9,6 +9,8 @@ import { listarModelos } from '@/app/(app)/modelos/actions'
 import { listarTamanhos } from '@/app/(app)/tamanhos/actions'
 import { ProdutoForm, type ProdutoFormDefaults } from '@/components/forms/produto-form'
 import { Button } from '@/components/ui/button'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireRole } from '@/lib/auth/require-auth'
 
 export const metadata: Metadata = { title: 'Editar produto — Vanvest' }
@@ -18,7 +20,12 @@ export default async function EditarProdutoPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  await requireRole(['admin', 'gerente_producao'])
+  const user = await requireRole(['admin', 'gerente_producao'])
+  // Editar o PREÇO é outra permissão que editar o produto: quem cadastra
+  // variação e peso não mexe na margem por padrão. Ver `precosCatalogo`.
+  const podeEditarPreco = podeEscrever(
+    await nivelDaAreaPara(user.role, 'precosCatalogo'),
+  )
   const { id } = await params
 
   const [produto, cores, modelos, tamanhos] = await Promise.all([
@@ -70,6 +77,7 @@ export default async function EditarProdutoPage({
         cores={cores}
         modelos={modelos}
         tamanhos={tamanhos}
+        podeEditarPreco={podeEditarPreco}
       />
     </div>
   )

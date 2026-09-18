@@ -57,12 +57,20 @@ import { cn } from '@/lib/utils'
 type Props = {
   produtos: ProdutoListItem[]
   podeEditar: boolean
+  /**
+   * Nível de acesso ao preço de ATACADO (área `precosCatalogo`) diferente de
+   * 'nenhum'. Quando é falso a coluna some — e o preço nem chegou aqui: a
+   * action o deixa fora do payload, porque esconder com CSS deixaria o número
+   * no código-fonte da página.
+   */
+  vePreco: boolean
   filtrosIniciais: { q?: string; ativo?: string }
 }
 
 export function ProdutosList({
   produtos,
   podeEditar,
+  vePreco,
   filtrosIniciais,
 }: Props) {
   const router = useRouter()
@@ -200,7 +208,9 @@ export function ProdutosList({
                   )}
                   <TableHead>SKU</TableHead>
                   <TableHead>Nome</TableHead>
-                  <TableHead className="w-32 text-right">Preço</TableHead>
+                  {vePreco && (
+                    <TableHead className="w-32 text-right">Preço</TableHead>
+                  )}
                 <TableHead className="w-28 text-right">Peso</TableHead>
                   <TableHead className="text-right">Variações</TableHead>
                   <TableHead>Status</TableHead>
@@ -231,9 +241,11 @@ export function ProdutosList({
                         {p.nome}
                       </Link>
                     </TableCell>
-                    <TableCell className="text-right">
-                      <PrecoCelula produto={p} />
-                    </TableCell>
+                    {vePreco && (
+                      <TableCell className="text-right">
+                        <PrecoCelula produto={p} />
+                      </TableCell>
+                    )}
                     <TableCell className="text-right">
                       <PesoCelula produto={p} />
                     </TableCell>
@@ -291,10 +303,14 @@ export function ProdutosList({
                   <div className="text-right text-foreground tabular-nums">
                     {p.totalVariacoes}
                   </div>
-                  <div>Preço</div>
-                  <div className="text-right">
-                    <PrecoCelula produto={p} />
-                  </div>
+                  {vePreco && (
+                    <>
+                      <div>Preço</div>
+                      <div className="text-right">
+                        <PrecoCelula produto={p} />
+                      </div>
+                    </>
+                  )}
                   <div>Peso</div>
                   <div className="text-right">
                     <PesoCelula produto={p} />

@@ -3,6 +3,8 @@
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { tamanhosPesoPorProduto } from '@/lib/db/pesos'
@@ -61,8 +63,17 @@ export type KitComItens = Kit & {
 // -----------------------------------------------------------------
 
 // Todos os kits ativos já com os itens resolvidos (lista + edição).
+// Mesma regra dos produtos: o preço de ATACADO do kit (e o dos componentes,
+// que é o que a soma usa) só sai do servidor pra quem tem a área
+// `precosCatalogo`. Ver o comentário em produtos/actions.ts.
+async function nivelDePreco() {
+  const user = await requireAuth()
+  return nivelDaAreaPara(user.role, 'precosCatalogo')
+}
+
 export async function listarKitsComItens(): Promise<KitComItens[]> {
   await requireAuth()
+  const vePreco = (await nivelDePreco()) !== 'nenhum'
   const rows = await db.select().from(kits).where(isNull(kits.deletedAt)).orderBy(asc(kits.nome))
   if (rows.length === 0) return []
 
@@ -112,10 +123,14 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
     const detalhe: KitItemDetalhe = {
       ...resto,
       tamanhosPeso,
-      tamanhosPreco: tamanhosPeso.map((t) => ({
-        tamanho: t.tamanho,
-        centavos: precosDele?.get(t.tamanho.trim().toLowerCase()) ?? null,
-      })),
+      // Vazio pra quem não vê preço: sem os componentes não há soma, e é
+      // justamente a soma que a tela mostra na coluna.
+      tamanhosPreco: vePreco
+        ? tamanhosPeso.map((t) => ({
+            tamanho: t.tamanho,
+            centavos: precosDele?.get(t.tamanho.trim().toLowerCase()) ?? null,
+          }))
+        : [],
     }
     const arr = porKit.get(kitId)
     if (arr) arr.push(detalhe)
@@ -125,7 +140,7 @@ export async function listarKitsComItens(): Promise<KitComItens[]> {
   return rows.map((k) => ({
     ...k,
     itens: porKit.get(k.id) ?? [],
-    precos: precosPorKit.get(k.id) ?? {},
+    precos: vePreco ? (precosPorKit.get(k.id) ?? {}) : {},
   }))
 }
 
@@ -189,6 +204,11 @@ export async function criarKitAction(input: KitInput): Promise<ActionResult<{ id
   }
   const data = parsed.data
 
+  // ⚠️ A TELA PODE MENTIR, A ACTION NÃO — mesma trava do produto: preço vazio
+  // APAGA a linha, e lista vazia é o único jeito de não mexer em nada. Quem
+  // não pode editar preço de catálogo tem a lista esvaziada aqui.
+  const precosPermitidos = podeEscrever(await nivelDePreco()) ? data.precos : []
+
   if (await skuEmUso(data.sku)) {
     return { success: false, error: `Já existe um kit com o SKU "${data.sku}"` }
   }
@@ -211,7 +231,7 @@ export async function criarKitAction(input: KitInput): Promise<ActionResult<{ id
         quantidade: it.quantidade,
       })),
     )
-    await salvarPrecosDoKit(tx, inserted!.id, data.precos)
+    await salvarPrecosDoKit(tx, inserted!.id, precosPermitidos)
     return inserted!.id
   })
 
@@ -230,6 +250,11 @@ export async function atualizarKitAction(id: string, input: KitInput): Promise<A
     }
   }
   const data = parsed.data
+
+  // ⚠️ A TELA PODE MENTIR, A ACTION NÃO — mesma trava do produto: preço vazio
+  // APAGA a linha, e lista vazia é o único jeito de não mexer em nada. Quem
+  // não pode editar preço de catálogo tem a lista esvaziada aqui.
+  const precosPermitidos = podeEscrever(await nivelDePreco()) ? data.precos : []
 
   const [atual] = await db
     .select({ id: kits.id })
@@ -262,7 +287,7 @@ export async function atualizarKitAction(id: string, input: KitInput): Promise<A
         quantidade: it.quantidade,
       })),
     )
-    await salvarPrecosDoKit(tx, id, data.precos)
+    await salvarPrecosDoKit(tx, id, precosPermitidos)
   })
 
   revalidatePath('/kits')

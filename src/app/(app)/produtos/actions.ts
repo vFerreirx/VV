@@ -16,6 +16,8 @@ import { revalidatePath } from 'next/cache'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { tamanhosPesoPorProduto } from '@/lib/db/pesos'
+import { podeEscrever } from '@/lib/auth/permissoes'
+import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { precosPorProduto } from '@/lib/db/precos'
 import {
   produtos,
@@ -38,6 +40,21 @@ import {
 export type ActionResult<T = undefined> =
   | { success: true; data?: T; message?: string }
   | { success: false; error: string }
+
+// QUEM VÊ E QUEM EDITA O PREÇO DE ATACADO.
+//
+// O catálogo é aberto de propósito — operador, estoquista e vendas têm 'ver'
+// em Produtos pra consultar SKU, variação e peso. O PREÇO não: ele é a margem
+// da casa, e ganhou linha própria em /permissoes (`precosCatalogo`, padrão
+// fechado pra todo mundo que não é admin).
+//
+// ⚠️ ISTO NÃO É ENFEITE DE TELA. O preço nem sai do servidor pra quem não
+// pode ver — esconder com CSS deixaria o número no payload da página, a um
+// "ver código-fonte" de distância.
+async function nivelDePreco() {
+  const user = await requireAuth()
+  return nivelDaAreaPara(user.role, 'precosCatalogo')
+}
 
 // -----------------------------------------------------------------
 // Listagem com filtros
@@ -105,10 +122,12 @@ export async function listarProdutos(
     .orderBy(desc(produtos.ativo), asc(produtos.sku))
 
   const ids = rows.map((r) => r.id)
-  const [porProduto, precos] = await Promise.all([
+  const [porProduto, precos, nivelPreco] = await Promise.all([
     tamanhosPesoPorProduto(ids),
     precosPorProduto(ids),
+    nivelDePreco(),
   ])
+  const vePreco = nivelPreco !== 'nenhum'
 
   return rows.map((r) => {
     const tamanhosPeso = porProduto.get(r.id) ?? []
@@ -116,10 +135,14 @@ export async function listarProdutos(
     return {
       ...r,
       tamanhosPeso,
-      tamanhosPreco: tamanhosPeso.map((t) => ({
-        tamanho: t.tamanho,
-        centavos: doProduto?.get(t.tamanho.trim().toLowerCase()) ?? null,
-      })),
+      // Sem permissão, a lista de preços sai VAZIA do servidor — e não como
+      // uma lista de nulos, que ainda diria quais tamanhos têm preço.
+      tamanhosPreco: vePreco
+        ? tamanhosPeso.map((t) => ({
+            tamanho: t.tamanho,
+            centavos: doProduto?.get(t.tamanho.trim().toLowerCase()) ?? null,
+          }))
+        : [],
     }
   })
 }
@@ -178,8 +201,11 @@ export async function obterProduto(
       .where(eq(produtoTamanhoPeso.produtoId, id)),
   ])
 
+  // Mesma regra da lista: sem permissão, o preço nem chega ao formulário.
   const precos: Record<string, string> = {}
-  for (const l of linhasPreco) precos[l.tamanho] = l.preco
+  if ((await nivelDePreco()) !== 'nenhum') {
+    for (const l of linhasPreco) precos[l.tamanho] = l.preco
+  }
   const pesos: Record<string, number> = {}
   for (const l of linhasPeso) pesos[l.tamanho] = l.pesoGramas
 
@@ -312,6 +338,16 @@ export async function criarProdutoAction(
   }
   const data = parsed.data
 
+  // ⚠️ A TELA PODE MENTIR, A ACTION NÃO. `salvarPrecosDoProduto` APAGA o preço
+  // do tamanho quando a entrada vem com preço nulo, e só ignora quando a lista
+  // chega VAZIA — então quem não pode editar preço tem a lista ESVAZIADA aqui,
+  // no servidor. Sem isso, um gerente salvando um produto pelo formulário
+  // (que nem mostra os campos) apagaria as linhas de preço daquele produto, e
+  // ninguém perceberia até alguém montar um pedido.
+  const precosPermitidos = podeEscrever(await nivelDePreco())
+    ? data.precos
+    : []
+
   // SKU único entre produtos ATIVOS (excluídos liberam o SKU).
   const existing = await db
     .select({ id: produtos.id })
@@ -345,7 +381,7 @@ export async function criarProdutoAction(
       )
     }
 
-    await salvarPrecosDoProduto(tx, inserted!.id, data.precos)
+    await salvarPrecosDoProduto(tx, inserted!.id, precosPermitidos)
     await salvarPesosDoProduto(tx, inserted!.id, data.pesos)
 
     return inserted!.id
@@ -377,6 +413,16 @@ export async function atualizarProdutoAction(
     }
   }
   const data = parsed.data
+
+  // ⚠️ A TELA PODE MENTIR, A ACTION NÃO. `salvarPrecosDoProduto` APAGA o preço
+  // do tamanho quando a entrada vem com preço nulo, e só ignora quando a lista
+  // chega VAZIA — então quem não pode editar preço tem a lista ESVAZIADA aqui,
+  // no servidor. Sem isso, um gerente salvando um produto pelo formulário
+  // (que nem mostra os campos) apagaria as linhas de preço daquele produto, e
+  // ninguém perceberia até alguém montar um pedido.
+  const precosPermitidos = podeEscrever(await nivelDePreco())
+    ? data.precos
+    : []
 
   // Garante que o produto existe e não está deletado.
   const [atual] = await db
@@ -452,7 +498,7 @@ export async function atualizarProdutoAction(
       }
     }
 
-    await salvarPrecosDoProduto(tx, id, data.precos)
+    await salvarPrecosDoProduto(tx, id, precosPermitidos)
     await salvarPesosDoProduto(tx, id, data.pesos)
   })
 

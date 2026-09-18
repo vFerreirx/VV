@@ -72,6 +72,7 @@ export type AreaKey =
   | 'compradores'
   | 'contasMarketplace'
   | 'produtos'
+  | 'precosCatalogo'
   | 'precosMarketplace'
   | 'cores'
   | 'modelos'
@@ -266,6 +267,32 @@ export const AREAS: Area[] = [
     href: '/produtos',
     editavel: true,
     nivelPadrao: padrao(verCatalogo),
+  },
+  {
+    // ⚠️ ESTA ÁREA NÃO TEM TELA PRÓPRIA. Ela governa uma COLUNA de /produtos
+    // (e os campos de preço do formulário), não uma rota — por isso não tem
+    // item no menu e NUNCA passa por `requireArea`, que redirecionaria pra um
+    // lugar que não existe. Quem a lê usa `nivelDaAreaPara(role,
+    // 'precosCatalogo')` pra decidir se o preço aparece e `podeEscrever(…)`
+    // pra decidir se ele pode ser editado. O `href` abaixo existe só porque o
+    // tipo `Area` exige um, e aponta pra tela onde o preço mora.
+    //
+    // OS TRÊS NÍVEIS CAEM REDONDO AQUI: 'nenhum' não vê preço nenhum, 'ver' vê
+    // e não edita, 'total' vê e edita.
+    //
+    // Nasce fechada: preço de atacado é a margem da casa, e o catálogo é
+    // aberto por padrão (operador, estoquista e vendas têm 'ver' em Produtos
+    // pra consultar SKU, variação e peso). O admin libera caso a caso em
+    // /permissoes. Preço de MARKETPLACE é outra história e continua aberto: é
+    // o número que está no anúncio, público no site do ML.
+    key: 'precosCatalogo',
+    secao: 'Catálogo',
+    label: 'Preços do catálogo',
+    descricao:
+      'Ver e editar o preço de ATACADO de produtos e kits, dentro de Produtos.',
+    href: '/produtos',
+    editavel: true,
+    nivelPadrao: padrao({}),
   },
   {
     key: 'precosMarketplace',

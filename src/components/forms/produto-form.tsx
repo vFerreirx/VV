@@ -132,11 +132,25 @@ export function ProdutoForm({
   cores,
   modelos,
   tamanhos,
+  podeEditarPreco,
 }: {
   defaults?: ProdutoFormDefaults
   cores: Cor[]
   modelos: Modelo[]
   tamanhos: Tamanho[]
+  /**
+   * Nível `total` na área `precosCatalogo`.
+   *
+   * ⚠️ QUANDO É FALSO, O FORMULÁRIO NÃO MANDA NENHUMA ENTRADA DE PREÇO — lista
+   * VAZIA, nunca uma lista de vazios. `salvarPrecosDoProduto` trata preço
+   * vazio como "apague este preço", e só ignora a lista inteira quando ela
+   * chega sem nada. Mandar os campos em branco apagaria o preço de todos os
+   * tamanhos do produto.
+   *
+   * A action repete a conta do lado dela — esta prop é conveniência de tela,
+   * não segurança.
+   */
+  podeEditarPreco: boolean
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -283,9 +297,12 @@ export function ProdutoForm({
     // tamanhos — preço se pendura no par (produto, tamanho), e tamanho
     // digitado à mão na variação não tem em quê. Campo vazio vai como ''
     // de propósito: é o que apaga o preço daquele tamanho.
-    const precosParaSalvar = tamanhosDoProduto
-      .filter((t) => ordemTamanho.has(t.toLowerCase()))
-      .map((t) => ({ tamanho: t, preco: precos[t] ?? '' }))
+    // ⚠️ LISTA VAZIA quando não pode editar preço — ver `podeEditarPreco`.
+    const precosParaSalvar = podeEditarPreco
+      ? tamanhosDoProduto
+          .filter((t) => ordemTamanho.has(t.toLowerCase()))
+          .map((t) => ({ tamanho: t, preco: precos[t] ?? '' }))
+      : []
     const pesosParaSalvar = tamanhosDoProduto
       .filter((t) => ordemTamanho.has(t.toLowerCase()))
       .map((t) => ({ tamanho: t, pesoGramas: pesos[t] ?? '' }))
@@ -680,14 +697,27 @@ export function ProdutoForm({
 
       <Card>
         <CardHeader>
-          <CardTitle>Preço e peso por tamanho</CardTitle>
+          <CardTitle>
+            {podeEditarPreco ? 'Preço e peso por tamanho' : 'Peso por tamanho'}
+          </CardTitle>
           <p className="text-muted-foreground mt-1 text-sm">
-            Os dois vivem no par produto × tamanho. O <strong>preço</strong> é
-            de tabela: preenche sozinho o preço do pedido e lá continua
-            editável, mas mexer aqui <strong>não</strong> altera pedido já
-            salvo. O <strong>peso</strong> é o contrário — serve pra cotar
-            frete e é recalculado em todo pedido, inclusive nos antigos.
-            Deixe o peso vazio no caso normal: vale o do tamanho.
+            {podeEditarPreco ? (
+              <>
+                Os dois vivem no par produto × tamanho. O{' '}
+                <strong>preço</strong> é de tabela: preenche sozinho o preço do
+                pedido e lá continua editável, mas mexer aqui{' '}
+                <strong>não</strong> altera pedido já salvo. O{' '}
+                <strong>peso</strong> é o contrário — serve pra cotar frete e é
+                recalculado em todo pedido, inclusive nos antigos. Deixe o peso
+                vazio no caso normal: vale o do tamanho.
+              </>
+            ) : (
+              <>
+                O <strong>peso</strong> vive no par produto × tamanho, serve pra
+                cotar frete e é recalculado em todo pedido, inclusive nos
+                antigos. Deixe vazio no caso normal: vale o do tamanho.
+              </>
+            )}
           </p>
         </CardHeader>
         <CardContent>
@@ -699,7 +729,9 @@ export function ProdutoForm({
           ) : (
             <div className="space-y-3">
               <div className="text-muted-foreground flex justify-end gap-3 text-xs">
-                <span className="w-32 text-right">Preço</span>
+                {podeEditarPreco && (
+                  <span className="w-32 text-right">Preço</span>
+                )}
                 <span className="w-28 text-right">Peso (g)</span>
               </div>
               {tamanhosDoProduto.map((t) => {
@@ -711,33 +743,42 @@ export function ProdutoForm({
                     className="flex flex-wrap items-center justify-between gap-3 border-b pb-3 last:border-0 last:pb-0"
                   >
                     <div className="min-w-0">
-                      <Label htmlFor={`preco-${t}`} className="text-sm">
+                      <Label
+                        htmlFor={podeEditarPreco ? `preco-${t}` : `peso-${t}`}
+                        className="text-sm"
+                      >
                         {t}
                       </Label>
                       {!noCadastro && (
                         <p className="text-muted-foreground mt-0.5 text-xs">
-                          Tamanho fora do cadastro — sem preço de tabela.
+                          {podeEditarPreco
+                            ? 'Tamanho fora do cadastro — sem preço de tabela.'
+                            : 'Tamanho fora do cadastro — sem peso próprio.'}
                         </p>
                       )}
                     </div>
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground text-sm">R$</span>
-                        <Input
-                          id={`preco-${t}`}
-                          inputMode="numeric"
-                          placeholder="(sem preço)"
-                          className="w-28 text-right tabular-nums"
-                          value={precos[t] ?? ''}
-                          onChange={(e) =>
-                            setPrecos((prev) => ({
-                              ...prev,
-                              [t]: mascararMoeda(e.target.value),
-                            }))
-                          }
-                          disabled={isPending || !noCadastro}
-                        />
-                      </div>
+                      {podeEditarPreco && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground text-sm">
+                            R$
+                          </span>
+                          <Input
+                            id={`preco-${t}`}
+                            inputMode="numeric"
+                            placeholder="(sem preço)"
+                            className="w-28 text-right tabular-nums"
+                            value={precos[t] ?? ''}
+                            onChange={(e) =>
+                              setPrecos((prev) => ({
+                                ...prev,
+                                [t]: mascararMoeda(e.target.value),
+                              }))
+                            }
+                            disabled={isPending || !noCadastro}
+                          />
+                        </div>
+                      )}
                       <div className="flex items-center gap-2">
                         <Input
                           id={`peso-${t}`}
