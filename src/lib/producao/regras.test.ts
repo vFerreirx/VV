@@ -43,7 +43,9 @@ import {
 } from '../catalogo-em-uso.ts'
 import {
   chaveOverride,
+  ehAreaDesconhecida,
   nivelEfetivo,
+  planoDeGravacao,
   podeEscrever,
 } from '../auth/permissoes.ts'
 import {
@@ -1628,21 +1630,125 @@ test('tarefas: a bolinha acende por urgente a mao e pela escalada do prazo', () 
   assert.equal(acendeOMenu('normal', '2026-09-29', hoje), null)
 })
 
-test('tarefas: parada e 14 dias aberta, e 13 nao e', () => {
+test('tarefas: parada e 21 dias aberta, e 20 nao e', () => {
   const hoje = '2026-09-21'
   const em = (iso: string) => new Date(`${iso}T12:00:00Z`)
 
   assert.equal(diasAberta(em('2026-09-21'), hoje), 0)
   assert.equal(diasAberta(em('2026-09-20'), hoje), 1)
-  assert.equal(diasAberta(em('2026-09-08'), hoje), 13)
-  assert.equal(diasAberta(em('2026-09-07'), hoje), 14)
+  assert.equal(diasAberta(em('2026-09-01'), hoje), 20)
+  assert.equal(diasAberta(em('2026-08-31'), hoje), 21)
   // A mais velha aberta de verdade: 12/08.
   assert.equal(diasAberta(em('2026-08-12'), hoje), 40)
 
-  assert.equal(estaParada(13), false)
+  assert.equal(estaParada(20), false)
   assert.equal(estaParada(DIAS_PARA_PARADA), true)
+  assert.equal(estaParada(21), true)
   assert.equal(estaParada(40), true)
 
   // Data no futuro (relogio errado) nao vira idade negativa.
   assert.equal(diasAberta(em('2026-09-25'), hoje), 0)
+})
+
+// -----------------------------------------------------------------
+// Permissoes: o que vai pro banco quando o admin salva
+// (planoDeGravacao, src/lib/auth/permissoes.ts)
+// -----------------------------------------------------------------
+
+// Areas de mentira, pra o teste nao depender do catalogo de verdade.
+const AREAS_FALSAS = [
+  {
+    key: 'kanban' as const,
+    secao: 'Producao',
+    label: 'Kanban',
+    descricao: '',
+    href: '/producao',
+    editavel: true,
+    nivelPadrao: {
+      admin: 'total' as const,
+      gerente_producao: 'total' as const,
+      operador: 'proprio' as const,
+      estoquista: 'nenhum' as const,
+      vendas: 'ver' as const,
+    },
+  },
+  {
+    key: 'usuarios' as const,
+    secao: 'Administracao',
+    label: 'Usuarios',
+    descricao: '',
+    href: '/usuarios',
+    // Area travada: ninguem afrouxa em /permissoes.
+    editavel: false,
+    nivelPadrao: {
+      admin: 'total' as const,
+      gerente_producao: 'nenhum' as const,
+      operador: 'nenhum' as const,
+      estoquista: 'nenhum' as const,
+      vendas: 'nenhum' as const,
+    },
+  },
+]
+
+test('permissoes: valor igual ao padrao APAGA a linha, diferente grava', () => {
+  const plano = planoDeGravacao(
+    [
+      // igual ao padrao do gerente (total) → sai do banco
+      { role: 'gerente_producao', area: 'kanban', nivel: 'total' },
+      // diferente do padrao do estoquista (nenhum) → grava
+      { role: 'estoquista', area: 'kanban', nivel: 'ver' },
+    ],
+    AREAS_FALSAS,
+  )
+
+  assert.deepEqual(plano.upserts, [
+    { role: 'estoquista', area: 'kanban', nivel: 'ver' },
+  ])
+  assert.deepEqual(plano.remocoes, [
+    { role: 'gerente_producao', area: 'kanban' },
+  ])
+})
+
+test('permissoes: padrao "proprio" conta como total na comparacao', () => {
+  // O operador no kanban tem padrao 'proprio' — a tela mostra e salva isso
+  // como 'total'. Comparar cru marcaria a celula como alterada pra sempre, e
+  // ela voltaria a gravar override em todo salvamento.
+  const plano = planoDeGravacao(
+    [{ role: 'operador', area: 'kanban', nivel: 'total' }],
+    AREAS_FALSAS,
+  )
+  assert.deepEqual(plano.upserts, [])
+  assert.deepEqual(plano.remocoes, [{ role: 'operador', area: 'kanban' }])
+
+  // E 'ver' continua sendo diferente de 'proprio'.
+  const outro = planoDeGravacao(
+    [{ role: 'operador', area: 'kanban', nivel: 'ver' }],
+    AREAS_FALSAS,
+  )
+  assert.equal(outro.upserts.length, 1)
+  assert.deepEqual(outro.remocoes, [])
+})
+
+test('permissoes: cargo ou area nao editavel fica FORA dos dois lados', () => {
+  const plano = planoDeGravacao(
+    [
+      // area travada: nem grava nem apaga, mesmo pedindo mudanca
+      { role: 'gerente_producao', area: 'usuarios', nivel: 'total' },
+      // admin nao e editavel: e sempre total, por regra
+      { role: 'admin', area: 'kanban', nivel: 'nenhum' },
+      // area que nao existe na lista recebida
+      { role: 'vendas', area: 'inventada' as never, nivel: 'total' },
+    ],
+    AREAS_FALSAS,
+  )
+  assert.deepEqual(plano.upserts, [])
+  assert.deepEqual(plano.remocoes, [])
+})
+
+test('permissoes: area desconhecida e a que sumiu do catalogo', () => {
+  assert.equal(ehAreaDesconhecida('relatorios', AREAS_FALSAS), true)
+  assert.equal(ehAreaDesconhecida('kanban', AREAS_FALSAS), false)
+  // Sem lista, vale o catalogo de verdade: 'relatorios' virou aba de Vendas.
+  assert.equal(ehAreaDesconhecida('relatorios'), true)
+  assert.equal(ehAreaDesconhecida('produtos'), false)
 })

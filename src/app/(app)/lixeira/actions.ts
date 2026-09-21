@@ -26,7 +26,12 @@ import {
   tarefasDiarias,
   variacoesProduto,
 } from '@/lib/db/schema'
-import { resumoDeDias } from '@/lib/dia-brasil'
+import {
+  diaEmBrasilia,
+  diasEntre,
+  hojeEmBrasilia,
+  resumoDeDias,
+} from '@/lib/dia-brasil'
 import { CANAL_LABEL_CURTO, STATUS_LABEL_CURTO } from '@/lib/validators/ordens'
 
 // Lixeira: tudo no sistema é soft-delete (deleted_at). Aqui o admin vê o
@@ -55,7 +60,18 @@ export type ItemLixeira = {
   titulo: string
   subtitulo: string
   excluidoEm: Date
+  /**
+   * Há quantos dias está na lixeira, em dias de BRASÍLIA e calculado no
+   * SERVIDOR — mesma disciplina do aging das tarefas. A tela não sabe que dia
+   * é hoje, e é isso que impede o número de mudar conforme o relógio de quem
+   * abre.
+   */
+  diasNaLixeira: number
 }
+
+// O corte de "velho" (90 dias) e o porquê de não haver expurgo automático
+// moram em src/lib/lixeira.ts — este arquivo é `'use server'` e só pode
+// exportar função async.
 
 const LIMITE_POR_TIPO = 50
 
@@ -80,11 +96,14 @@ const TABELA = {
 
 // Executa as consultas UMA DE CADA VEZ, e não com Promise.all.
 //
-// O pool do postgres-js tem 10 conexões (src/lib/db/index.ts). Disparar as
-// dez consultas desta tela de uma vez toma o pool inteiro; com a consulta
-// do contador e os prefetches do Next disputando ao mesmo tempo, a página
-// travava esperando conexão — comprovado: com `max: 40` o travamento some,
-// e ele existia antes desta tela ganhar o décimo tipo.
+// O pool do postgres-js tem 3 conexões por instância (src/lib/db/index.ts,
+// desde o incidente de 17/09/2026 — o modo sessão do pooler dá 30 vagas no
+// projeto inteiro). Disparar as dez consultas desta tela de uma vez toma o
+// pool inteiro e sobra fila; com a consulta do contador e os prefetches do
+// Next disputando ao mesmo tempo, a página travava esperando conexão —
+// comprovado na época com `max: 40`, que fazia o travamento sumir.
+//
+// Com 3 em vez de 10, o argumento só ficou mais forte.
 //
 // São dez consultas minúsculas (50 linhas cada, por índice): em série
 // custam alguns milissegundos e a tela deixa de depender do tamanho do
@@ -184,23 +203,27 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
         .limit(LIMITE_POR_TIPO),
     )
 
-  const itens: ItemLixeira[] = [
-    ...prods.map((p): ItemLixeira => ({ tipo: 'produto', id: p.id, titulo: p.nome, subtitulo: p.sku, excluidoEm: p.em! })),
-    ...ops.map((o): ItemLixeira => ({ tipo: 'op', id: o.id, titulo: `${o.numero} — ${o.produtoNome}`, subtitulo: `volta como ${STATUS_LABEL_CURTO[o.status]}`, excluidoEm: o.em! })),
-    ...kitsRows.map((k): ItemLixeira => ({ tipo: 'kit', id: k.id, titulo: k.nome, subtitulo: k.sku, excluidoEm: k.em! })),
-    ...coresRows.map((c): ItemLixeira => ({ tipo: 'cor', id: c.id, titulo: c.nome, subtitulo: 'Cor', excluidoEm: c.em! })),
-    ...modelosRows.map((m): ItemLixeira => ({ tipo: 'modelo', id: m.id, titulo: m.nome, subtitulo: 'Modelo', excluidoEm: m.em! })),
-    ...tamanhosRows.map((t): ItemLixeira => ({ tipo: 'tamanho', id: t.id, titulo: t.nome, subtitulo: 'Tamanho', excluidoEm: t.em! })),
-    ...maqs.map((m): ItemLixeira => ({ tipo: 'maquina', id: m.id, titulo: m.nome, subtitulo: m.codigo, excluidoEm: m.em! })),
-    ...ests.map((e): ItemLixeira => ({ tipo: 'estacao', id: e.id, titulo: e.nome, subtitulo: 'máquinas precisam ser revinculadas', excluidoEm: e.em! })),
-    ...remessas.map((r): ItemLixeira => ({
+  // Montado sem a idade e com ela somada no fim, de uma vez: o `hoje` tem
+  // que ser UM por requisição (a mesma disciplina de `buscarPendentes` e das
+  // diárias), e não um por tipo de item.
+  type ItemBruto = Omit<ItemLixeira, 'diasNaLixeira'>
+  const itens: ItemBruto[] = [
+    ...prods.map((p): ItemBruto => ({ tipo: 'produto', id: p.id, titulo: p.nome, subtitulo: p.sku, excluidoEm: p.em! })),
+    ...ops.map((o): ItemBruto => ({ tipo: 'op', id: o.id, titulo: `${o.numero} — ${o.produtoNome}`, subtitulo: `volta como ${STATUS_LABEL_CURTO[o.status]}`, excluidoEm: o.em! })),
+    ...kitsRows.map((k): ItemBruto => ({ tipo: 'kit', id: k.id, titulo: k.nome, subtitulo: k.sku, excluidoEm: k.em! })),
+    ...coresRows.map((c): ItemBruto => ({ tipo: 'cor', id: c.id, titulo: c.nome, subtitulo: 'Cor', excluidoEm: c.em! })),
+    ...modelosRows.map((m): ItemBruto => ({ tipo: 'modelo', id: m.id, titulo: m.nome, subtitulo: 'Modelo', excluidoEm: m.em! })),
+    ...tamanhosRows.map((t): ItemBruto => ({ tipo: 'tamanho', id: t.id, titulo: t.nome, subtitulo: 'Tamanho', excluidoEm: t.em! })),
+    ...maqs.map((m): ItemBruto => ({ tipo: 'maquina', id: m.id, titulo: m.nome, subtitulo: m.codigo, excluidoEm: m.em! })),
+    ...ests.map((e): ItemBruto => ({ tipo: 'estacao', id: e.id, titulo: e.nome, subtitulo: 'máquinas precisam ser revinculadas', excluidoEm: e.em! })),
+    ...remessas.map((r): ItemBruto => ({
       tipo: 'remessa',
       id: r.id,
       titulo: `${CANAL_LABEL_CURTO[r.canal]} · envio de ${r.dataEnvio.split('-').reverse().join('/')}`,
       subtitulo: r.envioId ? `envio ${r.envioId}` : 'sem identificador de envio',
       excluidoEm: r.em!,
     })),
-    ...tarefasRows.map((t): ItemLixeira => ({
+    ...tarefasRows.map((t): ItemBruto => ({
       tipo: 'tarefa',
       id: t.id,
       titulo: t.titulo,
@@ -209,7 +232,7 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
       subtitulo: t.concluidaEm ? 'volta como concluída' : 'volta como pendente',
       excluidoEm: t.em!,
     })),
-    ...diariasRows.map((d): ItemLixeira => ({
+    ...diariasRows.map((d): ItemBruto => ({
       tipo: 'diaria',
       id: d.id,
       titulo: d.titulo,
@@ -222,7 +245,12 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
 
   // Mais recentes primeiro, tipos misturados.
   itens.sort((a, b) => b.excluidoEm.getTime() - a.excluidoEm.getTime())
-  return itens
+
+  const hoje = hojeEmBrasilia()
+  return itens.map((i) => ({
+    ...i,
+    diasNaLixeira: Math.max(0, diasEntre(diaEmBrasilia(i.excluidoEm), hoje)),
+  }))
 }
 
 // Total REAL da lixeira. A listagem mostra no máximo 50 por tipo, então o

@@ -439,6 +439,73 @@ export function podeEscrever(n: Nivel): boolean {
   return n === 'total' || n === 'proprio'
 }
 
+// -----------------------------------------------------------------
+// O QUE VAI PRO BANCO quando o admin salva a tela de permissões
+// -----------------------------------------------------------------
+//
+// ⚠️ SÓ SE GRAVA O QUE DIFERE DO PADRÃO. Antes, salvar gravava override em
+// TODAS as células — 19 áreas × 4 cargos = 76 linhas —, e a partir do
+// primeiro salvamento o `nivelPadrao` do código deixava de valer pra sempre,
+// em silêncio. Das 76 linhas que existiam em 21/09/2026, 52 eram cópias
+// exatas do padrão.
+//
+// ⚠️ A CONSEQUÊNCIA, e ela é o ponto: depois disto, célula marcada como
+// "padrão" PASSA A SEGUIR O CÓDIGO. Mexer num `nivelPadrao` aqui em cima move
+// a produção em toda célula que estiver no padrão — que é o que se quer (um
+// padrão que nunca vale é decoração), mas quem editar `AREAS` precisa saber
+// que está mexendo em quem abre o quê amanhã de manhã.
+//
+// O que NÃO se toca: cargo fora de `ROLES_EDITAVEIS` e área com
+// `editavel: false` são ignorados nos dois sentidos — nem upsert, nem
+// remoção. A linha que porventura exista numa dessas combinações não faz
+// efeito nenhum (ver `nivelEfetivo`), e apagá-la aqui seria fazer, por
+// tabela, uma limpeza que é decisão do admin.
+
+export type ItemDePermissao = { role: Role; area: AreaKey; nivel: OpcaoNivel }
+
+export type PlanoDeGravacao = {
+  /** Difere do padrão: vira linha em `permissoes_acesso`. */
+  upserts: ItemDePermissao[]
+  /** Igual ao padrão: a linha, se existir, sai do banco. */
+  remocoes: { role: Role; area: AreaKey }[]
+}
+
+export function planoDeGravacao(
+  itens: readonly ItemDePermissao[],
+  areas: readonly Area[] = AREAS,
+): PlanoDeGravacao {
+  const porChave = new Map(areas.map((a) => [a.key, a]))
+  const upserts: ItemDePermissao[] = []
+  const remocoes: { role: Role; area: AreaKey }[] = []
+
+  for (const item of itens) {
+    const area = porChave.get(item.area)
+    if (!area || !area.editavel) continue
+    if (!ROLES_EDITAVEIS.includes(item.role)) continue
+    if (!NIVEL_OPCOES.some((o) => o.value === item.nivel)) continue
+
+    // A comparação é entre OPÇÕES da tela (nenhum/ver/total), não entre
+    // níveis crus: o padrão pode ser 'proprio' (o operador no kanban), que a
+    // tela mostra — e salva — como 'total'. Comparar cru marcaria essa célula
+    // como alterada pra sempre.
+    if (item.nivel === opcaoDoNivel(area.nivelPadrao[item.role])) {
+      remocoes.push({ role: item.role, area: item.area })
+    } else {
+      upserts.push(item)
+    }
+  }
+
+  return { upserts, remocoes }
+}
+
+/** A chave gravada não corresponde a nenhuma área atual? (ex.: 'relatorios') */
+export function ehAreaDesconhecida(
+  area: string,
+  areas: readonly Area[] = AREAS,
+): boolean {
+  return !areas.some((a) => a.key === area)
+}
+
 export function nivelEfetivo(role: Role, areaKey: AreaKey, overrides: OverridesAcesso): Nivel {
   const area = AREA_MAP[areaKey]
   if (!area) return 'nenhum'

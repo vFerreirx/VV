@@ -42,6 +42,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
+import { DIAS_LIXEIRA_ANTIGA } from '@/lib/lixeira'
+import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 
 const ICONE: Record<TipoLixeira, LucideIcon> = {
@@ -99,6 +101,13 @@ export function LixeiraList({
   const [restaurandoId, setRestaurandoId] = useState<string | null>(null)
   const [apagando, setApagando] = useState<ItemLixeira | null>(null)
   const [esvaziando, setEsvaziando] = useState(false)
+  const [soAntigos, setSoAntigos] = useState(false)
+
+  // A idade vem PRONTA do servidor (`diasNaLixeira`, em dias de Brasília) —
+  // a tela não sabe que dia é hoje. O filtro só esconde: a ordem continua
+  // sendo do mais recente pro mais antigo.
+  const antigos = itens.filter((i) => i.diasNaLixeira >= DIAS_LIXEIRA_ANTIGA)
+  const visiveis = soAntigos ? antigos : itens
 
   function restaurar(item: ItemLixeira) {
     setRestaurandoId(item.id)
@@ -127,10 +136,38 @@ export function LixeiraList({
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-muted-foreground text-sm">
-          {total === 1 ? '1 item na lixeira' : `${total} itens na lixeira`}
-          {itens.length < total && ` · mostrando os ${itens.length} mais recentes`}
-        </p>
+        <div className="text-muted-foreground flex flex-wrap items-center gap-2 text-sm">
+          <span>
+            {total === 1 ? '1 item na lixeira' : `${total} itens na lixeira`}
+            {itens.length < total &&
+              ` · mostrando os ${itens.length} mais recentes`}
+          </span>
+          {antigos.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSoAntigos((v) => !v)}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs',
+                soAntigos
+                  ? 'border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                  : 'hover:text-foreground',
+              )}
+            >
+              {antigos.length === 1
+                ? `1 com mais de ${DIAS_LIXEIRA_ANTIGA} dias`
+                : `${antigos.length} com mais de ${DIAS_LIXEIRA_ANTIGA} dias`}
+            </button>
+          )}
+          {soAntigos && (
+            <button
+              type="button"
+              onClick={() => setSoAntigos(false)}
+              className="hover:text-foreground text-xs underline underline-offset-2"
+            >
+              ver tudo
+            </button>
+          )}
+        </div>
         <Button
           variant="destructive"
           size="sm"
@@ -143,7 +180,7 @@ export function LixeiraList({
       </div>
 
       <div className="divide-y rounded-lg border">
-        {itens.map((item) => {
+        {visiveis.map((item) => {
           const Icone = ICONE[item.tipo]
           return (
             <div
@@ -160,6 +197,23 @@ export function LixeiraList({
                   {format(new Date(item.excluidoEm), "dd/MM/yyyy 'às' HH:mm", {
                     locale: ptBR,
                   })}
+                  {/* HÁ QUANTO TEMPO está aqui. A data sozinha não responde
+                      "isso é velho?" sem alguém fazer a conta de cabeça — e é
+                      essa a pergunta de quem abre a lixeira pra limpar. */}
+                  <span
+                    className={cn(
+                      'ml-1',
+                      item.diasNaLixeira >= DIAS_LIXEIRA_ANTIGA &&
+                        'text-amber-600 dark:text-amber-500',
+                    )}
+                  >
+                    ·{' '}
+                    {item.diasNaLixeira === 0
+                      ? 'hoje'
+                      : item.diasNaLixeira === 1
+                        ? 'há 1 dia'
+                        : `há ${item.diasNaLixeira} dias`}
+                  </span>
                 </div>
               </div>
               <Badge variant="secondary" className="shrink-0">

@@ -186,14 +186,19 @@ export function acendeOMenu(
 // 80% das tarefas não têm prazo (47 de 59), e exigir data faria inventar
 // data — então o que responde "isso aqui empacou?" não é o prazo, é a idade.
 //
-// 14 DIAS É O DOBRO DA MÉDIA DE CONCLUSÃO (6,3 dias em 59 tarefas): duas
-// vezes o normal da casa é o ponto em que "ainda estou tocando" vira "isso
-// parou". Número redondo tirado do uso, não do gosto.
+// 21 DIAS, e o caminho até esse número importa. A primeira versão usou 14, o
+// dobro da média de conclusão (6,3 dias) — mas essa média é das tarefas
+// CONCLUÍDAS, ou seja, das rápidas: quem fica aberto é justamente o que
+// demora, e comparar o aberto com a média do fechado marca quase tudo.
+//
+// Na medição de 21/09/2026, com as 15 abertas: 4 tinham 10 dias, 6 entre 14 e
+// 20, 3 entre 21 e 29 e 2 mais de 30. Com 14, o selo acendia em 11 das 15 —
+// e selo que aparece em quase toda linha não distingue nada. Com 21, marca 5.
 //
 // ⚠️ ISTO NUNCA ACENDE NADA NO MENU. É selo e filtro, dentro da tela de quem
 // já foi olhar. Tarefa parada não é urgência — é justamente o contrário: o
 // que ficou sem urgência nenhuma.
-export const DIAS_PARA_PARADA = 14
+export const DIAS_PARA_PARADA = 21
 
 /**
  * Dias inteiros desde a criação até hoje. 0 = criada hoje.
