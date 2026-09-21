@@ -42,9 +42,16 @@ export default async function OrdensPage({
     await Promise.all([
       listarOrdens(filtros),
       podeEditar ? listarKitsComItens() : Promise.resolve([]),
-      podeEditar ? listarProdutosParaOrdem() : Promise.resolve([]),
-      // O "Nova OP" só oferece variação ATIVA. Kit e Full seguem com a lista
-      // de sempre.
+      // ⚠️ ESTA LISTA TAMBÉM É DE ESCOLHA. Ela vai pro nova-op-menu e alimenta
+      // "Gerar de kit" e o importar Full — os dois CRIAM OP, então não podem
+      // oferecer variação que saiu do cadastro. (O comentário antigo dizia
+      // "Kit e Full seguem com a lista de sempre"; desde que
+      // ordens/importar-full/page.tsx passou a filtrar, as duas metades do
+      // Full estavam discordando.)
+      podeEditar
+        ? listarProdutosParaOrdem({ somenteAtivas: true })
+        : Promise.resolve([]),
+      // O "Nova OP" pela mesma razão: escolher é sempre entre as ativas.
       podeEditar
         ? listarProdutosParaOrdem({ somenteAtivas: true })
         : Promise.resolve([]),

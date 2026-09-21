@@ -352,13 +352,30 @@ export async function gerarOpsKitAction(
   // Variação escolhida (tamanho/cor) por item do kit.
   const escolhaPorItem = new Map(escolhas.map((e) => [e.kitItemId, e.variacaoId]))
 
-  // Valida que cada variação escolhida pertence ao produto do item.
+  // Valida que cada variação escolhida pertence ao produto do item E que ela
+  // ainda está no cadastro.
+  //
+  // ⚠️ A TELA PODE MANDAR ID VELHO: a aba pode estar aberta desde antes de
+  // alguém remover a variação (isso é soft delete desde produtos/actions.ts).
+  // Mesma defesa que a reposição de estoque já faz — a action recusa.
   const variacaoIds = [...new Set(escolhas.map((e) => e.variacaoId))]
   const vars = await db
-    .select({ id: variacoesProduto.id, produtoId: variacoesProduto.produtoId })
+    .select({
+      id: variacoesProduto.id,
+      produtoId: variacoesProduto.produtoId,
+      deletedAt: variacoesProduto.deletedAt,
+    })
     .from(variacoesProduto)
     .where(inArray(variacoesProduto.id, variacaoIds))
-  const produtoDaVariacao = new Map(vars.map((v) => [v.id, v.produtoId]))
+  // Dois mapas, e não um: "não existe mais" e "é de outro produto" são erros
+  // diferentes, e dizer o segundo no lugar do primeiro seria MENTIR — a
+  // variação pertence ao produto, ela é que saiu do cadastro.
+  const produtoDaVariacao = new Map(
+    vars.filter((v) => v.deletedAt === null).map((v) => [v.id, v.produtoId]),
+  )
+  const removidas = new Set(
+    vars.filter((v) => v.deletedAt !== null).map((v) => v.id),
+  )
 
   const aProduzir: { produtoId: string; variacaoId: string; qtd: number }[] = []
   for (const it of itens) {
@@ -367,6 +384,12 @@ export async function gerarOpsKitAction(
       return {
         success: false,
         error: 'Escolha o tamanho e a cor de todos os itens do kit',
+      }
+    }
+    if (removidas.has(variacaoId)) {
+      return {
+        success: false,
+        error: 'Essa variação saiu do cadastro; escolha outra',
       }
     }
     if (produtoDaVariacao.get(variacaoId) !== it.produtoId) {
