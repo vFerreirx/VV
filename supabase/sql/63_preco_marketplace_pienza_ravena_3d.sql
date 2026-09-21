@@ -7,8 +7,8 @@
 -- está 129,99 no ML, Shopee, Shein, TikTok e Amazon).
 --
 --   Manta - 3D / Manta                          54,99
---   Manta - PIENZA / Manta                      59,99
---   Manta - RAVENA / Manta                      59,99
+--   Manta - PIENZA / Manta                      69,99  (era 59,99; ver 64)
+--   Manta - RAVENA / Manta                      69,99  (era 59,99; ver 64)
 --   Capa de Almofada - PIENZA / 45x45           59,99
 --   Capa de Almofada - RAVENA / 45x45           59,99
 --   Kit Manta + 2 Capas de Almofada - PIENZA   119,99
@@ -41,8 +41,8 @@ INSERT INTO public.produto_tamanho_preco_marketplace
 SELECT p.id, t.id, canal.nome, alvo.preco
 FROM (VALUES
   ('Manta - 3D',                 'Manta', 54.99),
-  ('Manta - PIENZA',             'Manta', 59.99),
-  ('Manta - RAVENA',             'Manta', 59.99),
+  ('Manta - PIENZA',             'Manta', 69.99),
+  ('Manta - RAVENA',             'Manta', 69.99),
   ('Capa de Almofada - PIENZA',  '45x45', 59.99),
   ('Capa de Almofada - RAVENA',  '45x45', 59.99)
 ) AS alvo(produto, tamanho, preco)
