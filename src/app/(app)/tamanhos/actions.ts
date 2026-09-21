@@ -7,6 +7,8 @@ import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { tamanhos, type Tamanho } from '@/lib/db/schema'
+import { erroDeUso, mensagemDoLote } from '@/lib/catalogo-em-uso'
+import { usoDeTamanhos } from '@/lib/db/uso-do-catalogo'
 import { tamanhoSchema, type TamanhoInput } from '@/lib/validators/tamanhos'
 
 export type ActionResult<T = undefined> =
@@ -152,6 +154,15 @@ export async function excluirTamanhoAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Tamanho não encontrado' }
   }
 
+  // ⚠️ TAMANHO EM USO NÃO SE APAGA. O vínculo é por TEXTO: apagar o cadastro
+  // não quebra nada na hora, mas o peso padrão some da conta do frete (o
+  // pedido passa a cotar 0 g naquela peça) e o preço daquele tamanho fica
+  // sem jeito de editar. Ver src/lib/db/uso-do-catalogo.ts.
+  const uso = (await usoDeTamanhos([id])).get(id)
+  if (uso?.emUso) {
+    return { success: false, error: erroDeUso(uso, 'o tamanho') }
+  }
+
   await db
     .update(tamanhos)
     .set({ deletedAt: new Date(), ativo: false })
@@ -181,19 +192,35 @@ export async function excluirMultiplosTamanhosAction(
     return { success: false, error: 'Nenhum ID válido na seleção' }
   }
 
-  const result = await db
-    .update(tamanhos)
-    .set({ deletedAt: new Date(), ativo: false })
-    .where(and(inArray(tamanhos.id, idsValidos), isNull(tamanhos.deletedAt)))
-    .returning({ id: tamanhos.id })
+  // Mesma guarda do individual, em lote: os livres saem, os em uso ficam — e
+  // a mensagem diz quais e por quê. Recusar os dez por causa de um seria pior;
+  // apagar em silêncio, muito pior.
+  const usos = await usoDeTamanhos(idsValidos)
+  const bloqueados = [...usos.values()].filter((u) => u.emUso)
+  const livres = idsValidos.filter((id) => !usos.get(id)?.emUso)
+
+  const result =
+    livres.length === 0
+      ? []
+      : await db
+          .update(tamanhos)
+          .set({ deletedAt: new Date(), ativo: false })
+          .where(and(inArray(tamanhos.id, livres), isNull(tamanhos.deletedAt)))
+          .returning({ id: tamanhos.id })
 
   revalidatePath('/variacoes')
+  if (result.length === 0 && bloqueados.length > 0) {
+    return {
+      success: false,
+      error: mensagemDoLote(0, bloqueados, { um: 'tamanho', muitos: 'tamanhos' }),
+    }
+  }
   return {
     success: true,
     data: { excluidos: result.length },
-    message:
-      result.length === 1
-        ? '1 tamanho excluído'
-        : `${result.length} tamanhos excluídos`,
+    message: mensagemDoLote(result.length, bloqueados, {
+      um: 'tamanho',
+      muitos: 'tamanhos',
+    }),
   }
 }

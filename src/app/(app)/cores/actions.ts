@@ -7,6 +7,8 @@ import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { cores, type Cor } from '@/lib/db/schema'
+import { erroDeUso, mensagemDoLote } from '@/lib/catalogo-em-uso'
+import { usoDeCores } from '@/lib/db/uso-do-catalogo'
 import { corSchema, type CorInput } from '@/lib/validators/cores'
 
 export type ActionResult<T = undefined> =
@@ -166,6 +168,15 @@ export async function excluirCorAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Cor não encontrada' }
   }
 
+  // ⚠️ COR EM USO NÃO SE APAGA. A variação guarda o NOME da cor como texto, e
+  // o de-para do fio guarda o ID: apagar aqui deixa a variação apontando pra
+  // um cadastro que sumiu (some dos filtros) e a cor do fornecedor órfã.
+  // Ver src/lib/db/uso-do-catalogo.ts.
+  const uso = (await usoDeCores([id])).get(id)
+  if (uso?.emUso) {
+    return { success: false, error: erroDeUso(uso, 'a cor') }
+  }
+
   await db
     .update(cores)
     .set({ deletedAt: new Date(), ativo: false })
@@ -196,20 +207,35 @@ export async function excluirMultiplasCoresAction(
     return { success: false, error: 'Nenhum ID válido na seleção' }
   }
 
+  // Mesma guarda do individual, em lote: as livres saem, as em uso ficam — e
+  // a mensagem diz quais e por quê.
+  const usos = await usoDeCores(idsValidos)
+  const bloqueadas = [...usos.values()].filter((u) => u.emUso)
+  const livres = idsValidos.filter((id) => !usos.get(id)?.emUso)
+
   const now = new Date()
-  const result = await db
-    .update(cores)
-    .set({ deletedAt: now, ativo: false })
-    .where(and(inArray(cores.id, idsValidos), isNull(cores.deletedAt)))
-    .returning({ id: cores.id })
+  const result =
+    livres.length === 0
+      ? []
+      : await db
+          .update(cores)
+          .set({ deletedAt: now, ativo: false })
+          .where(and(inArray(cores.id, livres), isNull(cores.deletedAt)))
+          .returning({ id: cores.id })
 
   revalidatePath('/variacoes')
+  if (result.length === 0 && bloqueadas.length > 0) {
+    return {
+      success: false,
+      error: mensagemDoLote(0, bloqueadas, { um: 'cor', muitos: 'cores' }),
+    }
+  }
   return {
     success: true,
     data: { excluidas: result.length },
-    message:
-      result.length === 1
-        ? '1 cor excluída'
-        : `${result.length} cores excluídas`,
+    message: mensagemDoLote(result.length, bloqueadas, {
+      um: 'cor',
+      muitos: 'cores',
+    }),
   }
 }

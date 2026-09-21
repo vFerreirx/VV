@@ -7,6 +7,8 @@ import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { modelos, type Modelo } from '@/lib/db/schema'
+import { erroDeUso, mensagemDoLote } from '@/lib/catalogo-em-uso'
+import { usoDeModelos } from '@/lib/db/uso-do-catalogo'
 import { modeloSchema, type ModeloInput } from '@/lib/validators/modelos'
 
 export type ActionResult<T = undefined> =
@@ -144,6 +146,14 @@ export async function excluirModeloAction(id: string): Promise<ActionResult> {
     return { success: false, error: 'Modelo não encontrado' }
   }
 
+  // ⚠️ MODELO EM USO NÃO SE APAGA. A variação guarda o NOME como texto: apagar
+  // o cadastro não muda a variação, mas ela some dos filtros que saem daqui.
+  // Ver src/lib/db/uso-do-catalogo.ts.
+  const uso = (await usoDeModelos([id])).get(id)
+  if (uso?.emUso) {
+    return { success: false, error: erroDeUso(uso, 'o modelo') }
+  }
+
   await db
     .update(modelos)
     .set({ deletedAt: new Date(), ativo: false })
@@ -173,19 +183,33 @@ export async function excluirMultiplosModelosAction(
     return { success: false, error: 'Nenhum ID válido na seleção' }
   }
 
-  const result = await db
-    .update(modelos)
-    .set({ deletedAt: new Date(), ativo: false })
-    .where(and(inArray(modelos.id, idsValidos), isNull(modelos.deletedAt)))
-    .returning({ id: modelos.id })
+  // Mesma guarda do individual, em lote: os livres saem, os em uso ficam.
+  const usos = await usoDeModelos(idsValidos)
+  const bloqueados = [...usos.values()].filter((u) => u.emUso)
+  const livres = idsValidos.filter((id) => !usos.get(id)?.emUso)
+
+  const result =
+    livres.length === 0
+      ? []
+      : await db
+          .update(modelos)
+          .set({ deletedAt: new Date(), ativo: false })
+          .where(and(inArray(modelos.id, livres), isNull(modelos.deletedAt)))
+          .returning({ id: modelos.id })
 
   revalidatePath('/variacoes')
+  if (result.length === 0 && bloqueados.length > 0) {
+    return {
+      success: false,
+      error: mensagemDoLote(0, bloqueados, { um: 'modelo', muitos: 'modelos' }),
+    }
+  }
   return {
     success: true,
     data: { excluidos: result.length },
-    message:
-      result.length === 1
-        ? '1 modelo excluído'
-        : `${result.length} modelos excluídos`,
+    message: mensagemDoLote(result.length, bloqueados, {
+      um: 'modelo',
+      muitos: 'modelos',
+    }),
   }
 }

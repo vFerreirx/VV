@@ -29,6 +29,12 @@ import {
   type LoteComSaldo,
 } from '../fios/saldo.ts'
 import {
+  erroDeUso,
+  mensagemDoLote,
+  plural,
+  uso,
+} from '../catalogo-em-uso.ts'
+import {
   chaveOverride,
   nivelEfetivo,
   podeEscrever,
@@ -1528,4 +1534,49 @@ test('permissoes: override em permissoes_acesso vence o padrao', () => {
     [chaveOverride('admin', 'precosCatalogo')]: 'nenhum' as const,
   }
   assert.equal(nivelEfetivo('admin', 'precosCatalogo', tentaFechar), 'total')
+})
+
+// -----------------------------------------------------------------
+// Catalogo: a guarda da exclusao (src/lib/catalogo-em-uso.ts)
+// -----------------------------------------------------------------
+
+test('catalogo: so esta em uso quem tem onde', () => {
+  assert.equal(uso('Novo', []).emUso, false)
+  assert.equal(uso('King', ['8 variações de 6 produtos']).emUso, true)
+})
+
+test('catalogo: o erro diz ONDE esta em uso e oferece a saida', () => {
+  const texto = erroDeUso(
+    uso('King', ['8 variações de 6 produtos', '5 preços de atacado']),
+    'o tamanho',
+  )
+  // O nome, cada lugar de uso e o caminho alternativo — quem le precisa saber
+  // o que vai quebrar antes de insistir.
+  assert.match(texto, /"King"/)
+  assert.match(texto, /8 variações de 6 produtos/)
+  assert.match(texto, /5 preços de atacado/)
+  assert.match(texto, /Desative o tamanho/)
+})
+
+test('catalogo: no lote, os livres saem e os em uso aparecem na mensagem', () => {
+  const rotulo = { um: 'tamanho', muitos: 'tamanhos' }
+  // Nenhum bloqueado: a mensagem e so o que saiu.
+  assert.equal(mensagemDoLote(2, [], rotulo), '2 tamanhos excluído(s)')
+
+  const bloqueado = uso('King', ['8 variações de 6 produtos'])
+  const parcial = mensagemDoLote(1, [bloqueado], rotulo)
+  assert.match(parcial, /1 tamanho excluído/)
+  assert.match(parcial, /"King" ficaram porque estão em uso/)
+  assert.match(parcial, /8 variações de 6 produtos/)
+
+  // Nada saiu: a mensagem nao pode dizer "0 excluidos" e pronto.
+  const nenhum = mensagemDoLote(0, [bloqueado, uso('Casal', ['3 pedidos'])], rotulo)
+  assert.match(nenhum, /Nenhum excluído/)
+  assert.match(nenhum, /"King", "Casal"/)
+})
+
+test('catalogo: plural de uma coisa so nao vira "1 variações"', () => {
+  assert.equal(plural(1, 'variação', 'variações'), '1 variação')
+  assert.equal(plural(2, 'variação', 'variações'), '2 variações')
+  assert.equal(plural(0, 'pedido', 'pedidos'), '0 pedidos')
 })
