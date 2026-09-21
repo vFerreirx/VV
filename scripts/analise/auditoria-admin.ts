@@ -292,10 +292,10 @@ async function main() {
               max(deleted_at)::date::text mais_novo
        from ${tabela} where deleted_at is not null`,
     )
-    const n = (r as { n: number }).n
+    const n = (r as unknown as { n: number }).n
     if (n > 0) {
       total += n
-      const d = r as { mais_antigo: string; mais_novo: string }
+      const d = r as unknown as { mais_antigo: string; mais_novo: string }
       console.log(`  ${tabela}: ${n} apagado(s), de ${d.mais_antigo} a ${d.mais_novo}`)
     }
   }
@@ -320,7 +320,7 @@ async function main() {
     const [r] = await sql.unsafe(
       `select count(*)::int n from ${tabela} where deleted_at is not null`,
     )
-    const n = (r as { n: number }).n
+    const n = (r as unknown as { n: number }).n
     if (n > 0) foraDaTela.push(`${tabela} (${n})`)
   }
   console.log(
