@@ -1,6 +1,7 @@
 'use client'
 
 import { ChevronDown, Pencil, Plus, Repeat, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -216,6 +217,12 @@ function LinhaDiaria({ diaria: d }: { diaria: DiariaComContexto }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
+  // ROTINA AUTOMÁTICA NÃO TEM CAIXA. A resposta dela vem do sistema —
+  // "Cadastrar vendas do dia anterior" olha se existe lançamento em /vendas
+  // pra ontem —, e deixar marcar à mão criaria a segunda verdade que a
+  // automação existe pra evitar. A action recusa do mesmo jeito.
+  const automatica = d.automatica !== null
+
   function alternar() {
     startTransition(async () => {
       // A caixa reflete `feitaHoje`, e não `concluidaEm !== null`: uma
@@ -238,9 +245,15 @@ function LinhaDiaria({ diaria: d }: { diaria: DiariaComContexto }) {
       <Checkbox
         checked={d.feitaHoje}
         onCheckedChange={alternar}
-        disabled={isPending}
+        disabled={isPending || automatica}
         className="mt-0.5"
-        aria-label={d.feitaHoje ? `Desmarcar ${d.titulo}` : `Marcar ${d.titulo}`}
+        aria-label={
+          automatica
+            ? `${d.titulo} — marcada pelo sistema`
+            : d.feitaHoje
+              ? `Desmarcar ${d.titulo}`
+              : `Marcar ${d.titulo}`
+        }
       />
       <div className="min-w-0 flex-1">
         <div
@@ -256,11 +269,28 @@ function LinhaDiaria({ diaria: d }: { diaria: DiariaComContexto }) {
             {d.descricao}
           </p>
         )}
-        {d.feitaHoje && (
+        {/* A automática diz DE ONDE veio a resposta, e leva pra lá quando
+            ainda falta: sem isso, "não feita" seria uma cobrança sem botão. */}
+        {automatica ? (
           <p className="text-muted-foreground mt-1 text-xs">
-            feita por {d.concluidaPorNome ?? '—'} às{' '}
-            {horaEmBrasilia(new Date(d.concluidaEm!))}
+            {d.feitaHoje ? (
+              'feita — vendas de ontem lançadas'
+            ) : (
+              <>
+                as vendas de ontem ainda não foram lançadas —{' '}
+                <Link href="/vendas" className="underline underline-offset-2">
+                  lançar agora
+                </Link>
+              </>
+            )}
           </p>
+        ) : (
+          d.feitaHoje && (
+            <p className="text-muted-foreground mt-1 text-xs">
+              feita por {d.concluidaPorNome ?? '—'} às{' '}
+              {horaEmBrasilia(new Date(d.concluidaEm!))}
+            </p>
+          )
         )}
       </div>
 

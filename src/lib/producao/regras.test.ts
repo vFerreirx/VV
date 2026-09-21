@@ -29,6 +29,13 @@ import {
   type LoteComSaldo,
 } from '../fios/saldo.ts'
 import {
+  DIAS_PARA_PARADA,
+  acendeOMenu,
+  diasAberta,
+  estaParada,
+  prioridadeEfetiva,
+} from '../validators/tarefas.ts'
+import {
   erroDeUso,
   mensagemDoLote,
   plural,
@@ -1579,4 +1586,63 @@ test('catalogo: plural de uma coisa so nao vira "1 variações"', () => {
   assert.equal(plural(1, 'variação', 'variações'), '1 variação')
   assert.equal(plural(2, 'variação', 'variações'), '2 variações')
   assert.equal(plural(0, 'pedido', 'pedidos'), '0 pedidos')
+})
+
+// -----------------------------------------------------------------
+// Tarefas: o que acende a bolinha e ha quanto tempo esta aberta
+// (src/lib/validators/tarefas.ts)
+// -----------------------------------------------------------------
+
+test('tarefas: alta marcada a mao NAO acende mais a bolinha', () => {
+  const hoje = '2026-09-21'
+  // Foi o caso real: 5 tarefas "alta" mantendo o menu aceso por semanas,
+  // duas delas vencendo so em 30/09 e 02/10, uma sem prazo nenhum.
+  assert.equal(acendeOMenu('alta', null, hoje), null)
+  assert.equal(acendeOMenu('alta', '2026-09-30', hoje), null)
+  assert.equal(acendeOMenu('alta', '2026-10-02', hoje), null)
+  assert.equal(acendeOMenu('normal', null, hoje), null)
+  assert.equal(acendeOMenu('baixa', '2026-12-25', hoje), null)
+
+  // Mas o SELO da lista nao mudou: continua dizendo "Alta" onde marcaram.
+  assert.equal(prioridadeEfetiva('alta', null, hoje), 'alta')
+  assert.equal(prioridadeEfetiva('alta', '2026-09-30', hoje), 'alta')
+})
+
+test('tarefas: a bolinha acende por urgente a mao e pela escalada do prazo', () => {
+  const hoje = '2026-09-21'
+  // Urgente a mao interrompe com ou sem prazo — e a palavra foi escolhida
+  // por alguem.
+  assert.equal(acendeOMenu('urgente', null, hoje), 'urgente')
+  assert.equal(acendeOMenu('urgente', '2026-12-25', hoje), 'urgente')
+
+  // Alta a mao com prazo perto acende — mas pela DATA, nao pela marcacao.
+  assert.equal(acendeOMenu('alta', '2026-09-24', hoje), 'alta')
+  assert.equal(acendeOMenu('normal', '2026-09-24', hoje), 'alta')
+
+  // Dentro de 2 dias ja e urgente; vencido tambem.
+  assert.equal(acendeOMenu('normal', '2026-09-23', hoje), 'urgente')
+  assert.equal(acendeOMenu('baixa', '2026-09-20', hoje), 'urgente')
+  assert.equal(acendeOMenu('normal', '2026-09-21', hoje), 'urgente')
+
+  // Fora da janela de uma semana, nada.
+  assert.equal(acendeOMenu('normal', '2026-09-29', hoje), null)
+})
+
+test('tarefas: parada e 14 dias aberta, e 13 nao e', () => {
+  const hoje = '2026-09-21'
+  const em = (iso: string) => new Date(`${iso}T12:00:00Z`)
+
+  assert.equal(diasAberta(em('2026-09-21'), hoje), 0)
+  assert.equal(diasAberta(em('2026-09-20'), hoje), 1)
+  assert.equal(diasAberta(em('2026-09-08'), hoje), 13)
+  assert.equal(diasAberta(em('2026-09-07'), hoje), 14)
+  // A mais velha aberta de verdade: 12/08.
+  assert.equal(diasAberta(em('2026-08-12'), hoje), 40)
+
+  assert.equal(estaParada(13), false)
+  assert.equal(estaParada(DIAS_PARA_PARADA), true)
+  assert.equal(estaParada(40), true)
+
+  // Data no futuro (relogio errado) nao vira idade negativa.
+  assert.equal(diasAberta(em('2026-09-25'), hoje), 0)
 })

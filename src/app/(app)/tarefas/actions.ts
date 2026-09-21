@@ -8,6 +8,7 @@ import { db } from '@/lib/db'
 import { contasMarketplace, tarefas, users, type Tarefa } from '@/lib/db/schema'
 import { PRIORIDADE_NIVEIS, type PrioridadeNivel } from '@/lib/prioridade'
 import {
+  diasAberta,
   escalouSozinha,
   hojeISO,
   prioridadeEfetiva,
@@ -41,6 +42,15 @@ export type TarefaComContexto = Tarefa & {
   // A data subiu o nível sozinha? A tela usa isso pra não parecer que
   // alguém marcou "Urgente" numa tarefa que ninguém tocou.
   escalou: boolean
+
+  // HÁ QUANTOS DIAS ESTÁ ABERTA. 80% das tarefas não têm prazo, então é isto
+  // — e não o prazo — que responde "isso aqui empacou?". Calculado no
+  // SERVIDOR, com o mesmo `hoje` de Brasília do resto da requisição, igual a
+  // `valeHoje` das diárias: a tela chamar `new Date()` é o bug que
+  // src/lib/dia-brasil.ts existe pra matar.
+  //
+  // Zero pras concluídas: aging é coisa de tarefa aberta.
+  diasAberta: number
 }
 
 // Concluída não escala: prazo vencido de tarefa feita não é urgência, é
@@ -50,12 +60,18 @@ function comEfetiva(
   hoje: string,
 ): TarefaComContexto {
   if (t.concluidaEm !== null) {
-    return { ...t, prioridadeEfetiva: t.prioridade, escalou: false }
+    return {
+      ...t,
+      prioridadeEfetiva: t.prioridade,
+      escalou: false,
+      diasAberta: 0,
+    }
   }
   return {
     ...t,
     prioridadeEfetiva: prioridadeEfetiva(t.prioridade, t.prazo, hoje),
     escalou: escalouSozinha(t.prioridade, t.prazo, hoje),
+    diasAberta: diasAberta(t.createdAt, hoje),
   }
 }
 

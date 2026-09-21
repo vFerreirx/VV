@@ -5,6 +5,7 @@ import { ptBR } from 'date-fns/locale'
 import {
   CalendarClock,
   ChevronDown,
+  Hourglass,
   ListTodo,
   Pencil,
   Plus,
@@ -56,7 +57,7 @@ import {
   type PrioridadeNivel,
 } from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
-import { estaVencida } from '@/lib/validators/tarefas'
+import { DIAS_PARA_PARADA, estaParada, estaVencida } from '@/lib/validators/tarefas'
 
 export type ContaOpcao = { id: string; nome: string }
 
@@ -84,6 +85,12 @@ export function TarefasView({
   const [editando, setEditando] = useState<TarefaComContexto | null>(null)
   const [excluindo, setExcluindo] = useState<TarefaComContexto | null>(null)
   const [mostrarConcluidas, setMostrarConcluidas] = useState(false)
+  const [soParadas, setSoParadas] = useState(false)
+
+  // O filtro não reordena nada: a ordem continua sendo prioridade e depois
+  // prazo (ver `compararPendentes`). Ele só esconde o resto.
+  const paradas = pendentes.filter((t) => estaParada(t.diasAberta))
+  const visiveis = soParadas ? paradas : pendentes
 
   return (
     // O provider ENVOLVE A TELA INTEIRA porque o botão de fixar aparece em
@@ -118,7 +125,35 @@ export function TarefasView({
 
       <NovaTarefa contas={contas} />
 
-      {pendentes.length === 0 ? (
+      {paradas.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <button
+            type="button"
+            onClick={() => setSoParadas((v) => !v)}
+            className={cn(
+              'rounded-full border px-3 py-1 text-xs',
+              soParadas
+                ? 'border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {paradas.length === 1
+              ? '1 parada há mais de 14 dias'
+              : `${paradas.length} paradas há mais de ${DIAS_PARA_PARADA} dias`}
+          </button>
+          {soParadas && (
+            <button
+              type="button"
+              onClick={() => setSoParadas(false)}
+              className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-2"
+            >
+              ver todas
+            </button>
+          )}
+        </div>
+      )}
+
+      {visiveis.length === 0 ? (
         <EmptyState
           icon={ListTodo}
           title="Nenhuma tarefa pendente"
@@ -126,7 +161,7 @@ export function TarefasView({
         />
       ) : (
         <div className="divide-y rounded-xl border">
-          {pendentes.map((t) => (
+          {visiveis.map((t) => (
             <LinhaTarefa
               key={t.id}
               tarefa={t}
@@ -186,12 +221,22 @@ export function TarefasView({
 // Criação rápida
 // -----------------------------------------------------------------
 
-// O caminho rápido é só o título + Enter. Prazo e conta ficam atrás do
-// "mais opções" porque tarefa que dá trabalho de cadastrar ninguém cadastra.
+// O caminho rápido é só o TÍTULO + ENTER. Tudo o mais — descrição, prazo,
+// prioridade e conta — fica atrás do "mais opções", porque tarefa que dá
+// trabalho de cadastrar ninguém cadastra: de 59 tarefas, 47 nasceram sem
+// prazo, 38 sem descrição e 57 sem conta. Quem precisa de um desses campos
+// abre a gaveta; quem não precisa digita e dá Enter.
+//
+// ⚠️ A PRIORIDADE SAIU DA LINHA RÁPIDA, e o motivo dela estar lá caiu junto.
+// O argumento era "é ela que acende a bolinha do menu, e aviso que depende de
+// abrir uma gaveta nunca acende" — mas desde `acendeOMenu`
+// (src/lib/validators/tarefas.ts) quem acende é URGENTE à mão e o PRAZO. Alta
+// virou ordenação, e ordenação não precisa estar no caminho de dois segundos.
 function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [titulo, setTitulo] = useState('')
+  const [descricao, setDescricao] = useState('')
   const [prioridade, setPrioridade] = useState<PrioridadeNivel>('normal')
   const [prazo, setPrazo] = useState('')
   const [contaId, setContaId] = useState<string | null>(null)
@@ -205,7 +250,7 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
     startTransition(async () => {
       const r = await criarTarefaAction({
         titulo,
-        descricao: null,
+        descricao: descricao.trim() || null,
         prioridade,
         prazo: prazo || null,
         contaId,
@@ -216,6 +261,7 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
       }
       toast.success(r.message ?? 'Tarefa criada')
       setTitulo('')
+      setDescricao('')
       setPrioridade('normal')
       setPrazo('')
       setContaId(null)
@@ -238,16 +284,6 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
           autoComplete="off"
           className="min-w-56 flex-1"
         />
-        {/* Prioridade fica na linha rápida, e não atrás do "mais opções":
-            é ela que acende a bolinha do menu, e aviso que depende de
-            alguém abrir uma gaveta pra marcar nunca acende. */}
-        <SeletorPrioridade
-          id="nova-prioridade"
-          valor={prioridade}
-          onChange={setPrioridade}
-          disabled={isPending}
-          className="w-32"
-        />
         <Button onClick={salvar} loading={isPending} disabled={isPending}>
           {!isPending && <Plus />}
           Adicionar
@@ -262,29 +298,52 @@ function NovaTarefa({ contas }: { contas: ContaOpcao[] }) {
         <ChevronDown
           className={cn('size-3.5 transition-transform', aberto && 'rotate-180')}
         />
-        {aberto ? 'Menos opções' : 'Prazo e conta (opcional)'}
+        {aberto ? 'Menos opções' : 'Mais opções'}
       </button>
 
       {aberto && (
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="nova-prazo">Prazo</Label>
-            <Input
-              id="nova-prazo"
-              type="date"
-              value={prazo}
-              onChange={(e) => setPrazo(e.target.value)}
+            <Label htmlFor="nova-descricao">Descrição</Label>
+            <Textarea
+              id="nova-descricao"
+              rows={2}
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              placeholder="O que precisa ser feito, se o título não bastar."
               disabled={isPending}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label>Conta de marketplace</Label>
-            <SeletorConta
-              contas={contas}
-              valor={contaId}
-              onChange={setContaId}
-              disabled={isPending}
-            />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="nova-prioridade">Prioridade</Label>
+              <SeletorPrioridade
+                id="nova-prioridade"
+                valor={prioridade}
+                onChange={setPrioridade}
+                disabled={isPending}
+                className="w-full"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nova-prazo">Prazo</Label>
+              <Input
+                id="nova-prazo"
+                type="date"
+                value={prazo}
+                onChange={(e) => setPrazo(e.target.value)}
+                disabled={isPending}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Conta de marketplace</Label>
+              <SeletorConta
+                contas={contas}
+                valor={contaId}
+                onChange={setContaId}
+                disabled={isPending}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -466,6 +525,29 @@ function LinhaTarefa({
         )}
 
         <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          {/* HÁ QUANTO TEMPO ESTÁ ABERTA. 80% das tarefas não têm prazo, e
+              sem isso a lista não conta que uma delas está parada desde
+              agosto. O número vem PRONTO do servidor (`diasAberta`), com o
+              dia de Brasília — a tela não sabe que dia é hoje.
+
+              ⚠️ Isto NUNCA acende a bolinha do menu: parada não é urgência,
+              é o oposto. É selo e filtro, aqui dentro. */}
+          {!concluida && t.diasAberta > 0 && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 tabular-nums',
+                estaParada(t.diasAberta) && 'text-amber-600 dark:text-amber-500',
+              )}
+              title={
+                estaParada(t.diasAberta)
+                  ? `Aberta há ${t.diasAberta} dias — mais que o dobro da média da casa`
+                  : undefined
+              }
+            >
+              <Hourglass className="size-3.5" />
+              {t.diasAberta === 1 ? 'há 1 dia' : `há ${t.diasAberta} dias`}
+            </span>
+          )}
           {t.prazo && (
             <span
               className={cn(

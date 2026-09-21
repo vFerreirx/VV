@@ -103,6 +103,17 @@ export const tarefasDiarias = pgTable('tarefas_diarias', {
     .notNull()
     .default(sql`'{0,1,2,3,4,5,6}'`),
 
+  // QUAL AUTOMAÇÃO responde por esta diária, quando alguma responde.
+  //
+  // NULL = rotina normal, marcada à mão (o caso das outras três). Com valor,
+  // a resposta vem do sistema e o checkbox nem aparece: "Cadastrar vendas do
+  // dia anterior" é respondida pelo que existe em `vendas` pra ontem.
+  //
+  // Texto e não boolean porque a próxima automação vai ter OUTRA fonte — e o
+  // CHECK do banco (migration 68) espelha a tupla `DIARIAS_AUTOMATICAS` de
+  // src/lib/validators/tarefas.ts.
+  automatica: text(),
+
   // Instante da última conclusão. Só vale como "feita hoje" se cair no dia
   // de hoje; uma conclusão de ontem simplesmente deixa de contar.
   concluidaEm: timestamp({ withTimezone: true }),

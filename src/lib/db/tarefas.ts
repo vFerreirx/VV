@@ -2,13 +2,8 @@ import { and, isNull, sql } from 'drizzle-orm'
 
 import { db } from '.'
 import { tarefas } from './schema'
-import {
-  ehDestaque,
-  maiorPrioridade,
-  type PrioridadeAlerta,
-  type PrioridadeNivel,
-} from '@/lib/prioridade'
-import { escalarPorPrazo } from '@/lib/validators/tarefas'
+import { type PrioridadeAlerta, type PrioridadeNivel } from '@/lib/prioridade'
+import { acendeOMenu } from '@/lib/validators/tarefas'
 import type { User } from '@/lib/db/schema'
 
 // Sinal do menu: a maior prioridade EFETIVA entre as tarefas em aberto.
@@ -77,9 +72,13 @@ export async function alertaDeTarefas(
   const linha = linhas[0]
   if (!linha) return null
 
-  const efetiva = maiorPrioridade(
-    linha.nivel ?? 'baixa',
-    escalarPorPrazo(linha.prazo),
-  )
-  return ehDestaque(efetiva) ? efetiva : null
+  // ⚠️ OLHAR SÓ O MAIOR NÍVEL MARCADO É SEGURO, e é o que permite continuar
+  // com dois escalares: o SQL pede `ORDER BY prioridade DESC LIMIT 1`, então
+  // se o máximo que voltou é 'alta', não existe nenhuma 'urgente' aberta pra
+  // esconder atrás dele. O prazo mais próximo responde pela escalada.
+  //
+  // A regra do MENU é diferente da do selo da lista, de propósito — o porquê
+  // está em `acendeOMenu` (src/lib/validators/tarefas.ts). Aqui não se decide
+  // nada: só se junta os dois fatos crus e se pergunta a ela.
+  return acendeOMenu(linha.nivel ?? 'baixa', linha.prazo)
 }

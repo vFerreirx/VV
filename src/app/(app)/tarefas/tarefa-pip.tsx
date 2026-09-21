@@ -391,6 +391,12 @@ function ConteudoPip({
   const descricao =
     alvo.tipo === 'tarefa' ? alvo.tarefa.descricao : alvo.diaria.descricao
 
+  // ⚠️ DIÁRIA AUTOMÁTICA NÃO TEM BOTÃO AQUI TAMBÉM. A janelinha chama a MESMA
+  // action da lista, e essa action recusa marcar rotina automática — oferecer
+  // o botão seria oferecer um clique que só devolve erro. Quem responde por
+  // ela é o fato observado (as vendas de ontem lançadas, em /vendas).
+  const automatica = alvo.tipo === 'diaria' && alvo.diaria.automatica !== null
+
   function concluir() {
     setErro(null)
     startTransition(async () => {
@@ -449,7 +455,13 @@ function ConteudoPip({
             {erro}
           </p>
         )}
-        {feita ? (
+        {automatica ? (
+          <p className="text-muted-foreground text-center text-xs">
+            {feita
+              ? 'feita — vendas de ontem lançadas'
+              : 'as vendas de ontem ainda não foram lançadas'}
+          </p>
+        ) : feita ? (
           <p className="text-muted-foreground text-center text-xs">
             {alvo.tipo === 'tarefa'
               ? `concluída por ${alvo.tarefa.concluidaPorNome ?? '—'} em ${format(

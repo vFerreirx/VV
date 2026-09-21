@@ -1,11 +1,20 @@
 import { z } from 'zod'
 
-import { diasEntre, hojeEmBrasilia } from '@/lib/dia-brasil'
+// ⚠️ IMPORTS RELATIVOS, e não pelo alias `@/`: as regras deste arquivo têm
+// teste que roda no runner do Node (`node --test
+// --experimental-strip-types src/lib/producao/regras.test.ts`), e o Node cru
+// não resolve o alias do tsconfig nem completa extensão — daí o `.ts` no
+// fim, que o `allowImportingTsExtensions` do tsconfig já permite e o
+// bundler do Next entende. Os dois módulos abaixo são puros, sem banco e sem
+// React, então a cadeia inteira carrega no runner.
+import { diaEmBrasilia, diasEntre, hojeEmBrasilia } from '../dia-brasil.ts'
 import {
   PRIORIDADE_NIVEIS,
+  ehDestaque,
   maiorPrioridade,
+  type PrioridadeAlerta,
   type PrioridadeNivel,
-} from '@/lib/prioridade'
+} from '../prioridade.ts'
 
 // Tarefa da administração. Só o título é obrigatório — o caminho rápido de
 // criação é digitar o título e salvar; prazo e conta são secundários e a
@@ -134,6 +143,74 @@ export function prioridadeEfetiva(
   return maiorPrioridade(marcada, escalarPorPrazo(prazo, hoje))
 }
 
+// -----------------------------------------------------------------
+// O QUE ACENDE A BOLINHA DO MENU — e por que não é o mesmo que o SELO
+// -----------------------------------------------------------------
+//
+// ⚠️ ESTA REGRA É, DE PROPÓSITO, DIFERENTE DE `prioridadeEfetiva`. Quem ler
+// as duas lado a lado sem este comentário vai achar que uma delas está errada
+// e "consertar" — não conserte.
+//
+//   SELO da lista  → `prioridadeEfetiva`: mostra "Alta" onde alguém marcou
+//                    Alta. Continua igual, e continua ordenando a lista.
+//   BOLINHA do menu → esta função: interrompe só por URGENTE marcado à mão e
+//                    pela escalada por PRAZO.
+//
+// O motivo é o que aconteceu: 5 tarefas abertas estavam marcadas "alta" à
+// mão, duas delas vencendo só em 30/09 e 02/10 e uma sem prazo nenhum — e a
+// bolinha ficou acesa por semanas. A escalada por prazo foi desenhada pra
+// evitar exatamente isso ("até uma semana: dá tempo de reagir sem a bolinha
+// acesa o mês inteiro"), mas a alta marcada à mão nunca expira: ninguém volta
+// numa tarefa pra rebaixá-la.
+//
+// Aviso que fica aceso o mês inteiro para de ser aviso. Urgente à mão
+// continua interrompendo porque é a palavra que alguém escolheu para dizer
+// "agora"; alta à mão vira o que ela é de fato — uma ordenação.
+export function acendeOMenu(
+  marcada: PrioridadeNivel,
+  prazo: string | null,
+  hoje = hojeISO(),
+): PrioridadeAlerta {
+  // Urgente à mão interrompe com ou sem prazo.
+  if (marcada === 'urgente') return 'urgente'
+  // O resto é só a data: alta/normal/baixa marcadas à mão não acendem nada
+  // sozinhas.
+  const doPrazo = escalarPorPrazo(prazo, hoje)
+  return ehDestaque(doPrazo) ? doPrazo : null
+}
+
+// -----------------------------------------------------------------
+// HÁ QUANTO TEMPO ESTÁ ABERTA
+// -----------------------------------------------------------------
+//
+// 80% das tarefas não têm prazo (47 de 59), e exigir data faria inventar
+// data — então o que responde "isso aqui empacou?" não é o prazo, é a idade.
+//
+// 14 DIAS É O DOBRO DA MÉDIA DE CONCLUSÃO (6,3 dias em 59 tarefas): duas
+// vezes o normal da casa é o ponto em que "ainda estou tocando" vira "isso
+// parou". Número redondo tirado do uso, não do gosto.
+//
+// ⚠️ ISTO NUNCA ACENDE NADA NO MENU. É selo e filtro, dentro da tela de quem
+// já foi olhar. Tarefa parada não é urgência — é justamente o contrário: o
+// que ficou sem urgência nenhuma.
+export const DIAS_PARA_PARADA = 14
+
+/**
+ * Dias inteiros desde a criação até hoje. 0 = criada hoje.
+ *
+ * ⚠️ O "hoje" é o de Brasília e vem DE FORA, calculado uma vez por
+ * requisição no servidor — igual a `valeHoje` das diárias. Deixar a tela
+ * chamar `new Date()` é o bug que src/lib/dia-brasil.ts existe pra matar.
+ */
+export function diasAberta(criadaEm: Date, hoje = hojeISO()): number {
+  return Math.max(0, diasEntre(diaEmBrasilia(criadaEm), hoje))
+}
+
+/** Passou do dobro da média? Só faz sentido pra tarefa em aberto. */
+export function estaParada(dias: number): boolean {
+  return dias >= DIAS_PARA_PARADA
+}
+
 // A data subiu o nível por conta própria? Serve pra tela não deixar parecer
 // que alguém marcou "Urgente" numa tarefa que ninguém tocou.
 export function escalouSozinha(
@@ -179,6 +256,28 @@ export const tarefaDiariaSchema = z.object({
     .transform((dias) => [...new Set(dias)].sort((a, b) => a - b))
     .refine((dias) => dias.length > 0, 'Escolha pelo menos um dia da semana'),
 })
+
+// -----------------------------------------------------------------
+// DIÁRIA AUTOMÁTICA
+// -----------------------------------------------------------------
+//
+// Rotina cuja resposta o sistema já sabe, e que por isso não tem checkbox.
+// Hoje é uma só: "Cadastrar vendas do dia anterior" — /vendas já cobra os
+// dias sem lançamento desde o commit 7e15bc8, e pedir a marcação à mão seria
+// manter duas verdades sobre o mesmo fato.
+//
+// ⚠️ ESTA TUPLA É ESPELHO DO CHECK do banco (migration 68). Chave nova entra
+// nos dois lugares ou em nenhum — mesmo par que os motivos de parada.
+export const DIARIAS_AUTOMATICAS = ['vendas_do_dia_anterior'] as const
+
+export type DiariaAutomatica = (typeof DIARIAS_AUTOMATICAS)[number]
+
+export function ehDiariaAutomatica(v: unknown): v is DiariaAutomatica {
+  return (
+    typeof v === 'string' &&
+    (DIARIAS_AUTOMATICAS as readonly string[]).includes(v)
+  )
+}
 
 export type TarefaDiariaInput = z.input<typeof tarefaDiariaSchema>
 export type TarefaDiariaData = z.output<typeof tarefaDiariaSchema>

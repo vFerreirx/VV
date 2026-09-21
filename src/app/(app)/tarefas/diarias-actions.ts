@@ -5,9 +5,10 @@ import { revalidatePath } from 'next/cache'
 
 import { requireRole } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { tarefasDiarias, users, type TarefaDiaria } from '@/lib/db/schema'
-import { diaDaSemana, ehDoDia, hojeEmBrasilia } from '@/lib/dia-brasil'
+import { tarefasDiarias, users, vendas, type TarefaDiaria } from '@/lib/db/schema'
+import { diaDaSemana, ehDoDia, hojeEmBrasilia, somarDias } from '@/lib/dia-brasil'
 import {
+  ehDiariaAutomatica,
   tarefaDiariaSchema,
   type TarefaDiariaInput,
 } from '@/lib/validators/tarefas'
@@ -39,6 +40,10 @@ export type DiariaComContexto = TarefaDiaria & {
   // `concluidaEm` caiu no dia de HOJE em Brasília? Não é coluna: virou o
   // dia, a diária volta pendente sozinha. Conclusão de ontem simplesmente
   // deixa de contar — não vira dívida, não aparece como atrasada.
+  //
+  // ⚠️ NA DIÁRIA AUTOMÁTICA ISTO NÃO SAI DE `concluidaEm`: sai do fato que a
+  // automação observa. Em "Cadastrar vendas do dia anterior", sai de existir
+  // lançamento em `vendas` pra ontem — ver `listarDiarias`.
   feitaHoje: boolean
 }
 
@@ -61,6 +66,7 @@ const CAMPOS = {
   titulo: tarefasDiarias.titulo,
   descricao: tarefasDiarias.descricao,
   diasSemana: tarefasDiarias.diasSemana,
+  automatica: tarefasDiarias.automatica,
   concluidaEm: tarefasDiarias.concluidaEm,
   concluidaPor: tarefasDiarias.concluidaPor,
   criadoPor: tarefasDiarias.criadoPor,
@@ -95,15 +101,36 @@ export async function listarDiarias(): Promise<ListaDiarias> {
     .where(isNull(tarefasDiarias.deletedAt))
     .orderBy(asc(tarefasDiarias.createdAt))
 
+  // A DIÁRIA AUTOMÁTICA PERGUNTA AO FATO, não à marcação. UMA consulta no
+  // total e só quando existe uma diária dessas na lista — nada de uma por
+  // linha. Hoje a única fonte é "as vendas de ONTEM estão lançadas?".
+  const temVendas = linhas.some((d) => d.automatica === 'vendas_do_dia_anterior')
+  const vendasDeOntemLancadas = temVendas
+    ? await diaTemVenda(somarDias(hoje, -1))
+    : false
+
   const diarias = linhas.map(
     (d): DiariaComContexto => ({
       ...d,
       valeHoje: d.diasSemana.includes(diaSemana),
-      feitaHoje: ehDoDia(d.concluidaEm, hoje),
+      feitaHoje:
+        d.automatica === 'vendas_do_dia_anterior'
+          ? vendasDeOntemLancadas
+          : ehDoDia(d.concluidaEm, hoje),
     }),
   )
 
   return { diarias, hoje, diaSemana }
+}
+
+/** Existe lançamento de venda nesse dia? É a fonte da diária automática. */
+async function diaTemVenda(dia: string): Promise<boolean> {
+  const [linha] = await db
+    .select({ id: vendas.id })
+    .from(vendas)
+    .where(and(eq(vendas.data, dia), isNull(vendas.deletedAt)))
+    .limit(1)
+  return linha !== undefined
 }
 
 // -----------------------------------------------------------------
@@ -194,11 +221,28 @@ async function definirConclusao(
   if (!UUID_RE.test(id)) return { success: false, error: 'ID inválido' }
 
   const [atual] = await db
-    .select({ id: tarefasDiarias.id, diasSemana: tarefasDiarias.diasSemana })
+    .select({
+      id: tarefasDiarias.id,
+      diasSemana: tarefasDiarias.diasSemana,
+      automatica: tarefasDiarias.automatica,
+    })
     .from(tarefasDiarias)
     .where(and(eq(tarefasDiarias.id, id), isNull(tarefasDiarias.deletedAt)))
     .limit(1)
   if (!atual) return { success: false, error: 'Diária não encontrada' }
+
+  // ⚠️ A TELA PODE MENTIR, A ACTION NÃO. Diária automática não se marca nem
+  // se desmarca: a resposta dela vem do fato observado, e uma marcação à mão
+  // criaria a segunda verdade que a automação existe pra evitar. Vale pro
+  // checkbox da lista E pro botão da janelinha (tarefa-pip.tsx), que chamam
+  // esta mesma função.
+  if (ehDiariaAutomatica(atual.automatica)) {
+    return {
+      success: false,
+      error:
+        'Essa rotina é automática: ela se marca sozinha quando o lançamento existe.',
+    }
+  }
 
   // Só dá pra marcar o que vale HOJE. A tela já não mostra caixa nas
   // outras, mas uma aba aberta desde ontem chamaria esta action com a regra
