@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 
 import { db } from '.'
 import {
@@ -303,3 +303,56 @@ export async function usoDeModelos(
 
   return mapa
 }
+
+// -----------------------------------------------------------------
+// Quantas variações usam cada cor / modelo / tamanho
+// -----------------------------------------------------------------
+
+/** Por NOME normalizado (sem caixa, sem espaço nas pontas). */
+export type UsoNasVariacoes = Map<string, { variacoes: number; produtos: number }>
+
+/**
+ * O contador que aparece em /variacoes, nas três abas.
+ *
+ * ⚠️ UMA CONSULTA POR EIXO, agregada no banco — 37 cores × uma consulta cada
+ * seriam 37 idas só pra desenhar uma coluna.
+ *
+ * ⚠️ E A LIGAÇÃO É POR TEXTO: a variação guarda o NOME da cor, não o id (ver
+ * o topo deste arquivo). Por isso a chave é normalizada dos dois lados —
+ * "Marsala" e "marsala " têm que cair na mesma conta, senão o contador diria
+ * zero numa cor que está em uso e alguém a apagaria confiando nele.
+ */
+async function contarPorTexto(
+  coluna:
+    | typeof variacoesProduto.cor
+    | typeof variacoesProduto.modelo
+    | typeof variacoesProduto.tamanho,
+): Promise<UsoNasVariacoes> {
+  const linhas = await db
+    .select({
+      nome: sql<string>`lower(trim(${coluna}))`,
+      variacoes: sql<number>`count(*)::int`,
+      produtos: sql<number>`count(distinct ${variacoesProduto.produtoId})::int`,
+    })
+    .from(variacoesProduto)
+    .innerJoin(produtos, eq(produtos.id, variacoesProduto.produtoId))
+    .where(
+      and(
+        isNull(variacoesProduto.deletedAt),
+        isNull(produtos.deletedAt),
+        isNotNull(coluna),
+        sql`trim(${coluna}) <> ''`,
+      ),
+    )
+    .groupBy(sql`lower(trim(${coluna}))`)
+
+  return new Map(
+    linhas.map((l) => [l.nome, { variacoes: l.variacoes, produtos: l.produtos }]),
+  )
+}
+
+export const usoDeCoresNasVariacoes = () => contarPorTexto(variacoesProduto.cor)
+export const usoDeModelosNasVariacoes = () =>
+  contarPorTexto(variacoesProduto.modelo)
+export const usoDeTamanhosNasVariacoes = () =>
+  contarPorTexto(variacoesProduto.tamanho)

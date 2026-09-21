@@ -282,16 +282,38 @@ export async function restaurarAction(
     switch (tipo) {
       case 'produto':
         await db.transaction(async (tx) => {
+          // ⚠️ RESTAURA SÓ AS VARIAÇÕES QUE CAÍRAM COM O PRODUTO, e não todas.
+          //
+          // `excluirProdutoAction` carimba o MESMO instante no produto e nas
+          // variações que estavam vivas naquele momento. Restaurar por
+          // `produto_id` ressuscitaria junto as que alguém tinha removido do
+          // cadastro ANTES (isso agora é soft delete, ver produtos/actions.ts)
+          // — o produto voltaria com variação que ninguém quer, e sem ninguém
+          // notar.
+          //
+          // Por isso o instante é lido ANTES de limpar o do produto.
+          const [antes] = await tx
+            .select({ em: produtos.deletedAt })
+            .from(produtos)
+            .where(eq(produtos.id, id))
+            .limit(1)
+
           await tx
             .update(produtos)
             .set({ deletedAt: null, ativo: true })
             .where(eq(produtos.id, id))
-          // Restaura as variações junto (o soft delete do produto derruba
-          // todas; restaurar tudo é o comportamento menos surpreendente).
-          await tx
-            .update(variacoesProduto)
-            .set({ deletedAt: null })
-            .where(eq(variacoesProduto.produtoId, id))
+
+          if (antes?.em) {
+            await tx
+              .update(variacoesProduto)
+              .set({ deletedAt: null })
+              .where(
+                and(
+                  eq(variacoesProduto.produtoId, id),
+                  eq(variacoesProduto.deletedAt, antes.em),
+                ),
+              )
+          }
         })
         break
       case 'op':

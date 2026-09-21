@@ -29,6 +29,11 @@ import {
   type LoteComSaldo,
 } from '../fios/saldo.ts'
 import {
+  agruparPorCor,
+  casaComBusca,
+  resumoDaLista,
+} from '../produtos/variacoes.ts'
+import {
   DIAS_PARA_PARADA,
   acendeOMenu,
   diasAberta,
@@ -1751,4 +1756,102 @@ test('permissoes: area desconhecida e a que sumiu do catalogo', () => {
   // Sem lista, vale o catalogo de verdade: 'relatorios' virou aba de Vendas.
   assert.equal(ehAreaDesconhecida('relatorios'), true)
   assert.equal(ehAreaDesconhecida('produtos'), false)
+})
+
+// -----------------------------------------------------------------
+// Variacoes: buscar e agrupar (src/lib/produtos/variacoes.ts)
+// -----------------------------------------------------------------
+
+const VAR = (sku: string, cor: string | null, modelo: string | null, tamanho: string | null) => ({
+  skuVariacao: sku,
+  cor,
+  modelo,
+  tamanho,
+})
+
+test('variacoes: busca sem acento e sem caixa', () => {
+  const caqui = VAR('PES-ACO-CAQ-Q', 'Cáqui', 'ACONCHEGO', 'Queen')
+
+  // O catalogo tem "Caqui" com acento; quem digita rapido escreve sem.
+  assert.equal(casaComBusca(caqui, 'caqui'), true)
+  assert.equal(casaComBusca(caqui, 'CÁQUI'), true)
+  assert.equal(casaComBusca(caqui, 'aconchego'), true)
+  assert.equal(casaComBusca(caqui, 'queen'), true)
+  assert.equal(casaComBusca(caqui, 'pes-aco'), true)
+
+  // Cada palavra pode cair num campo diferente: e assim que se procura.
+  assert.equal(casaComBusca(caqui, 'caqui queen'), true)
+  assert.equal(casaComBusca(caqui, 'queen caqui'), true)
+  assert.equal(casaComBusca(caqui, 'caqui king'), false)
+
+  // Termo vazio (ou so espaco) e o estado normal da tela: casa com tudo.
+  assert.equal(casaComBusca(caqui, ''), true)
+  assert.equal(casaComBusca(caqui, '   '), true)
+})
+
+test('variacoes: busca que nao acha nada devolve lista vazia', () => {
+  const lista = [
+    VAR('A', 'Marsala', 'ARAN', 'Casal'),
+    VAR('B', 'Preto', 'ARAN', 'King'),
+  ]
+  assert.deepEqual(lista.filter((v) => casaComBusca(v, 'amarelo')), [])
+  // E variacao sem cor/modelo/tamanho nao quebra a busca.
+  assert.equal(casaComBusca(VAR('C', null, null, null), 'marsala'), false)
+  assert.equal(casaComBusca(VAR('C', null, null, null), 'c'), true)
+})
+
+test('variacoes: agrupa por cor e ordena pelo cadastro de tamanhos', () => {
+  const ordem = ['Casal', 'Queen', 'King']
+  const lista = [
+    VAR('1', 'Marsala', 'ARAN', 'King'),
+    VAR('2', 'Preto', 'ARAN', 'Casal'),
+    VAR('3', 'Marsala', 'ARAN', 'Casal'),
+    VAR('4', 'Marsala', 'ARAN', 'Queen'),
+  ]
+  const grupos = agruparPorCor(lista, ordem)
+
+  // A ordem das CORES e a de aparicao (a do cadastro), nao alfabetica.
+  assert.deepEqual(grupos.map((g) => g.cor), ['Marsala', 'Preto'])
+  // Dentro da cor, a ordem e a do cadastro de tamanhos — nao alfabetica
+  // ("Casal, King, Queen" faria procurar).
+  assert.deepEqual(grupos[0]!.itens.map((v) => v.tamanho), [
+    'Casal',
+    'Queen',
+    'King',
+  ])
+})
+
+test('variacoes: tamanho fora do cadastro vai pro fim, sem sumir', () => {
+  const grupos = agruparPorCor(
+    [
+      VAR('1', 'Cru', 'LINKS', 'Gigante'),
+      VAR('2', 'Cru', 'LINKS', 'Casal'),
+      VAR('3', 'Cru', 'LINKS', 'Inventado'),
+      VAR('4', 'Cru', 'LINKS', null),
+    ],
+    ['Casal', 'Queen'],
+  )
+  assert.equal(grupos.length, 1)
+  // Casal primeiro; os tres desconhecidos preservam a ordem do cadastro.
+  assert.deepEqual(grupos[0]!.itens.map((v) => v.skuVariacao), [
+    '2',
+    '1',
+    '3',
+    '4',
+  ])
+})
+
+test('variacoes: variacao sem cor vira grupo proprio, e o resumo conta certo', () => {
+  const lista = [
+    VAR('1', 'Marsala', 'ARAN', 'Casal'),
+    VAR('2', null, 'ARAN', 'Casal'),
+    VAR('3', 'marsala', 'ARAN', 'King'),
+  ]
+  const grupos = agruparPorCor(lista, ['Casal', 'King'])
+  assert.deepEqual(grupos.map((g) => g.cor), ['Marsala', '', 'marsala'])
+
+  // O resumo conta cor sem caixa: "Marsala" e "marsala" sao a mesma cor, e o
+  // vazio conta como um grupo.
+  assert.equal(resumoDaLista(lista), '3 variações · 2 cores')
+  assert.equal(resumoDaLista([VAR('1', 'Preto', null, null)]), '1 variação · 1 cor')
 })

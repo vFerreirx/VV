@@ -20,13 +20,17 @@ import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { precosPorProduto } from '@/lib/db/precos'
 import {
+  deParaFullComponentes,
+  movimentacoesEstoque,
+  ordensProducao,
   produtos,
   produtoTamanhoPeso,
   produtoTamanhoPreco,
+  reposicoesEstoque,
   tamanhos,
-  variacoesProduto,
   type Produto,
   type VariacaoProduto,
+  variacoesProduto,
 } from '@/lib/db/schema'
 import type { TamanhoDoProduto } from '@/lib/peso'
 import type { TamanhoComPreco } from '@/lib/preco'
@@ -460,19 +464,46 @@ export async function atualizarProdutoAction(
     // - id no input + presente: UPDATE
     // - id no input + ausente do input: DELETE
     // - sem id: INSERT
+    // Só as VIVAS: uma variação já soft-deletada não está na lista da tela e
+    // não pode ser "removida" de novo — re-carimbar o `deletedAt` dela
+    // atrapalharia o restore da lixeira, que casa pelo instante.
     const existentes = await tx
       .select({ id: variacoesProduto.id })
       .from(variacoesProduto)
-      .where(eq(variacoesProduto.produtoId, id))
+      .where(
+        and(
+          eq(variacoesProduto.produtoId, id),
+          isNull(variacoesProduto.deletedAt),
+        ),
+      )
     const existIds = new Set(existentes.map((e) => e.id))
     const inputIds = new Set(
       data.variacoes.map((v) => v.id).filter((x): x is string => Boolean(x)),
     )
 
-    // DELETE: existem no banco mas não no input
+    // SAIU DA LISTA = SOFT DELETE, nunca DELETE de verdade.
+    //
+    // ⚠️ QUATRO TABELAS APONTAM PRA `variacoes_produto` com NO ACTION
+    // (`ordens_producao`, `movimentacoes_estoque`, `de_para_full_componentes`
+    // e `reposicoes_estoque`). Apagando de verdade, remover uma variação já
+    // usada fazia o salvamento INTEIRO falhar com erro de chave estrangeira —
+    // e a mensagem chegava crua, depois de mexer num formulário de 58 linhas.
+    // Hoje são 4 OPs com variação; com os tablets rodando, isso vira rotina.
+    //
+    // ⚠️ O SKU VOLTA A FICAR LIVRE: o índice único é parcial
+    // (`variacoes_sku_ativo_uidx ... WHERE deleted_at IS NULL`), então o
+    // gerador recria a mesma variação sem colidir com a que saiu.
+    //
+    // ⚠️ E TODA LEITURA DE ESCOLHA PRECISA FILTRAR `deletedAt IS NULL` a
+    // partir daqui — senão a variação removida reaparece na Nova OP. Os joins
+    // HISTÓRICOS (a OP mostrando a cor dela) continuam sem filtro de
+    // propósito: filtrar lá apagaria o rótulo de um registro antigo.
     const toDelete = [...existIds].filter((eid) => !inputIds.has(eid))
-    for (const did of toDelete) {
-      await tx.delete(variacoesProduto).where(eq(variacoesProduto.id, did))
+    if (toDelete.length > 0) {
+      await tx
+        .update(variacoesProduto)
+        .set({ deletedAt: new Date() })
+        .where(inArray(variacoesProduto.id, toDelete))
     }
 
     // UPDATE / INSERT
@@ -695,4 +726,69 @@ export async function excluirMultiplosProdutosAction(
         ? '1 produto excluído'
         : `${result.length} produtos excluídos`,
   }
+}
+
+// -----------------------------------------------------------------
+// Onde a variação é usada
+// -----------------------------------------------------------------
+
+export type UsoDaVariacao = {
+  ops: number
+  movimentacoes: number
+  deParaFull: number
+  reposicoes: number
+}
+
+/**
+ * Em quantos registros cada variação aparece — as QUATRO tabelas que apontam
+ * pra `variacoes_produto`.
+ *
+ * Serve pro aviso da tela ao remover uma variação: "está em 2 OPs e 1 remessa
+ * Full — ela sai do cadastro, mas continua no histórico". AVISO, não trava:
+ * desde que remover virou soft delete, não há mais o que quebrar — o histórico
+ * continua apontando pra linha, que continua lá.
+ *
+ * ⚠️ UMA CONSULTA, com quatro subconsultas. Uma por variação seriam 58
+ * consultas ao abrir o formulário da capa ACONCHEGO.
+ */
+export async function usoDasVariacoes(
+  ids: string[],
+): Promise<Record<string, UsoDaVariacao>> {
+  await requireAuth()
+  const limpos = ids.filter((id) => uuidRegex.test(id))
+  if (limpos.length === 0) return {}
+
+  const linhas = await db.execute<{
+    variacao_id: string
+    ops: number
+    movimentacoes: number
+    de_para_full: number
+    reposicoes: number
+  }>(sql`
+    SELECT v.id AS variacao_id,
+      (SELECT count(*)::int FROM ${ordensProducao} o
+        WHERE o.variacao_id = v.id AND o.deleted_at IS NULL) AS ops,
+      (SELECT count(*)::int FROM ${movimentacoesEstoque} m
+        WHERE m.variacao_id = v.id) AS movimentacoes,
+      (SELECT count(*)::int FROM ${deParaFullComponentes} c
+        WHERE c.variacao_id = v.id) AS de_para_full,
+      (SELECT count(*)::int FROM ${reposicoesEstoque} r
+        WHERE r.variacao_id = v.id) AS reposicoes
+    FROM ${variacoesProduto} v
+    WHERE v.id IN (${sql.join(
+      limpos.map((id) => sql`${id}::uuid`),
+      sql`, `,
+    )})
+  `)
+
+  const saida: Record<string, UsoDaVariacao> = {}
+  for (const l of linhas) {
+    saida[l.variacao_id] = {
+      ops: l.ops,
+      movimentacoes: l.movimentacoes,
+      deParaFull: l.de_para_full,
+      reposicoes: l.reposicoes,
+    }
+  }
+  return saida
 }

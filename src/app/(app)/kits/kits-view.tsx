@@ -95,7 +95,8 @@ export function KitsView({
     setEditando(alvo)
     if (produtos !== null || carregando) return
     setCarregando(true)
-    listarProdutosParaOrdem()
+    // Só as ativas: o diálogo do kit ESCOLHE componentes e tamanhos.
+    listarProdutosParaOrdem({ somenteAtivas: true })
       .then(setProdutos)
       .catch(() => {
         toast.error('Não deu pra carregar os produtos. Tente de novo.')

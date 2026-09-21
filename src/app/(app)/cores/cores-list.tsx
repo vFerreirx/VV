@@ -44,9 +44,39 @@ import { corSchema, type CorInput } from '@/lib/validators/cores'
 type Props = {
   cores: Cor[]
   podeEditar: boolean
+  /**
+   * Em quantas variações e produtos cada nome é usado, por NOME normalizado
+   * (sem caixa, sem espaço nas pontas) — a variação guarda TEXTO, não id.
+   * Ver `usoDeCoresNasVariacoes` em src/lib/db/uso-do-catalogo.ts.
+   */
+  uso?: Record<string, { variacoes: number; produtos: number }>
 }
 
-export function CoresList({ cores, podeEditar }: Props) {
+// O contador de uso, na linha. Sem ele, "posso apagar esta cor?" só se
+// responde abrindo produto por produto — e a resposta errada apaga um nome
+// que 123 variações usam.
+function UsoNaLinha({
+  nome,
+  uso,
+}: {
+  nome: string
+  uso: Record<string, { variacoes: number; produtos: number }>
+}) {
+  const n = uso[nome.trim().toLowerCase()]
+  if (!n || n.variacoes === 0) {
+    return (
+      <span className="text-muted-foreground/60 ml-2 text-xs">sem uso</span>
+    )
+  }
+  return (
+    <span className="text-muted-foreground ml-2 text-xs tabular-nums">
+      {n.variacoes} {n.variacoes === 1 ? 'variação' : 'variações'} ·{' '}
+      {n.produtos} {n.produtos === 1 ? 'produto' : 'produtos'}
+    </span>
+  )
+}
+
+export function CoresList({ cores, uso = {}, podeEditar }: Props) {
   const [corpoTabela] = useListaAnimada<HTMLTableSectionElement>()
   const [editingCor, setEditingCor] = useState<Cor | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<Cor | null>(null)
@@ -152,7 +182,10 @@ export function CoresList({ cores, podeEditar }: Props) {
                     <TableCell>
                       <ColorSwatch hex={c.codigoHex} hex2={c.codigoHex2} />
                     </TableCell>
-                    <TableCell className="font-medium">{c.nome}</TableCell>
+                    <TableCell className="font-medium">
+                      {c.nome}
+                      <UsoNaLinha nome={c.nome} uso={uso} />
+                    </TableCell>
                     <TableCell className="text-muted-foreground font-mono text-xs">
                       {c.codigoHex ?? '—'}
                       {c.codigoHex2 ? ` + ${c.codigoHex2}` : ''}
@@ -207,7 +240,10 @@ export function CoresList({ cores, podeEditar }: Props) {
                   )}
                   <ColorSwatch hex={c.codigoHex} hex2={c.codigoHex2} />
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{c.nome}</div>
+                    <div className="truncate font-medium">
+                      {c.nome}
+                      <UsoNaLinha nome={c.nome} uso={uso} />
+                    </div>
                     <div className="text-muted-foreground font-mono text-xs">
                       {c.codigoHex ?? '—'}
                       {c.codigoHex2 ? ` + ${c.codigoHex2}` : ''}

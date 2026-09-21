@@ -43,9 +43,39 @@ import { tamanhoSchema, type TamanhoInput } from '@/lib/validators/tamanhos'
 type Props = {
   tamanhos: Tamanho[]
   podeEditar: boolean
+  /**
+   * Em quantas variações e produtos cada nome é usado, por NOME normalizado
+   * (sem caixa, sem espaço nas pontas) — a variação guarda TEXTO, não id.
+   * Ver `usoDeCoresNasVariacoes` em src/lib/db/uso-do-catalogo.ts.
+   */
+  uso?: Record<string, { variacoes: number; produtos: number }>
 }
 
-export function TamanhosList({ tamanhos, podeEditar }: Props) {
+// O contador de uso, na linha. Sem ele, "posso apagar esta cor?" só se
+// responde abrindo produto por produto — e a resposta errada apaga um nome
+// que 123 variações usam.
+function UsoNaLinha({
+  nome,
+  uso,
+}: {
+  nome: string
+  uso: Record<string, { variacoes: number; produtos: number }>
+}) {
+  const n = uso[nome.trim().toLowerCase()]
+  if (!n || n.variacoes === 0) {
+    return (
+      <span className="text-muted-foreground/60 ml-2 text-xs">sem uso</span>
+    )
+  }
+  return (
+    <span className="text-muted-foreground ml-2 text-xs tabular-nums">
+      {n.variacoes} {n.variacoes === 1 ? 'variação' : 'variações'} ·{' '}
+      {n.produtos} {n.produtos === 1 ? 'produto' : 'produtos'}
+    </span>
+  )
+}
+
+export function TamanhosList({ tamanhos, uso = {}, podeEditar }: Props) {
   const [corpoTabela] = useListaAnimada<HTMLTableSectionElement>()
   const [editando, setEditando] = useState<Tamanho | 'novo' | null>(null)
   const [excluindo, setExcluindo] = useState<Tamanho | null>(null)
@@ -151,7 +181,10 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                         />
                       </TableCell>
                     )}
-                    <TableCell className="font-medium">{t.nome}</TableCell>
+                    <TableCell className="font-medium">
+                      {t.nome}
+                      <UsoNaLinha nome={t.nome} uso={uso} />
+                    </TableCell>
                     <TableCell className="text-muted-foreground font-mono text-xs">
                       {t.codigo || '—'}
                     </TableCell>
@@ -215,7 +248,10 @@ export function TamanhosList({ tamanhos, podeEditar }: Props) {
                     />
                   )}
                   <div className="min-w-0">
-                    <div className="truncate font-medium">{t.nome}</div>
+                    <div className="truncate font-medium">
+                      {t.nome}
+                      <UsoNaLinha nome={t.nome} uso={uso} />
+                    </div>
                     {(t.larguraCm || t.comprimentoCm) && (
                       <div className="text-muted-foreground text-xs tabular-nums">
                         {t.larguraCm ?? '—'} × {t.comprimentoCm ?? '—'} cm

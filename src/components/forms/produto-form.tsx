@@ -17,6 +17,7 @@ import { toast } from 'sonner'
 import {
   atualizarProdutoAction,
   criarProdutoAction,
+  usoDasVariacoes,
 } from '@/app/(app)/produtos/actions'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -29,6 +30,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  agruparPorCor,
+  casaComBusca,
+  resumoDaLista,
+} from '@/lib/produtos/variacoes'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -193,6 +199,100 @@ export function ProdutoForm({
   })
 
   const variacoes = useFieldArray({ control: form.control, name: 'variacoes' })
+
+  // BUSCA E AGRUPAMENTO da seção de variações. A capa ACONCHEGO tem 58
+  // linhas, a peseira LINKS 57: sem isso, achar "a Marsala Queen" é rolar até
+  // encontrar — e trocar o SKU errado só aparece na hora de gerar a OP.
+  const [busca, setBusca] = useState('')
+  // Precisa dos VALORES (o que está digitado agora), não de `fields`, que só
+  // guarda o valor inicial de cada linha.
+  const linhasAtuais = useWatch({ control: form.control, name: 'variacoes' })
+
+  // ⚠️ FILTRAR NÃO PODE DESREGISTRAR CAMPO. As linhas continuam TODAS no DOM;
+  // o que a busca faz é esconder com `hidden`. Desmontar a linha tiraria o
+  // campo do react-hook-form, e o que estivesse digitado nela sumiria ao
+  // limpar a busca — pior que rolar 58 blocos.
+  const grupos = useMemo(() => {
+    const comIndice = variacoes.fields.map((field, index) => {
+      const atual = linhasAtuais?.[index]
+      return {
+        index,
+        fieldId: field.id,
+        skuVariacao: atual?.skuVariacao ?? '',
+        cor: atual?.cor ?? null,
+        modelo: atual?.modelo ?? null,
+        tamanho: atual?.tamanho ?? null,
+      }
+    })
+    return agruparPorCor(
+      comIndice,
+      tamanhos.map((t) => t.nome),
+    )
+  }, [variacoes.fields, linhasAtuais, tamanhos])
+
+  const visiveis = useMemo(() => {
+    const set = new Set<number>()
+    for (const g of grupos) {
+      for (const item of g.itens) {
+        if (casaComBusca(item, busca)) set.add(item.index)
+      }
+    }
+    return set
+  }, [grupos, busca])
+
+  const resumo = useMemo(
+    () =>
+      resumoDaLista(
+        grupos.flatMap((g) =>
+          g.itens.map((i) => ({
+            skuVariacao: i.skuVariacao,
+            cor: i.cor,
+            modelo: i.modelo,
+            tamanho: i.tamanho,
+          })),
+        ),
+      ),
+    [grupos],
+  )
+
+  // AVISA ONDE A VARIAÇÃO É USADA antes de tirar da lista. Não bloqueia: sair
+  // do cadastro virou soft delete (produtos/actions.ts), então o histórico
+  // continua apontando pra linha, que continua lá. O aviso existe porque
+  // "some do cadastro" e "some do sistema" são coisas diferentes, e quem
+  // clica precisa saber qual das duas vai acontecer.
+  function removerVariacao(index: number) {
+    const id = form.getValues(`variacoes.${index}.id`)
+    if (!id) {
+      variacoes.remove(index)
+      return
+    }
+    startTransition(async () => {
+      const uso = await usoDasVariacoes([id]).catch(() => null)
+      const u = uso?.[id]
+      const partes: string[] = []
+      if (u) {
+        if (u.ops > 0) partes.push(`${u.ops} OP${u.ops > 1 ? 's' : ''}`)
+        if (u.movimentacoes > 0) {
+          partes.push(`${u.movimentacoes} movimentação${u.movimentacoes > 1 ? 'ões' : ''} de estoque`)
+        }
+        if (u.deParaFull > 0) {
+          partes.push(`${u.deParaFull} mapeamento${u.deParaFull > 1 ? 's' : ''} do Full`)
+        }
+        if (u.reposicoes > 0) {
+          partes.push(`${u.reposicoes} reposição${u.reposicoes > 1 ? 'ões' : ''}`)
+        }
+      }
+      if (partes.length > 0) {
+        const ok = window.confirm(
+          `Esta variação está em ${partes.join(', ')}.\n\n` +
+            'Ela sai do cadastro (não aparece mais pra escolher), mas continua ' +
+            'no histórico desses registros. Remover?',
+        )
+        if (!ok) return
+      }
+      variacoes.remove(index)
+    })
+  }
 
   // Gerador de variações em massa.
   const [gerarOpen, setGerarOpen] = useState(false)
@@ -402,6 +502,7 @@ export function ProdutoForm({
               <CardTitle>Variações</CardTitle>
               <p className="text-muted-foreground mt-1 text-sm">
                 Cor, modelo e tamanho. Cada variação tem seu próprio SKU.
+                {variacoes.fields.length > 0 && ` ${resumo}.`}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -436,18 +537,58 @@ export function ProdutoForm({
           </div>
         </CardHeader>
         <CardContent>
+          {variacoes.fields.length > 6 && (
+            <div className="mb-3">
+              <Input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por SKU, cor, modelo ou tamanho…"
+                autoComplete="off"
+                disabled={isPending}
+              />
+              {busca.trim() !== '' && (
+                <p className="text-muted-foreground mt-1 text-xs">
+                  {visiveis.size === 0
+                    ? 'Nenhuma variação com esse termo — o que está escondido continua salvo.'
+                    : `${visiveis.size} de ${variacoes.fields.length} variações`}
+                </p>
+              )}
+            </div>
+          )}
           {variacoes.fields.length === 0 ? (
             <p className="text-muted-foreground py-6 text-center text-sm">
               Nenhuma variação. Clique em &ldquo;Adicionar variação&rdquo;.
             </p>
           ) : (
-            <div className="space-y-3">
-              {variacoes.fields.map((field, index) => {
-                const ve = errs.variacoes?.[index]
+            <div className="space-y-4">
+              {grupos.map((grupo) => {
+                // O grupo some quando NENHUMA linha dele casa com a busca —
+                // mas as linhas continuam montadas dentro dele (ver o
+                // `hidden` abaixo): é isso que preserva o que foi digitado.
+                const algumVisivel = grupo.itens.some((i) =>
+                  visiveis.has(i.index),
+                )
                 return (
                   <div
-                    key={field.id}
-                    className="grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto]"
+                    key={`cor-${grupo.cor || '(sem cor)'}`}
+                    className={cn('space-y-2', !algumVisivel && 'hidden')}
+                  >
+                    <div className="text-muted-foreground flex items-center gap-2 text-xs font-medium tracking-wide uppercase">
+                      <span>{grupo.cor || 'Sem cor'}</span>
+                      <span className="bg-border h-px flex-1" />
+                      <span className="tabular-nums">
+                        {grupo.itens.length}
+                      </span>
+                    </div>
+                    {grupo.itens.map(({ index, fieldId }) => {
+                      const ve = errs.variacoes?.[index]
+                      return (
+                  <div
+                    key={fieldId}
+                    className={cn(
+                      'grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_1fr_1fr_1fr_auto]',
+                      !visiveis.has(index) && 'hidden',
+                    )}
                   >
                     <Field
                       label="SKU"
@@ -680,13 +821,16 @@ export function ProdutoForm({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => variacoes.remove(index)}
+                        onClick={() => removerVariacao(index)}
                         disabled={isPending}
                         aria-label="Remover variação"
                       >
                         <Trash2 className="text-destructive" />
                       </Button>
                     </div>
+                  </div>
+                      )
+                    })}
                   </div>
                 )
               })}

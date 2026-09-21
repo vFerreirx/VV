@@ -23,7 +23,8 @@ export default async function ImportarFullPage() {
   const [remessas, kits, produtos, contas] = await Promise.all([
     listarRemessasFull(),
     listarKitsComItens(),
-    listarProdutosParaOrdem(),
+    // O de-para ESCOLHE a variação de cada componente do Full.
+    listarProdutosParaOrdem({ somenteAtivas: true }),
     listarContasAtivas(),
   ])
 

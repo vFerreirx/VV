@@ -41,7 +41,8 @@ export default async function PedidosPage({
     verPedidos
       ? Promise.all([
           listarOrcamentos(),
-          listarProdutosParaOrdem(),
+          // O builder do pedido ESCOLHE peça e tamanho.
+          listarProdutosParaOrdem({ somenteAtivas: true }),
           listarKitsComItens(),
           listarPrecosRecentes(),
           obterCatalogoDePrecos(),

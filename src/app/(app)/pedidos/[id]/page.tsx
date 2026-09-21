@@ -77,7 +77,8 @@ export default async function OrcamentoPage({
     listarOpsDoPedido(id),
     podeEditar
       ? Promise.all([
-          listarProdutosParaOrdem(),
+          // O builder do pedido ESCOLHE peça e tamanho.
+          listarProdutosParaOrdem({ somenteAtivas: true }),
           listarKitsComItens(),
           listarPrecosRecentes(),
           obterCatalogoDePrecos(),

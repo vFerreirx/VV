@@ -10,11 +10,17 @@ import type { Cor, Modelo, Tamanho } from '@/lib/db/schema'
 
 type Acesso = { ver: boolean; editar: boolean }
 
+/** Contador por NOME normalizado — ver `usoDeCoresNasVariacoes`. */
+export type UsoPorNome = Record<string, { variacoes: number; produtos: number }>
+
 export function VariacoesTabs({
   tabInicial,
   cores,
   modelos,
   tamanhos,
+  usoCores,
+  usoModelos,
+  usoTamanhos,
   acessoCores,
   acessoModelos,
   acessoTamanhos,
@@ -23,6 +29,9 @@ export function VariacoesTabs({
   cores: Cor[]
   modelos: Modelo[]
   tamanhos: Tamanho[]
+  usoCores: UsoPorNome
+  usoModelos: UsoPorNome
+  usoTamanhos: UsoPorNome
   acessoCores: Acesso
   acessoModelos: Acesso
   acessoTamanhos: Acesso
@@ -79,18 +88,19 @@ export function VariacoesTabs({
 
             {acessoCores.ver && (
               <TabsContent value="cores" className="mt-2">
-                <CoresList cores={cores} podeEditar={acessoCores.editar} />
+                <CoresList uso={usoCores} cores={cores} podeEditar={acessoCores.editar} />
               </TabsContent>
             )}
             {acessoModelos.ver && (
               <TabsContent value="modelos" className="mt-2">
-                <ModelosList modelos={modelos} podeEditar={acessoModelos.editar} />
+                <ModelosList uso={usoModelos} modelos={modelos} podeEditar={acessoModelos.editar} />
               </TabsContent>
             )}
             {acessoTamanhos.ver && (
               <TabsContent value="tamanhos" className="mt-2">
                 <TamanhosList
                   tamanhos={tamanhos}
+                  uso={usoTamanhos}
                   podeEditar={acessoTamanhos.editar}
                 />
               </TabsContent>

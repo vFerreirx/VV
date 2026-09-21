@@ -407,8 +407,16 @@ export async function listarProdutosParaOrdem(
     })
     .from(variacoesProduto)
     .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
-    // A criação oferece só variações disponíveis. A edição mantém as antigas
-    // para que uma OP histórica não perca a identificação ao abrir o formulário.
+    // ⚠️ ESCOLHER x MOSTRAR — a regra que decide o filtro no sistema inteiro.
+    //
+    // `somenteAtivas: true` é pra quem vai ESCOLHER uma variação agora (criar
+    // OP, montar kit, montar pedido, mapear o Full): variação removida do
+    // cadastro não pode voltar a ser oferecida. Sem o parâmetro é pra quem
+    // EDITA um registro antigo — ali a lista precisa conter a variação que a
+    // OP já usa, senão o formulário abre sem saber dizer o que ela é.
+    //
+    // Desde que remover virou soft delete (produtos/actions.ts), isto deixou
+    // de ser hipótese: quem chama sem o parâmetro oferece variação apagada.
     .where(somenteAtivas ? isNull(variacoesProduto.deletedAt) : undefined)
     .orderBy(asc(variacoesProduto.skuVariacao))
 
