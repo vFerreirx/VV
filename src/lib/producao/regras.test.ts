@@ -29,6 +29,10 @@ import {
   type LoteComSaldo,
 } from '../fios/saldo.ts'
 import {
+  comparadoAoAtacado,
+  resumoDosCanais,
+} from '../preco-marketplace.ts'
+import {
   MS_ESCONDIDA,
   precisaRecarregarAoVoltar,
   proximoEstadoDoCanal,
@@ -1923,4 +1927,65 @@ test('realtime: 1 minuto escondida nao recarrega, 3 minutos sim', () => {
   assert.equal(precisaRecarregarAoVoltar(MS_ESCONDIDA), true)
   assert.equal(precisaRecarregarAoVoltar(3 * 60 * 1000), true)
   assert.equal(precisaRecarregarAoVoltar(0), false)
+})
+
+// -----------------------------------------------------------------
+// Preco de marketplace: comparacao com o atacado e resumo dos canais
+// (src/lib/preco-marketplace.ts)
+// -----------------------------------------------------------------
+
+test('marketplace: um centavo abaixo do atacado ja e "abaixo"', () => {
+  // O caso real: Manta 3D anunciada a 54,99 contra 59,99 de atacado.
+  assert.equal(comparadoAoAtacado(5499, 5999), 'abaixo')
+  assert.equal(comparadoAoAtacado(5998, 5999), 'abaixo')
+  assert.equal(comparadoAoAtacado(5999, 5999), 'igual')
+  assert.equal(comparadoAoAtacado(6000, 5999), 'ok')
+  assert.equal(comparadoAoAtacado(14999, 5000), 'ok')
+})
+
+test('marketplace: sem atacado cadastrado nao inventa "ok"', () => {
+  assert.equal(comparadoAoAtacado(5499, null), null)
+  assert.equal(comparadoAoAtacado(5499, undefined), null)
+  // E sem anuncio tambem nao ha o que comparar.
+  assert.equal(comparadoAoAtacado(null, 5999), null)
+  // Zero e um valor, nao "nao tem": anuncio de graca fica abaixo do atacado.
+  assert.equal(comparadoAoAtacado(0, 5999), 'abaixo')
+})
+
+test('marketplace: cinco canais iguais colapsam num valor so', () => {
+  const r = resumoDosCanais({
+    mercado_livre: 14999,
+    shopee: 14999,
+    shein: 14999,
+    tiktok: 14999,
+    amazon: 14999,
+  })
+  assert.equal(r.canaisComPreco, 5)
+  assert.equal(r.todosIguais, true)
+  assert.equal(r.valor, 14999)
+})
+
+test('marketplace: quatro iguais e um diferente NAO colapsam', () => {
+  const r = resumoDosCanais({
+    mercado_livre: 15999,
+    shopee: 14999,
+    shein: 14999,
+    tiktok: 14999,
+    amazon: 14999,
+  })
+  assert.equal(r.canaisComPreco, 5)
+  assert.equal(r.todosIguais, false)
+  assert.equal(r.valor, null)
+})
+
+test('marketplace: canal sem preco nao concorda nem discorda', () => {
+  // A Temu esta no catalogo de canais e nao tem UM preco no banco.
+  const r = resumoDosCanais({ shopee: 6999, tiktok: 6999, temu: null })
+  assert.equal(r.canaisComPreco, 2)
+  assert.equal(r.todosIguais, true)
+  assert.equal(r.valor, 6999)
+
+  // Linha sem preco nenhum: nao ha o que resumir.
+  const vazio = resumoDosCanais({})
+  assert.deepEqual(vazio, { canaisComPreco: 0, todosIguais: false, valor: null })
 })

@@ -69,6 +69,21 @@ export function ContasList({ contas, empresas, podeEditar }: Props) {
             Full. O PDF do envio não diz de qual conta veio — por isso ela é
             escolhida na hora de criar a remessa.
           </p>
+          {/* ⚠️ NÃO SÃO AS CONTAS DO REGISTRO DE VENDAS. Aquelas são fixas no
+              código (Conta 1, Conta 3, Conta 5… em
+              src/lib/validators/vendas.ts) e existem pra lançar o que cada uma
+              vendeu por dia. As daqui são as do envio Full, e cada uma tem um
+              CNPJ atrás. Dois cadastros com o mesmo nome e finalidades
+              diferentes: quem chega aqui procurando "as contas do ML" precisa
+              saber em qual das duas está. */}
+          <p className="text-muted-foreground mt-1 text-sm">
+            Não confunda com as contas do{' '}
+            <strong className="text-foreground font-medium">
+              registro de vendas
+            </strong>{' '}
+            (Conta 1, Conta 3…), que ficam na tela de Vendas e servem pra
+            lançar quanto cada uma vendeu por dia.
+          </p>
         </div>
         {podeEditar && (
           <Button onClick={() => setCriando(true)}>

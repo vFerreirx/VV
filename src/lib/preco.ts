@@ -19,12 +19,16 @@
 // erro (0.1 + 0.2), e o valor final vai pra uma coluna numeric(12,2). A
 // conversão pra "50,00" acontece só na borda.
 
+// Import relativo com `.ts`, e não pelo alias `@/`: as regras de preço têm
+// teste no runner do Node (`node --test --experimental-strip-types`), que não
+// resolve o alias do tsconfig nem completa extensão. O `.ts` é permitido pelo
+// `allowImportingTsExtensions` e o bundler do Next entende.
 import {
   chaveDeTamanhos,
   combinacoesDeTamanho,
   tamanhoDoComponente,
   type TamanhosDe,
-} from '@/lib/kit-tamanhos'
+} from './kit-tamanhos.ts'
 
 /** Preço de um par (produto|tamanho) ou (kit|combinação), em centavos. */
 export type TabelaDePrecos = {

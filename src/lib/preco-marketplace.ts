@@ -39,8 +39,10 @@
 // Chave diferente entre as duas faria um preço cadastrado virar inalcançável
 // — exatamente o defeito que o AGENTS.md descreve.
 
-import { chave, chaveKit } from '@/lib/preco'
-import type { Marketplace } from '@/lib/validators/vendas'
+// Relativo com `.ts` pelo mesmo motivo de src/lib/preco.ts: as regras daqui
+// têm teste no runner do Node.
+import { chave, chaveKit } from './preco.ts'
+import type { Marketplace } from './validators/vendas.ts'
 
 /**
  * Canais que TÊM tabela de preço de marketplace.
@@ -112,4 +114,84 @@ export function precoMarketplaceDeKit(
 ): number | null {
   if (combinacao == null) return null
   return porCanal[canal]?.kit[chaveKit(kitId, combinacao)] ?? null
+}
+
+// -----------------------------------------------------------------
+// O ANÚNCIO FICOU ABAIXO DO ATACADO?
+// -----------------------------------------------------------------
+//
+// ⚠️ É O DEFEITO QUE CUSTA DINHEIRO, e ele aconteceu: a Manta 3D está
+// anunciada a R$ 54,99 nos cinco canais contra R$ 59,99 de atacado. Quer
+// dizer que o LOJISTA paga mais caro que o consumidor final — e do anúncio
+// ainda sai a comissão da plataforma, o frete e o imposto do varejo. O número
+// "quase certo" passa despercebido: 54,99 parece um preço de anúncio normal.
+//
+// A tela não tinha como perceber porque as duas tabelas nunca se olhavam.
+// Continuam separadas (é o requisito do topo deste arquivo): o que passa a
+// existir é a COMPARAÇÃO, que não mistura nada — lê as duas e responde uma
+// pergunta.
+
+export type EstadoVsAtacado = 'abaixo' | 'igual' | 'ok'
+
+/**
+ * Como este anúncio se compara ao preço de atacado do mesmo par.
+ *
+ * `null` = não há atacado cadastrado pra comparar. Nunca 'ok': dizer que está
+ * ok sem ter com o que comparar é inventar tranquilidade.
+ *
+ * ⚠️ EM CENTAVOS INTEIROS, como o resto do módulo. Comparar decimal em texto
+ * ou em float faz 54.99 e 54.990000000001 discordarem, e a comparação erraria
+ * justamente no empate — que é o caso que mais importa aqui.
+ */
+export function comparadoAoAtacado(
+  anuncioCentavos: number | null | undefined,
+  atacadoCentavos: number | null | undefined,
+): EstadoVsAtacado | null {
+  if (anuncioCentavos == null || atacadoCentavos == null) return null
+  if (anuncioCentavos < atacadoCentavos) return 'abaixo'
+  if (anuncioCentavos === atacadoCentavos) return 'igual'
+  return 'ok'
+}
+
+// -----------------------------------------------------------------
+// Os canais dizem todos a mesma coisa?
+// -----------------------------------------------------------------
+
+export type ResumoDosCanais = {
+  /** Quantos canais têm preço cadastrado nesta linha. */
+  canaisComPreco: number
+  /** Todos os que têm preço têm o MESMO valor. */
+  todosIguais: boolean
+  /** O valor comum, quando todos são iguais. Null quando divergem. */
+  valor: number | null
+}
+
+/**
+ * Resume a linha pra tela poder destacar o que DIFERE.
+ *
+ * Hoje as cinco colunas repetem o mesmo número (as cargas 62–67 semearam
+ * todos a partir da Shopee), e a diferença de um canal — quando existe — se
+ * esconde no meio de quatro repetições. Saber que "todos dizem a mesma coisa"
+ * é o que permite marcar a exceção em vez de marcar tudo.
+ *
+ * Canal sem preço não conta: ele não concorda nem discorda de ninguém.
+ */
+export function resumoDosCanais(
+  precos: Partial<Record<CanalComPreco, number | null | undefined>>,
+): ResumoDosCanais {
+  const valores: number[] = []
+  for (const canal of CANAIS_COM_PRECO) {
+    const v = precos[canal]
+    if (v != null) valores.push(v)
+  }
+  if (valores.length === 0) {
+    return { canaisComPreco: 0, todosIguais: false, valor: null }
+  }
+  const primeiro = valores[0]!
+  const todosIguais = valores.every((v) => v === primeiro)
+  return {
+    canaisComPreco: valores.length,
+    todosIguais,
+    valor: todosIguais ? primeiro : null,
+  }
 }
