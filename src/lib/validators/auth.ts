@@ -12,14 +12,27 @@ export const usernameSchema = z
   .max(40, 'Usuário muito longo (máximo 40 caracteres)')
   .regex(usernameRegex, 'Use apenas letras, números, ponto, hífen ou underscore')
 
-// Mínimo de senha NOVA. Vale só pra quem está definindo/trocando senha —
-// aqui, no cadastro de usuário e no reset do admin (src/lib/validators/
-// usuarios.ts). Se mudar, mude nos três: são a mesma política.
+// Mínimo de senha NOVA. Vale só pra quem está definindo/trocando senha — aqui,
+// no cadastro de usuário e no reset do admin (src/lib/validators/usuarios.ts).
+// É UMA constante e os três schemas a importam: a política muda num lugar só.
+//
+// Por que 6 e não 12: quem digita isso está num tablet no chão de fábrica, e
+// doze caracteres em teclado de vidro é trabalho demais pro que essa senha
+// protege. Ela quase não é usada no dia a dia — o turno abre com o PIN de 4
+// dígitos, que tem 5 tentativas e 30 segundos de bloqueio; a senha inteira só
+// aparece quando o PIN some.
+//
+// ⚠️ 6 É O PISO, não um número com folga pra baixo. O usuário nasce em
+// `supaAdmin.auth.admin.createUser` (src/app/(app)/usuarios/actions.ts), e o
+// mínimo padrão do Supabase Auth também é 6. Descer daqui exige mexer ANTES no
+// painel do Supabase, senão o formulário aceita e a criação falha lá. E quem
+// SUBIR o número no painel faz o caminho inverso: este formulário passa a
+// aceitar senha que o Supabase recusa. Os dois números andam juntos.
 //
 // O `loginSchema` abaixo continua em `min(1)` DE PROPÓSITO. Ele valida quem
 // está entrando, não quem está definindo: subir o mínimo lá trancaria na
 // porta todo mundo que já tem senha curta, sem nem tentar autenticar.
-export const SENHA_MIN = 12
+export const SENHA_MIN = 6
 
 export const loginSchema = z.object({
   usuario: usernameSchema,
