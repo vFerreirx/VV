@@ -22,6 +22,11 @@
 //      recarga. É por ID (`marcarEco`), e não "qualquer evento nos próximos
 //      segundos" — uma mudança de OUTRA OP feita por outra pessoa no mesmo
 //      instante continua chegando.
+//   5. RECARREGA AO VOLTAR de uma queda de conexão, ou de um tempo longo com
+//      a aba escondida. ⚠️ O QUE SE PERDEU NÃO VOLTA: o Supabase não reenvia
+//      os eventos do período em que o canal esteve caído. Sem isto, o tablet
+//      que dormiu acorda mostrando os cartões de meia hora atrás — e sem nada
+//      dizendo que estão velhos. As regras estão em src/lib/realtime/conexao.ts.
 //
 // Quem decide SE o evento importa e O QUE fazer é a tela: `decidir` devolve
 // um tipo de reação (ou null pra ignorar) e `executar` recebe todos os tipos
@@ -30,6 +35,11 @@
 
 import { useEffect, useRef, useState } from 'react'
 
+import {
+  precisaRecarregarAoVoltar,
+  proximoEstadoDoCanal,
+  type EstadoDoCanal,
+} from '@/lib/realtime/conexao'
 import { createClient as createBrowserSupabase } from '@/lib/supabase/client'
 
 export type EventoAoVivo = {
@@ -76,6 +86,7 @@ export function useRecargaAoVivo<T extends string>({
   tabelas,
   decidir,
   executar,
+  reacaoNaVolta,
 }: {
   /** Nome único do canal nesta aba. */
   canal: string
@@ -84,15 +95,25 @@ export function useRecargaAoVivo<T extends string>({
   decidir: (evento: EventoAoVivo) => T | null
   /** Recebe os tipos acumulados na janela (nunca vazio). */
   executar: (tipos: ReadonlySet<T>) => void
+  /**
+   * A reação usada quando a tela volta de uma queda (ou de um sono longo) —
+   * o tablet e o kanban recarregam a tela, o sino rebusca a lista.
+   *
+   * ⚠️ OBRIGATÓRIO DE PROPÓSITO: tela nova que esquecer disto não compila, em
+   * vez de ficar velha em silêncio depois da primeira queda de Wi-Fi.
+   */
+  reacaoNaVolta: T
 }): boolean {
   const [conectado, setConectado] = useState(true)
   // As funções mudam a cada render da tela; o canal não pode ser refeito por
   // isso. As refs guardam a versão mais nova, e o canal lê delas.
   const decidirRef = useRef(decidir)
   const executarRef = useRef(executar)
+  const reacaoNaVoltaRef = useRef(reacaoNaVolta)
   useEffect(() => {
     decidirRef.current = decidir
     executarRef.current = executar
+    reacaoNaVoltaRef.current = reacaoNaVolta
   })
 
   const chaveTabelas = tabelas.join(',')
@@ -116,10 +137,40 @@ export function useRecargaAoVivo<T extends string>({
       timer = setTimeout(disparar, atrasoBase + Math.random() * ESPALHAR_MS)
     }
 
+    // O estado do canal e o instante em que a aba sumiu vivem AQUI, e não em
+    // estado do React: mudar qualquer um deles não deve re-renderizar a tela,
+    // e o efeito não pode ser refeito por causa disso.
+    let estadoDoCanal: EstadoDoCanal = 'inicial'
+    let escondidaDesde: number | null = null
+
+    /**
+     * Marca a recarga da volta e deixa o agendamento de sempre cuidar dela.
+     *
+     * ⚠️ PASSA PELO MESMO `agendar`: três tablets reconectando juntos quando o
+     * Wi-Fi da fábrica volta não podem bater no servidor no mesmo instante —
+     * o jitter de até 1,5 s existe pra isso.
+     */
+    function recarregarPorConexao() {
+      pendentes.add(reacaoNaVoltaRef.current)
+      agendar(0)
+    }
+
     function aoVoltar() {
-      if (document.visibilityState === 'visible' && pendentes.size > 0) {
-        agendar(0)
+      if (document.visibilityState === 'hidden') {
+        escondidaDesde = Date.now()
+        return
       }
+      const quanto = escondidaDesde === null ? 0 : Date.now() - escondidaDesde
+      escondidaDesde = null
+
+      // ABA ESCONDIDA POR MUITO TEMPO: recarrega mesmo SEM evento guardado.
+      // É o caso do tablet que dormiu — os eventos do período não existem
+      // mais pra serem reprocessados.
+      if (precisaRecarregarAoVoltar(quanto)) {
+        recarregarPorConexao()
+        return
+      }
+      if (pendentes.size > 0) agendar(0)
     }
 
     const supabase = createBrowserSupabase()
@@ -143,7 +194,13 @@ export function useRecargaAoVivo<T extends string>({
         },
       )
     }
-    ch.subscribe((status) => setConectado(status === 'SUBSCRIBED'))
+    ch.subscribe((status) => {
+      const t = proximoEstadoDoCanal(estadoDoCanal, status)
+      estadoDoCanal = t.estado
+      setConectado(t.conectado)
+      // Voltou de uma queda: o que mudou nesse meio-tempo não vem por evento.
+      if (t.recarregar) recarregarPorConexao()
+    })
     document.addEventListener('visibilitychange', aoVoltar)
 
     return () => {

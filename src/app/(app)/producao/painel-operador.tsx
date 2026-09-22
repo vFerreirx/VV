@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronRight, Delete, Search, TriangleAlert } from 'lucide-react'
+import { ChevronRight, Delete, Search, TriangleAlert, WifiOff } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -290,9 +290,13 @@ function Estacao({
     setContagensVivas(contagens)
   }
 
-  useRecargaAoVivo<'tela' | 'contadores'>({
+  const conectado = useRecargaAoVivo<'tela' | 'contadores'>({
     canal: 'painel-operador-realtime',
     tabelas: TABELAS_DO_TABLET,
+    // Voltando de uma queda, recarrega a TELA inteira: o que mudou enquanto o
+    // canal esteve fora não chega por evento, e pode ter sido qualquer coisa
+    // — máquina ocupada, OP concluída, parada aberta.
+    reacaoNaVolta: 'tela',
     decidir: (evento) =>
       reacaoDaEstacao(evento, {
         estacaoId,
@@ -366,6 +370,32 @@ function Estacao({
         <p className="text-muted-foreground text-base tabular-nums">
           {ocupadas}/{maquinas.length} produzindo
         </p>
+
+        {/* SEM CONEXÃO AO VIVO — a tela precisa DIZER que pode estar velha.
+            Era o único dos quatro lugares que usam o canal sem mostrar o
+            estado dele: a /fabrica mostra, o tablet não mostrava. E é
+            justamente o tablet que fica horas ocioso, com o Android
+            suspendendo a aba e derrubando o socket em silêncio.
+
+            ⚠️ DENTRO DA FAIXA DO CABEÇALHO, que já é `sticky` e já reserva
+            altura: uma faixa própria empurraria a grade pra baixo no momento
+            exato em que o operador vai tocar num botão — e ele tocaria no
+            botão errado. Aqui ela ocupa o espaço que já existe entre o
+            contador e os acessos. */}
+        {!conectado && (
+          <span className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/60 bg-amber-500/10 px-3 py-1.5 text-base text-amber-800 dark:text-amber-200">
+            <WifiOff className="size-5 shrink-0" />
+            <span>Sem conexão ao vivo. A tela pode estar desatualizada.</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 text-base"
+              onClick={() => router.refresh()}
+            >
+              Atualizar
+            </Button>
+          </span>
+        )}
 
         {/* OS DOIS ACESSOS SEPARADOS. A fila e as terminadas saíram da área
             principal — aqui elas viram contador, e o contador não empurra

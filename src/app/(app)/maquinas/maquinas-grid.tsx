@@ -392,6 +392,7 @@ function useAtualizacaoAoVivo(): boolean {
   return useRecargaAoVivo({
     canal: 'maquinas-realtime',
     tabelas: TABELAS_DA_FABRICA,
+    reacaoNaVolta: 'tela',
     decidir: () => 'tela',
     executar: () => router.refresh(),
   })

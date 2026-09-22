@@ -241,6 +241,7 @@ export function KanbanBoard({
   useRecargaAoVivo({
     canal: 'kanban-realtime',
     tabelas: TABELAS_DO_KANBAN,
+    reacaoNaVolta: 'tela',
     decidir: () => 'tela',
     executar: () => router.refresh(),
   })

@@ -29,6 +29,11 @@ import {
   type LoteComSaldo,
 } from '../fios/saldo.ts'
 import {
+  MS_ESCONDIDA,
+  precisaRecarregarAoVoltar,
+  proximoEstadoDoCanal,
+} from '../realtime/conexao.ts'
+import {
   agruparPorCor,
   casaComBusca,
   resumoDaLista,
@@ -1854,4 +1859,68 @@ test('variacoes: variacao sem cor vira grupo proprio, e o resumo conta certo', (
   // vazio conta como um grupo.
   assert.equal(resumoDaLista(lista), '3 variações · 2 cores')
   assert.equal(resumoDaLista([VAR('1', 'Preto', null, null)]), '1 variação · 1 cor')
+})
+
+// -----------------------------------------------------------------
+// Realtime: queda e volta do canal (src/lib/realtime/conexao.ts)
+// -----------------------------------------------------------------
+
+test('realtime: a PRIMEIRA conexao nao recarrega nada', () => {
+  // A pagina acabou de carregar com dado fresco do servidor; recarregar aqui
+  // seria uma segunda ida ao banco por tela aberta, sem nada de novo.
+  const t = proximoEstadoDoCanal('inicial', 'SUBSCRIBED')
+  assert.equal(t.conectado, true)
+  assert.equal(t.recarregar, false)
+  assert.equal(t.estado, 'conectado')
+})
+
+test('realtime: cair e voltar recarrega UMA vez', () => {
+  const caiu = proximoEstadoDoCanal('conectado', 'CHANNEL_ERROR')
+  assert.equal(caiu.conectado, false)
+  assert.equal(caiu.recarregar, false)
+  assert.equal(caiu.estado, 'caido')
+
+  // A volta e o unico momento que recarrega: o que mudou no meio-tempo nao e
+  // reenviado pelo Supabase.
+  const voltou = proximoEstadoDoCanal(caiu.estado, 'SUBSCRIBED')
+  assert.equal(voltou.conectado, true)
+  assert.equal(voltou.recarregar, true)
+
+  // E conectado seguido de conectado nao recarrega de novo.
+  assert.equal(proximoEstadoDoCanal(voltou.estado, 'SUBSCRIBED').recarregar, false)
+})
+
+test('realtime: duas quedas seguidas nao acumulam recarga', () => {
+  let estado = proximoEstadoDoCanal('inicial', 'SUBSCRIBED').estado
+  for (const status of ['TIMED_OUT', 'CLOSED', 'CHANNEL_ERROR']) {
+    const t = proximoEstadoDoCanal(estado, status)
+    assert.equal(t.recarregar, false)
+    assert.equal(t.conectado, false)
+    estado = t.estado
+  }
+  // Tres quedas, uma volta: uma recarga so.
+  assert.equal(proximoEstadoDoCanal(estado, 'SUBSCRIBED').recarregar, true)
+})
+
+test('realtime: status do meio do caminho nao muda nada', () => {
+  const t = proximoEstadoDoCanal('conectado', 'SUBSCRIBING')
+  assert.equal(t.estado, 'conectado')
+  assert.equal(t.conectado, true)
+  assert.equal(t.recarregar, false)
+
+  const u = proximoEstadoDoCanal('caido', 'SUBSCRIBING')
+  assert.equal(u.estado, 'caido')
+  assert.equal(u.conectado, false)
+})
+
+test('realtime: 1 minuto escondida nao recarrega, 3 minutos sim', () => {
+  // Trocar de aba pra ver uma nota e voltar e o caso comum; recarregar ai
+  // seria desperdicio em toda alternancia.
+  assert.equal(precisaRecarregarAoVoltar(60 * 1000), false)
+  assert.equal(precisaRecarregarAoVoltar(MS_ESCONDIDA - 1), false)
+  // Dois minutos e o ponto em que o Android ja suspendeu a aba e o socket
+  // pode ter morrido sem avisar.
+  assert.equal(precisaRecarregarAoVoltar(MS_ESCONDIDA), true)
+  assert.equal(precisaRecarregarAoVoltar(3 * 60 * 1000), true)
+  assert.equal(precisaRecarregarAoVoltar(0), false)
 })

@@ -55,6 +55,8 @@ export function NotificationBell() {
   useRecargaAoVivo({
     canal: 'notificacoes-realtime',
     tabelas: TABELAS,
+    // O sino rebusca a LISTA: é tudo o que ele tem.
+    reacaoNaVolta: 'lista',
     decidir: () => 'lista',
     executar: carregar,
   })
