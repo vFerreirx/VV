@@ -1,6 +1,13 @@
 'use client'
 
-import { ChevronRight, Delete, Search, TriangleAlert, WifiOff } from 'lucide-react'
+import {
+  ChevronRight,
+  Delete,
+  RefreshCw,
+  Search,
+  TriangleAlert,
+  WifiOff,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
@@ -290,6 +297,13 @@ function Estacao({
     setContagensVivas(contagens)
   }
 
+  // O "Atualizar" da faixa de queda tem estado próprio: sem ele, o toque não
+  // devolve nada e o dedo volta a tocar — e o segundo toque, num tablet
+  // offline, é a diferença entre "está carregando" e "o botão não funciona".
+  // `router.refresh()` dentro da transição mantém `atualizando` verdadeiro
+  // até a tela nova chegar.
+  const [atualizando, iniciarAtualizacao] = useTransition()
+
   const conectado = useRecargaAoVivo<'tela' | 'contadores'>({
     canal: 'painel-operador-realtime',
     tabelas: TABELAS_DO_TABLET,
@@ -390,9 +404,12 @@ function Estacao({
               variant="outline"
               size="sm"
               className="h-9 text-base"
-              onClick={() => router.refresh()}
+              loading={atualizando}
+              disabled={atualizando}
+              onClick={() => iniciarAtualizacao(() => router.refresh())}
             >
-              Atualizar
+              {!atualizando && <RefreshCw className="size-4" />}
+              {atualizando ? 'Atualizando…' : 'Atualizar'}
             </Button>
           </span>
         )}
