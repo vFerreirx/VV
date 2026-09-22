@@ -47,6 +47,7 @@ export function FabricaTabs({
   estacoes,
   operadores,
   maquinasOpcoes,
+  podeLimparPin,
 }: {
   tabInicial: string
   verMaquinas: boolean
@@ -55,6 +56,8 @@ export function FabricaTabs({
   podeEditarMaquinas: boolean
   podeVerOrdens: boolean
   fichaDaOp: { gestor: boolean; podeMover: boolean; podeEditarOrdens: boolean }
+  /** Admin ou gerente: pode zerar o PIN de um operador. */
+  podeLimparPin: boolean
   /** Null pra quem não tem escrita em Estações — a faixa nem existe. */
   pendencias: PendenciasDaFabrica | null
   podeCriarUsuario: boolean
@@ -151,6 +154,7 @@ export function FabricaTabs({
               estacoes={estacoes}
               operadores={operadores}
               maquinas={maquinasOpcoes}
+              podeLimparPin={podeLimparPin}
             />
           </TabsContent>
         )}

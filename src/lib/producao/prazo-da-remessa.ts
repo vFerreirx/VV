@@ -151,3 +151,55 @@ export function diaMes(iso: string): string {
   const [, m, d] = iso.split('-')
   return `${d}/${m}`
 }
+
+// -----------------------------------------------------------------
+// O EVENTO DO CALENDÁRIO: de qual conta é este envio
+// -----------------------------------------------------------------
+//
+// São 6 contas (3 do ML, 3 da Shopee), cada uma com um CNPJ atrás. Dizer só
+// "Full ML" no calendário deixa de fora justamente o que decide o que vai na
+// caixa — e quem separa o lote precisa saber ANTES de montar, não depois.
+//
+// Evento antigo não tem conta, e isso é permanente (ver a migration 69): o
+// rótulo cai no canal sozinho, sem inventar uma conta que ninguém escolheu.
+
+/** "Full ML · Conta 1" — ou só "Full ML" quando o evento não tem conta. */
+export function rotuloDoEventoFull(
+  canal: string,
+  contaNome: string | null,
+): string {
+  const nome =
+    canal === 'full_ml'
+      ? 'Full ML'
+      : canal === 'full_shopee'
+        ? 'Full Shopee'
+        : // Canal desconhecido aparece como veio: o rótulo é pra LER, e
+          // esconder o valor cru deixaria o dado estranho invisível.
+          canal
+  return contaNome ? `${nome} · ${contaNome}` : nome
+}
+
+// -----------------------------------------------------------------
+// Evento manual que já virou remessa
+// -----------------------------------------------------------------
+
+/**
+ * O evento agendado à mão corresponde a uma remessa REAL?
+ *
+ * Quem agenda o envio no calendário e depois cadastra a remessa em Ordens
+ * acaba com duas marcas no mesmo dia — uma que é plano e outra que é fato.
+ * A tela mostra as duas e marca a manual como "já virou remessa", com o
+ * excluir ali: apagar sozinho seria decidir por quem agendou, e pode ser que
+ * sejam dois envios mesmo, no mesmo dia e canal.
+ *
+ * MESMO DIA **E** MESMO CANAL. Só o dia não basta (dois canais podem sair no
+ * mesmo dia) e só o canal, menos ainda.
+ */
+export function ehEventoDuplicado(
+  evento: { data: string; canal: string },
+  remessas: readonly { data: string; canal: string }[],
+): boolean {
+  return remessas.some(
+    (r) => r.data === evento.data && r.canal === evento.canal,
+  )
+}

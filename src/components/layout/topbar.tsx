@@ -26,7 +26,11 @@ export function Topbar({
       <div className="flex items-center gap-2">
         <SidebarToggle />
         <div className="flex items-center gap-2 md:hidden">
-          <MobileNav bloqueadas={bloqueadas} alertaTarefas={alertaTarefas} />
+          <MobileNav
+            bloqueadas={bloqueadas}
+            alertaTarefas={alertaTarefas}
+            role={user.role}
+          />
           <Logo variant="mark" className="text-primary size-6" />
           <span className="font-heading text-sm font-medium tracking-[0.15em] uppercase">
             Vanvest

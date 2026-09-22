@@ -27,7 +27,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 
-import type { AreaKey } from '@/lib/auth/permissoes'
+import type { AreaKey, Role } from '@/lib/auth/permissoes'
 
 export type NavItem = {
   href: string
@@ -42,6 +42,15 @@ export type NavItem = {
   // lá na Sidebar, pra o próximo aviso não virar um `if` escondido no meio
   // do render. O dado vem do layout; ver IndicadorTarefas.
   alerta?: 'tarefas'
+  /**
+   * Cargos que NÃO veem este item, independentemente de área.
+   *
+   * Existe pro que não é área: Configurações é de todo mundo autenticado, mas
+   * o tablet do chão de fábrica fica em cima da máquina o dia inteiro — e o
+   * que mora lá dentro é trocar a senha do operador logado. A tela continua
+   * acessível pela URL; o que sai é o convite no menu.
+   */
+  ocultoPara?: Role[]
 }
 
 export type NavGroup = {
@@ -156,15 +165,24 @@ export const NAV_GROUPS: NavGroup[] = [
         area: 'permissoes',
       },
       { href: '/lixeira', label: 'Lixeira', icon: Trash2, area: 'lixeira' },
-      { href: '/configuracoes', label: 'Configurações', icon: Cog },
+      {
+        href: '/configuracoes',
+        label: 'Configurações',
+        icon: Cog,
+        ocultoPara: ['operador'],
+      },
     ],
   },
 ]
 
 // Grupos filtrados pelas áreas bloqueadas do cargo (descarta grupos vazios).
-export function visibleGroups(bloqueadas: AreaKey[] = []): NavGroup[] {
+export function visibleGroups(
+  bloqueadas: AreaKey[] = [],
+  role?: Role,
+): NavGroup[] {
   const bloq = new Set(bloqueadas)
   const visivel = (it: NavItem): boolean => {
+    if (role && it.ocultoPara?.includes(role)) return false
     if (it.areas) return it.areas.some((a) => !bloq.has(a))
     if (it.area) return !bloq.has(it.area)
     return true

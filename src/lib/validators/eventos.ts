@@ -15,7 +15,14 @@ export const eventoFullSchema = z.object({
   data: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida (use YYYY-MM-DD)'),
+  // O canal continua aqui porque o evento antigo (e a gravação sem conta)
+  // precisa dele. Quando vem `contaId`, é a CONTA que manda: a action lê o
+  // canal dela e ignora este — uma escolha em vez de duas, e sem a combinação
+  // impossível de canal com conta de outro canal.
   canal: z.enum(eventoFullCanalValues),
+  contaId: z
+    .union([z.uuid('Conta inválida'), z.null(), z.undefined()])
+    .transform((v) => v ?? null),
   observacao: stringOpt(300, 'Observação'),
 })
 

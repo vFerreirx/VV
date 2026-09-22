@@ -3,7 +3,12 @@
 import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
-import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
+import {
+  isManager,
+  requireArea,
+  requireAreaEscrita,
+  requireAuth,
+} from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
   operadoresPorEstacao,
@@ -408,4 +413,60 @@ export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
   revalidatePath('/estacoes')
   revalidatePath('/producao')
   return { success: true, message: 'Estação excluída' }
+}
+
+// -----------------------------------------------------------------
+// Limpar o PIN de um operador
+// -----------------------------------------------------------------
+
+/**
+ * Zera o PIN do operador: ele cria um novo no próximo toque do tablet.
+ *
+ * ⚠️ NÃO EXISTIA CAMINHO NENHUM PRA ISSO. O operador cria o PIN sozinho no
+ * tablet ((auth)/login/actions.ts), e errar demais bloqueia — quem esquecia só
+ * voltava com SQL no banco. Com 3 tablets rodando, isso acontece na primeira
+ * semana, e a pessoa que trava é a que está no meio do turno.
+ *
+ * Zera os TRÊS campos juntos: hash, contador de tentativas e o bloqueio. Só o
+ * hash deixaria o operador travado pelo bloqueio antigo na hora de cadastrar
+ * o PIN novo — que é o caso mais comum de quem precisa disto.
+ *
+ * ⚠️ O HASH NUNCA SAI DAQUI: a tela trabalha com o booleano `temPin`, e é
+ * assim que continua. Quem pode: admin e gerente de produção (`isManager`) —
+ * é operação de chão de fábrica, e o gerente é quem está lá.
+ */
+export async function limparPinAction(
+  operadorId: string,
+): Promise<ActionResult> {
+  const user = await requireAuth()
+  if (!isManager(user.role)) {
+    return { success: false, error: 'Sem permissão pra limpar o PIN' }
+  }
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!uuidRe.test(operadorId)) {
+    return { success: false, error: 'ID inválido' }
+  }
+
+  const [alvo] = await db
+    .select({ id: users.id, nome: users.nome, role: users.role })
+    .from(users)
+    .where(and(eq(users.id, operadorId), isNull(users.deletedAt)))
+    .limit(1)
+  if (!alvo) return { success: false, error: 'Operador não encontrado' }
+  if (alvo.role !== 'operador') {
+    return { success: false, error: 'Só o PIN de operador é limpo por aqui' }
+  }
+
+  await db
+    .update(users)
+    .set({ pinHash: null, pinTentativas: 0, pinBloqueadoAte: null })
+    .where(eq(users.id, operadorId))
+
+  revalidatePath('/fabrica')
+  revalidatePath('/producao')
+  return {
+    success: true,
+    message: `PIN de ${alvo.nome} limpo — ele cria um novo no próximo toque`,
+  }
 }

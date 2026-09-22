@@ -6,11 +6,17 @@ import { revalidatePath } from 'next/cache'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
+  compradores,
+  contasMarketplace,
   eventosFull,
+  orcamentoParcelas,
+  orcamentos,
   ordensProducao,
   produtos,
   remessasFull,
 } from '@/lib/db/schema'
+import { situacaoDaParcela, type SituacaoDaParcela } from '@/lib/parcela-estado'
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   eventoFullSchema,
   type EventoFullInput,
@@ -34,6 +40,28 @@ export type EventoFullItem = {
   // true quando vem de uma remessa Full real (cadastrada em Ordens):
   // aparece automaticamente e não pode ser excluída pelo calendário.
   remessa?: boolean
+  /**
+   * Nome da conta ("Conta 1 ML"). Null no evento antigo, de antes de as
+   * contas existirem — caso normal e permanente, ver a migration 69.
+   */
+  contaNome: string | null
+}
+
+/**
+ * Boleto/cheque a receber que cai no mês visível.
+ *
+ * ⚠️ SÓ O ADMIN VÊ ISTO, e a checagem é no SERVIDOR — ver
+ * `listarParcelasDoPeriodo`.
+ */
+export type ParcelaAgendaItem = {
+  id: string
+  data: string // YYYY-MM-DD (vencimento)
+  numero: number
+  orcamentoId: string
+  orcamentoNumero: number
+  cliente: string
+  valor: string
+  situacao: SituacaoDaParcela
 }
 
 export type OpAgendaItem = {
@@ -61,8 +89,14 @@ export async function listarEventosFull(
       data: eventosFull.data,
       canal: eventosFull.canal,
       observacao: eventosFull.observacao,
+      // leftJoin: evento antigo não tem conta e precisa continuar aparecendo.
+      contaNome: contasMarketplace.nome,
     })
     .from(eventosFull)
+    .leftJoin(
+      contasMarketplace,
+      eq(contasMarketplace.id, eventosFull.contaId),
+    )
     .where(
       and(
         isNull(eventosFull.deletedAt),
@@ -79,6 +113,9 @@ export async function listarEventosFull(
       id: remessasFull.id,
       data: remessasFull.dataEnvio,
       canal: remessasFull.canal,
+      // A remessa real já sabe a conta desde sempre — o calendário é que não
+      // mostrava.
+      contaNome: contasMarketplace.nome,
       // Qualifica "remessas_full"."id" — sem isso o Postgres correlaciona
       // com o `id` da própria subquery (ordens_producao) e o valor nunca
       // bate (sempre 0).
@@ -97,6 +134,10 @@ export async function listarEventosFull(
       )`,
     })
     .from(remessasFull)
+    .leftJoin(
+      contasMarketplace,
+      eq(contasMarketplace.id, remessasFull.contaId),
+    )
     .where(
       and(
         isNull(remessasFull.deletedAt),
@@ -115,6 +156,7 @@ export async function listarEventosFull(
           | 'full_ml'
           | 'full_shopee',
         observacao: r.observacao ?? null,
+        contaNome: r.contaNome ?? null,
       }),
     ),
     ...remessas.map(
@@ -124,12 +166,80 @@ export async function listarEventosFull(
         canal: r.canal as 'full_ml' | 'full_shopee',
         observacao: `${r.ops} OPs · ${r.unidades} un`,
         remessa: true,
+        contaNome: r.contaNome ?? null,
       }),
     ),
   ]
 
   itens.sort((a, b) => a.data.localeCompare(b.data))
   return itens
+}
+
+/**
+ * Boletos e cheques a receber do período — o terceiro tipo de marca do
+ * calendário.
+ *
+ * ⚠️ SÓ ADMIN, checado AQUI, no servidor, ANTES da consulta: pra quem não é,
+ * a consulta não acontece e nada disso atravessa pro cliente.
+ *
+ * ⚠️ E É `role === 'admin'`, NÃO a área `pedidos`. Parece a checagem "certa",
+ * mas o gerente de produção tem 'total' em `pedidos` por override gravado —
+ * trocar por área colocaria o contas-a-receber da casa no calendário dele.
+ * Se um dia isso tiver que virar área, que seja área PRÓPRIA, decidida de
+ * propósito.
+ *
+ * NÃO RECEBIDAS, e não "a vencer": a que venceu semana passada e ninguém deu
+ * baixa é justamente a que precisa aparecer. O estado (vence hoje / atrasada)
+ * sai de `situacaoDaParcela`, a MESMA função do sino e da tela do pedido —
+ * duas contas de "venceu" que discordam é o defeito que aquele módulo existe
+ * pra evitar.
+ */
+export async function listarParcelasDoPeriodo(
+  inicio: string,
+  fim: string,
+): Promise<ParcelaAgendaItem[]> {
+  const user = await requireAuth()
+  if (user.role !== 'admin') return []
+
+  const linhas = await db
+    .select({
+      id: orcamentoParcelas.id,
+      vencimento: orcamentoParcelas.vencimento,
+      numero: orcamentoParcelas.numero,
+      valor: orcamentoParcelas.valor,
+      orcamentoId: orcamentos.id,
+      orcamentoNumero: orcamentos.numero,
+      cliente: orcamentos.cliente,
+      compradorNome: compradores.nome,
+    })
+    .from(orcamentoParcelas)
+    .innerJoin(orcamentos, eq(orcamentos.id, orcamentoParcelas.orcamentoId))
+    .leftJoin(compradores, eq(compradores.id, orcamentos.compradorId))
+    .where(
+      and(
+        isNull(orcamentoParcelas.recebidoEm),
+        isNull(orcamentos.deletedAt),
+        // Pedido cancelado não tem o que cobrar.
+        ne(orcamentos.status, 'cancelado'),
+        gte(orcamentoParcelas.vencimento, inicio),
+        lte(orcamentoParcelas.vencimento, fim),
+      ),
+    )
+    .orderBy(asc(orcamentoParcelas.vencimento))
+
+  // Um `hoje` só pra lista inteira: duas chamadas podem cair em dias
+  // diferentes se a requisição atravessar a meia-noite.
+  const hoje = hojeEmBrasilia()
+  return linhas.map((p) => ({
+    id: p.id,
+    data: p.vencimento,
+    numero: p.numero,
+    orcamentoId: p.orcamentoId,
+    orcamentoNumero: p.orcamentoNumero,
+    cliente: p.compradorNome ?? p.cliente,
+    valor: p.valor,
+    situacao: situacaoDaParcela(p.vencimento, null, hoje),
+  }))
 }
 
 export async function listarOpsComPrazo(
@@ -197,11 +307,35 @@ export async function criarEventoFullAction(
   }
   const data = parsed.data
 
+  // A CONTA DECIDE O CANAL. O formulário escolhe a conta (uma escolha em vez
+  // de duas), e o canal vem dela — assim nunca mais existe a combinação
+  // impossível de "Full ML" com uma conta da Shopee. Sem conta escolhida,
+  // vale o canal que veio, que é o caminho dos eventos antigos.
+  let canal = data.canal
+  if (data.contaId) {
+    const [conta] = await db
+      .select({ canal: contasMarketplace.canal })
+      .from(contasMarketplace)
+      .where(
+        and(
+          eq(contasMarketplace.id, data.contaId),
+          isNull(contasMarketplace.deletedAt),
+        ),
+      )
+      .limit(1)
+    if (!conta) return { success: false, error: 'Conta não encontrada' }
+    if (conta.canal !== 'full_ml' && conta.canal !== 'full_shopee') {
+      return { success: false, error: 'Essa conta não é de envio Full' }
+    }
+    canal = conta.canal
+  }
+
   const [inserted] = await db
     .insert(eventosFull)
     .values({
       data: data.data,
-      canal: data.canal,
+      canal,
+      contaId: data.contaId ?? null,
       observacao: data.observacao ?? null,
     })
     .returning({ id: eventosFull.id })

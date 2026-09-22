@@ -34,10 +34,7 @@ export default async function ConfiguracoesPage() {
         </CardHeader>
         <CardContent>
           <PerfilForm
-            defaultValues={{
-              nome: user.nome,
-              telefone: user.telefone ?? '',
-            }}
+            defaultValues={{ nome: user.nome }}
           />
         </CardContent>
       </Card>

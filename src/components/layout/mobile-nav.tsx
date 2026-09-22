@@ -24,21 +24,24 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
-import type { AreaKey } from '@/lib/auth/permissoes'
+import type { AreaKey, Role } from '@/lib/auth/permissoes'
 import type { PrioridadeAlerta } from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
 
 export function MobileNav({
   bloqueadas,
+  role,
   alertaTarefas,
 }: {
   bloqueadas: AreaKey[]
+  /** Cargo de quem está logado: alguns itens somem por cargo, não por área. */
+  role?: Role
   alertaTarefas: PrioridadeAlerta
 }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const grupos = visibleGroups(bloqueadas)
+  const grupos = visibleGroups(bloqueadas, role)
   const { collapsed, toggle, anima } = useNavCollapse()
   const { larguras } = useSidebar()
   const painelRef = useRef<HTMLDivElement>(null)

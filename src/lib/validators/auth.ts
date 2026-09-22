@@ -28,13 +28,13 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>
 
+// ⚠️ SEM TELEFONE, de propósito. A coluna `users.telefone` continua no banco
+// (e vazia: nenhum dos 10 usuários preencheu), mas NENHUMA tela do sistema lê
+// esse campo — as buscas por telefone são de `compradores`, que é outra
+// tabela e outro assunto. Um campo que ninguém preenche e ninguém lê é um
+// campo que ensina que o formulário tem coisa inútil.
 export const atualizarPerfilSchema = z.object({
   nome: z.string().min(2, 'Nome muito curto').max(120, 'Nome muito longo'),
-  telefone: z
-    .string()
-    .max(20, 'Telefone muito longo')
-    .optional()
-    .or(z.literal('').transform(() => undefined)),
 })
 
 export type AtualizarPerfilInput = z.infer<typeof atualizarPerfilSchema>

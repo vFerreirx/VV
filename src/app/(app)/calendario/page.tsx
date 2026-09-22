@@ -8,7 +8,12 @@ import {
 } from 'date-fns'
 import type { Metadata } from 'next'
 
-import { listarEventosFull, listarOpsComPrazo } from './actions'
+import {
+  listarEventosFull,
+  listarOpsComPrazo,
+  listarParcelasDoPeriodo,
+} from './actions'
+import { listarContasAtivas } from '../contas-marketplace/actions'
 import { CalendarioView } from '@/components/calendario/calendario-view'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
@@ -45,9 +50,15 @@ export default async function CalendarioPage({
   const inicio = format(gridStart, 'yyyy-MM-dd')
   const fim = format(gridEnd, 'yyyy-MM-dd')
 
-  const [eventos, ops] = await Promise.all([
+  // As quatro em paralelo. `listarParcelasDoPeriodo` devolve vazio pra quem
+  // não é admin — a checagem é DENTRO dela, no servidor, e a consulta nem
+  // acontece. Ver o comentário lá: é `role === 'admin'` de propósito, e não a
+  // área `pedidos`, que o gerente tem por override.
+  const [eventos, ops, parcelas, contas] = await Promise.all([
     listarEventosFull(inicio, fim),
     listarOpsComPrazo(inicio, fim),
+    listarParcelasDoPeriodo(inicio, fim),
+    listarContasAtivas(),
   ])
 
   return (
@@ -55,6 +66,11 @@ export default async function CalendarioPage({
       mes={mes}
       eventos={eventos}
       ops={ops}
+      parcelas={parcelas}
+      // Só as contas de envio Full, que são as que o calendário agenda.
+      contas={contas
+        .filter((c) => c.canal === 'full_ml' || c.canal === 'full_shopee')
+        .map((c) => ({ id: c.id, nome: c.nome }))}
       podeEditar={podeEditar}
     />
   )

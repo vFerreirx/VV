@@ -22,20 +22,23 @@ import { SIDEBAR_ID } from '@/components/layout/sidebar-cookie'
 import { useSidebar } from '@/components/layout/sidebar-estado'
 import { NavResizer } from '@/components/layout/nav-resizer'
 import { useNavCollapse } from '@/components/layout/use-nav-collapse'
-import type { AreaKey } from '@/lib/auth/permissoes'
+import type { AreaKey, Role } from '@/lib/auth/permissoes'
 import type { PrioridadeAlerta } from '@/lib/prioridade'
 import { cn } from '@/lib/utils'
 
 export function Sidebar({
   bloqueadas,
+  role,
   alertaTarefas,
 }: {
   bloqueadas: AreaKey[]
+  /** Cargo de quem está logado: alguns itens somem por cargo, não por área. */
+  role?: Role
   alertaTarefas: PrioridadeAlerta
 }) {
   const pathname = usePathname()
   const [isPending, startTransition] = useTransition()
-  const grupos = visibleGroups(bloqueadas)
+  const grupos = visibleGroups(bloqueadas, role)
   const { collapsed, toggle, anima } = useNavCollapse()
   const { oculta, larguras } = useSidebar()
 

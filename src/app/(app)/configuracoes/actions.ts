@@ -31,10 +31,9 @@ export async function atualizarPerfilAction(
 
   await db
     .update(users)
-    .set({
-      nome: parsed.data.nome,
-      telefone: parsed.data.telefone ?? null,
-    })
+    // Só o nome: o telefone saiu do formulário e a action não pode continuar
+    // escrevendo o que ninguém mais manda — ver `atualizarPerfilSchema`.
+    .set({ nome: parsed.data.nome })
     .where(eq(users.id, user.id))
 
   revalidatePath('/configuracoes')

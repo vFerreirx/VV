@@ -48,19 +48,6 @@ export function PerfilForm({
         )}
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="telefone">Telefone</Label>
-        <Input
-          id="telefone"
-          inputMode="tel"
-          disabled={isPending}
-          {...form.register('telefone')}
-        />
-        {form.formState.errors.telefone && (
-          <p className="text-destructive text-sm">{form.formState.errors.telefone.message}</p>
-        )}
-      </div>
-
       <Button loading={isPending} type="submit" disabled={isPending || !form.formState.isDirty}>
         {'Salvar'}
       </Button>

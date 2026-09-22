@@ -48,7 +48,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       largurasIniciais={largurasIniciais}
     >
       <div className="flex h-screen w-full overflow-hidden print:block print:h-auto print:overflow-visible">
-        <Sidebar bloqueadas={bloqueadas} alertaTarefas={alertaTarefas} />
+        <Sidebar
+          bloqueadas={bloqueadas}
+          alertaTarefas={alertaTarefas}
+          role={user.role}
+        />
         {/* data-app-shell / data-app-scroll: âncoras da sombra scroll-driven
             da topbar (ver globals.css). Quem rola é o <main>, e a topbar é
             irmã dele — a timeline precisa ser nomeada lá e exposta aqui, no

@@ -8,8 +8,9 @@ import { toast } from 'sonner'
 import {
   atualizarEstacaoAction,
   criarEstacaoAction,
-  excluirEstacaoAction,
   type EstacaoComDetalhes,
+  excluirEstacaoAction,
+  limparPinAction,
   type MaquinaOpcao,
   type OperadorOpcao,
 } from './actions'
@@ -43,9 +44,16 @@ type Props = {
   estacoes: EstacaoComDetalhes[]
   operadores: OperadorOpcao[]
   maquinas: MaquinaOpcao[]
+  /** Admin ou gerente: mostra o "limpar PIN" ao lado do operador. */
+  podeLimparPin?: boolean
 }
 
-export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
+export function EstacoesList({
+  estacoes,
+  operadores,
+  maquinas,
+  podeLimparPin = false,
+}: Props) {
   const [criando, setCriando] = useState(false)
   const [editando, setEditando] = useState<EstacaoComDetalhes | null>(null)
   const [excluindo, setExcluindo] = useState<EstacaoComDetalhes | null>(null)
@@ -123,6 +131,13 @@ export function EstacoesList({ estacoes, operadores, maquinas }: Props) {
                           <span className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-400">
                             sem PIN
                           </span>
+                        )}
+                        {/* ESQUECEU O PIN? Até aqui, a única saída era SQL no
+                            banco — e quem trava é quem está no meio do turno.
+                            Só aparece pra quem TEM PIN: no resto não há o que
+                            limpar. */}
+                        {podeLimparPin && o.temPin && (
+                          <LimparPinBotao id={o.id} nome={o.nome} />
                         )}
                       </span>
                     ))}
@@ -630,5 +645,44 @@ function ExcluirDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// -----------------------------------------------------------------
+// Limpar PIN
+// -----------------------------------------------------------------
+
+// Zera o PIN do operador — ele cadastra um novo no próximo toque do tablet.
+// A confirmação existe porque, entre o clique e o próximo turno, o operador
+// fica sem atalho: é rápido de refazer, mas não é invisível.
+function LimparPinBotao({ id, nome }: { id: string; nome: string }) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+
+  function limpar() {
+    const ok = window.confirm(
+      `Limpar o PIN de ${nome}? Ele vai criar um novo no próximo toque do tablet.`,
+    )
+    if (!ok) return
+    startTransition(async () => {
+      const r = await limparPinAction(id)
+      if (!r.success) {
+        toast.error(r.error)
+        return
+      }
+      toast.success(r.message ?? 'PIN limpo')
+      router.refresh()
+    })
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={limpar}
+      disabled={isPending}
+      className="text-muted-foreground hover:text-foreground ml-1 text-xs underline underline-offset-2 disabled:opacity-60"
+    >
+      {isPending ? 'limpando…' : 'limpar PIN'}
+    </button>
   )
 }

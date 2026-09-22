@@ -107,6 +107,9 @@ export default async function FabricaPage({
       estacoes={estacoes}
       operadores={operadores}
       maquinasOpcoes={maquinasOpcoes}
+      // Limpar PIN é operação de chão de fábrica: admin e gerente. A action
+      // confere de novo do lado dela.
+      podeLimparPin={isManager(user.role)}
     />
   )
 }

@@ -12,7 +12,14 @@ import {
   startOfWeek,
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Plus, Truck, X } from 'lucide-react'
+import {
+  Banknote,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Truck,
+  X,
+} from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
@@ -23,6 +30,7 @@ import {
   excluirEventoFullAction,
   type EventoFullItem,
   type OpAgendaItem,
+  type ParcelaAgendaItem,
 } from '@/app/(app)/calendario/actions'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,6 +50,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { rotuloDaSituacao } from '@/lib/parcela-estado'
+import {
+  ehEventoDuplicado,
+  rotuloDoEventoFull,
+} from '@/lib/producao/prazo-da-remessa'
 import { cn } from '@/lib/utils'
 import {
   EVENTO_FULL_CANAL_CURTO,
@@ -60,10 +73,24 @@ type Props = {
   mes: string // YYYY-MM
   eventos: EventoFullItem[]
   ops: OpAgendaItem[]
+  /**
+   * Boletos a receber do período. Vem VAZIO pra quem não é admin — a
+   * consulta nem acontece no servidor (ver `listarParcelasDoPeriodo`).
+   */
+  parcelas: ParcelaAgendaItem[]
+  /** Contas de envio Full ativas, pro diálogo de agendar. */
+  contas: { id: string; nome: string }[]
   podeEditar: boolean
 }
 
-export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
+export function CalendarioView({
+  mes,
+  eventos,
+  ops,
+  parcelas,
+  contas,
+  podeEditar,
+}: Props) {
   const router = useRouter()
   const [novoDia, setNovoDia] = useState<string | null>(null)
 
@@ -89,6 +116,22 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
     return m
   }, [eventos])
 
+  const parcelasPorDia = useMemo(() => {
+    const m = new Map<string, ParcelaAgendaItem[]>()
+    for (const p of parcelas) {
+      const arr = m.get(p.data) ?? []
+      arr.push(p)
+      m.set(p.data, arr)
+    }
+    return m
+  }, [parcelas])
+
+  // As remessas REAIS do mês — é contra elas que o evento manual é comparado.
+  const remessasDoMes = useMemo(
+    () => eventos.filter((e) => e.remessa).map((e) => ({ data: e.data, canal: e.canal })),
+    [eventos],
+  )
+
   const opsPorDia = useMemo(() => {
     const m = new Map<string, OpAgendaItem[]>()
     for (const o of ops) {
@@ -113,7 +156,8 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
             {format(refDate, 'MMMM yyyy', { locale: ptBR })}
           </h1>
           <p className="text-muted-foreground text-sm">
-            Envios pro Full e ordens com prazo de entrega.
+            Envios pro Full, ordens com prazo de entrega
+            {parcelas.length > 0 ? ' e boletos a receber' : ''}.
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -176,6 +220,7 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
             const isHoje = ymd === hojeYmd
             const evs = eventosPorDia.get(ymd) ?? []
             const dayOps = opsPorDia.get(ymd) ?? []
+            const dayParcelas = parcelasPorDia.get(ymd) ?? []
 
             return (
               <div
@@ -208,7 +253,20 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
 
                 <div className="mt-1 space-y-1">
                   {evs.map((e) => (
-                    <EventoChip key={e.id} evento={e} podeEditar={podeEditar} />
+                    <EventoChip
+                      key={e.id}
+                      evento={e}
+                      // Manual que já virou remessa: a marca não impede nada,
+                      // só diz que existem duas marcas pro mesmo envio — e
+                      // deixa o excluir do manual à mão.
+                      duplicado={
+                        !e.remessa && ehEventoDuplicado(e, remessasDoMes)
+                      }
+                      podeEditar={podeEditar}
+                    />
+                  ))}
+                  {dayParcelas.map((p) => (
+                    <ParcelaChip key={p.id} parcela={p} />
                   ))}
                   {dayOps.map((o) => (
                     <div
@@ -234,6 +292,7 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
 
       <NovoEventoDialog
         dia={novoDia}
+        contas={contas}
         onClose={() => setNovoDia(null)}
       />
     </div>
@@ -246,9 +305,12 @@ export function CalendarioView({ mes, eventos, ops, podeEditar }: Props) {
 
 function EventoChip({
   evento,
+  duplicado = false,
   podeEditar,
 }: {
   evento: EventoFullItem
+  /** Manual que coincide com uma remessa real (mesmo dia e canal). */
+  duplicado?: boolean
   podeEditar: boolean
 }) {
   const router = useRouter()
@@ -274,7 +336,7 @@ function EventoChip({
         // `status=todos`: as OPs de um Full incluem as que já tiveram baixa, e
         // a lista abre em "Abertas" quando a URL não diz nada.
         href={`/ordens?remessaId=${evento.id}&status=todos`}
-        title={`${EVENTO_FULL_CANAL_LABEL[evento.canal]} — ${evento.observacao ?? ''}`}
+        title={`${rotuloDoEventoFull(evento.canal, evento.contaNome)} — ${evento.observacao ?? ''}`}
         className={cn(
           'flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium hover:opacity-80',
           CANAL_BADGE[evento.canal],
@@ -282,7 +344,10 @@ function EventoChip({
       >
         <Truck className="size-3 shrink-0" />
         <span className="truncate">
-          {EVENTO_FULL_CANAL_CURTO[evento.canal]}
+          {rotuloDoEventoFull(
+            EVENTO_FULL_CANAL_CURTO[evento.canal],
+            evento.contaNome,
+          )}
           {evento.observacao ? ` · ${evento.observacao.split(' · ')[0]}` : ''}
         </span>
       </Link>
@@ -291,14 +356,29 @@ function EventoChip({
 
   return (
     <div
-      title={evento.observacao ?? EVENTO_FULL_CANAL_LABEL[evento.canal]}
+      title={
+        duplicado
+          ? 'Já existe uma remessa real neste dia e canal — este é o agendamento manual.'
+          : (evento.observacao ??
+            rotuloDoEventoFull(evento.canal, evento.contaNome))
+      }
       className={cn(
         'flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium',
         CANAL_BADGE[evento.canal],
+        // Duplicata fica DESBOTADA, não escondida: pode ser que sejam dois
+        // envios mesmo no mesmo dia, e sumir com o agendamento seria decidir
+        // por quem agendou. O excluir continua do lado.
+        duplicado && 'opacity-60 line-through',
       )}
     >
       <Truck className="size-3 shrink-0" />
-      <span className="truncate">{EVENTO_FULL_CANAL_CURTO[evento.canal]}</span>
+      <span className="truncate">
+        {rotuloDoEventoFull(
+          EVENTO_FULL_CANAL_CURTO[evento.canal],
+          evento.contaNome,
+        )}
+        {duplicado ? ' · já virou remessa' : ''}
+      </span>
       {podeEditar && (
         <button
           type="button"
@@ -320,13 +400,19 @@ function EventoChip({
 
 function NovoEventoDialog({
   dia,
+  contas,
   onClose,
 }: {
   dia: string | null
+  contas: { id: string; nome: string }[]
   onClose: () => void
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  // A CONTA DECIDE O CANAL — uma escolha em vez de duas. O canal continua no
+  // payload só pro caso de não haver conta cadastrada; a action lê o canal da
+  // conta quando ela vem.
+  const [contaId, setContaId] = useState<string>(contas[0]?.id ?? '')
   const [canal, setCanal] =
     useState<(typeof eventoFullCanalValues)[number]>('full_ml')
   const [observacao, setObservacao] = useState('')
@@ -337,6 +423,7 @@ function NovoEventoDialog({
       const result = await criarEventoFullAction({
         data: dia,
         canal,
+        contaId: contaId || null,
         observacao: observacao.trim() || undefined,
       })
       if (!result.success) {
@@ -365,27 +452,52 @@ function NovoEventoDialog({
           <DialogDescription>{dataLabel}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="canal-full">Canal</Label>
-            <Select
-              items={EVENTO_FULL_CANAL_LABEL}
-              value={canal}
-              onValueChange={(v) =>
-                v && setCanal(v as (typeof eventoFullCanalValues)[number])
-              }
-            >
-              <SelectTrigger id="canal-full" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {eventoFullCanalValues.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {EVENTO_FULL_CANAL_LABEL[c]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {contas.length > 0 ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="conta-full">Conta</Label>
+              <Select
+                value={contaId}
+                onValueChange={(v) => v && setContaId(v)}
+              >
+                <SelectTrigger id="conta-full" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {contas.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">
+                O canal vem da conta — são 3 do Mercado Livre e 3 da Shopee.
+              </p>
+            </div>
+          ) : (
+            // Sem conta cadastrada, o caminho antigo continua de pé.
+            <div className="space-y-1.5">
+              <Label htmlFor="canal-full">Canal</Label>
+              <Select
+                items={EVENTO_FULL_CANAL_LABEL}
+                value={canal}
+                onValueChange={(v) =>
+                  v && setCanal(v as (typeof eventoFullCanalValues)[number])
+                }
+              >
+                <SelectTrigger id="canal-full" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {eventoFullCanalValues.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {EVENTO_FULL_CANAL_LABEL[c]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="obs-full">Observação (opcional)</Label>
             <Textarea
@@ -408,5 +520,41 @@ function NovoEventoDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// -----------------------------------------------------------------
+// Chip de boleto a receber
+// -----------------------------------------------------------------
+
+// ⚠️ SÓ APARECE PRO ADMIN, e não por esconder na tela: pra quem não é admin a
+// lista chega VAZIA do servidor (ver `listarParcelasDoPeriodo`).
+//
+// O estado vem pronto de `situacaoDaParcela` — a mesma função do sino e da
+// tela do pedido. Duas contas de "venceu" que discordam é o defeito que
+// aquele módulo existe pra evitar.
+function ParcelaChip({ parcela }: { parcela: ParcelaAgendaItem }) {
+  const atrasada = parcela.situacao.estado === 'atrasada'
+  const valor = Number(parcela.valor).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  })
+
+  return (
+    <Link
+      href={`/pedidos/${parcela.orcamentoId}`}
+      title={`Parcela ${parcela.numero}ª do pedido #${parcela.orcamentoNumero} — ${parcela.cliente} — ${valor} (${rotuloDaSituacao(parcela.situacao)})`}
+      className={cn(
+        'flex items-center gap-1 truncate rounded px-1 py-0.5 text-[10px] font-medium hover:opacity-80',
+        atrasada
+          ? 'bg-destructive/15 text-destructive'
+          : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+      )}
+    >
+      <Banknote className="size-3 shrink-0" />
+      <span className="truncate">
+        {valor} · {parcela.cliente}
+      </span>
+    </Link>
   )
 }

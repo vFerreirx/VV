@@ -86,14 +86,16 @@ import {
 } from './transicoes-da-op.ts'
 import { buscarVariacoes, erroDaVariacao } from './catalogo-op.ts'
 import {
-  FOLGA_DIAS_PRODUCAO,
   avisoDoProducaoAte,
+  ehEventoDuplicado,
   erroDoProducaoAte,
+  FOLGA_DIAS_PRODUCAO,
   prazoDaOp,
   producaoAteEfetivo,
   producaoAtePadrao,
   riscoDaRemessa,
   rotuloDaRemessa,
+  rotuloDoEventoFull,
 } from './prazo-da-remessa.ts'
 import {
   MOTIVOS_DE_PARADA,
@@ -1988,4 +1990,46 @@ test('marketplace: canal sem preco nao concorda nem discorda', () => {
   // Linha sem preco nenhum: nao ha o que resumir.
   const vazio = resumoDosCanais({})
   assert.deepEqual(vazio, { canaisComPreco: 0, todosIguais: false, valor: null })
+})
+
+// -----------------------------------------------------------------
+// Calendario: rotulo do evento Full e duplicata
+// (src/lib/producao/prazo-da-remessa.ts)
+// -----------------------------------------------------------------
+
+test('calendario: o rotulo diz a conta quando existe', () => {
+  assert.equal(rotuloDoEventoFull('full_ml', 'Conta 1'), 'Full ML · Conta 1')
+  assert.equal(
+    rotuloDoEventoFull('full_shopee', 'Conta 3'),
+    'Full Shopee · Conta 3',
+  )
+  // Evento de julho/2026, de antes de as contas existirem: so o canal.
+  assert.equal(rotuloDoEventoFull('full_ml', null), 'Full ML')
+  assert.equal(rotuloDoEventoFull('full_shopee', null), 'Full Shopee')
+  // Canal desconhecido aparece como veio, em vez de sumir.
+  assert.equal(rotuloDoEventoFull('full_amazon', null), 'full_amazon')
+  assert.equal(rotuloDoEventoFull('full_amazon', 'Conta X'), 'full_amazon · Conta X')
+})
+
+test('calendario: duplicata e mesmo dia E mesmo canal', () => {
+  const remessas = [
+    { data: '2026-09-25', canal: 'full_ml' },
+    { data: '2026-09-28', canal: 'full_shopee' },
+  ]
+  assert.equal(
+    ehEventoDuplicado({ data: '2026-09-25', canal: 'full_ml' }, remessas),
+    true,
+  )
+  // Mesmo dia, canal diferente: sao dois envios.
+  assert.equal(
+    ehEventoDuplicado({ data: '2026-09-25', canal: 'full_shopee' }, remessas),
+    false,
+  )
+  // Mesmo canal, dia diferente: tambem nao.
+  assert.equal(
+    ehEventoDuplicado({ data: '2026-09-26', canal: 'full_ml' }, remessas),
+    false,
+  )
+  // Sem remessa no mes, nada e duplicata.
+  assert.equal(ehEventoDuplicado({ data: '2026-09-25', canal: 'full_ml' }, []), false)
 })
