@@ -459,7 +459,9 @@ function Grade({
                           {item && !marcada
                             ? item.estado === 'em_producao'
                               ? 'Em produção'
-                              : ROTULO_DA_SITUACAO[item.situacao]
+                              : item.estado === 'pedido_parceiro'
+                                ? 'Pedido'
+                                : ROTULO_DA_SITUACAO[item.situacao]
                             : mostra
                               ? ROTULO_DA_SITUACAO[mostra]
                               : ''}
@@ -499,7 +501,9 @@ function JaNaFila({
             {[i.variacaoCor, i.variacaoTamanho].filter(Boolean).join(' · ')}:{' '}
             {i.estado === 'em_producao'
               ? `em produção${i.opNumero ? ` (${i.opNumero})` : ''}`
-              : ROTULO_DA_SITUACAO[i.situacao].toLowerCase()}
+              : i.estado === 'pedido_parceiro'
+                ? 'pedido ao parceiro'
+                : ROTULO_DA_SITUACAO[i.situacao].toLowerCase()}
             {' — '}
             {i.marcadoPorNome ?? 'alguém'} em{' '}
             {new Date(i.marcadoEm).toLocaleDateString('pt-BR', {

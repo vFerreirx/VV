@@ -48,12 +48,15 @@ export default async function OrdensPage({
       // "Kit e Full seguem com a lista de sempre"; desde que
       // ordens/importar-full/page.tsx passou a filtrar, as duas metades do
       // Full estavam discordando.)
+      //
+      // E SEM PRODUTO DE PARCEIRO: comprado pronto não vira OP
+      // (src/lib/produtos/origem.ts). As actions recusam de qualquer jeito.
       podeEditar
-        ? listarProdutosParaOrdem({ somenteAtivas: true })
+        ? listarProdutosParaOrdem({ somenteAtivas: true, semParceiro: true })
         : Promise.resolve([]),
       // O "Nova OP" pela mesma razão: escolher é sempre entre as ativas.
       podeEditar
-        ? listarProdutosParaOrdem({ somenteAtivas: true })
+        ? listarProdutosParaOrdem({ somenteAtivas: true, semParceiro: true })
         : Promise.resolve([]),
       listarRemessasFull(),
       podeEditar ? listarContasAtivas() : Promise.resolve([]),

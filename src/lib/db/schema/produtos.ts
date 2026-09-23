@@ -40,6 +40,12 @@ export const produtos = pgTable(
     mlbId: text(),
     shopeeItemId: text(),
 
+    // 'producao' | 'parceiro' (CHECK na 72). Produto de parceiro é comprado
+    // pronto e NUNCA vira OP — ver src/lib/produtos/origem.ts.
+    origem: text().notNull().default('producao'),
+    // 'casa' | 'vestuario': de qual grupo de tamanhos o produto é.
+    grupoTamanho: text().notNull().default('casa'),
+
     ativo: boolean().notNull().default(true),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

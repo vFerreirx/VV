@@ -22,8 +22,10 @@ import {
 } from '@/lib/db/schema'
 import {
   DIAS_DE_ATENDIDOS,
+  ESTADOS_ATIVOS_DE_REPOSICAO,
   ordenarFila,
   podeSubirSituacao,
+  proximoEstadoDoParceiro,
   type EstadoDeReposicao,
   type SituacaoDeReposicao,
 } from '@/lib/producao/reposicao'
@@ -48,11 +50,14 @@ export type ActionResult<T = undefined> =
 
 const marcou = alias(users, 'marcou_reposicao')
 const descartou = alias(users, 'descartou_reposicao')
+const pediu = alias(users, 'pediu_reposicao')
 
 export type ItemDeReposicao = {
   id: string
   produtoId: string
   produtoNome: string
+  /** 'parceiro' = comprado pronto: "Pedir ao parceiro" no lugar de "Produzir". */
+  produtoOrigem: string
   variacaoId: string
   variacaoCor: string | null
   variacaoModelo: string | null
@@ -70,6 +75,8 @@ export type ItemDeReposicao = {
   opNumero: string | null
   opStatus: (typeof statusValues)[number] | null
   repostoEm: Date | null
+  pedidoParceiroEm: Date | null
+  pedidoParceiroPorNome: string | null
   descartadoEm: Date | null
   descartadoPorNome: string | null
   motivoDescarte: string | null
@@ -81,6 +88,7 @@ function consultaDeItens() {
       id: reposicoesEstoque.id,
       produtoId: reposicoesEstoque.produtoId,
       produtoNome: produtos.nome,
+      produtoOrigem: produtos.origem,
       produtoExcluido: produtos.deletedAt,
       produtoAtivo: produtos.ativo,
       variacaoId: reposicoesEstoque.variacaoId,
@@ -99,6 +107,8 @@ function consultaDeItens() {
       opNumero: ordensProducao.numero,
       opStatus: ordensProducao.status,
       repostoEm: reposicoesEstoque.repostoEm,
+      pedidoParceiroEm: reposicoesEstoque.pedidoParceiroEm,
+      pedidoParceiroPorNome: pediu.nome,
       descartadoEm: reposicoesEstoque.descartadoEm,
       descartadoPorNome: descartou.nome,
       motivoDescarte: reposicoesEstoque.motivoDescarte,
@@ -113,6 +123,7 @@ function consultaDeItens() {
     .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     .leftJoin(marcou, eq(marcou.id, reposicoesEstoque.marcadoPor))
     .leftJoin(descartou, eq(descartou.id, reposicoesEstoque.descartadoPor))
+    .leftJoin(pediu, eq(pediu.id, reposicoesEstoque.pedidoParceiroPor))
     .leftJoin(ordensProducao, eq(ordensProducao.id, reposicoesEstoque.ordemId))
 }
 
@@ -123,6 +134,7 @@ function paraItem(r: LinhaDeItem): ItemDeReposicao {
     id: r.id,
     produtoId: r.produtoId,
     produtoNome: r.produtoNome,
+    produtoOrigem: r.produtoOrigem,
     variacaoId: r.variacaoId,
     variacaoCor: r.variacaoCor ?? null,
     variacaoModelo: r.variacaoModelo ?? null,
@@ -142,17 +154,23 @@ function paraItem(r: LinhaDeItem): ItemDeReposicao {
     opNumero: r.opNumero ?? null,
     opStatus: r.opStatus ?? null,
     repostoEm: r.repostoEm,
+    pedidoParceiroEm: r.pedidoParceiroEm,
+    pedidoParceiroPorNome: r.pedidoParceiroPorNome ?? null,
     descartadoEm: r.descartadoEm,
     descartadoPorNome: r.descartadoPorNome ?? null,
     motivoDescarte: r.motivoDescarte,
   }
 }
 
-/** A fila: aberto e em produção, "Acabou" primeiro e o mais antigo antes. */
+/**
+ * A fila: aberto, em produção e pedido ao parceiro — "Acabou" primeiro e o
+ * mais antigo antes. O pedido ao parceiro fica na fila como o em produção:
+ * saiu do "em aberto", e a peça ainda não chegou.
+ */
 export async function listarFilaDeReposicao(): Promise<ItemDeReposicao[]> {
   await requireArea('estoque')
   const rows = await consultaDeItens().where(
-    inArray(reposicoesEstoque.estado, ['aberto', 'em_producao']),
+    inArray(reposicoesEstoque.estado, [...ESTADOS_ATIVOS_DE_REPOSICAO]),
   )
   return ordenarFila(rows.map(paraItem))
 }
@@ -262,7 +280,7 @@ export async function marcarReposicaoAction(
         .where(
           and(
             eq(reposicoesEstoque.variacaoId, m.variacaoId),
-            inArray(reposicoesEstoque.estado, ['aberto', 'em_producao']),
+            inArray(reposicoesEstoque.estado, [...ESTADOS_ATIVOS_DE_REPOSICAO]),
           ),
         )
         .limit(1)
@@ -362,6 +380,86 @@ export async function descartarReposicaoAction(
   revalidatePath('/estoque')
   revalidatePath('/dashboard')
   return { success: true, message: 'Item descartado' }
+}
+
+// -----------------------------------------------------------------
+// Produto de parceiro: "Pedir ao parceiro" e "Chegou"
+// -----------------------------------------------------------------
+//
+// Produto comprado pronto nunca vira OP (src/lib/produtos/origem.ts), então o
+// item dele não segue a OP: aberto → pedido_parceiro → reposto, à mão. A
+// regra dos passos mora em `proximoEstadoDoParceiro` (reposicao.ts).
+//
+// Mesma permissão do "Produzir" e do "Descartar" (escrita em Ordens): decidir
+// o que se repõe, e dar por reposto, é de quem decide o que se produz.
+//
+// ⚠️ O ESTADO ATUAL VAI NO WHERE, e não num SELECT antes: duas pessoas
+// clicando juntas passam por qualquer conferência prévia. Quem perdeu a
+// corrida recebe "já não está …" em vez de pedir duas vezes.
+
+export async function pedirAoParceiroAction(id: string): Promise<ActionResult> {
+  const user = await requireAreaEscrita('ordens')
+  if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
+
+  const novo = proximoEstadoDoParceiro('aberto', 'pedir')!
+  const linhas = await db
+    .update(reposicoesEstoque)
+    .set({
+      estado: novo,
+      pedidoParceiroEm: new Date(),
+      pedidoParceiroPor: user.id,
+    })
+    .where(
+      and(
+        eq(reposicoesEstoque.id, id),
+        eq(reposicoesEstoque.estado, 'aberto'),
+        // A TELA PODE MENTIR: só produto de PARCEIRO se pede. O produzido
+        // segue pelo "Produzir", que liga a OP.
+        sql`EXISTS (
+          SELECT 1 FROM "produtos"
+           WHERE "produtos"."id" = "reposicoes_estoque"."produto_id"
+             AND "produtos"."origem" = 'parceiro')`,
+      ),
+    )
+    .returning({ id: reposicoesEstoque.id })
+  if (linhas.length === 0) {
+    return {
+      success: false,
+      error:
+        'Esse item já não está em aberto, ou o produto não é de parceiro. Atualize a tela.',
+    }
+  }
+
+  revalidatePath('/estoque')
+  revalidatePath('/dashboard')
+  return { success: true, message: 'Pedido ao parceiro' }
+}
+
+export async function chegouDoParceiroAction(id: string): Promise<ActionResult> {
+  await requireAreaEscrita('ordens')
+  if (!uuidRe.test(id)) return { success: false, error: 'ID inválido' }
+
+  const novo = proximoEstadoDoParceiro('pedido_parceiro', 'chegou')!
+  const linhas = await db
+    .update(reposicoesEstoque)
+    .set({ estado: novo, repostoEm: new Date() })
+    .where(
+      and(
+        eq(reposicoesEstoque.id, id),
+        eq(reposicoesEstoque.estado, 'pedido_parceiro'),
+      ),
+    )
+    .returning({ id: reposicoesEstoque.id })
+  if (linhas.length === 0) {
+    return {
+      success: false,
+      error: 'Esse item não está mais esperando o parceiro. Atualize a tela.',
+    }
+  }
+
+  revalidatePath('/estoque')
+  revalidatePath('/dashboard')
+  return { success: true, message: 'Chegou — reposto' }
 }
 
 // -----------------------------------------------------------------

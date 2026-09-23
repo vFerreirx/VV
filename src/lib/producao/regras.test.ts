@@ -50,11 +50,14 @@ import {
   prioridadeEfetiva,
 } from '../validators/tarefas.ts'
 import {
+  erroAoRenomearTamanho,
   erroDeUso,
   mensagemDoLote,
   plural,
   uso,
 } from '../catalogo-em-uso.ts'
+import { erroDeOrigemParaOp } from '../produtos/origem.ts'
+import { tamanhosDoGrupo } from '../produtos/grupo-de-tamanho.ts'
 import {
   chaveOverride,
   ehAreaDesconhecida,
@@ -72,9 +75,12 @@ import {
 } from '../vendas/conferencia.ts'
 import { chaveDaPeca, chaveDeTextoLivre } from '../separacao.ts'
 import {
+  acaoDaReposicao,
+  ESTADOS_ATIVOS_DE_REPOSICAO,
   estadoDaReposicaoPelaOp,
   ordenarFila,
   podeSubirSituacao,
+  proximoEstadoDoParceiro,
 } from './reposicao.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
 import {
@@ -2090,4 +2096,141 @@ test('backup: o "quando" conta dias de Brasilia', () => {
   // 01h UTC do dia 23 ainda e dia 22 em Brasilia.
   assert.equal(diasDesdeOBackup(new Date('2026-09-23T01:00:00Z'), agora), 1)
   assert.equal(tamanhoDoBackup(1_960_837), '1,87 MB')
+})
+
+// -----------------------------------------------------------------
+// Catalogo: tamanho por grupo (src/lib/produtos/grupo-de-tamanho.ts)
+// -----------------------------------------------------------------
+
+const TAMANHOS_DO_CADASTRO = [
+  { nome: 'Casal', grupo: 'casa' },
+  { nome: 'King', grupo: 'casa' },
+  { nome: '45x45', grupo: 'casa' },
+  { nome: 'P', grupo: 'vestuario' },
+  { nome: 'M', grupo: 'vestuario' },
+  { nome: 'G1', grupo: 'vestuario' },
+]
+const nomesDe = (ts: { nome: string }[]) => ts.map((t) => t.nome)
+
+test('grupo de tamanho: so os do grupo do produto, na ordem do cadastro', () => {
+  assert.deepEqual(
+    nomesDe(tamanhosDoGrupo(TAMANHOS_DO_CADASTRO, 'vestuario', [])),
+    ['P', 'M', 'G1'],
+  )
+  assert.deepEqual(
+    nomesDe(tamanhosDoGrupo(TAMANHOS_DO_CADASTRO, 'casa', [])),
+    ['Casal', 'King', '45x45'],
+  )
+})
+
+test('grupo de tamanho: o que o produto ja usa aparece mesmo sendo de outro grupo', () => {
+  // Produto de casa antigo com uma variacao em "M": o seletor dela nao pode
+  // abrir vazio. A comparacao ignora caixa e espaco, como o resto do catalogo.
+  assert.deepEqual(
+    nomesDe(tamanhosDoGrupo(TAMANHOS_DO_CADASTRO, 'casa', [' m ', null, ''])),
+    ['Casal', 'King', '45x45', 'M'],
+  )
+})
+
+test('grupo de tamanho: grupo sem tamanho nenhum da lista vazia (ou so os ja usados)', () => {
+  const soCasa = TAMANHOS_DO_CADASTRO.filter((t) => t.grupo === 'casa')
+  assert.deepEqual(tamanhosDoGrupo(soCasa, 'vestuario', []), [])
+  assert.deepEqual(nomesDe(tamanhosDoGrupo(soCasa, 'vestuario', ['King'])), ['King'])
+})
+
+// -----------------------------------------------------------------
+// Catalogo: produto de parceiro nao vira OP (src/lib/produtos/origem.ts)
+// -----------------------------------------------------------------
+
+test('origem: produto produzido passa; de parceiro e recusado dizendo qual', () => {
+  assert.equal(erroDeOrigemParaOp([{ nome: 'Peseira LINKS', origem: 'producao' }]), null)
+  assert.equal(erroDeOrigemParaOp([]), null)
+  assert.equal(
+    erroDeOrigemParaOp([{ nome: 'SUETER', origem: 'parceiro' }]),
+    '"SUETER" é comprado de parceiro — não vira OP.',
+  )
+  // Kit: diz QUAL componente e nao repete o mesmo produto.
+  assert.equal(
+    erroDeOrigemParaOp([
+      { nome: 'Peseira LINKS', origem: 'producao' },
+      { nome: 'SUETER', origem: 'parceiro' },
+      { nome: 'SUETER', origem: 'parceiro' },
+    ]),
+    '"SUETER" é comprado de parceiro — não vira OP.',
+  )
+  assert.equal(
+    erroDeOrigemParaOp([
+      { nome: 'SUETER', origem: 'parceiro' },
+      { nome: 'CARDIGA', origem: 'parceiro' },
+    ]),
+    '"SUETER", "CARDIGA" são comprados de parceiro — não viram OP.',
+  )
+})
+
+// -----------------------------------------------------------------
+// Catalogo: renomear tamanho em uso (src/lib/catalogo-em-uso.ts)
+// -----------------------------------------------------------------
+
+test('origem: faltante de produto de parceiro e achado e recusado pelo nome certo', () => {
+  const sueter = {
+    id: 'p-sueter',
+    nome: 'SUETER',
+    origem: 'parceiro',
+    variacoes: [{ id: 'v1', cor: 'Preto', tamanho: 'M' }],
+  }
+  const r = resolverVariacaoDoFaltante('sueter|m|preto', [sueter])
+  // Nao "fora do catalogo": o produto esta la, so nao vira OP.
+  assert.equal(r.ok, false)
+  assert.match(!r.ok ? r.motivo : '', /parceiro/)
+  // O mesmo produto como producao resolve normalmente.
+  assert.deepEqual(
+    resolverVariacaoDoFaltante('sueter|m|preto', [{ ...sueter, origem: 'producao' }]),
+    { ok: true, produtoId: 'p-sueter', variacaoId: 'v1' },
+  )
+})
+
+test('renomear tamanho: em uso e recusado, dizendo onde', () => {
+  const emUso = uso('King', ['8 variações de 6 produtos', '2 preços de kit'])
+  const erro = erroAoRenomearTamanho('King', 'Super King', emUso)
+  assert.ok(erro)
+  assert.match(erro, /"King" não pode ser renomeado/)
+  assert.match(erro, /8 variações de 6 produtos, 2 preços de kit/)
+  // So a caixa tambem e renomear: a variacao guarda o texto exato.
+  assert.ok(erroAoRenomearTamanho('king', 'King', uso('king', ['1 pedido'])))
+})
+
+test('renomear tamanho: sem uso, ou sem mudar o nome, passa', () => {
+  assert.equal(erroAoRenomearTamanho('XG', 'EXG', uso('XG', [])), null)
+  // Mexer so em codigo/peso: o nome chega igual (espaco nas pontas nao conta).
+  assert.equal(
+    erroAoRenomearTamanho('King', ' King ', uso('King', ['8 variações de 6 produtos'])),
+    null,
+  )
+})
+
+// -----------------------------------------------------------------
+// Reposicao de produto de parceiro (src/lib/producao/reposicao.ts)
+// -----------------------------------------------------------------
+
+test('reposicao de parceiro: aberto -> pedido_parceiro -> reposto', () => {
+  assert.equal(acaoDaReposicao('parceiro'), 'pedir_parceiro')
+  assert.equal(acaoDaReposicao('producao'), 'produzir')
+
+  assert.equal(proximoEstadoDoParceiro('aberto', 'pedir'), 'pedido_parceiro')
+  assert.equal(proximoEstadoDoParceiro('pedido_parceiro', 'chegou'), 'reposto')
+
+  // Passos fora de ordem nao valem: pedir de novo, "chegou" sem pedido,
+  // ou mexer num item que ja tem OP.
+  assert.equal(proximoEstadoDoParceiro('pedido_parceiro', 'pedir'), null)
+  assert.equal(proximoEstadoDoParceiro('aberto', 'chegou'), null)
+  assert.equal(proximoEstadoDoParceiro('em_producao', 'pedir'), null)
+  assert.equal(proximoEstadoDoParceiro('reposto', 'chegou'), null)
+})
+
+test('reposicao de parceiro: pedido_parceiro ocupa a fila como em_producao', () => {
+  // Mesmo predicado do indice unico de "um item ativo por variacao" (59).
+  assert.deepEqual(
+    [...ESTADOS_ATIVOS_DE_REPOSICAO],
+    ['aberto', 'em_producao', 'pedido_parceiro'],
+  )
 })

@@ -7,6 +7,7 @@ import { podeEscrever } from '@/lib/auth/permissoes'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { erroDeProdutoDeParceiro } from '@/lib/db/origem-do-produto'
 import { tamanhosPesoPorProduto } from '@/lib/db/pesos'
 import { precosPorProduto } from '@/lib/db/precos'
 import {
@@ -400,6 +401,19 @@ export async function gerarOpsKitAction(
       variacaoId,
       qtd: it.quantidade * quantidade,
     })
+  }
+
+  // COMPONENTE DE PARCEIRO NÃO VIRA OP — e o kit inteiro é recusado, dizendo
+  // qual componente. Gerar só as OPs dos outros deixaria o kit pela metade
+  // sem ninguém ter decidido isso.
+  const erroOrigem = await erroDeProdutoDeParceiro(
+    aProduzir.map((p) => p.produtoId),
+  )
+  if (erroOrigem) {
+    return {
+      success: false,
+      error: `Não dá pra gerar o kit ${kit.nome}: ${erroOrigem}`,
+    }
   }
 
   const pecas = aProduzir.reduce((s, p) => s + p.qtd, 0)

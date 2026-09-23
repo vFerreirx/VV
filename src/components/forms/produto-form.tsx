@@ -31,6 +31,17 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
+  GRUPOS_DE_TAMANHO,
+  ROTULO_DO_GRUPO,
+  ehGrupoValido,
+  tamanhosDoGrupo,
+} from '@/lib/produtos/grupo-de-tamanho'
+import {
+  ORIGENS_DE_PRODUTO,
+  ROTULO_DA_ORIGEM,
+  ehOrigemValida,
+} from '@/lib/produtos/origem'
+import {
   agruparPorCor,
   casaComBusca,
   resumoDaLista,
@@ -71,6 +82,9 @@ export type ProdutoFormDefaults = {
   nome: string
   descricao: string | null
   ativo: boolean
+  // 'producao' | 'parceiro' e 'casa' | 'vestuario' — texto como vem do banco.
+  origem?: string
+  grupoTamanho?: string
   variacoes: Array<{
     id?: string
     skuVariacao: string
@@ -91,6 +105,8 @@ const VAZIO: ProdutoFormDefaults = {
   nome: '',
   descricao: null,
   ativo: true,
+  origem: 'producao',
+  grupoTamanho: 'casa',
   variacoes: [],
   precos: {},
   pesos: {},
@@ -121,6 +137,8 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
     nome: d.nome ?? '',
     descricao: d.descricao ?? '',
     ativo: d.ativo ?? true,
+    origem: ehOrigemValida(d.origem) ? d.origem : 'producao',
+    grupoTamanho: ehGrupoValido(d.grupoTamanho) ? d.grupoTamanho : 'casa',
     variacoes: d.variacoes.map((v) => ({
       id: v.id,
       skuVariacao: v.skuVariacao,
@@ -308,6 +326,34 @@ export function ProdutoForm({
     [variacoesAtuais],
   )
 
+  // OS TAMANHOS QUE ESTE PRODUTO OFERECE: os do grupo dele (Casa ou
+  // Vestuário), MAIS qualquer um que ele já usa — nas variações da tela, nas
+  // que vieram do banco e no preço/peso cadastrado. Esconder um tamanho que
+  // já está numa variação faria o seletor dela abrir vazio. A regra (e o
+  // teste) mora em src/lib/produtos/grupo-de-tamanho.ts.
+  //
+  // Vale pro gerador e pro seletor de cada variação. O preço/peso e a ordem
+  // dos grupos continuam olhando o cadastro INTEIRO: lá a pergunta é "que
+  // tamanho é este", não "o que eu posso escolher".
+  const grupoTamanho = useWatch({ control: form.control, name: 'grupoTamanho' })
+  const tamanhosOferecidos = useMemo(
+    () =>
+      tamanhosDoGrupo(tamanhos, grupoTamanho ?? 'casa', [
+        ...defaults.variacoes.map((v) => v.tamanho),
+        ...(variacoesAtuais ?? []).map((v) => v?.tamanho),
+        ...Object.keys(defaults.precos ?? {}),
+        ...Object.keys(defaults.pesos ?? {}),
+      ]),
+    [
+      tamanhos,
+      grupoTamanho,
+      defaults.variacoes,
+      defaults.precos,
+      defaults.pesos,
+      variacoesAtuais,
+    ],
+  )
+
   // -----------------------------------------------------------------
   // Preço de tabela por tamanho
   // -----------------------------------------------------------------
@@ -432,6 +478,7 @@ export function ProdutoForm({
 
   const errs = form.formState.errors
   const ativo = useWatch({ control: form.control, name: 'ativo' })
+  const origem = useWatch({ control: form.control, name: 'origem' })
 
   return (
     <form onSubmit={onSubmit} className="space-y-6" noValidate>
@@ -474,6 +521,68 @@ export function ProdutoForm({
               placeholder="Malha Cotton 30/1"
               disabled={isPending}
               {...form.register('nome')}
+            />
+          </Field>
+
+          <Field
+            label="Origem"
+            id="origem"
+            hint={
+              origem === 'parceiro'
+                ? 'Comprado pronto: não aparece na Nova OP, e a reposição vira "Pedir ao parceiro".'
+                : 'A fábrica produz: vira OP normalmente.'
+            }
+          >
+            <Controller
+              control={form.control}
+              name="origem"
+              render={({ field: ctl }) => (
+                <Select
+                  value={ctl.value ?? 'producao'}
+                  onValueChange={(v) => ctl.onChange(v ?? 'producao')}
+                  disabled={isPending}
+                >
+                  <SelectTrigger id="origem" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ORIGENS_DE_PRODUTO.map((o) => (
+                      <SelectItem key={o} value={o}>
+                        {ROTULO_DA_ORIGEM[o]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </Field>
+
+          <Field
+            label="Grupo de tamanho"
+            id="grupoTamanho"
+            hint="As variações só oferecem os tamanhos deste grupo (e os que o produto já usa)."
+          >
+            <Controller
+              control={form.control}
+              name="grupoTamanho"
+              render={({ field: ctl }) => (
+                <Select
+                  value={ctl.value ?? 'casa'}
+                  onValueChange={(v) => ctl.onChange(v ?? 'casa')}
+                  disabled={isPending}
+                >
+                  <SelectTrigger id="grupoTamanho" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GRUPOS_DE_TAMANHO.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {ROTULO_DO_GRUPO[g]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             />
           </Field>
 
@@ -779,10 +888,16 @@ export function ProdutoForm({
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="nenhum">Sem tamanho</SelectItem>
-                              {tamanhos.length === 0 &&
+                              {tamanhosOferecidos.length === 0 &&
                                 legadosTamanho.length === 0 && (
                                   <div className="text-muted-foreground p-2 text-xs">
-                                    Nenhum tamanho cadastrado.{' '}
+                                    Nenhum tamanho do grupo{' '}
+                                    {ROTULO_DO_GRUPO[
+                                      ehGrupoValido(grupoTamanho)
+                                        ? grupoTamanho
+                                        : 'casa'
+                                    ].toLowerCase()}{' '}
+                                    cadastrado.{' '}
                                     <Link
                                       href="/tamanhos"
                                       className="underline"
@@ -793,7 +908,7 @@ export function ProdutoForm({
                                     .
                                   </div>
                                 )}
-                              {tamanhos
+                              {tamanhosOferecidos
                                 .filter((t) => t.ativo)
                                 .map((t) => (
                                   <SelectItem key={t.id} value={t.nome}>
@@ -973,7 +1088,7 @@ export function ProdutoForm({
         onClose={() => setGerarOpen(false)}
         cores={cores}
         modelos={modelos}
-        tamanhos={tamanhos}
+        tamanhos={tamanhosOferecidos}
         baseSku={skuAtual ?? ''}
         existentes={skusExistentes}
         onGerar={(novas) => {

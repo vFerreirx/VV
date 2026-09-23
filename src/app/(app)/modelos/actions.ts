@@ -6,6 +6,10 @@ import { revalidatePath } from 'next/cache'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
+import {
+  renomearNasVariacoes,
+  sufixoDasVariacoes,
+} from '@/lib/db/renomear-no-catalogo'
 import { modelos, type Modelo } from '@/lib/db/schema'
 import { erroDeUso, mensagemDoLote } from '@/lib/catalogo-em-uso'
 import { usoDeModelos } from '@/lib/db/uso-do-catalogo'
@@ -97,7 +101,7 @@ export async function atualizarModeloAction(
   const data = parsed.data
 
   const [atual] = await db
-    .select({ id: modelos.id })
+    .select({ id: modelos.id, nome: modelos.nome })
     .from(modelos)
     .where(and(eq(modelos.id, id), isNull(modelos.deletedAt)))
     .limit(1)
@@ -114,15 +118,27 @@ export async function atualizarModeloAction(
     return { success: false, error: `Já existe outro modelo "${data.nome}"` }
   }
 
+  // RENOMEAR LEVA AS VARIAÇÕES JUNTO, na mesma transação — o SKU não muda.
+  // Foi o que faltou no "SUETER GOLA V" → "SUETER": as 18 variações ficaram
+  // com o nome velho. Ver src/lib/db/renomear-no-catalogo.ts.
+  let variacoesAtualizadas = 0
   try {
-    await db
-      .update(modelos)
-      .set({
-        nome: data.nome,
-        descricao: data.descricao ?? null,
-        ativo: data.ativo,
-      })
-      .where(eq(modelos.id, id))
+    await db.transaction(async (tx) => {
+      await tx
+        .update(modelos)
+        .set({
+          nome: data.nome,
+          descricao: data.descricao ?? null,
+          ativo: data.ativo,
+        })
+        .where(eq(modelos.id, id))
+      variacoesAtualizadas = await renomearNasVariacoes(
+        tx,
+        'modelo',
+        atual.nome,
+        data.nome,
+      )
+    })
   } catch (err) {
     if (isUniqueViolation(err)) {
       return { success: false, error: `Já existe outro modelo "${data.nome}"` }
@@ -131,7 +147,11 @@ export async function atualizarModeloAction(
   }
 
   revalidatePath('/variacoes')
-  return { success: true, message: 'Modelo atualizado' }
+  if (variacoesAtualizadas > 0) revalidatePath('/produtos')
+  return {
+    success: true,
+    message: `Modelo atualizado${sufixoDasVariacoes(variacoesAtualizadas)}`,
+  }
 }
 
 export async function excluirModeloAction(id: string): Promise<ActionResult> {

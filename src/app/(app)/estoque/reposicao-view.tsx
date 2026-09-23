@@ -6,7 +6,9 @@ import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
+  chegouDoParceiroAction,
   descartarReposicaoAction,
+  pedirAoParceiroAction,
   type ItemDeReposicao,
 } from './actions'
 import { MarcarPecasDialog } from './marcar-pecas-dialog'
@@ -27,7 +29,9 @@ import {
 import { EmptyState } from '@/components/ui/empty-state'
 import {
   DIAS_DE_ATENDIDOS,
+  ESTADOS_ATIVOS_DE_REPOSICAO,
   ROTULO_DA_SITUACAO,
+  acaoDaReposicao,
 } from '@/lib/producao/reposicao'
 import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
 import { cn } from '@/lib/utils'
@@ -175,6 +179,29 @@ function ItemDaFila({
   onDescartar: () => void
 }) {
   const acabou = item.situacao === 'acabou'
+  const emEspera = (ESTADOS_ATIVOS_DE_REPOSICAO as readonly string[]).includes(
+    item.estado,
+  )
+  // Produto comprado de parceiro não vira OP: o botão é "Pedir ao parceiro".
+  const acao = acaoDaReposicao(item.produtoOrigem)
+
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  function passoDoParceiro(passo: 'pedir' | 'chegou') {
+    startTransition(async () => {
+      const r =
+        passo === 'pedir'
+          ? await pedirAoParceiroAction(item.id)
+          : await chegouDoParceiroAction(item.id)
+      if (!r.success) {
+        toast.error(r.error)
+        return
+      }
+      toast.success(r.message ?? 'Salvo')
+      router.refresh()
+    })
+  }
+
   return (
     <li className="flex flex-wrap items-start gap-3 rounded-xl border p-3">
       <ColorSwatch hex={item.corHex} hex2={item.corHex2} tamanho="lg" />
@@ -182,7 +209,7 @@ function ItemDaFila({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <TituloDoItem item={item} />
           {/* "Acabou" em vermelho, "Acabando" em âmbar — só enquanto espera. */}
-          {(item.estado === 'aberto' || item.estado === 'em_producao') && (
+          {emEspera && (
             <Badge
               className={cn(
                 'shrink-0',
@@ -197,6 +224,11 @@ function ItemDaFila({
           {item.foraDoCatalogo && (
             <Badge variant="secondary" className="shrink-0">
               fora do catálogo
+            </Badge>
+          )}
+          {acao === 'pedir_parceiro' && (
+            <Badge variant="outline" className="shrink-0 font-normal">
+              parceiro
             </Badge>
           )}
         </div>
@@ -221,10 +253,21 @@ function ItemDaFila({
             )}
           </p>
         )}
+        {item.estado === 'pedido_parceiro' && (
+          <p className="text-sm font-medium">
+            Pedido ao parceiro
+            <span className="text-muted-foreground font-normal">
+              {' · '}por {item.pedidoParceiroPorNome ?? 'alguém'}{' '}
+              <HaQuanto desde={item.pedidoParceiroEm} />
+            </span>
+          </p>
+        )}
         {item.estado === 'reposto' && (
           <p className="text-sm tabular-nums text-emerald-700 dark:text-emerald-400">
             Reposto <HaQuanto desde={item.repostoEm} />
-            {item.opNumero && ` · ${item.opNumero}`}
+            {item.opNumero
+              ? ` · ${item.opNumero}`
+              : item.pedidoParceiroEm && ' · chegou do parceiro'}
           </p>
         )}
         {item.estado === 'descartado' && (
@@ -250,19 +293,49 @@ function ItemDaFila({
 
       {item.estado === 'aberto' && podeProduzir && (
         <div className="flex shrink-0 gap-2">
+          {acao === 'pedir_parceiro' ? (
+            // Comprado de parceiro: não vira OP. Pede-se, e "Chegou" fecha
+            // (src/lib/producao/reposicao.ts, `proximoEstadoDoParceiro`).
+            <Button
+              size="sm"
+              onClick={() => passoDoParceiro('pedir')}
+              loading={isPending}
+              disabled={isPending || item.foraDoCatalogo}
+            >
+              Pedir ao parceiro
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              onClick={onProduzir}
+              // Variação fora do catálogo não vira OP: `criarOrdemAction`
+              // recusaria. Descartar resolve.
+              disabled={item.foraDoCatalogo}
+            >
+              Produzir
+            </Button>
+          )}
           <Button
             size="sm"
-            onClick={onProduzir}
-            // Variação fora do catálogo não vira OP: `criarOrdemAction`
-            // recusaria. Descartar resolve.
-            disabled={item.foraDoCatalogo}
+            variant="outline"
+            onClick={onDescartar}
+            disabled={isPending}
           >
-            Produzir
-          </Button>
-          <Button size="sm" variant="outline" onClick={onDescartar}>
             Descartar
           </Button>
         </div>
+      )}
+
+      {item.estado === 'pedido_parceiro' && podeProduzir && (
+        <Button
+          size="sm"
+          className="shrink-0"
+          onClick={() => passoDoParceiro('chegou')}
+          loading={isPending}
+          disabled={isPending}
+        >
+          Chegou
+        </Button>
       )}
     </li>
   )

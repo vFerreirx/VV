@@ -28,6 +28,10 @@ export const tamanhos = pgTable(
     // que NÃO é o mesmo que zero.
     pesoGramas: integer(),
     ordem: integer().notNull().default(0),
+    // 'casa' | 'vestuario' (CHECK na 72). O produto diz de qual grupo é, e a
+    // tela dele só oferece os tamanhos do grupo — ver
+    // src/lib/produtos/grupo-de-tamanho.ts.
+    grupo: text().notNull().default('casa'),
     ativo: boolean().notNull().default(true),
 
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),

@@ -64,7 +64,9 @@ export async function sincronizarReposicaoDaOp(
     if (novo === item.estado) continue
 
     // ⚠️ VOLTAR A UM ESTADO ATIVO NÃO PODE COLIDIR com outro item ativo da
-    // mesma variação (índice `reposicoes_estoque_variacao_ativa_uidx`). Sai
+    // mesma variação (índice `reposicoes_estoque_variacao_ativa_uidx`, cujo
+    // predicado inclui o 'pedido_parceiro' — os três de
+    // ESTADOS_ATIVOS_DE_REPOSICAO; mudou lá, muda aqui). Sai
     // de "reposto" só quando ninguém marcou a peça de novo nesse meio tempo.
     // A condição vai no UPDATE, e não num catch: erro dentro da transação a
     // derrubaria inteira — e com ela a baixa ou o cancelamento da OP.
@@ -72,7 +74,7 @@ export async function sincronizarReposicaoDaOp(
       SELECT 1 FROM reposicoes_estoque r2
       WHERE r2.variacao_id = ${item.variacaoId}
         AND r2.id <> ${item.id}
-        AND r2.estado IN ('aberto', 'em_producao')
+        AND r2.estado IN ('aberto', 'em_producao', 'pedido_parceiro')
     )`
 
     await tx

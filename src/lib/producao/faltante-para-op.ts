@@ -19,6 +19,8 @@
 export type ProdutoParaResolver = {
   id: string
   nome: string
+  /** 'parceiro' = comprado pronto: resolve, mas não vira OP. */
+  origem?: string
   variacoes: readonly {
     id: string
     cor: string | null
@@ -36,7 +38,8 @@ const normalizar = (s: string | null | undefined): string =>
 /**
  * A variação do catálogo que a linha de faltante representa, ou o motivo de
  * não dar pra saber. `produtos` é o catálogo ATIVO (sem produto nem variação
- * excluídos) — `listarProdutosParaOrdem({ somenteAtivas: true })`.
+ * excluídos) — `listarProdutosParaOrdem({ somenteAtivas: true })`, COM os de
+ * parceiro: é aqui que eles ganham o motivo certo (ver abaixo).
  */
 export function resolverVariacaoDoFaltante(
   chave: string,
@@ -66,6 +69,16 @@ export function resolverVariacaoDoFaltante(
     return { ok: false, motivo: 'Mais de um produto com esse nome' }
   }
   const p = candidatos[0]!
+
+  // PRODUTO DE PARCEIRO É ACHADO, E RECUSADO PELO NOME CERTO. Tirá-lo da lista
+  // (`semParceiro`) faria o suéter cair em "fora do catálogo" — mentira, e o
+  // gerente iria procurar o que não sumiu. O que falta é pedir ao parceiro.
+  if (p.origem === 'parceiro') {
+    return {
+      ok: false,
+      motivo: 'Comprado de parceiro — não vira OP. Peça ao parceiro.',
+    }
+  }
 
   // Peça sem cor num produto que só tem variações COM cor: é o kit antigo
   // sem cor gravada. Qualquer uma seria chute.

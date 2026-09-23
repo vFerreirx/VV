@@ -7,7 +7,11 @@ import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { tamanhos, type Tamanho } from '@/lib/db/schema'
-import { erroDeUso, mensagemDoLote } from '@/lib/catalogo-em-uso'
+import {
+  erroAoRenomearTamanho,
+  erroDeUso,
+  mensagemDoLote,
+} from '@/lib/catalogo-em-uso'
 import { usoDeTamanhos } from '@/lib/db/uso-do-catalogo'
 import { tamanhoSchema, type TamanhoInput } from '@/lib/validators/tamanhos'
 
@@ -67,6 +71,7 @@ export async function criarTamanhoAction(
         comprimentoCm: data.comprimentoCm ?? null,
         pesoGramas: data.pesoGramas ?? null,
         ordem: data.ordem,
+        grupo: data.grupo,
         ativo: data.ativo,
       })
       .returning({ id: tamanhos.id })
@@ -101,12 +106,24 @@ export async function atualizarTamanhoAction(
   const data = parsed.data
 
   const [atual] = await db
-    .select({ id: tamanhos.id })
+    .select({ id: tamanhos.id, nome: tamanhos.nome })
     .from(tamanhos)
     .where(and(eq(tamanhos.id, id), isNull(tamanhos.deletedAt)))
     .limit(1)
   if (!atual) {
     return { success: false, error: 'Tamanho não encontrado' }
+  }
+
+  // ⚠️ RENOMEAR TAMANHO EM USO É RECUSADO — ao contrário de cor e modelo, que
+  // levam as variações junto. O nome é chave de preço de kit e do peso no
+  // pedido; ver `erroAoRenomearTamanho` (src/lib/catalogo-em-uso.ts). Só
+  // consulta quando o nome mudou: salvar peso ou código não paga a conta.
+  if (atual.nome.trim() !== data.nome.trim()) {
+    const usoDoNome = (await usoDeTamanhos([id], { para: 'renomear' })).get(id)
+    const erro = usoDoNome
+      ? erroAoRenomearTamanho(atual.nome, data.nome, usoDoNome)
+      : null
+    if (erro) return { success: false, error: erro }
   }
 
   const conflicting = await db
@@ -128,6 +145,7 @@ export async function atualizarTamanhoAction(
         comprimentoCm: data.comprimentoCm ?? null,
         pesoGramas: data.pesoGramas ?? null,
         ordem: data.ordem,
+        grupo: data.grupo,
         ativo: data.ativo,
       })
       .where(eq(tamanhos.id, id))

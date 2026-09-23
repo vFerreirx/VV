@@ -237,6 +237,14 @@ export function GerarDeKit({
                           {it.quantidade * n} un
                         </span>
                       </div>
+                      {/* A lista só traz o que pode virar OP: sem o produto
+                          aqui, ele é comprado de parceiro ou saiu do catálogo.
+                          A action recusa o kit dizendo qual. */}
+                      {!prod && (
+                        <p className="text-destructive text-xs">
+                          Não vira OP — comprado de parceiro ou fora do catálogo.
+                        </p>
+                      )}
                       <div className="grid grid-cols-2 gap-2">
                         <Select
                           value={e?.tamanho || null}

@@ -240,6 +240,7 @@ export function ProdutosList({
                       >
                         {p.nome}
                       </Link>
+                      <SeloParceiro origem={p.origem} />
                     </TableCell>
                     {vePreco && (
                       <TableCell className="text-right">
@@ -291,6 +292,7 @@ export function ProdutosList({
                       </Link>
                       <p className="text-muted-foreground font-mono text-xs">
                         {p.sku}
+                        <SeloParceiro origem={p.origem} />
                       </p>
                     </div>
                   </div>
@@ -352,6 +354,21 @@ export function ProdutosList({
 // informação que interessa a quem está preenchendo o catálogo: sem ele,
 // "R$ 50,00" numa Peseira daria a entender que os três tamanhos já estão
 // cadastrados, quando só o Queen está.
+// Produto comprado pronto: não vira OP (src/lib/produtos/origem.ts). O selo
+// responde "por que não acho isto na Nova OP?" sem abrir o produto.
+function SeloParceiro({ origem }: { origem: string }) {
+  if (origem !== 'parceiro') return null
+  return (
+    <Badge
+      variant="outline"
+      className="ml-2 align-middle text-[11px] font-normal"
+      title="Comprado de parceiro — não vira OP"
+    >
+      parceiro
+    </Badge>
+  )
+}
+
 function PrecoCelula({ produto }: { produto: ProdutoListItem }) {
   const preco = precoDeProdutoNaLista(produto.tamanhosPreco)
   const parcial = preco.min != null && preco.semPreco.length > 0

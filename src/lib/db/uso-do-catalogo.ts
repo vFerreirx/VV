@@ -5,8 +5,6 @@ import {
   cores,
   coresFornecedorFio,
   modelos,
-  orcamentoItens,
-  orcamentos,
   produtoTamanhoPeso,
   produtoTamanhoPreco,
   produtoTamanhoPrecoMarketplace,
@@ -45,10 +43,20 @@ import { plural, uso, type UsoDoCatalogo } from '@/lib/catalogo-em-uso'
  * Uso de cada tamanho, por id. UMA consulta por fonte, não uma por id.
  *
  * O tamanho é o eixo mais entrelaçado do catálogo: entra por NOME nas
- * variações e nos itens de pedido, e por ID nas três tabelas de preço/peso.
+ * variações, nos itens de pedido (e no snapshot dos componentes do kit) e na
+ * chave de preço do kit (`<produtoId>=<tamanho>`, `chaveDeTamanhos`); e por
+ * ID nas três tabelas de preço/peso do par.
+ *
+ * `para` muda a pergunta:
+ *   - 'excluir' (padrão): tudo. Apagar o cadastro quebra quem usa o nome E
+ *     quem usa o id.
+ *   - 'renomear': só quem usa o NOME. Preço e peso do par apontam pro id e
+ *     sobrevivem ao nome novo; contá-los recusaria à toa. É o que alimenta
+ *     `erroAoRenomearTamanho` (src/lib/catalogo-em-uso.ts).
  */
 export async function usoDeTamanhos(
   ids: string[],
+  { para = 'excluir' }: { para?: 'excluir' | 'renomear' } = {},
 ): Promise<Map<string, UsoDoCatalogo>> {
   const mapa = new Map<string, UsoDoCatalogo>()
   if (ids.length === 0) return mapa
@@ -60,9 +68,23 @@ export async function usoDeTamanhos(
   if (alvos.length === 0) return mapa
 
   const nomes = alvos.map((a) => a.nome.trim().toLowerCase())
+  const porId = para === 'excluir'
+  const nada = Promise.resolve([] as { id: string; n: number }[])
+  // Array do Postgres a partir da lista: o `${array}` do Drizzle viraria uma
+  // lista de parâmetros solta, que não serve pra `unnest`.
+  const nomesSql = sql`ARRAY[${sql.join(
+    nomes.map((n) => sql`${n}`),
+    sql`, `,
+  )}]::text[]`
 
-  const [emVariacoes, emPrecos, emPesos, emMarketplace, emPedidos] =
-    await Promise.all([
+  const [
+    emVariacoes,
+    emPrecos,
+    emPesos,
+    emMarketplace,
+    emPedidos,
+    emChavesDeKit,
+  ] = await Promise.all([
       db
         .select({
           nome: sql<string>`lower(trim(${variacoesProduto.tamanho}))`,
@@ -79,56 +101,75 @@ export async function usoDeTamanhos(
           ),
         )
         .groupBy(sql`lower(trim(${variacoesProduto.tamanho}))`),
-      db
-        .select({
-          id: produtoTamanhoPreco.tamanhoId,
-          n: sql<number>`count(*)::int`,
-        })
-        .from(produtoTamanhoPreco)
-        .where(inArray(produtoTamanhoPreco.tamanhoId, ids))
-        .groupBy(produtoTamanhoPreco.tamanhoId),
-      db
-        .select({
-          id: produtoTamanhoPeso.tamanhoId,
-          n: sql<number>`count(*)::int`,
-        })
-        .from(produtoTamanhoPeso)
-        .where(inArray(produtoTamanhoPeso.tamanhoId, ids))
-        .groupBy(produtoTamanhoPeso.tamanhoId),
-      db
-        .select({
-          id: produtoTamanhoPrecoMarketplace.tamanhoId,
-          n: sql<number>`count(*)::int`,
-        })
-        .from(produtoTamanhoPrecoMarketplace)
-        .where(inArray(produtoTamanhoPrecoMarketplace.tamanhoId, ids))
-        .groupBy(produtoTamanhoPrecoMarketplace.tamanhoId),
-      db
-        .select({
-          nome: sql<string>`lower(trim(${orcamentoItens.tamanho}))`,
-          n: sql<number>`count(distinct ${orcamentoItens.orcamentoId})::int`,
-        })
-        .from(orcamentoItens)
-        .innerJoin(orcamentos, eq(orcamentos.id, orcamentoItens.orcamentoId))
-        .where(
-          and(
-            isNull(orcamentos.deletedAt),
-            inArray(sql`lower(trim(${orcamentoItens.tamanho}))`, nomes),
-          ),
-        )
-        .groupBy(sql`lower(trim(${orcamentoItens.tamanho}))`),
+      porId
+        ? db
+            .select({
+              id: produtoTamanhoPreco.tamanhoId,
+              n: sql<number>`count(*)::int`,
+            })
+            .from(produtoTamanhoPreco)
+            .where(inArray(produtoTamanhoPreco.tamanhoId, ids))
+            .groupBy(produtoTamanhoPreco.tamanhoId)
+        : nada,
+      porId
+        ? db
+            .select({
+              id: produtoTamanhoPeso.tamanhoId,
+              n: sql<number>`count(*)::int`,
+            })
+            .from(produtoTamanhoPeso)
+            .where(inArray(produtoTamanhoPeso.tamanhoId, ids))
+            .groupBy(produtoTamanhoPeso.tamanhoId)
+        : nada,
+      porId
+        ? db
+            .select({
+              id: produtoTamanhoPrecoMarketplace.tamanhoId,
+              n: sql<number>`count(*)::int`,
+            })
+            .from(produtoTamanhoPrecoMarketplace)
+            .where(inArray(produtoTamanhoPrecoMarketplace.tamanhoId, ids))
+            .groupBy(produtoTamanhoPrecoMarketplace.tamanhoId)
+        : nada,
+      // PEDIDOS: o tamanho do item E o de cada componente no snapshot do kit
+      // (`kit_componentes[].tamanho`) — é por esse nome que o peso do kit é
+      // recalculado a cada leitura. Conta pedidos, não itens.
+      db.execute<{ nome: string; n: number }>(sql`
+        SELECT alvo.nome, count(DISTINCT o.id)::int AS n
+          FROM unnest(${nomesSql}) AS alvo(nome)
+          JOIN orcamento_itens i
+            ON lower(trim(i.tamanho)) = alvo.nome
+            OR EXISTS (
+                 SELECT 1
+                   FROM jsonb_array_elements(coalesce(i.kit_componentes, '[]'::jsonb)) c
+                  WHERE lower(trim(c->>'tamanho')) = alvo.nome)
+          JOIN orcamentos o ON o.id = i.orcamento_id AND o.deleted_at IS NULL
+         GROUP BY alvo.nome`),
+      // CHAVE DE PREÇO DO KIT, atacado e marketplace: `<produtoId>=<tamanho>`
+      // unidos por `|` (`chaveDeTamanhos`). `position`, e não LIKE: nome de
+      // tamanho com `_` viraria curinga.
+      db.execute<{ nome: string; n: number }>(sql`
+        SELECT alvo.nome, count(*)::int AS n
+          FROM unnest(${nomesSql}) AS alvo(nome)
+          JOIN (
+            SELECT combinacao FROM kit_tamanho_preco
+            UNION ALL
+            SELECT combinacao FROM kit_tamanho_preco_marketplace
+          ) k ON position('=' || alvo.nome || '|' IN k.combinacao || '|') > 0
+         GROUP BY alvo.nome`),
     ])
 
   const porNome = <T extends { nome: string }>(linhas: T[]) =>
     new Map(linhas.map((l) => [l.nome, l]))
-  const porId = <T extends { id: string }>(linhas: T[]) =>
+  const indexarPorId = <T extends { id: string }>(linhas: T[]) =>
     new Map(linhas.map((l) => [l.id, l]))
 
   const variacoesPorNome = porNome(emVariacoes)
-  const pedidosPorNome = porNome(emPedidos)
-  const precosPorId = porId(emPrecos)
-  const pesosPorId = porId(emPesos)
-  const anunciosPorId = porId(emMarketplace)
+  const pedidosPorNome = porNome([...emPedidos])
+  const kitsPorNome = porNome([...emChavesDeKit])
+  const precosPorId = indexarPorId(emPrecos)
+  const pesosPorId = indexarPorId(emPesos)
+  const anunciosPorId = indexarPorId(emMarketplace)
 
   for (const alvo of alvos) {
     const chave = alvo.nome.trim().toLowerCase()
@@ -156,6 +197,10 @@ export async function usoDeTamanhos(
     const pedido = pedidosPorNome.get(chave)
     if (pedido && pedido.n > 0) {
       partes.push(plural(pedido.n, 'pedido', 'pedidos'))
+    }
+    const kit = kitsPorNome.get(chave)
+    if (kit && kit.n > 0) {
+      partes.push(plural(kit.n, 'preço de kit', 'preços de kit'))
     }
 
     mapa.set(alvo.id, uso(alvo.nome, partes))

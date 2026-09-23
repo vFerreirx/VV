@@ -23,8 +23,9 @@ export default async function ImportarFullPage() {
   const [remessas, kits, produtos, contas] = await Promise.all([
     listarRemessasFull(),
     listarKitsComItens(),
-    // O de-para ESCOLHE a variação de cada componente do Full.
-    listarProdutosParaOrdem({ somenteAtivas: true }),
+    // O de-para ESCOLHE a variação de cada componente do Full — e vira OP,
+    // então sem produto de parceiro.
+    listarProdutosParaOrdem({ somenteAtivas: true, semParceiro: true }),
     listarContasAtivas(),
   ])
 
