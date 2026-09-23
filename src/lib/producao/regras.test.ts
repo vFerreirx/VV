@@ -114,12 +114,13 @@ import {
   rotuloDoMotivo,
 } from './parada-de-maquina.ts'
 import {
-  agruparPorModelo,
+  agruparPorProduto,
+  cabecalhoDoProduto,
   destaqueDaVariacao,
   familiaDoProduto,
   linhaDaOp,
+  nomeParaLinha,
   prazoEmPalavras,
-  SEM_MODELO,
   tituloDaOp,
 } from './rotulo-da-op.ts'
 import {
@@ -617,37 +618,58 @@ test('a familia perde o modelo, e so quando ele esta no fim', () => {
   assert.equal(familiaDoProduto('RELEVO', 'RELEVO'), 'RELEVO')
 })
 
-test('agrupa por modelo SEM reordenar', () => {
+test('agrupa por produto SEM reordenar', () => {
   // A lista chega ordenada por prioridade/prazo; o grupo entra na posicao da
   // primeira OP dele, entao a urgencia decide a ordem dos grupos tambem.
   const fila = [
-    { id: 'a', variacaoModelo: 'ACONCHEGO' },
-    { id: 'b', variacaoModelo: 'RELEVO' },
-    { id: 'c', variacaoModelo: 'SIENA' },
-    { id: 'd', variacaoModelo: 'RELEVO' },
-    { id: 'e', variacaoModelo: 'RELEVO' },
+    { id: 'a', produtoCodigo: '095', produtoNome: 'Peseira - ACONCHEGO' },
+    { id: 'b', produtoCodigo: '085', produtoNome: 'Peseira - ARAN' },
+    { id: 'c', produtoCodigo: '094', produtoNome: 'Manta - SIENA' },
+    { id: 'd', produtoCodigo: '085', produtoNome: 'Peseira - ARAN' },
+    { id: 'e', produtoCodigo: '085', produtoNome: 'Peseira - ARAN' },
   ]
-  const g = agruparPorModelo(fila)
+  const g = agruparPorProduto(fila)
   assert.deepEqual(
-    g.map((x) => [x.modelo, x.ops.map((o) => o.id)]),
+    g.map((x) => [x.cabecalho, x.ops.map((o) => o.id)]),
     [
-      ['ACONCHEGO', ['a']],
-      ['RELEVO', ['b', 'd', 'e']],
-      ['SIENA', ['c']],
+      ['095 · Peseira ACONCHEGO', ['a']],
+      ['085 · Peseira ARAN', ['b', 'd', 'e']],
+      ['094 · Manta SIENA', ['c']],
     ],
   )
 })
 
-test('sem modelo vira um grupo proprio, nao some', () => {
-  const g = agruparPorModelo([
-    { id: 'a', variacaoModelo: null },
-    { id: 'b', variacaoModelo: 'RELEVO' },
+test('agrupa pelo PROGRAMA: mesmo modelo em produtos diferentes nao se junta', () => {
+  // O EFEITO 3D e 076 na peseira e 115 na manta: dois programas, dois setups.
+  // E o 059 tece a peseira E a capa LINKS: mesmo codigo, pecas diferentes.
+  const g = agruparPorProduto([
+    { id: 'a', produtoCodigo: '076', produtoNome: 'Peseira - 3D' },
+    { id: 'b', produtoCodigo: '115', produtoNome: 'Manta - 3D' },
+    { id: 'c', produtoCodigo: '059', produtoNome: 'Peseira - LINKS' },
+    { id: 'd', produtoCodigo: '059', produtoNome: 'Capa de Almofada - LINKS' },
   ])
-  assert.deepEqual(g.map((x) => x.modelo), [SEM_MODELO, 'RELEVO'])
+  assert.deepEqual(
+    g.map((x) => x.cabecalho),
+    [
+      '076 · Peseira 3D',
+      '115 · Manta 3D',
+      '059 · Peseira LINKS',
+      '059 · Capa de Almofada LINKS',
+    ],
+  )
+})
+
+test('produto sem codigo vira grupo proprio, sem traco nem "null"', () => {
+  const g = agruparPorProduto([
+    { id: 'a', produtoCodigo: null, produtoNome: 'Peseira - NOVA' },
+    { id: 'b', produtoCodigo: '085', produtoNome: 'Peseira - ARAN' },
+  ])
+  assert.deepEqual(g.map((x) => x.cabecalho), ['Peseira NOVA', '085 · Peseira ARAN'])
+  assert.equal(cabecalhoDoProduto('  ', 'Peseira - NOVA'), 'Peseira NOVA')
 })
 
 test('fila vazia nao vira grupo vazio', () => {
-  assert.deepEqual(agruparPorModelo([]), [])
+  assert.deepEqual(agruparPorProduto([]), [])
 })
 
 test('o titulo sai em PARTES, pras duas telas montarem igual', () => {
@@ -2252,18 +2274,40 @@ const peseiraLinks = {
 
 test('linha da OP: com codigo, na ordem do Trello', () => {
   const l = linhaDaOp(peseiraLinks)
-  assert.equal(l.texto, '059 - Peseira - LINKS - QUEEN - AREIA - 55')
+  assert.equal(l.texto, '059 - Peseira LINKS - QUEEN - AREIA - 55')
   assert.equal(l.codigo, '059')
-  assert.equal(l.semCodigo, 'Peseira - LINKS - QUEEN - AREIA - 55')
+  assert.equal(l.semCodigo, 'Peseira LINKS - QUEEN - AREIA - 55')
   // Sem codigo e sem quantidade: o que vai ao lado do codigo no cartao.
-  assert.equal(l.descricao, 'Peseira - LINKS - QUEEN - AREIA')
+  assert.equal(l.descricao, 'Peseira LINKS - QUEEN - AREIA')
+})
+
+test('linha da OP: o " - " de DENTRO do nome vira espaco (so na tela)', () => {
+  // O caso do print: cinco pedacos onde o Trello tem quatro.
+  const aran = {
+    codigo: '085',
+    produtoNome: 'Peseira - ARAN',
+    tamanho: 'Queen',
+    cor: 'Azul Marinho',
+    quantidade: 30,
+    tamanhoUnico: false,
+  }
+  const l = linhaDaOp(aran)
+  assert.equal(l.descricao, 'Peseira ARAN - QUEEN - AZUL MARINHO')
+  assert.equal(l.texto, '085 - Peseira ARAN - QUEEN - AZUL MARINHO - 30')
+  assert.equal(l.produto, 'Peseira ARAN')
+  // O nome gravado nao muda.
+  assert.equal(aran.produtoNome, 'Peseira - ARAN')
+  // Traco cercado de espaco sai (qualquer um dos tres); hifen de palavra fica.
+  assert.equal(nomeParaLinha('Capa de Almofada Baguete – ARAN'), 'Capa de Almofada Baguete ARAN')
+  assert.equal(nomeParaLinha('Manta - SIENA'), 'Manta SIENA')
+  assert.equal(nomeParaLinha('Peseira Semi-Nova'), 'Peseira Semi-Nova')
 })
 
 test('linha da OP: SEM codigo nao mostra "null" nem traco sobrando', () => {
   for (const codigo of [null, '', '   ']) {
     const l = linhaDaOp({ ...peseiraLinks, codigo })
     assert.equal(l.codigo, null)
-    assert.equal(l.texto, 'Peseira - LINKS - QUEEN - AREIA - 55')
+    assert.equal(l.texto, 'Peseira LINKS - QUEEN - AREIA - 55')
     assert.doesNotMatch(l.texto, /null|^ ?-/)
   }
 })
@@ -2276,12 +2320,12 @@ test('linha da OP: produto de tamanho unico omite o tamanho', () => {
     quantidade: 110,
     tamanhoUnico: true,
   }
-  assert.equal(linhaDaOp(capa).texto, '059 - Capa de Almofada - LINKS - AREIA - 110')
+  assert.equal(linhaDaOp(capa).texto, '059 - Capa de Almofada LINKS - AREIA - 110')
   assert.equal(linhaDaOp(capa).tamanho, null)
   // Sem tamanho gravado e sem cor: tambem nao sobra traco.
   assert.equal(
     linhaDaOp({ ...capa, cor: null, tamanhoUnico: false, tamanho: null }).texto,
-    '059 - Capa de Almofada - LINKS - 110',
+    '059 - Capa de Almofada LINKS - 110',
   )
 })
 
@@ -2294,7 +2338,7 @@ test('linha da OP: maiusculas em tamanho e cor sem mudar o que esta gravado', ()
   assert.equal(op.tamanho, ' king ')
   assert.equal(op.cor, 'Verde Musgo')
   // O nome do produto NAO vira maiusculo: so tamanho e cor, como no Trello.
-  assert.equal(l.produto, 'Peseira - LINKS')
+  assert.equal(l.produto, 'Peseira LINKS')
 })
 
 // -----------------------------------------------------------------

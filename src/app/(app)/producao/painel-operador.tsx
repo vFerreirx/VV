@@ -63,7 +63,7 @@ import {
   type MotivoDeParada,
 } from '@/lib/producao/parada-de-maquina'
 import {
-  agruparPorModelo,
+  agruparPorProduto,
   linhaDaOp,
   prazoEmPalavras,
 } from '@/lib/producao/rotulo-da-op'
@@ -731,7 +731,7 @@ function CorpoOcupada({
           className="mt-0.5"
         />
         <div className="min-w-0 flex-1">
-          {/* A LINHA DO TRELLO: "059 - Peseira - LINKS - QUEEN - AREIA".
+          {/* A LINHA DO TRELLO: "059 - Peseira LINKS - QUEEN - AREIA".
               ⚠️ NO MÁXIMO DUAS LINHAS (`line-clamp-2`). O código e o modelo
               dentro do nome deixaram o texto mais comprido que o título
               antigo, e o cartão tem posição fixa: se o título crescesse, os
@@ -989,24 +989,25 @@ function IniciarProducaoDialog({
           />
         </div>
 
-        {/* ⚠️ AGRUPADA POR MODELO, e o cabeçalho do grupo é o que permitiu a
-            linha encolher: ele carrega o ponto da malha, então nenhuma
-            linha precisa repetir "Peseira - RELEVO".
+        {/* ⚠️ AGRUPADA POR PRODUTO — pelo PROGRAMA da máquina —, e não
+            por modelo. O motivo de agrupar é o setup: três OPs da mesma peça
+            espalhadas pelas posições 2, 5 e 6 obrigavam a armar a máquina
+            três vezes. Mas o setup segue o programa, e o programa é o código
+            do produto: o EFEITO 3D é 076 na peseira e 115 na manta, e o
+            grupo "3D" juntava os dois como se não houvesse troca.
 
-            O MODELO É O PONTO (RELEVO, TRANÇAS, EFEITO 3D), e trocar de
-            modelo mexe no setup da máquina — três OPs RELEVO espalhadas
-            pelas posições 2, 5 e 6 obrigavam a armar a máquina três vezes
-            pro mesmo ponto.
+            O CABEÇALHO É A COLUNA DO TRELLO: "085 · Peseira ARAN". O antigo
+            ("ARAN") só repetia a palavra que já está na linha.
 
-            A urgência não afunda: `agruparPorModelo` NÃO reordena, e como a
+            A urgência não afunda: `agruparPorProduto` NÃO reordena, e como a
             lista chega do SQL por prioridade + prazo, cada grupo entra na
             posição da OP mais urgente que ele contém. */}
         <div className="max-h-[70vh] space-y-5 overflow-y-auto">
-          {agruparPorModelo(ops).map((grupo) => (
-            <div key={grupo.modelo} className="space-y-1.5">
+          {agruparPorProduto(ops).map((grupo) => (
+            <div key={grupo.cabecalho} className="space-y-1.5">
               <div className="bg-background sticky top-0 flex items-baseline justify-between gap-2 border-b pb-1">
-                <h3 className="text-lg font-semibold tracking-wide">
-                  {grupo.modelo}
+                <h3 className="text-lg font-semibold tabular-nums">
+                  {grupo.cabecalho}
                 </h3>
                 <span className="text-muted-foreground text-sm tabular-nums">
                   {grupo.ops.length}{' '}
@@ -1205,7 +1206,7 @@ function ConfirmarInicioDialog({
 }
 
 // A PEÇA COMO O CHÃO DE FÁBRICA LÊ — a linha do Trello, igual em todo lugar
-// do tablet: "059 - Peseira - LINKS - QUEEN - AREIA". As partes vêm de
+// do tablet: "059 - Peseira LINKS - QUEEN - AREIA". As partes vêm de
 // `linhaDaOp` (src/lib/producao/rotulo-da-op.ts); aqui só se decide o peso.
 //
 // O CÓDIGO EM NEGRITO E PRIMEIRO: é o número do programa, o que ele digita na

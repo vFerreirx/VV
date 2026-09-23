@@ -139,17 +139,23 @@ export function familiaDoProduto(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// AGRUPAR A FILA POR MODELO
+// AGRUPAR A FILA POR PRODUTO — pelo PROGRAMA da máquina
 // ─────────────────────────────────────────────────────────────────────────
 //
-// O MODELO É O PONTO da malha (RELEVO, TRANÇAS, EFEITO 3D, ACONCHEGO), e
-// trocar de modelo mexe no setup da máquina. Espalhar três OPs RELEVO pelas
-// posições 2, 5 e 6 da fila — que é o que a ordem por prioridade fazia —
-// obriga a armar a máquina três vezes pro mesmo ponto.
+// O motivo de agrupar é o SETUP DA MÁQUINA: espalhar três OPs da mesma peça
+// pelas posições 2, 5 e 6 da fila — que é o que a ordem por prioridade
+// fazia — obriga a armar a máquina três vezes pra mesma coisa.
 //
-// Agrupa por MODELO e não por produto: "Peseira - RELEVO" e "Capa de
-// Almofada - RELEVO" são o mesmo ponto em peças diferentes, e separá-las em
-// dois grupos distantes desfaria justamente o ganho.
+// ⚠️ O SETUP SEGUE O PROGRAMA, E O PROGRAMA É POR PRODUTO. Agrupava por
+// MODELO, na ideia de que o modelo era o ponto da malha — mas o programa que
+// a máquina roda é o código do produto (`produtos.codigo`, migration 73), e
+// ele não acompanha o modelo: o EFEITO 3D é 076 na peseira e 115 na manta; o
+// PIENZA é 100 na peseira e 116 na manta e na capa. Agrupar por modelo
+// juntava peseira e manta 3D como se não houvesse troca de programa entre
+// elas. E o cabeçalho "ARAN" só repetia a palavra que já está na linha.
+//
+// Por isso o grupo é o PRODUTO, e o cabeçalho diz o que o Trello dizia na
+// coluna: "085 · Peseira ARAN" (`cabecalhoDoProduto`).
 //
 // ⚠️ A URGÊNCIA NÃO AFUNDA. A ordem de chegada já é `prioridade DESC, prazo
 // ASC` (vem assim do SQL), e o grupo entra na posição da PRIMEIRA OP dele —
@@ -157,26 +163,40 @@ export function familiaDoProduto(
 // fica no topo; dentro dele, a ordem original se mantém. Por isso este
 // agrupamento NÃO reordena nada: só junta, preservando a sequência.
 
-export type GrupoDeModelo<T> = {
-  modelo: string
+export type GrupoDeProduto<T> = {
+  /** "085 · Peseira ARAN", ou só "Peseira ARAN" quando não há código. */
+  cabecalho: string
   ops: T[]
 }
 
-/** Rótulo do grupo quando a variação não tem modelo (ou não tem variação). */
-export const SEM_MODELO = 'Sem modelo'
+/** "085 · Peseira ARAN" — o código e o nome sem o traço interno. */
+export function cabecalhoDoProduto(
+  codigo: string | null,
+  produtoNome: string,
+): string {
+  const c = (codigo ?? '').trim()
+  const nome = nomeParaLinha(produtoNome)
+  return c ? `${c} · ${nome}` : nome
+}
 
-export function agruparPorModelo<T extends { variacaoModelo: string | null }>(
-  ops: readonly T[],
-): GrupoDeModelo<T>[] {
-  const grupos: GrupoDeModelo<T>[] = []
-  const porModelo = new Map<string, GrupoDeModelo<T>>()
+export function agruparPorProduto<
+  T extends { produtoCodigo: string | null; produtoNome: string },
+>(ops: readonly T[]): GrupoDeProduto<T>[] {
+  const grupos: GrupoDeProduto<T>[] = []
+  const porProduto = new Map<string, GrupoDeProduto<T>>()
 
   for (const op of ops) {
-    const modelo = op.variacaoModelo ?? SEM_MODELO
-    let grupo = porModelo.get(modelo)
+    // Código E nome na chave: o código não é único (o 059 é da peseira e da
+    // capa LINKS, peças diferentes), e o nome sozinho juntaria dois produtos
+    // homônimos com programas diferentes.
+    const chave = `${(op.produtoCodigo ?? '').trim()}|${op.produtoNome}`
+    let grupo = porProduto.get(chave)
     if (!grupo) {
-      grupo = { modelo, ops: [] }
-      porModelo.set(modelo, grupo)
+      grupo = {
+        cabecalho: cabecalhoDoProduto(op.produtoCodigo, op.produtoNome),
+        ops: [],
+      }
+      porProduto.set(chave, grupo)
       // Primeira aparição define a posição — e como a lista chega ordenada
       // por urgência, isso ordena os grupos pela OP mais urgente de cada um.
       grupos.push(grupo)
@@ -247,7 +267,7 @@ export function tituloDaOp(
 // sem programa (novo, ou comprado de parceiro) fica SEM código: nada de
 // "null", e nada de traço sobrando no começo da linha.
 //
-// ⚠️ PRODUTO DE UM TAMANHO SÓ NÃO MOSTRA TAMANHO: "059 - Capa de Almofada -
+// ⚠️ PRODUTO DE UM TAMANHO SÓ NÃO MOSTRA TAMANHO: "059 - Capa de Almofada
 // LINKS - AREIA - 110". Quem diz se é tamanho único são as VARIAÇÕES VIVAS
 // do produto, contadas na consulta — nunca adivinhado pelo nome ("capa é
 // sempre 45x45" deixou de ser verdade quando a ACONCHEGO ganhou 4 tamanhos).
@@ -274,7 +294,10 @@ export type OpParaLinha = {
 export type LinhaDaOp = {
   /** "059", ou null. É o que a tela põe em destaque. */
   codigo: string | null
-  /** "Peseira - LINKS" — o nome como está no cadastro. */
+  /**
+   * "Peseira LINKS" — o nome do cadastro ("Peseira - LINKS") sem o traço
+   * interno, que na linha parecia mais um campo. Ver `nomeParaLinha`.
+   */
   produto: string
   /** "QUEEN", ou null (tamanho único ou sem tamanho). */
   tamanho: string | null
@@ -293,6 +316,22 @@ export type LinhaDaOp = {
   descricao: string
 }
 
+/**
+ * O nome do produto como o Trello escrevia: sem o " - " de DENTRO do nome.
+ *
+ * O cadastro guarda "Peseira - ARAN", e na linha — cujos campos já são
+ * separados por " - " — esse traço interno parecia mais um campo: "085 -
+ * Peseira - ARAN - QUEEN - AZUL MARINHO" são cinco pedaços onde o Trello tem
+ * quatro. Aqui ele vira espaço: "Peseira ARAN".
+ *
+ * SÓ NA EXIBIÇÃO: o nome gravado não muda (é por ele que o faltante de
+ * pedido acha o produto). Só o traço CERCADO DE ESPAÇO sai — hífen de
+ * palavra composta fica.
+ */
+export function nomeParaLinha(produtoNome: string): string {
+  return produtoNome.trim().replace(/\s+[-–—]\s+/g, ' ')
+}
+
 const limpo = (s: string | null | undefined): string | null => {
   const t = (s ?? '').trim()
   return t.length > 0 ? t : null
@@ -302,7 +341,8 @@ export function linhaDaOp(op: OpParaLinha): LinhaDaOp {
   const codigo = limpo(op.codigo)
   const tamanho = op.tamanhoUnico ? null : limpo(op.tamanho)?.toUpperCase() ?? null
   const cor = limpo(op.cor)?.toUpperCase() ?? null
-  const produto = op.produtoNome.trim()
+  // Sem o " - " interno, senão ele parece mais um campo (`nomeParaLinha`).
+  const produto = nomeParaLinha(op.produtoNome)
 
   const descricao = [produto, tamanho, cor].filter(
     (p): p is string => p !== null && p !== '',
