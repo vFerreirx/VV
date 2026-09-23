@@ -30,12 +30,22 @@
  * linha em `public.users`. E FK depois dos dados dispensa ordenar as tabelas.
  *
  * Tudo é lido numa transação REPEATABLE READ READ ONLY: um retrato só do
- * banco, mesmo que alguém salve um pedido no meio do backup. E nada aqui
- * escreve no banco.
+ * banco, mesmo que alguém salve um pedido no meio do backup.
+ *
+ * O backup ESCREVE UMA LINHA no banco, de propósito, e só uma: no fim, em
+ * `backups_registro` (supabase/sql/71). É assim que o sistema descobre se o
+ * backup parou — ele roda na Vercel, não enxerga esta máquina nem o Drive, só
+ * o banco; sem a linha, o backup para em silêncio e ninguém sabe até precisar
+ * de um. O INSERT fica FORA do retrato, numa instrução à parte, DEPOIS da
+ * cópia pro Drive (pra `copia_drive` dizer se ela chegou de verdade). Por
+ * isso a linha deste backup não está dentro do próprio arquivo — está no
+ * próximo. Se o INSERT falhar, o backup NÃO está perdido: o arquivo já
+ * existe. Avisa e segue.
  */
 
 import { copyFileSync, createWriteStream, mkdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { hostname } from 'node:os'
+import { basename, join } from 'node:path'
 
 import { config as loadEnv } from 'dotenv'
 import postgres from 'postgres'
@@ -519,11 +529,13 @@ async function main() {
   // Cópia pro Drive. Falhar aqui NÃO invalida o backup local — mas avisa
   // alto, porque backup que só existe nesta máquina morre junto com ela.
   const drive = process.env.BACKUP_DRIVE_DIR
+  let copiaDrive = false
   if (drive) {
     try {
       mkdirSync(drive, { recursive: true })
       const destino = join(drive, `vanvest-${dia}.sql`)
       copyFileSync(arquivo, destino)
+      copiaDrive = true
       console.log(`✅ cópia no Drive: ${destino}`)
     } catch (e) {
       console.error(`⚠️ backup local OK, mas a cópia pro Drive falhou: ${(e as Error).message}`)
@@ -531,6 +543,27 @@ async function main() {
     }
   } else {
     console.log('   (sem BACKUP_DRIVE_DIR no .env.local: a cópia ficou só nesta máquina)')
+  }
+
+  // O REGISTRO — a única escrita do backup (ver o topo). Conexão própria: a
+  // do retrato já fechou, e esta nunca pode entrar naquela transação.
+  // `arquivo` vai só com o NOME; o caminho desta máquina não é do banco.
+  const registro = postgres(DATABASE_URL!, { max: 1, prepare: false })
+  try {
+    await registro`
+      insert into public.backups_registro
+        (arquivo, tamanho_bytes, tabelas, linhas, copia_drive, maquina)
+      values (${basename(arquivo)}, ${tamanho}, ${linhasPorTabela.length},
+              ${totalLinhas}, ${copiaDrive}, ${hostname()})`
+    console.log(`✅ registrado em backups_registro (Drive: ${copiaDrive ? 'sim' : 'não'})`)
+  } catch (e) {
+    console.error(
+      `⚠️ backup OK, mas o registro no banco falhou: ${(e as Error).message}\n` +
+        '   O arquivo está salvo; o sistema só não vai saber deste backup.',
+    )
+    process.exitCode = 1
+  } finally {
+    await registro.end()
   }
 }
 

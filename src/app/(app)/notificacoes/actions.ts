@@ -5,8 +5,10 @@ import { and, asc, eq, isNotNull, isNull, lte, ne, or, sql } from 'drizzle-orm'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { resumoDaReposicao } from '../estoque/actions'
 import { requireAuth } from '@/lib/auth/require-auth'
+import { diasDesdeOBackup, estadoDoBackup } from '@/lib/backup'
 import { condicaoDeProducaoAtrasada } from '@/lib/db/atraso-da-op'
 import { db } from '@/lib/db'
+import { obterUltimoBackup } from '@/lib/db/ultimo-backup'
 import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   compradores,
@@ -32,6 +34,7 @@ export type Notificacao = {
     | 'parcela_a_conferir'
     | 'reposicao_estoque'
     | 'fio_abaixo_do_minimo'
+    | 'backup'
   titulo: string
   descricao: string
   href: string
@@ -53,7 +56,7 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   // aceso por um assunto que não é dele. Mesma pergunta que a guarda de
   // página faz, só que aqui ela decide se a CONSULTA acontece.
   //
-  // AS QUATRO FONTES CORREM EM PARALELO. O sino recarrega a cada mudança de
+  // AS CINCO FONTES CORREM EM PARALELO. O sino recarrega a cada mudança de
   // OP em toda tela aberta; em série, a conexão ficava presa à soma delas.
   const veFinanceiro = nivelDaAreaPara(user.role, 'pedidos').then(
     (nivel) => nivel !== 'nenhum',
@@ -98,13 +101,13 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
   const parcelasP = veFinanceiro.then((ve) => (ve ? buscarParcelas(hoje) : []))
   const reposicaoP = resumoDaReposicao()
   const fiosP = veFio.then((ve) => (ve ? coresAbaixoDoMinimo() : []))
+  // Backup: `role === 'admin'`, e NÃO área — é o assunto do banco inteiro, e
+  // o gerente não entra. Pros outros a consulta nem acontece.
+  const backupP =
+    user.role === 'admin' ? obterUltimoBackup() : Promise.resolve(undefined)
 
-  const [opsAtrasadas, parcelas, reposicao, fios] = await Promise.all([
-    opsAtrasadasP,
-    parcelasP,
-    reposicaoP,
-    fiosP,
-  ])
+  const [opsAtrasadas, parcelas, reposicao, fios, ultimoBackup] =
+    await Promise.all([opsAtrasadasP, parcelasP, reposicaoP, fiosP, backupP])
 
   const notificacoes: Notificacao[] = []
 
@@ -219,6 +222,40 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
       severidade: acabou ? 'critico' : 'aviso',
       referenciaEm: new Date(now),
     })
+  }
+
+  // 5) BACKUP — só admin (`undefined` = não é admin, não consultou). Aparece
+  // APENAS quando não está em dia: backup em dia não pede nada, e um sino
+  // aceso todo dia com "backup OK" deixaria de ser lido. O estado sai de
+  // src/lib/backup.ts, o mesmo que o dashboard mostra.
+  if (ultimoBackup !== undefined) {
+    const estado = estadoDoBackup(ultimoBackup, new Date(now))
+    if (estado !== 'em_dia') {
+      const dias = ultimoBackup
+        ? diasDesdeOBackup(ultimoBackup.feitoEm, new Date(now))
+        : 0
+      notificacoes.push({
+        id: 'backup',
+        tipo: 'backup',
+        titulo:
+          estado === 'nunca'
+            ? 'Nenhum backup registrado'
+            : estado === 'atrasado'
+              ? `Backup atrasado: o último foi há ${dias} dia${dias === 1 ? '' : 's'}`
+              : 'O último backup não chegou no Google Drive',
+        descricao:
+          estado === 'sem_drive'
+            ? 'A cópia ficou só no computador da casa.'
+            : 'Confira se o computador da casa está ligando o backup.',
+        href: '/dashboard',
+        // Sem backup (parado ou nunca feito) é crítico; feito mas só local
+        // ainda é backup — aviso.
+        severidade: estado === 'sem_drive' ? 'aviso' : 'critico',
+        // O sino mostra "há X" disto: é o instante do último backup. Sem
+        // registro nenhum, é agora — uma data inventada viraria "há 56 anos".
+        referenciaEm: ultimoBackup?.feitoEm ?? new Date(now),
+      })
+    }
   }
 
   // Ordena por mais atrasado primeiro

@@ -38,6 +38,13 @@ import { CountUp } from '@/components/ui/count-up'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { destinoInicial, nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { isManager, requireAuth } from '@/lib/auth/require-auth'
+import {
+  estadoDoBackup,
+  quandoFoiOBackup,
+  tamanhoDoBackup,
+} from '@/lib/backup'
+import type { BackupRegistro } from '@/lib/db/schema'
+import { obterUltimoBackup } from '@/lib/db/ultimo-backup'
 import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import { ROTULO_DA_SITUACAO } from '@/lib/producao/reposicao'
 import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
@@ -96,6 +103,7 @@ export default async function DashboardPage() {
     reposicao,
     vendasDoMes,
     vendasMesPassado,
+    ultimoBackup,
   ] = await Promise.all([
     obterKPIs(),
     listarOpsUrgentes(5),
@@ -112,6 +120,10 @@ export default async function DashboardPage() {
     nivelVendas !== 'nenhum'
       ? obterRelatorioPeriodo(mesPassado.inicio, mesPassado.fim)
       : Promise.resolve(null),
+    // BACKUP: `role === 'admin'`, checado ANTES da consulta — mesmo padrão
+    // dos boletos no calendário. É o assunto do banco inteiro; o gerente,
+    // que também abre o dashboard, não entra. `undefined` = não consultou.
+    ehAdmin ? obterUltimoBackup() : Promise.resolve(undefined),
   ])
 
   // Entrada do reveal de Suspense: par do exit no loading.tsx desta rota.
@@ -125,6 +137,9 @@ export default async function DashboardPage() {
             <p className="text-muted-foreground text-sm">
               Bem-vindo, {user.nome.split(' ')[0]}.
             </p>
+            {ultimoBackup !== undefined && (
+              <BackupLinha ultimo={ultimoBackup} />
+            )}
           </div>
 
           {/* OS QUATRO NÚMEROS, CADA UM LEVANDO PRA TELA ONDE SE RESOLVE.
@@ -306,6 +321,35 @@ function KPICard({
         </CardContent>
       </Card>
     </Link>
+  )
+}
+
+// O BACKUP, NUMA LINHA SÓ. Discreta de propósito: em dia, é informação de
+// canto; fora do dia, a cor muda e o sino já avisou. O estado sai de
+// `estadoDoBackup` (src/lib/backup.ts), o mesmo do sino — os dois nunca
+// discordam.
+function BackupLinha({ ultimo }: { ultimo: BackupRegistro | null }) {
+  const agora = new Date()
+  const estado = estadoDoBackup(ultimo, agora)
+  const cor =
+    estado === 'em_dia'
+      ? 'text-muted-foreground'
+      : estado === 'sem_drive'
+        ? 'text-amber-600'
+        : 'text-destructive'
+  return (
+    <p className={cn('mt-1 text-xs tabular-nums', cor)}>
+      {ultimo === null ? (
+        'Nenhum backup registrado'
+      ) : (
+        <>
+          Último backup: {quandoFoiOBackup(ultimo.feitoEm, agora)} ·{' '}
+          {tamanhoDoBackup(ultimo.tamanhoBytes)} · Drive{' '}
+          {ultimo.copiaDrive ? '✓' : '✗'}
+          {estado === 'atrasado' && ' · atrasado'}
+        </>
+      )}
+    </p>
   )
 }
 
