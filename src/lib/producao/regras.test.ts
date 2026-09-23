@@ -126,6 +126,13 @@ import {
   podeIniciar,
   STATUS_QUE_INICIAM,
 } from './inicio-da-op.ts'
+import {
+  DIAS_BACKUP_ATRASADO,
+  diasDesdeOBackup,
+  estadoDoBackup,
+  quandoFoiOBackup,
+  tamanhoDoBackup,
+} from '../backup.ts'
 
 // -----------------------------------------------------------------
 // A situação da máquina — os DOIS eixos
@@ -2032,4 +2039,55 @@ test('calendario: duplicata e mesmo dia E mesmo canal', () => {
   )
   // Sem remessa no mes, nada e duplicata.
   assert.equal(ehEventoDuplicado({ data: '2026-09-25', canal: 'full_ml' }, []), false)
+})
+
+// -----------------------------------------------------------------
+// Backup: o sistema vigia se ele esta acontecendo (src/lib/backup.ts)
+// -----------------------------------------------------------------
+
+test('backup: sem nenhum registro e "nunca"', () => {
+  assert.equal(estadoDoBackup(null, new Date('2026-09-23T12:00:00Z')), 'nunca')
+})
+
+test('backup: 47 h depois ainda esta em dia; 49 h ja atrasou', () => {
+  const feitoEm = new Date('2026-09-21T12:00:00Z')
+  const depoisDe = (h: number) => new Date(feitoEm.getTime() + h * 3_600_000)
+  assert.equal(DIAS_BACKUP_ATRASADO, 2)
+  assert.equal(
+    estadoDoBackup({ feitoEm, copiaDrive: true }, depoisDe(47)),
+    'em_dia',
+  )
+  assert.equal(
+    estadoDoBackup({ feitoEm, copiaDrive: true }, depoisDe(49)),
+    'atrasado',
+  )
+})
+
+test('backup: recente mas sem Drive e "sem_drive"', () => {
+  const feitoEm = new Date('2026-09-23T12:02:00Z')
+  const agora = new Date('2026-09-23T15:00:00Z')
+  assert.equal(
+    estadoDoBackup({ feitoEm, copiaDrive: false }, agora),
+    'sem_drive',
+  )
+})
+
+test('backup: atrasado E sem Drive e "atrasado" (o pior dos dois)', () => {
+  const feitoEm = new Date('2026-09-20T12:00:00Z')
+  const agora = new Date('2026-09-23T12:00:00Z')
+  assert.equal(
+    estadoDoBackup({ feitoEm, copiaDrive: false }, agora),
+    'atrasado',
+  )
+})
+
+test('backup: o "quando" conta dias de Brasilia', () => {
+  const agora = new Date('2026-09-23T15:00:00Z') // 12:00 em Brasilia
+  const quando = (iso: string) => quandoFoiOBackup(new Date(iso), agora)
+  assert.equal(quando('2026-09-23T12:02:00Z'), 'hoje, 09:02')
+  assert.equal(quando('2026-09-22T12:02:00Z'), 'ontem, 09:02')
+  assert.equal(quando('2026-09-20T12:02:00Z'), '20/09, 09:02')
+  // 01h UTC do dia 23 ainda e dia 22 em Brasilia.
+  assert.equal(diasDesdeOBackup(new Date('2026-09-23T01:00:00Z'), agora), 1)
+  assert.equal(tamanhoDoBackup(1_960_837), '1,87 MB')
 })
