@@ -101,6 +101,7 @@ import {
   producaoAtePadrao,
   riscoDaRemessa,
   rotuloDaRemessa,
+  rotuloDoDestino,
   rotuloDoEventoFull,
 } from './prazo-da-remessa.ts'
 import {
@@ -116,6 +117,7 @@ import {
   agruparPorModelo,
   destaqueDaVariacao,
   familiaDoProduto,
+  linhaDaOp,
   prazoEmPalavras,
   SEM_MODELO,
   tituloDaOp,
@@ -2233,4 +2235,95 @@ test('reposicao de parceiro: pedido_parceiro ocupa a fila como em_producao', () 
     [...ESTADOS_ATIVOS_DE_REPOSICAO],
     ['aberto', 'em_producao', 'pedido_parceiro'],
   )
+})
+
+// -----------------------------------------------------------------
+// A linha do Trello (src/lib/producao/rotulo-da-op.ts, `linhaDaOp`)
+// -----------------------------------------------------------------
+
+const peseiraLinks = {
+  codigo: '059',
+  produtoNome: 'Peseira - LINKS',
+  tamanho: 'Queen',
+  cor: 'Areia',
+  quantidade: 55,
+  tamanhoUnico: false,
+}
+
+test('linha da OP: com codigo, na ordem do Trello', () => {
+  const l = linhaDaOp(peseiraLinks)
+  assert.equal(l.texto, '059 - Peseira - LINKS - QUEEN - AREIA - 55')
+  assert.equal(l.codigo, '059')
+  assert.equal(l.semCodigo, 'Peseira - LINKS - QUEEN - AREIA - 55')
+  // Sem codigo e sem quantidade: o que vai ao lado do codigo no cartao.
+  assert.equal(l.descricao, 'Peseira - LINKS - QUEEN - AREIA')
+})
+
+test('linha da OP: SEM codigo nao mostra "null" nem traco sobrando', () => {
+  for (const codigo of [null, '', '   ']) {
+    const l = linhaDaOp({ ...peseiraLinks, codigo })
+    assert.equal(l.codigo, null)
+    assert.equal(l.texto, 'Peseira - LINKS - QUEEN - AREIA - 55')
+    assert.doesNotMatch(l.texto, /null|^ ?-/)
+  }
+})
+
+test('linha da OP: produto de tamanho unico omite o tamanho', () => {
+  const capa = {
+    ...peseiraLinks,
+    produtoNome: 'Capa de Almofada - LINKS',
+    tamanho: '45x45',
+    quantidade: 110,
+    tamanhoUnico: true,
+  }
+  assert.equal(linhaDaOp(capa).texto, '059 - Capa de Almofada - LINKS - AREIA - 110')
+  assert.equal(linhaDaOp(capa).tamanho, null)
+  // Sem tamanho gravado e sem cor: tambem nao sobra traco.
+  assert.equal(
+    linhaDaOp({ ...capa, cor: null, tamanhoUnico: false, tamanho: null }).texto,
+    '059 - Capa de Almofada - LINKS - 110',
+  )
+})
+
+test('linha da OP: maiusculas em tamanho e cor sem mudar o que esta gravado', () => {
+  const op = { ...peseiraLinks, tamanho: ' king ', cor: 'Verde Musgo' }
+  const l = linhaDaOp(op)
+  assert.equal(l.tamanho, 'KING')
+  assert.equal(l.cor, 'VERDE MUSGO')
+  // O objeto de entrada (o que veio do banco) continua como estava.
+  assert.equal(op.tamanho, ' king ')
+  assert.equal(op.cor, 'Verde Musgo')
+  // O nome do produto NAO vira maiusculo: so tamanho e cor, como no Trello.
+  assert.equal(l.produto, 'Peseira - LINKS')
+})
+
+// -----------------------------------------------------------------
+// Pra onde vai a OP (src/lib/producao/prazo-da-remessa.ts, `rotuloDoDestino`)
+// -----------------------------------------------------------------
+
+test('destino da OP: remessa Full usa o mesmo texto da pasta do kanban', () => {
+  const remessa = { canal: 'full_ml', dataEnvio: '2026-09-24' }
+  assert.equal(rotuloDoDestino({ canal: 'full_ml', remessa }), 'Full ML · 24/09')
+  assert.equal(
+    rotuloDoDestino({ canal: 'full_ml', remessa }),
+    rotuloDaRemessa(remessa.canal, remessa.dataEnvio),
+  )
+  assert.equal(
+    rotuloDoDestino({
+      canal: 'full_shopee',
+      remessa: { canal: 'full_shopee', dataEnvio: '2026-10-02' },
+    }),
+    'Full Shopee · 02/10',
+  )
+})
+
+test('destino da OP: pedido, venda direta, estoque, e nunca vazio', () => {
+  assert.equal(rotuloDoDestino({ canal: 'venda_direta', pedidoNumero: 142 }), 'Pedido #142')
+  assert.equal(rotuloDoDestino({ canal: 'venda_direta', pedidoNumero: null }), 'Venda direta')
+  assert.equal(rotuloDoDestino({ canal: 'estoque' }), 'Estoque')
+  // Full sem remessa (OP antiga): o canal, sem data inventada.
+  assert.equal(rotuloDoDestino({ canal: 'full_ml', remessa: null }), 'Full ML')
+  // Canal desconhecido aparece cru; vazio vira texto, nunca ''.
+  assert.equal(rotuloDoDestino({ canal: 'full_amazon' }), 'full_amazon')
+  assert.equal(rotuloDoDestino({ canal: '' }), 'Sem destino')
 })

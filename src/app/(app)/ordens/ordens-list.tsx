@@ -19,6 +19,7 @@ import {
   type ProdutoComVariacoesParaForm,
 } from './actions'
 import { OpDetailSheet } from '@/app/(app)/producao/op-detail-sheet'
+import { CodigoDoProduto } from '@/components/ordens/codigo-do-produto'
 import { BotaoNovaOp } from '@/components/ordens/nova-op-dialog'
 import type { RemessaFullOpcao } from './remessas-actions'
 import { Badge } from '@/components/ui/badge'
@@ -213,7 +214,7 @@ export function OrdensList({
           <div className="relative flex-1 sm:max-w-xs">
             <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
             <Input
-              placeholder="Buscar por número, SKU ou produto…"
+              placeholder="Buscar por número, código, SKU ou produto…"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="pl-8"
@@ -375,7 +376,10 @@ export function OrdensList({
                     )}
                     <TableCell className="font-mono text-xs">{o.numero}</TableCell>
                     <TableCell>
-                      <div className="font-medium">{o.produtoNome}</div>
+                      <div className="font-medium">
+                        <CodigoDoProduto codigo={o.produtoCodigo} />
+                        {o.produtoNome}
+                      </div>
                       <div className="text-muted-foreground text-xs">
                         {[o.variacaoCor, o.variacaoTamanho]
                           .filter(Boolean)
@@ -456,7 +460,10 @@ export function OrdensList({
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="font-mono text-xs">{o.numero}</div>
-                      <div className="truncate font-medium">{o.produtoNome}</div>
+                      <div className="truncate font-medium">
+                        <CodigoDoProduto codigo={o.produtoCodigo} />
+                        {o.produtoNome}
+                      </div>
                       <div className="text-muted-foreground text-xs">
                         {[o.variacaoCor, o.variacaoTamanho]
                           .filter(Boolean)

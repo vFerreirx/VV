@@ -64,8 +64,8 @@ import {
 } from '@/lib/producao/parada-de-maquina'
 import {
   agruparPorModelo,
+  linhaDaOp,
   prazoEmPalavras,
-  tituloDaOp,
 } from '@/lib/producao/rotulo-da-op'
 import {
   TravaDoTablet,
@@ -204,30 +204,6 @@ type Props = {
   horaDoServidor: number
   /** O servidor já considera a sessão travada. */
   travadoNoServidor: boolean
-}
-
-/**
- * O título em TEXTO CORRIDO: "Peseira · Marsala · Queen". Serve os diálogos,
- * onde não há espaço nem motivo pra dividir em partes com pesos diferentes.
- *
- * ⚠️ Mesma fonte do `TituloDaPeca` — `tituloDaOp`, em
- * src/lib/producao/rotulo-da-op.ts. Os diálogos de confirmar e de concluir
- * aparecem entre a fila e o cartão, e se falassem outro dialeto ("Capa de
- * Almofada - ACONCHEGO / Caqui · ACONCHEGO · 45x45") o operador teria que
- * traduzir no meio do caminho pra saber se é a mesma peça.
- */
-function variacaoDe(op: {
-  produtoNome: string
-  variacaoCor: string | null
-  variacaoModelo: string | null
-  variacaoTamanho: string | null
-}): string {
-  const t = tituloDaOp(op.produtoNome, {
-    cor: op.variacaoCor,
-    modelo: op.variacaoModelo,
-    tamanho: op.variacaoTamanho,
-  })
-  return [t.familia, t.variacao].filter(Boolean).join(' · ')
 }
 
 // A TRAVA ENVOLVE A TELA INTEIRA: o cabeçalho mostra "(travado)", cada ação
@@ -724,8 +700,8 @@ function CorpoOcupada({
   const Bloco = temObservacao ? 'button' : 'div'
   return (
     <>
-      {/* ⚠️ O MESMO TÍTULO DA FILA DE ESCOLHA, montado pela MESMA função
-          (`tituloDaOp`) e com o MESMO swatch ao lado. Ele escolhe a OP na
+      {/* ⚠️ A MESMA LINHA DA FILA DE ESCOLHA, montada pela MESMA função
+          (`linhaDaOp`) e com o MESMO swatch ao lado. Ele escolhe a OP na
           fila e depois passa o turno olhando este cartão — se as duas telas
           montassem o texto por conta própria, conferir se pegou a peça certa
           passaria a exigir tradução.
@@ -755,23 +731,32 @@ function CorpoOcupada({
           className="mt-0.5"
         />
         <div className="min-w-0 flex-1">
-          <div className="text-base leading-tight">
-            <TituloDaPeca op={op} />
+          {/* A LINHA DO TRELLO: "059 - Peseira - LINKS - QUEEN - AREIA".
+              ⚠️ NO MÁXIMO DUAS LINHAS (`line-clamp-2`). O código e o modelo
+              dentro do nome deixaram o texto mais comprido que o título
+              antigo, e o cartão tem posição fixa: se o título crescesse, os
+              botões de baixo desceriam, e o operador acerta o botão de
+              memória. O texto inteiro está no diálogo de concluir. */}
+          <div className="line-clamp-2 text-base leading-tight">
+            <LinhaDaPeca op={op} />
           </div>
           {/* META, NÃO PROGRESSO. Ver o cabeçalho do arquivo: o registro é
               feito só no fim, então uma barra ficaria zerada o turno
-              inteiro. O modelo divide a linha com ela — na fila ele está no
-              cabeçalho do grupo, aqui não existe grupo pra carregá-lo.
+              inteiro.
+
+              O DESTINO DIVIDE A LINHA COM ELA, no lugar do modelo — que agora
+              já vem no nome do produto, dentro da linha do Trello. Nada novo
+              entra no cartão: o que chegou ocupa o espaço de quem saiu.
 
               ⚠️ UMA LINHA, E NÃO QUEBRA. Quem cede quando falta largura é o
-              MODELO, cortado com reticências; a meta e a marca da observação
+              DESTINO, cortado com reticências; a meta e a marca da observação
               ficam inteiras. E a marca encurta pra "obs." abaixo de `lg`,
               onde as três colunas deixam o cartão estreito demais pra
               "tem observação" caber ao lado da meta. */}
           <p className="text-muted-foreground flex min-w-0 items-baseline gap-1 text-sm whitespace-nowrap tabular-nums">
-            {op.variacaoModelo && (
-              <span className="min-w-0 truncate">{op.variacaoModelo} ·</span>
-            )}
+            <span className="min-w-0 truncate">
+              <Destino texto={op.destino} /> ·
+            </span>
             <span className="text-foreground shrink-0 font-semibold">
               Meta: {op.quantidade} peças
             </span>
@@ -1058,9 +1043,11 @@ function IniciarProducaoDialog({
                     quando o nome do produto desceu pra segunda linha.
                     A cor não precisa abrir a frase porque o SWATCH está ao
                     lado: o olho pega a cor pela mancha, o texto confirma. */}
+                {/* A LINHA DO TRELLO, código primeiro — a mesma do cartão da
+                    máquina. A quantidade fica no canto, como antes. */}
                 <div className="flex items-baseline justify-between gap-2">
                   <span className="truncate text-xl">
-                    <TituloDaPeca op={op} />
+                    <LinhaDaPeca op={op} />
                   </span>
                   <span className="flex shrink-0 items-baseline gap-2">
                     <span className="text-base font-medium tabular-nums">
@@ -1071,6 +1058,9 @@ function IniciarProducaoDialog({
                 </div>
 
                 <div className="text-muted-foreground flex flex-wrap items-baseline gap-x-2 text-sm">
+                  {/* PRA ONDE VAI, na linha que já existia — antes do prazo,
+                      que é o "até quando" desse "pra onde". */}
+                  <Destino texto={op.destino} />
                   <Prazo data={op.dataPrevistaFim} />
                   {/* AS TARJAS VIRARAM TEXTO NA MESMA LINHA. Como caixinhas
                       coloridas elas custavam uma quarta linha em toda OP que
@@ -1159,13 +1149,15 @@ function ConfirmarInicioDialog({
     <Dialog open onOpenChange={(o) => !o && onVoltar()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-2xl">{op.produtoNome}</DialogTitle>
+          <DialogTitle className="text-2xl">
+            <LinhaDaPeca op={op} comQuantidade />
+          </DialogTitle>
           {/* A MÁQUINA REAPARECE AQUI. Ele escolheu o cartão faz três toques
-              e já leu uma lista inteira desde então; confirmar sem ver o
-              destino é onde a OP vai parar na máquina errada. */}
+              e já leu uma lista inteira desde então; confirmar sem ver a
+              máquina é onde a OP vai parar na máquina errada. E o destino da
+              OP junto: é a última chance de ver pra quem é antes de tecer. */}
           <DialogDescription className="text-base">
-            {variacaoDe(op) && `${variacaoDe(op)} · `}
-            {op.quantidade} peças · vai pra máquina {maquina.codigo}
+            <Destino texto={op.destino} /> · vai pra máquina {maquina.codigo}
           </DialogDescription>
         </DialogHeader>
 
@@ -1212,33 +1204,60 @@ function ConfirmarInicioDialog({
   )
 }
 
-// O TÍTULO DA PEÇA, IGUAL NAS DUAS TELAS. As partes vêm de `tituloDaOp`
-// (src/lib/producao/rotulo-da-op.ts); aqui só se decide o peso de cada uma.
-// A família em negrito porque é o que a peça É; a variação em peso normal
-// porque o swatch ao lado já entregou a cor.
-function TituloDaPeca({
-  op,
-}: {
-  op: {
-    produtoNome: string
-    variacaoCor: string | null
-    variacaoModelo: string | null
-    variacaoTamanho: string | null
-  }
-}) {
-  const titulo = tituloDaOp(op.produtoNome, {
-    cor: op.variacaoCor,
-    modelo: op.variacaoModelo,
+// A PEÇA COMO O CHÃO DE FÁBRICA LÊ — a linha do Trello, igual em todo lugar
+// do tablet: "059 - Peseira - LINKS - QUEEN - AREIA". As partes vêm de
+// `linhaDaOp` (src/lib/producao/rotulo-da-op.ts); aqui só se decide o peso.
+//
+// O CÓDIGO EM NEGRITO E PRIMEIRO: é o número do programa, o que ele digita na
+// busca e o que confere contra a máquina. O resto em peso normal, na ordem de
+// sempre. Sem código (produto novo, sem programa), a linha começa direto no
+// produto — sem traço sobrando.
+//
+// A QUANTIDADE fica fora por padrão: o cartão tem "Meta: X peças" e a lista
+// tem "X pç" no canto. Os diálogos, que não têm esse lugar, pedem `comQuantidade`.
+type OpDaLinha = {
+  produtoCodigo: string | null
+  produtoNome: string
+  variacaoTamanho: string | null
+  variacaoCor: string | null
+  quantidade: number
+  tamanhoUnico: boolean
+}
+
+function linhaDe(op: OpDaLinha) {
+  return linhaDaOp({
+    codigo: op.produtoCodigo,
+    produtoNome: op.produtoNome,
     tamanho: op.variacaoTamanho,
+    cor: op.variacaoCor,
+    quantidade: op.quantidade,
+    tamanhoUnico: op.tamanhoUnico,
   })
+}
+
+function LinhaDaPeca({
+  op,
+  comQuantidade = false,
+}: {
+  op: OpDaLinha
+  comQuantidade?: boolean
+}) {
+  const l = linhaDe(op)
+  const resto = comQuantidade ? l.semCodigo : l.descricao
   return (
     <>
-      <span className="font-bold">{titulo.familia}</span>
-      {titulo.variacao && (
-        <span className="font-normal"> · {titulo.variacao}</span>
+      {l.codigo && (
+        <span className="font-bold tabular-nums">{l.codigo} - </span>
       )}
+      <span className="font-normal">{resto}</span>
     </>
   )
+}
+
+// PRA ONDE VAI, numa linha curta. A seta é o "vai pra": economiza a palavra e
+// não disputa com o prazo, que fica pintado ao lado quando aperta.
+function Destino({ texto }: { texto: string }) {
+  return <span className="text-foreground font-medium">→ {texto}</span>
 }
 
 // O PRAZO, QUE ERA INVISÍVEL. A fila é ordenada por prioridade E prazo, mas
@@ -1364,15 +1383,15 @@ function ConsultaDialog({
               <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-2">
                 <div className="truncate text-lg">
-                  <TituloDaPeca op={op} />
+                  <LinhaDaPeca op={op} />
                 </div>
                 <SeloDePrioridade prioridade={op.prioridade} />
               </div>
-              {op.variacaoModelo && (
-                <div className="text-muted-foreground truncate text-sm">
-                  {op.variacaoModelo}
-                </div>
-              )}
+              {/* O DESTINO NO LUGAR DO MODELO, que já vem no nome do produto.
+                  Nas Terminadas é o que diz pra onde a peça segue agora. */}
+              <div className="text-muted-foreground truncate text-sm">
+                <Destino texto={op.destino} />
+              </div>
               <div className="flex flex-wrap items-baseline gap-x-2 text-sm tabular-nums">
                 <span>{op.quantidade} peças</span>
                 {ehFila && <Prazo data={op.dataPrevistaFim} />}
@@ -1625,12 +1644,14 @@ function ConcluirDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-2xl">{op.produtoNome}</DialogTitle>
-          {/* MÁQUINA, OP E META na mesma linha: é o que ele confere antes de
-              gravar, e some do cartão no instante seguinte. */}
+          <DialogTitle className="text-2xl">
+            <LinhaDaPeca op={op} />
+          </DialogTitle>
+          {/* MÁQUINA, OP, META E DESTINO na mesma linha: é o que ele confere
+              antes de gravar, e some do cartão no instante seguinte. */}
           <DialogDescription className="text-base">
-            {variacaoDe(op) && `${variacaoDe(op)} · `}
-            {op.numero} · máquina {maquinaCodigo} · meta {op.quantidade}
+            <Destino texto={op.destino} /> · {op.numero} · máquina{' '}
+            {maquinaCodigo} · meta {op.quantidade}
           </DialogDescription>
         </DialogHeader>
 
@@ -1915,10 +1936,11 @@ function ObservacaoDialog({
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-2xl">{op.produtoNome}</DialogTitle>
+          <DialogTitle className="text-2xl">
+            <LinhaDaPeca op={op} comQuantidade />
+          </DialogTitle>
           <DialogDescription className="text-base">
-            {variacaoDe(op) && `${variacaoDe(op)} · `}
-            {op.quantidade} peças · OP {op.numero}
+            <Destino texto={op.destino} /> · OP {op.numero}
           </DialogDescription>
         </DialogHeader>
 

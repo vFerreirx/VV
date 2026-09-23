@@ -228,3 +228,94 @@ export function tituloDaOp(
     modelo,
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// A LINHA DO TRELLO — como o chão de fábrica LÊ a OP
+// ─────────────────────────────────────────────────────────────────────────
+//
+// O operador lia as OPs no Trello, uma por cartão, sempre na mesma ordem:
+//
+//     "059 - Peseira Links - QUEEN - AREIA - 55"
+//      código · produto (com o modelo) · tamanho · cor · quantidade
+//
+// e o tablet montava tudo pelo nome ("Peseira · Areia · Casal"), sem código
+// em lugar nenhum — embora a busca da fila já achasse "059". Ele digitava uma
+// coisa e lia outra.
+//
+// ⚠️ O CÓDIGO É O DO PROGRAMA DA MÁQUINA (`produtos.codigo`, migration 73), e
+// não o SKU: "059", nunca "059-P" — o tipo da peça já vem no nome. Produto
+// sem programa (novo, ou comprado de parceiro) fica SEM código: nada de
+// "null", e nada de traço sobrando no começo da linha.
+//
+// ⚠️ PRODUTO DE UM TAMANHO SÓ NÃO MOSTRA TAMANHO: "059 - Capa de Almofada -
+// LINKS - AREIA - 110". Quem diz se é tamanho único são as VARIAÇÕES VIVAS
+// do produto, contadas na consulta — nunca adivinhado pelo nome ("capa é
+// sempre 45x45" deixou de ser verdade quando a ACONCHEGO ganhou 4 tamanhos).
+//
+// ⚠️ TAMANHO E COR EM MAIÚSCULAS SÓ NA TELA. O que está gravado não muda: a
+// variação guarda "Areia", e é por esse texto que preço, peso e amostra de
+// cor casam (tudo por nome).
+//
+// É o complemento do `tituloDaOp`, não o substituto: o título em partes
+// continua servindo onde a tela precisa dar pesos diferentes à família e à
+// variação. A LINHA é o que se lê de relance, igual ao papel.
+
+export type OpParaLinha = {
+  /** `produtos.codigo` — o programa. Nulo ou vazio = sem código. */
+  codigo: string | null
+  produtoNome: string
+  tamanho: string | null
+  cor: string | null
+  quantidade: number
+  /** O produto tem no máximo um tamanho entre as variações vivas. */
+  tamanhoUnico: boolean
+}
+
+export type LinhaDaOp = {
+  /** "059", ou null. É o que a tela põe em destaque. */
+  codigo: string | null
+  /** "Peseira - LINKS" — o nome como está no cadastro. */
+  produto: string
+  /** "QUEEN", ou null (tamanho único ou sem tamanho). */
+  tamanho: string | null
+  /** "AREIA", ou null. */
+  cor: string | null
+  quantidade: number
+  /** Tudo, na ordem do Trello, unido por " - ". */
+  texto: string
+  /** O mesmo texto sem o código — pra quando a tela já desenhou o código. */
+  semCodigo: string
+  /**
+   * Só produto - tamanho - cor: sem código e sem quantidade. É o que vai ao
+   * lado do código quando a quantidade tem lugar próprio na tela ("Meta: 55
+   * peças" no cartão, "55 pç" na lista).
+   */
+  descricao: string
+}
+
+const limpo = (s: string | null | undefined): string | null => {
+  const t = (s ?? '').trim()
+  return t.length > 0 ? t : null
+}
+
+export function linhaDaOp(op: OpParaLinha): LinhaDaOp {
+  const codigo = limpo(op.codigo)
+  const tamanho = op.tamanhoUnico ? null : limpo(op.tamanho)?.toUpperCase() ?? null
+  const cor = limpo(op.cor)?.toUpperCase() ?? null
+  const produto = op.produtoNome.trim()
+
+  const descricao = [produto, tamanho, cor].filter(
+    (p): p is string => p !== null && p !== '',
+  )
+  const resto = [...descricao, String(op.quantidade)]
+  return {
+    codigo,
+    produto,
+    tamanho,
+    cor,
+    quantidade: op.quantidade,
+    texto: [codigo, ...resto].filter(Boolean).join(' - '),
+    semCodigo: resto.join(' - '),
+    descricao: descricao.join(' - '),
+  }
+}

@@ -33,6 +33,7 @@ import {
   estacoes,
   eventosKanban,
   maquinas,
+  orcamentos,
   ordensProducao,
   produtos,
   remessasFull,
@@ -46,10 +47,55 @@ import {
   type StatusDaOrdem,
 } from '@/lib/producao/destino-da-ordem'
 import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
+import {
+  rotuloDaRemessa,
+  rotuloDoDestino,
+} from '@/lib/producao/prazo-da-remessa'
 import { erroDoAutorDoDesfazer } from '@/lib/producao/conclusao'
 import type { MaquinaStatus } from '@/lib/producao/estado-maquina'
 import { STATUS_QUE_INICIAM } from '@/lib/producao/inicio-da-op'
 import { canalValues, statusValues } from '@/lib/validators/ordens'
+
+// -----------------------------------------------------------------
+// A linha do Trello: código, tamanho único e destino
+// -----------------------------------------------------------------
+//
+// O que o tablet precisa pra ler a OP como o chão de fábrica lê
+// (`linhaDaOp`, src/lib/producao/rotulo-da-op.ts) e pra dizer pra onde ela vai
+// (`rotuloDoDestino`, src/lib/producao/prazo-da-remessa.ts).
+//
+// ⚠️ TAMANHO ÚNICO SAI DAS VARIAÇÕES VIVAS, na própria consulta — uma
+// subconsulta correlacionada por linha, e não uma ida ao banco por produto: é
+// a tela que mais recarrega do sistema, em três tablets. Nunca adivinhado pelo
+// nome. `"produtos"."id"` qualificado à mão pelo mesmo motivo das
+// subconsultas de `produzido` abaixo: sem isso, o `id` resolveria pra
+// `variacoes_produto` e a conta daria errado em silêncio.
+//
+// Com o produto em LEFT JOIN (cartão de máquina livre), a conta dá 0 e o
+// valor não é usado — não há OP pra montar linha.
+const tamanhoUnicoSql = sql<boolean>`(
+  SELECT count(DISTINCT lower(trim(v_tam.tamanho)))
+    FROM variacoes_produto v_tam
+   WHERE v_tam.produto_id = "produtos"."id"
+     AND v_tam.deleted_at IS NULL
+) <= 1`
+
+/** O destino, a partir das colunas do LEFT JOIN em remessa e pedido. */
+function destinoDe(r: {
+  canal: string
+  remessaCanal: string | null
+  remessaDataEnvio: string | null
+  pedidoNumero: number | null
+}): string {
+  return rotuloDoDestino({
+    canal: r.canal,
+    remessa:
+      r.remessaCanal && r.remessaDataEnvio
+        ? { canal: r.remessaCanal, dataEnvio: r.remessaDataEnvio }
+        : null,
+    pedidoNumero: r.pedidoNumero,
+  })
+}
 
 // -----------------------------------------------------------------
 // Tipo do card do kanban
@@ -63,6 +109,8 @@ export type KanbanCardData = {
   canalDestino: (typeof canalValues)[number]
   produtoNome: string
   produtoSku: string
+  /** O código do programa ("059"), ou null — o gerente também lê por ele. */
+  produtoCodigo: string | null
   variacaoCor: string | null
   variacaoModelo: string | null
   variacaoTamanho: string | null
@@ -135,6 +183,7 @@ export async function listarOrdensProducao(
         ilike(ordensProducao.numero, term),
         ilike(produtos.nome, term),
         ilike(produtos.sku, term),
+        ilike(produtos.codigo, term),
       )!,
     )
   }
@@ -157,6 +206,7 @@ export async function listarOrdensProducao(
       op: ordensProducao,
       produtoNome: produtos.nome,
       produtoSku: produtos.sku,
+      produtoCodigo: produtos.codigo,
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
@@ -258,6 +308,7 @@ export async function listarOrdensProducao(
       op,
       produtoNome,
       produtoSku,
+      produtoCodigo,
       variacaoCor,
       variacaoModelo,
       variacaoTamanho,
@@ -281,6 +332,7 @@ export async function listarOrdensProducao(
       canalDestino: op.canalDestino,
       produtoNome,
       produtoSku,
+      produtoCodigo: produtoCodigo ?? null,
       variacaoCor: variacaoCor ?? null,
       variacaoModelo: variacaoModelo ?? null,
       variacaoTamanho: variacaoTamanho ?? null,
@@ -289,9 +341,13 @@ export async function listarOrdensProducao(
       maquinaCodigo: maquinaCodigo ?? null,
       maquinaNome: maquinaNome ?? null,
       remessaFullId: op.remessaFullId,
+      // O rótulo da pasta sai da fonte única (`rotuloDaRemessa`), a mesma
+      // que o destino do tablet usa — era uma cópia montada à mão aqui, e a
+      // pasta do gerente e a linha do operador precisam dizer a mesma coisa.
+      // Mesmo texto de antes: "Full ML · 24/09".
       remessaLabel:
         remessaCanal && remessaDataEnvio
-          ? `${remessaCanal === 'full_ml' ? 'Full ML' : 'Full Shopee'} · ${remessaDataEnvio.slice(8, 10)}/${remessaDataEnvio.slice(5, 7)}`
+          ? rotuloDaRemessa(remessaCanal, remessaDataEnvio)
           : null,
       responsavelId: op.responsavelId,
       responsavelNome: responsavelNome ?? null,
@@ -332,6 +388,12 @@ export type OpNaMaquina = {
   id: string
   numero: string
   produtoNome: string
+  /** O programa da máquina ("059") — o que o operador lê primeiro. */
+  produtoCodigo: string | null
+  /** O produto só tem um tamanho entre as variações vivas: a linha omite. */
+  tamanhoUnico: boolean
+  /** Pra onde vai: "Full ML · 24/09", "Pedido #142", "Estoque"… */
+  destino: string
   variacaoCor: string | null
   variacaoModelo: string | null
   variacaoTamanho: string | null
@@ -407,8 +469,14 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
       opQuantidade: ordensProducao.quantidade,
       opObservacoes: ordensProducao.observacoes,
       opResponsavelId: ordensProducao.responsavelId,
+      opCanal: ordensProducao.canalDestino,
       responsavelNome: users.nome,
       produtoNome: produtos.nome,
+      produtoCodigo: produtos.codigo,
+      tamanhoUnico: tamanhoUnicoSql,
+      remessaCanal: remessasFull.canal,
+      remessaDataEnvio: remessasFull.dataEnvio,
+      pedidoNumero: orcamentos.numero,
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
@@ -451,6 +519,10 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
     )
     .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
+    // O DESTINO: remessa e pedido são 1:1 com a OP (FK na OP), então não
+    // duplicam a linha da máquina.
+    .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    .leftJoin(orcamentos, eq(orcamentos.id, ordensProducao.orcamentoId))
     .leftJoin(
       maquinaParadas,
       and(
@@ -478,6 +550,14 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
               id: r.opId,
               numero: r.opNumero!,
               produtoNome: r.produtoNome ?? '—',
+              produtoCodigo: r.produtoCodigo ?? null,
+              tamanhoUnico: Boolean(r.tamanhoUnico),
+              destino: destinoDe({
+                canal: r.opCanal ?? '',
+                remessaCanal: r.remessaCanal,
+                remessaDataEnvio: r.remessaDataEnvio,
+                pedidoNumero: r.pedidoNumero,
+              }),
               variacaoCor: r.variacaoCor ?? null,
               variacaoModelo: r.variacaoModelo ?? null,
               variacaoTamanho: r.variacaoTamanho ?? null,
@@ -528,6 +608,11 @@ export type OpParaIniciar = {
   status: StatusDaOrdem
   prioridade: PrioridadeNivel
   produtoNome: string
+  /** O programa da máquina ("059") — ver `OpNaMaquina`. */
+  produtoCodigo: string | null
+  tamanhoUnico: boolean
+  /** Pra onde vai — "Full ML · 24/09", "Pedido #142", "Estoque"… */
+  destino: string
   variacaoCor: string | null
   variacaoModelo: string | null
   variacaoTamanho: string | null
@@ -605,6 +690,10 @@ export async function listarOpsParaIniciar(
         ilike(ordensProducao.numero, `%${termo}%`),
         ilike(produtos.nome, `%${termo}%`),
         ilike(produtos.sku, `%${termo}%`),
+        // O código do programa, que agora é o que ele LÊ na linha. Antes a
+        // busca achava "059" só porque o SKU começava com ele — o operador
+        // digitava uma coisa e lia outra.
+        ilike(produtos.codigo, `%${termo}%`),
       )!,
     )
   }
@@ -624,7 +713,13 @@ export async function listarOpsParaIniciar(
       quantidade: ordensProducao.quantidade,
       observacoes: ordensProducao.observacoes,
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
+      canal: ordensProducao.canalDestino,
       produtoNome: produtos.nome,
+      produtoCodigo: produtos.codigo,
+      tamanhoUnico: tamanhoUnicoSql,
+      remessaCanal: remessasFull.canal,
+      remessaDataEnvio: remessasFull.dataEnvio,
+      pedidoNumero: orcamentos.numero,
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
@@ -638,6 +733,9 @@ export async function listarOpsParaIniciar(
       eq(variacoesProduto.id, ordensProducao.variacaoId),
     )
     .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
+    // O destino, 1:1 com a OP: não duplica linha nem mexe no COUNT acima.
+    .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    .leftJoin(orcamentos, eq(orcamentos.id, ordensProducao.orcamentoId))
     .where(and(...conditions))
     // A MESMA ORDEM DO KANBAN, e de propósito: o enum `ordem_prioridade` é
     // declarado baixa < normal < alta < urgente, então DESC traz urgente
@@ -657,6 +755,9 @@ export async function listarOpsParaIniciar(
       status: r.status,
       prioridade: r.prioridade,
       produtoNome: r.produtoNome,
+      produtoCodigo: r.produtoCodigo ?? null,
+      tamanhoUnico: Boolean(r.tamanhoUnico),
+      destino: destinoDe(r),
       variacaoCor: r.variacaoCor ?? null,
       variacaoModelo: r.variacaoModelo ?? null,
       variacaoTamanho: r.variacaoTamanho ?? null,
@@ -880,7 +981,13 @@ export async function listarOpsDaEstacao(
       prioridade: ordensProducao.prioridade,
       quantidade: ordensProducao.quantidade,
       observacoes: ordensProducao.observacoes,
+      canal: ordensProducao.canalDestino,
       produtoNome: produtos.nome,
+      produtoCodigo: produtos.codigo,
+      tamanhoUnico: tamanhoUnicoSql,
+      remessaCanal: remessasFull.canal,
+      remessaDataEnvio: remessasFull.dataEnvio,
+      pedidoNumero: orcamentos.numero,
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
@@ -908,6 +1015,8 @@ export async function listarOpsDaEstacao(
     )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
+    .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    .leftJoin(orcamentos, eq(orcamentos.id, ordensProducao.orcamentoId))
     .where(
       inArray(
         ordensProducao.id,
@@ -926,6 +1035,9 @@ export async function listarOpsDaEstacao(
           status: r.status,
           prioridade: r.prioridade,
           produtoNome: r.produtoNome,
+          produtoCodigo: r.produtoCodigo ?? null,
+          tamanhoUnico: Boolean(r.tamanhoUnico),
+          destino: destinoDe(r),
           variacaoCor: r.variacaoCor ?? null,
           variacaoModelo: r.variacaoModelo ?? null,
           variacaoTamanho: r.variacaoTamanho ?? null,

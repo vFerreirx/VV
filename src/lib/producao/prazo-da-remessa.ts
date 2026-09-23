@@ -146,6 +146,48 @@ export function rotuloDaRemessa(canal: string, dataEnvio: string): string {
   return `${nome} · ${d}/${m}`
 }
 
+// -----------------------------------------------------------------
+// PRA ONDE VAI A OP — o que o operador vê no tablet
+// -----------------------------------------------------------------
+//
+// O operador tecia sem saber pra quem: uma OP do Full que sai amanhã e uma de
+// estoque pareciam iguais no tablet. O destino fica EM CIMA de
+// `rotuloDaRemessa` e não ao lado dele: se a OP é de uma remessa Full, o texto
+// É o da remessa ("Full ML · 24/09"), o mesmo da pasta do kanban — o gerente e
+// o operador falam da mesma caixa com as mesmas palavras.
+//
+// NUNCA VAZIO. Canal desconhecido aparece cru, como `rotuloDaRemessa` já faz:
+// um destino esquisito na tela é um defeito que alguém vê; um destino em
+// branco é um que ninguém vê.
+
+export type DestinoDaOp = {
+  canal: string
+  /** A remessa Full da OP, quando ela tem uma. */
+  remessa?: { canal: string; dataEnvio: string } | null
+  /** O número do pedido, quando a OP produz o faltante de um. */
+  pedidoNumero?: number | null
+}
+
+const DESTINO_DO_CANAL: Record<string, string> = {
+  full_ml: 'Full ML',
+  full_shopee: 'Full Shopee',
+  venda_direta: 'Venda direta',
+  estoque: 'Estoque',
+}
+
+/** "Full ML · 24/09" · "Pedido #142" · "Venda direta" · "Estoque" · canal cru. */
+export function rotuloDoDestino({
+  canal,
+  remessa,
+  pedidoNumero,
+}: DestinoDaOp): string {
+  if (remessa) return rotuloDaRemessa(remessa.canal, remessa.dataEnvio)
+  if (pedidoNumero != null) return `Pedido #${pedidoNumero}`
+  const c = canal.trim()
+  if (c === '') return 'Sem destino'
+  return DESTINO_DO_CANAL[c] ?? c
+}
+
 /** "27/09" — dia e mês de uma data 'YYYY-MM-DD'. */
 export function diaMes(iso: string): string {
   const [, m, d] = iso.split('-')

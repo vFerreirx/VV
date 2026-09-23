@@ -38,6 +38,7 @@ import {
   type ApontamentoItem,
   type OrdemDetalhe,
 } from '@/app/(app)/ordens/actions'
+import { CodigoDoProduto } from '@/components/ordens/codigo-do-produto'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -395,7 +396,10 @@ function DetalheBody({
     <>
       <SheetHeader>
         <SheetTitle className="font-mono">{ordem.numero}</SheetTitle>
-        <SheetDescription>{ordem.produto.nome}</SheetDescription>
+        <SheetDescription>
+          <CodigoDoProduto codigo={ordem.produto.codigo} />
+          {ordem.produto.nome}
+        </SheetDescription>
       </SheetHeader>
 
       <div className="space-y-5 px-4 pb-4">

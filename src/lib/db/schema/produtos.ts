@@ -22,6 +22,10 @@ export const produtos = pgTable(
     id: uuid().primaryKey().defaultRandom(),
     sku: text().notNull(),
     nome: text().notNull(),
+    // CÓDIGO DO PROGRAMA da máquina ("059") — o que o chão de fábrica lê
+    // primeiro. NÃO é o SKU nem é único: 059 é da peseira e da capa LINKS.
+    // Nulo = produto sem programa (novo, ou de parceiro). Ver 73.
+    codigo: text(),
     descricao: text(),
 
     // NOTA: as dimensões (largura/comprimento) migraram pro TAMANHO

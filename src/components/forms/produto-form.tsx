@@ -80,6 +80,8 @@ export type ProdutoFormDefaults = {
   id?: string
   sku: string
   nome: string
+  /** Código do programa da máquina ("059"); null = sem programa. */
+  codigo?: string | null
   descricao: string | null
   ativo: boolean
   // 'producao' | 'parceiro' e 'casa' | 'vestuario' — texto como vem do banco.
@@ -135,6 +137,7 @@ function toFormValues(d: ProdutoFormDefaults): ProdutoInput {
   return {
     sku: d.sku ?? '',
     nome: d.nome ?? '',
+    codigo: d.codigo ?? '',
     descricao: d.descricao ?? '',
     ativo: d.ativo ?? true,
     origem: ehOrigemValida(d.origem) ? d.origem : 'producao',
@@ -521,6 +524,30 @@ export function ProdutoForm({
               placeholder="Malha Cotton 30/1"
               disabled={isPending}
               {...form.register('nome')}
+            />
+          </Field>
+
+          {/* O NÚMERO DO PROGRAMA DA MÁQUINA, não o SKU: é o que o operador
+              lê primeiro no tablet ("059 - Peseira - LINKS - QUEEN…"). Pode
+              repetir entre produtos — o 059 tece a peseira e a capa LINKS. */}
+          <Field
+            label="Código do programa"
+            id="codigo"
+            error={errs.codigo?.message}
+            hint={
+              origem === 'parceiro'
+                ? 'Produto de parceiro não tem programa — deixe vazio.'
+                : 'O número que o programador usa pra tecer este produto. Pode repetir entre peças da mesma malha.'
+            }
+          >
+            <Input
+              id="codigo"
+              placeholder="059"
+              inputMode="numeric"
+              autoComplete="off"
+              className="tabular-nums"
+              disabled={isPending}
+              {...form.register('codigo')}
             />
           </Field>
 
