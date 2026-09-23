@@ -114,6 +114,8 @@ export type ActionResult<T = undefined> =
 export type OrdemListItem = OrdemProducao & {
   produtoNome: string
   produtoSku: string
+  /** O código do programa ("059"), ou null. */
+  produtoCodigo: string | null
   variacaoCor: string | null
   variacaoTamanho: string | null
   maquinaNome: string | null
@@ -158,6 +160,7 @@ export async function listarOrdens(
         ilike(ordensProducao.numero, `%${f.q}%`),
         ilike(produtos.nome, `%${f.q}%`),
         ilike(produtos.sku, `%${f.q}%`),
+        ilike(produtos.codigo, `%${f.q}%`),
       )!,
     )
   }
@@ -200,6 +203,7 @@ export async function listarOrdens(
       op: ordensProducao,
       produtoNome: produtos.nome,
       produtoSku: produtos.sku,
+      produtoCodigo: produtos.codigo,
       variacaoCor: variacoesProduto.cor,
       variacaoTamanho: variacoesProduto.tamanho,
       maquinaNome: maquinas.nome,
@@ -239,6 +243,7 @@ export async function listarOrdens(
       op,
       produtoNome,
       produtoSku,
+      produtoCodigo,
       variacaoCor,
       variacaoTamanho,
       maquinaNome,
@@ -250,6 +255,7 @@ export async function listarOrdens(
       ...op,
       produtoNome,
       produtoSku,
+      produtoCodigo: produtoCodigo ?? null,
       variacaoCor: variacaoCor ?? null,
       variacaoTamanho: variacaoTamanho ?? null,
       maquinaNome: maquinaNome ?? null,

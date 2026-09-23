@@ -100,6 +100,17 @@ export const produtoSchema = z.object({
       'Use apenas letras, números, hífen, ponto, barra ou underline',
     ),
   nome: z.string().min(2, 'Nome obrigatório').max(120, 'Nome muito longo'),
+  // CÓDIGO DO PROGRAMA da máquina ("059"). Opcional e NÃO único — o 059 é
+  // da peseira e da capa LINKS. Vazio vira undefined → NULL no banco, nunca
+  // '' (o CHECK da 73 recusa, e a linha do tablet mostraria um traço solto).
+  codigo: z
+    .union([z.string(), z.null(), z.undefined()])
+    .transform((v) => {
+      const t = (v ?? '').trim()
+      return t === '' ? undefined : t
+    })
+    .refine((v) => v === undefined || v.length <= 20, 'Código muito longo')
+    .optional(),
   descricao: stringOpt(500, 'Descrição'),
 
   ativo: z.boolean().default(true),

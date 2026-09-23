@@ -39,6 +39,7 @@ import {
   listarProdutosParaOrdem,
   type ProdutoComVariacoesParaForm,
 } from '@/app/(app)/ordens/actions'
+import { CodigoDoProduto } from '@/components/ordens/codigo-do-produto'
 import { NovaOpDialog } from '@/components/ordens/nova-op-dialog'
 import {
   marcarEco,
@@ -787,6 +788,7 @@ type GrupoProduto = {
   key: string
   produtoNome: string
   produtoSku: string
+  produtoCodigo: string | null
   ops: KanbanCardData[]
 }
 
@@ -803,6 +805,7 @@ function agruparPorProduto(ordens: KanbanCardData[]): GrupoProduto[] {
     key,
     produtoNome: ops[0].produtoNome,
     produtoSku: ops[0].produtoSku,
+    produtoCodigo: ops[0].produtoCodigo,
     ops,
   }))
 }
@@ -868,6 +871,7 @@ function PastaProduto({
             />
             <span className="flex min-w-0 flex-col">
               <span className="truncate text-xs font-medium">
+                <CodigoDoProduto codigo={grupo.produtoCodigo} />
                 {grupo.produtoNome}
               </span>
               <span className="text-muted-foreground truncate font-mono text-[10px]">
@@ -1082,6 +1086,7 @@ function KanbanCardContent({
       <div className="flex items-start gap-1.5">
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="text-xs font-medium leading-snug">
+            <CodigoDoProduto codigo={ordem.produtoCodigo} />
             {ordem.produtoNome}
           </span>
           <span className="text-muted-foreground truncate font-mono text-[10px]">

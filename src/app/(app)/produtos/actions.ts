@@ -112,6 +112,7 @@ export async function listarProdutos(
       id: produtos.id,
       sku: produtos.sku,
       nome: produtos.nome,
+      codigo: produtos.codigo,
       descricao: produtos.descricao,
       mlbId: produtos.mlbId,
       shopeeItemId: produtos.shopeeItemId,
@@ -370,6 +371,7 @@ export async function criarProdutoAction(
       .values({
         sku: data.sku,
         nome: data.nome,
+        codigo: data.codigo ?? null,
         descricao: data.descricao ?? null,
         origem: data.origem,
         grupoTamanho: data.grupoTamanho,
@@ -459,6 +461,7 @@ export async function atualizarProdutoAction(
       .set({
         sku: data.sku,
         nome: data.nome,
+        codigo: data.codigo ?? null,
         descricao: data.descricao ?? null,
         // Virar "parceiro" não mexe em OP que já existe: a guarda é de
         // ENTRADA (nenhuma OP nova), e a OP antiga segue até a baixa.
@@ -616,6 +619,9 @@ export async function duplicarProdutoAction(
       .values({
         sku: novoSku,
         nome: `${orig.nome} (cópia)`,
+        // O mesmo programa: a cópia costuma ser a mesma malha em outra peça
+        // (a capa do mesmo modelo). Se não for, corrige-se no cadastro.
+        codigo: orig.codigo,
         descricao: orig.descricao,
         // A cópia é do MESMO tipo: duplicar o suéter é como nasce o próximo
         // estilo, e ele não pode aparecer na Nova OP por ter nascido "produção".
