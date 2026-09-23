@@ -13,6 +13,7 @@ import {
   excluirCorAction,
   excluirMultiplasCoresAction,
 } from './actions'
+import { AvisoDeRenomear } from '@/components/catalogo/aviso-de-renomear'
 import { Badge } from '@/components/ui/badge'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
@@ -282,7 +283,11 @@ export function CoresList({ cores, uso = {}, podeEditar }: Props) {
       )}
 
       {/* Dialog criar/editar */}
-      <CorDialog cor={editingCor} onClose={() => setEditingCor(null)} />
+      <CorDialog
+        cor={editingCor}
+        uso={uso}
+        onClose={() => setEditingCor(null)}
+      />
 
       {/* Dialog excluir individual */}
       <ExcluirDialog cor={excluindo} onClose={() => setExcluindo(null)} />
@@ -329,9 +334,11 @@ function SwatchPreview({
 
 function CorDialog({
   cor,
+  uso,
   onClose,
 }: {
   cor: Cor | 'novo' | null
+  uso: Record<string, { variacoes: number; produtos: number }>
   onClose: () => void
 }) {
   const router = useRouter()
@@ -359,6 +366,7 @@ function CorDialog({
   const ativo = useWatch({ control: form.control, name: 'ativo' })
   const hex1Preview = useWatch({ control: form.control, name: 'codigoHex' })
   const hex2Preview = useWatch({ control: form.control, name: 'codigoHex2' })
+  const nomeDigitado = useWatch({ control: form.control, name: 'nome' })
 
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
@@ -400,6 +408,14 @@ function CorDialog({
             />
             {errs.nome && (
               <p className="text-destructive text-xs">{errs.nome.message}</p>
+            )}
+            {isEdit && (
+              <AvisoDeRenomear
+                nomeAtual={cor.nome}
+                nomeNovo={nomeDigitado ?? ''}
+                uso={uso}
+                modo="propaga"
+              />
             )}
           </div>
 

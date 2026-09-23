@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { GRUPOS_DE_TAMANHO } from '../produtos/grupo-de-tamanho.ts'
+
 const intReq = z
   .union([z.string(), z.number()])
   .transform((v) => Number(v))
@@ -53,6 +55,8 @@ export const tamanhoSchema = z.object({
   comprimentoCm: numericOpt,
   pesoGramas: intOpt,
   ordem: intReq,
+  // Casa ou Vestuário (src/lib/produtos/grupo-de-tamanho.ts, CHECK na 72).
+  grupo: z.enum(GRUPOS_DE_TAMANHO).default('casa'),
   ativo: z.boolean().default(true),
 })
 

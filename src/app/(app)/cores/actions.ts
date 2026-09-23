@@ -6,6 +6,10 @@ import { revalidatePath } from 'next/cache'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
+import {
+  renomearNasVariacoes,
+  sufixoDasVariacoes,
+} from '@/lib/db/renomear-no-catalogo'
 import { cores, type Cor } from '@/lib/db/schema'
 import { erroDeUso, mensagemDoLote } from '@/lib/catalogo-em-uso'
 import { usoDeCores } from '@/lib/db/uso-do-catalogo'
@@ -113,7 +117,7 @@ export async function atualizarCorAction(
   const data = parsed.data
 
   const [atual] = await db
-    .select({ id: cores.id })
+    .select({ id: cores.id, nome: cores.nome })
     .from(cores)
     .where(and(eq(cores.id, id), isNull(cores.deletedAt)))
     .limit(1)
@@ -131,16 +135,27 @@ export async function atualizarCorAction(
     return { success: false, error: `Já existe outra cor chamada "${data.nome}"` }
   }
 
+  // RENOMEAR LEVA AS VARIAÇÕES JUNTO, na mesma transação — o SKU não muda.
+  // Ver src/lib/db/renomear-no-catalogo.ts. A tela avisa quantas antes.
+  let variacoesAtualizadas = 0
   try {
-    await db
-      .update(cores)
-      .set({
-        nome: data.nome,
-        codigoHex: data.codigoHex,
-        codigoHex2: data.codigoHex2,
-        ativo: data.ativo,
-      })
-      .where(eq(cores.id, id))
+    await db.transaction(async (tx) => {
+      await tx
+        .update(cores)
+        .set({
+          nome: data.nome,
+          codigoHex: data.codigoHex,
+          codigoHex2: data.codigoHex2,
+          ativo: data.ativo,
+        })
+        .where(eq(cores.id, id))
+      variacoesAtualizadas = await renomearNasVariacoes(
+        tx,
+        'cor',
+        atual.nome,
+        data.nome,
+      )
+    })
   } catch (err) {
     if (isUniqueViolation(err)) {
       return { success: false, error: `Já existe uma cor chamada "${data.nome}"` }
@@ -149,7 +164,11 @@ export async function atualizarCorAction(
   }
 
   revalidatePath('/variacoes')
-  return { success: true, message: 'Cor atualizada' }
+  if (variacoesAtualizadas > 0) revalidatePath('/produtos')
+  return {
+    success: true,
+    message: `Cor atualizada${sufixoDasVariacoes(variacoesAtualizadas)}`,
+  }
 }
 
 // -----------------------------------------------------------------

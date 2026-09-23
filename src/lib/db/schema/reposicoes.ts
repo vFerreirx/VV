@@ -34,6 +34,10 @@ export const reposicoesEstoque = pgTable('reposicoes_estoque', {
   ordemId: uuid().references(() => ordensProducao.id),
   repostoEm: timestamp({ withTimezone: true }),
 
+  // Produto de parceiro: "Pedir ao parceiro" grava quem e quando (72).
+  pedidoParceiroEm: timestamp({ withTimezone: true }),
+  pedidoParceiroPor: uuid().references(() => users.id),
+
   descartadoEm: timestamp({ withTimezone: true }),
   descartadoPor: uuid().references(() => users.id),
   motivoDescarte: text(),

@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { erroDeProdutoDeParceiro } from '@/lib/db/origem-do-produto'
 import {
   contasMarketplace,
   eventosKanban,
@@ -97,6 +98,9 @@ export async function criarOpsFullAction(
       return { success: false, error: 'Variação não encontrada' }
     }
   }
+  // Produto de parceiro não vira OP (src/lib/db/origem-do-produto.ts).
+  const erroOrigem = await erroDeProdutoDeParceiro([...produtoDaVariacao.values()])
+  if (erroOrigem) return { success: false, error: erroOrigem }
 
   const criadas = await db.transaction(async (tx) => {
     // Full existente ou novo.

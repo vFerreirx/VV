@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
+import { erroDeProdutoDeParceiro } from '@/lib/db/origem-do-produto'
 import {
   contasMarketplace,
   deParaFull,
@@ -465,6 +466,11 @@ export async function importarFullAction(
     return { success: false, error: 'Alguma variação não existe mais' }
   }
   const produtoDaVariacao = new Map(vars.map((v) => [v.id, v.produtoId]))
+
+  // Produto de parceiro não vira OP (src/lib/db/origem-do-produto.ts). O
+  // de-para do Full pode apontar pra ele se foi mapeado antes da origem.
+  const erroOrigem = await erroDeProdutoDeParceiro([...produtoDaVariacao.values()])
+  if (erroOrigem) return { success: false, error: erroOrigem }
 
   // Envio já importado? A trava real é o índice único, mas conferir antes
   // dá uma mensagem melhor que um erro de constraint.

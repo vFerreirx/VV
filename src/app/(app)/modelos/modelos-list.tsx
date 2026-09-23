@@ -13,6 +13,7 @@ import {
   excluirModeloAction,
   excluirMultiplosModelosAction,
 } from './actions'
+import { AvisoDeRenomear } from '@/components/catalogo/aviso-de-renomear'
 import { Badge } from '@/components/ui/badge'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
@@ -279,6 +280,7 @@ export function ModelosList({ modelos, uso = {}, podeEditar }: Props) {
 
       <ModeloDialog
         modelo={editando}
+        uso={uso}
         onClose={() => setEditando(null)}
       />
       <ExcluirDialog
@@ -353,9 +355,11 @@ function BulkExcluirDialog({
 
 function ModeloDialog({
   modelo,
+  uso,
   onClose,
 }: {
   modelo: Modelo | 'novo' | null
+  uso: Record<string, { variacoes: number; produtos: number }>
   onClose: () => void
 }) {
   const router = useRouter()
@@ -378,6 +382,7 @@ function ModeloDialog({
   })
 
   const ativo = useWatch({ control: form.control, name: 'ativo' })
+  const nomeDigitado = useWatch({ control: form.control, name: 'nome' })
 
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
@@ -421,6 +426,14 @@ function ModeloDialog({
             />
             {errs.nome && (
               <p className="text-destructive text-xs">{errs.nome.message}</p>
+            )}
+            {isEdit && (
+              <AvisoDeRenomear
+                nomeAtual={modelo.nome}
+                nomeNovo={nomeDigitado ?? ''}
+                uso={uso}
+                modo="propaga"
+              />
             )}
           </div>
 

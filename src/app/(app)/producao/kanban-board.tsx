@@ -258,8 +258,8 @@ export function KanbanBoard({
     setNovaOpOpen(true)
     if (produtos !== null) return
     // Só com a variação ATIVA: o diálogo de criar não pode oferecer uma
-    // variação apagada.
-    listarProdutosParaOrdem({ somenteAtivas: true })
+    // variação apagada. E sem produto de parceiro, que não vira OP.
+    listarProdutosParaOrdem({ somenteAtivas: true, semParceiro: true })
       .then(setProdutos)
       .catch(() => {
         toast.error('Não deu pra carregar os produtos. Tente de novo.')

@@ -83,7 +83,7 @@ test('catálogo renderiza uma única cor selecionada e preserva a variação da 
   const { CatalogoOrdem } = await import('../src/components/forms/catalogo-ordem')
   const html = renderToStaticMarkup(
     createElement(CatalogoOrdem, {
-      produtos: [{ id, sku: '059', nome: 'Capa', variacoes }],
+      produtos: [{ id, sku: '059', nome: 'Capa', origem: 'producao', variacoes }],
       produtoId: id,
       variacaoId: 'a',
       disabled: false,
@@ -106,6 +106,7 @@ test('variação sem modelo não assume outro modelo do mesmo produto na ediçã
           id,
           sku: '059',
           nome: 'Capa',
+          origem: 'producao',
           variacoes: [...variacoes, { ...variacoes[0], id: 'sem', modelo: null, cor: 'Azul' }],
         },
       ],

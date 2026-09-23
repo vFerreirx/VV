@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+import { GRUPOS_DE_TAMANHO } from '../produtos/grupo-de-tamanho.ts'
+import { ORIGENS_DE_PRODUTO } from '../produtos/origem.ts'
+
 // -----------------------------------------------------------------
 // Helpers
 // -----------------------------------------------------------------
@@ -100,6 +103,12 @@ export const produtoSchema = z.object({
   descricao: stringOpt(500, 'Descrição'),
 
   ativo: z.boolean().default(true),
+
+  // Produzimos ou comprado de parceiro (src/lib/produtos/origem.ts), e de
+  // qual grupo de tamanhos (src/lib/produtos/grupo-de-tamanho.ts). Mesmas
+  // tuplas dos CHECKs da 72.
+  origem: z.enum(ORIGENS_DE_PRODUTO).default('producao'),
+  grupoTamanho: z.enum(GRUPOS_DE_TAMANHO).default('casa'),
 
   variacoes: z.array(variacaoSchema).default([]),
 

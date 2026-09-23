@@ -38,6 +38,35 @@ export function erroDeUso(u: UsoDoCatalogo, rotulo: string): string {
 }
 
 /**
+ * RENOMEAR TAMANHO EM USO É RECUSADO — ao contrário de cor e modelo, que
+ * levam as variações junto.
+ *
+ * O NOME do tamanho é chave em lugares que não dá pra reescrever com
+ * segurança: a chave de preço do kit (`chaveDeTamanhos` monta
+ * `<produtoId>=<tamanho>`, src/lib/kit-tamanhos.ts), o item do pedido (o peso
+ * é recalculado PELO NOME a cada leitura) e o snapshot dos componentes do kit
+ * no pedido. Renomear deixaria preço de kit inalcançável e peso zerado, sem
+ * erro nenhum.
+ *
+ * Só o texto conta: trocar o NOME, inclusive só a caixa ("king" → "King"),
+ * é renomear; mexer em código, dimensão ou peso não é. `uso` é o uso do NOME
+ * (`usoDoNomeDeTamanho`), não o do id — preço e peso do par apontam pro id e
+ * sobrevivem ao novo nome.
+ */
+export function erroAoRenomearTamanho(
+  nomeAtual: string,
+  nomeNovo: string,
+  u: UsoDoCatalogo,
+): string | null {
+  if (nomeAtual.trim() === nomeNovo.trim() || !u.emUso) return null
+  return (
+    `"${u.nome}" não pode ser renomeado: o nome está em uso ` +
+    `(${u.partes.join(', ')}). O nome do tamanho é a chave do preço de kit e ` +
+    `do peso no pedido. Crie um tamanho novo se precisar de outro nome.`
+  )
+}
+
+/**
  * A mensagem de um lote: quantos saíram e quais ficaram, com o porquê do
  * primeiro bloqueado.
  *

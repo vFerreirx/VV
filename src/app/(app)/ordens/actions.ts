@@ -26,6 +26,7 @@ import {
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
 import { gravarBaixa } from '@/lib/db/baixa-da-op'
+import { erroDeProdutoDeParceiro } from '@/lib/db/origem-do-produto'
 import { sincronizarReposicaoDaOp } from '@/lib/db/reposicao-da-op'
 import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
@@ -358,7 +359,7 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
 
 export type ProdutoComVariacoesParaForm = Pick<
   Produto,
-  'id' | 'sku' | 'nome'
+  'id' | 'sku' | 'nome' | 'origem'
 > & {
   variacoes: Array<
     Pick<VariacaoProduto, 'id' | 'skuVariacao' | 'cor' | 'modelo' | 'tamanho'> & {
@@ -376,7 +377,24 @@ export type ProdutoComVariacoesParaForm = Pick<
 }
 
 export async function listarProdutosParaOrdem(
-  { somenteAtivas = false }: { somenteAtivas?: boolean } = {},
+  {
+    somenteAtivas = false,
+    semParceiro = false,
+  }: {
+    somenteAtivas?: boolean
+    /**
+     * ⚠️ `true` pra quem ESCOLHE produto PRA VIRAR OP: Nova OP (kanban e
+     * /ordens), Gerar de kit, Full (cadastro e importação) e faltante → OP.
+     * Produto comprado de parceiro nunca vira OP (src/lib/produtos/origem.ts).
+     *
+     * Quem só VENDE ou REGISTRA deixa `false` e continua vendo o produto:
+     * builder do pedido, cadastro de kit, marcar peça acabando (/estoque).
+     *
+     * Isto é conveniência de tela. Quem garante é a action, com
+     * `erroDeProdutoDeParceiro` (src/lib/db/origem-do-produto.ts).
+     */
+    semParceiro?: boolean
+  } = {},
 ): Promise<
   ProdutoComVariacoesParaForm[]
 > {
@@ -387,9 +405,16 @@ export async function listarProdutosParaOrdem(
       id: produtos.id,
       sku: produtos.sku,
       nome: produtos.nome,
+      origem: produtos.origem,
     })
     .from(produtos)
-    .where(and(isNull(produtos.deletedAt), eq(produtos.ativo, true)))
+    .where(
+      and(
+        isNull(produtos.deletedAt),
+        eq(produtos.ativo, true),
+        semParceiro ? eq(produtos.origem, 'producao') : undefined,
+      ),
+    )
     .orderBy(asc(produtos.sku))
 
   if (prods.length === 0) return []
@@ -577,6 +602,10 @@ export async function criarOrdemAction(
     .leftJoin(variacoesProduto, and(eq(variacoesProduto.produtoId, produtos.id), isNull(variacoesProduto.deletedAt)))
     .where(and(eq(produtos.id, data.produtoId), eq(produtos.ativo, true), isNull(produtos.deletedAt)))
   if (!catalogo.length) return { success: false, error: 'Produto indisponível. Selecione novamente no catálogo.' }
+  // PRODUTO DE PARCEIRO NÃO VIRA OP — vale pra Nova OP, reposição e faltante,
+  // que passam todas por aqui. Ver src/lib/db/origem-do-produto.ts.
+  const erroOrigem = await erroDeProdutoDeParceiro([data.produtoId])
+  if (erroOrigem) return { success: false, error: erroOrigem }
   // Variação SEMPRE obrigatória — ver `erroDaVariacao` (catalogo-op.ts).
   const erroVariacao = erroDaVariacao(data.variacaoId, catalogo.flatMap((v) => v.variacaoId ? [{ id: v.variacaoId }] : []))
   if (erroVariacao) return { success: false, error: erroVariacao }
@@ -715,6 +744,14 @@ export async function atualizarOrdemAction(
       success: false,
       error: 'A máquina de uma OP em produção não é trocada pelo formulário',
     }
+  }
+
+  // Trocar o produto da OP por um de PARCEIRO é o mesmo que criar OP dele.
+  // Só quando TROCA: uma OP antiga cujo produto virou "parceiro" depois
+  // continua editável (a guarda é de entrada, não de faxina).
+  if (data.produtoId !== atual.produtoId) {
+    const erroOrigem = await erroDeProdutoDeParceiro([data.produtoId])
+    if (erroOrigem) return { success: false, error: erroOrigem }
   }
 
   const statusMudou = atual.status !== data.status

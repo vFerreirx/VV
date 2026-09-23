@@ -13,6 +13,7 @@ import {
   excluirTamanhoAction,
   excluirMultiplosTamanhosAction,
 } from './actions'
+import { AvisoDeRenomear } from '@/components/catalogo/aviso-de-renomear'
 import { Badge } from '@/components/ui/badge'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,13 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import {
   Table,
@@ -38,7 +46,14 @@ import {
 } from '@/components/ui/table'
 import { useListaAnimada } from '@/components/ui/use-lista-animada'
 import type { Tamanho } from '@/lib/db/schema'
+import {
+  GRUPOS_DE_TAMANHO,
+  ROTULO_DO_GRUPO,
+  ehGrupoValido,
+} from '@/lib/produtos/grupo-de-tamanho'
 import { tamanhoSchema, type TamanhoInput } from '@/lib/validators/tamanhos'
+
+const rotuloDoGrupo = (g: string) => (ehGrupoValido(g) ? ROTULO_DO_GRUPO[g] : g)
 
 type Props = {
   tamanhos: Tamanho[]
@@ -158,6 +173,7 @@ export function TamanhosList({ tamanhos, uso = {}, podeEditar }: Props) {
                     </TableHead>
                   )}
                   <TableHead>Nome</TableHead>
+                  <TableHead>Grupo</TableHead>
                   <TableHead>Código SKU</TableHead>
                   <TableHead>Dimensões</TableHead>
                   <TableHead className="w-24 text-right">Peso</TableHead>
@@ -184,6 +200,9 @@ export function TamanhosList({ tamanhos, uso = {}, podeEditar }: Props) {
                     <TableCell className="font-medium">
                       {t.nome}
                       <UsoNaLinha nome={t.nome} uso={uso} />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {rotuloDoGrupo(t.grupo)}
                     </TableCell>
                     <TableCell className="text-muted-foreground font-mono text-xs">
                       {t.codigo || '—'}
@@ -252,6 +271,9 @@ export function TamanhosList({ tamanhos, uso = {}, podeEditar }: Props) {
                       {t.nome}
                       <UsoNaLinha nome={t.nome} uso={uso} />
                     </div>
+                    <div className="text-muted-foreground text-xs">
+                      {rotuloDoGrupo(t.grupo)}
+                    </div>
                     {(t.larguraCm || t.comprimentoCm) && (
                       <div className="text-muted-foreground text-xs tabular-nums">
                         {t.larguraCm ?? '—'} × {t.comprimentoCm ?? '—'} cm
@@ -295,6 +317,7 @@ export function TamanhosList({ tamanhos, uso = {}, podeEditar }: Props) {
 
       <TamanhoDialog
         tamanho={editando}
+        uso={uso}
         onClose={() => setEditando(null)}
         proximaOrdem={tamanhos.length}
       />
@@ -370,10 +393,12 @@ function BulkExcluirDialog({
 
 function TamanhoDialog({
   tamanho,
+  uso,
   onClose,
   proximaOrdem,
 }: {
   tamanho: Tamanho | 'novo' | null
+  uso: Record<string, { variacoes: number; produtos: number }>
   onClose: () => void
   proximaOrdem: number
 }) {
@@ -391,6 +416,7 @@ function TamanhoDialog({
       comprimentoCm: isEdit ? (tamanho.comprimentoCm ?? '') : '',
       pesoGramas: isEdit ? (tamanho.pesoGramas ?? '') : '',
       ordem: isEdit ? String(tamanho.ordem) : String(proximaOrdem),
+      grupo: isEdit && ehGrupoValido(tamanho.grupo) ? tamanho.grupo : 'casa',
       ativo: isEdit ? tamanho.ativo : true,
     },
     values: {
@@ -400,11 +426,14 @@ function TamanhoDialog({
       comprimentoCm: isEdit ? (tamanho.comprimentoCm ?? '') : '',
       pesoGramas: isEdit ? (tamanho.pesoGramas ?? '') : '',
       ordem: isEdit ? String(tamanho.ordem) : String(proximaOrdem),
+      grupo: isEdit && ehGrupoValido(tamanho.grupo) ? tamanho.grupo : 'casa',
       ativo: isEdit ? tamanho.ativo : true,
     },
   })
 
   const ativo = useWatch({ control: form.control, name: 'ativo' })
+  const grupo = useWatch({ control: form.control, name: 'grupo' })
+  const nomeDigitado = useWatch({ control: form.control, name: 'nome' })
 
   const onSubmit = form.handleSubmit((values) => {
     startTransition(async () => {
@@ -452,6 +481,42 @@ function TamanhoDialog({
             {errs.nome && (
               <p className="text-destructive text-xs">{errs.nome.message}</p>
             )}
+            {isEdit && (
+              <AvisoDeRenomear
+                nomeAtual={tamanho.nome}
+                nomeNovo={nomeDigitado ?? ''}
+                uso={uso}
+                modo="recusa"
+              />
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="tam-grupo">Grupo</Label>
+            <Select
+              value={grupo ?? 'casa'}
+              onValueChange={(v) =>
+                form.setValue('grupo', ehGrupoValido(v) ? v : 'casa', {
+                  shouldDirty: true,
+                })
+              }
+              disabled={isPending}
+            >
+              <SelectTrigger id="tam-grupo" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GRUPOS_DE_TAMANHO.map((g) => (
+                  <SelectItem key={g} value={g}>
+                    {ROTULO_DO_GRUPO[g]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">
+              O produto só oferece os tamanhos do grupo dele: Casal e 45x45 não
+              aparecem num suéter, nem PP numa peseira.
+            </p>
           </div>
 
           <div className="space-y-1.5">

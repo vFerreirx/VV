@@ -115,6 +115,8 @@ export async function listarProdutos(
       descricao: produtos.descricao,
       mlbId: produtos.mlbId,
       shopeeItemId: produtos.shopeeItemId,
+      origem: produtos.origem,
+      grupoTamanho: produtos.grupoTamanho,
       ativo: produtos.ativo,
       createdAt: produtos.createdAt,
       updatedAt: produtos.updatedAt,
@@ -369,6 +371,8 @@ export async function criarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
+        origem: data.origem,
+        grupoTamanho: data.grupoTamanho,
         ativo: data.ativo,
       })
       .returning({ id: produtos.id })
@@ -456,6 +460,10 @@ export async function atualizarProdutoAction(
         sku: data.sku,
         nome: data.nome,
         descricao: data.descricao ?? null,
+        // Virar "parceiro" não mexe em OP que já existe: a guarda é de
+        // ENTRADA (nenhuma OP nova), e a OP antiga segue até a baixa.
+        origem: data.origem,
+        grupoTamanho: data.grupoTamanho,
         ativo: data.ativo,
       })
       .where(eq(produtos.id, id))
@@ -609,6 +617,10 @@ export async function duplicarProdutoAction(
         sku: novoSku,
         nome: `${orig.nome} (cópia)`,
         descricao: orig.descricao,
+        // A cópia é do MESMO tipo: duplicar o suéter é como nasce o próximo
+        // estilo, e ele não pode aparecer na Nova OP por ter nascido "produção".
+        origem: orig.origem,
+        grupoTamanho: orig.grupoTamanho,
         ativo: orig.ativo,
       })
       .returning({ id: produtos.id })

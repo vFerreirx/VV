@@ -35,6 +35,10 @@ export default async function FaltantesPage({
     listarFaltantes(id),
     listarOpsDoPedido(id),
     // O catálogo ATIVO: é nele que a chave do faltante vira variação.
+    // ⚠️ COM os produtos de parceiro, de propósito (sem `semParceiro`): o
+    // resolvedor os acha e desabilita o "Produzir" dizendo "comprado de
+    // parceiro". Sem eles, o suéter apareceria como "fora do catálogo". A
+    // action (`criarOrdemAction`) recusa do mesmo jeito.
     podeProduzir
       ? listarProdutosParaOrdem({ somenteAtivas: true })
       : Promise.resolve([]),
