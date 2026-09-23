@@ -16,6 +16,7 @@
     "db:studio": "drizzle-kit studio",
     "db:setup": "tsx scripts/setup-db.ts",
     "db:backup": "tsx scripts/backup-db.ts",
+    "db:restore": "tsx scripts/restore-db.ts",
     "db:reset": "supabase db reset --no-seed && tsx scripts/setup-db.ts",
     "db:seed": "tsx scripts/seed.ts",
     "supabase:start": "supabase start",

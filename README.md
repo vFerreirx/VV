@@ -106,7 +106,8 @@ Supabase Studio em <http://127.0.0.1:54323>.
 | `npm run db:generate` | Gera migration SQL a partir do schema Drizzle |
 | `npm run db:migrate` | Aplica só as migrations Drizzle |
 | `npm run db:setup` | Drizzle migrate + aplica `supabase/sql/*.sql` |
-| `npm run db:backup` | Gera `backups/vanvest-AAAA-MM-DD.sql` (schema + dados) e copia pro `BACKUP_DRIVE_DIR` |
+| `npm run db:backup` | Gera `backups/vanvest-AAAA-MM-DD.sql` (schema + dados + manifesto) e copia pro `BACKUP_DRIVE_DIR` |
+| `npm run db:restore` | Restaura um backup num projeto NOVO e confere contra o manifesto (recusa a produção) |
 | `npm run db:reset` | `supabase db reset` + `db:setup` (banco zerado) |
 | `npm run db:studio` | Abre Drizzle Studio no browser |
 | `npm run db:seed` | Popula seeds (Fase 4 em diante) |
@@ -114,8 +115,10 @@ Supabase Studio em <http://127.0.0.1:54323>.
 
 ### Restaurar um backup
 
-Num projeto Supabase **novo** (o arquivo cria tabelas e tipos, então não roda por cima do banco atual): `psql "<URL do projeto novo>" -v ON_ERROR_STOP=1 -f backups/vanvest-AAAA-MM-DD.sql`.
-Tudo roda numa transação só, então se falhar não sobra nada pela metade. Depois, aponte a `DATABASE_URL` do `.env.local` pro projeto novo e rode `npm run db:setup` pra conferir.
+⚠️ O arquivo tem **hash de senha de todo usuário e dado de cliente** (nome, pedido, preço): não mande por WhatsApp/e-mail nem deixe em pasta compartilhada.
+1. Crie um projeto Supabase **novo** (o arquivo cria tabelas e tipos; por cima de um banco com dados ele não roda).
+2. `npm run db:restore -- --url "<URL do projeto novo>" --arquivo backups/vanvest-AAAA-MM-DD.sql` — recusa sozinho se o destino for a produção do `.env.local`, pede pra digitar o ref do projeto e, se qualquer comando falhar, desfaz tudo e diz a linha.
+3. No fim ele compara o destino com o manifesto do arquivo (linhas por tabela, triggers, políticas e contador de OP): só confie no backup se tudo sair ✅.
 
 ## Estrutura
 

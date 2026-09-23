@@ -20,8 +20,10 @@
  * pasta do Drive não pode ser compartilhada.
  *
  * O arquivo sai na ordem do pg_dump, e a ordem é o que o faz funcionar:
- *   funções → tipos/sequências/tabelas → DADOS → constraints/FKs → índices
- *   → triggers → RLS/políticas → grants → realtime
+ *   tipos → sequências → funções → tabelas → DADOS → PK/UNIQUE/CHECK
+ *   → índices → FKs → triggers → RLS/políticas → grants → realtime
+ * Cada seção abaixo diz de quem ela depende. Antes de reordenar qualquer
+ * coisa, leia o porquê — a de tipos já quebrou uma vez (23/09/2026).
  * ⚠️ TRIGGER DEPOIS DOS DADOS NÃO É ESTÉTICA. Com o `generate_op_numero`
  * ligado na hora do INSERT, a restauração RENUMERARIA todas as OPs; com o
  * `on_auth_user_created`, cada usuário restaurado tentaria recriar a própria
@@ -126,20 +128,16 @@ async function main() {
       w()
 
       // ---------------------------------------------------------------
-      // Funções (antes das tabelas: default e política podem citá-las)
-      // ---------------------------------------------------------------
-      w(`-- ========== FUNÇÕES ==========`)
-      const funcoes = await tx`
-        select pg_get_functiondef(p.oid) as def
-          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-         where n.nspname = any(${SCHEMAS}) and p.prokind in ('f','p')
-           and not exists (
-             select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-         order by n.nspname, p.proname`
-      for (const f of funcoes) w(`${f.def};\n`)
-
-      // ---------------------------------------------------------------
-      // Enums
+      // Enums — ANTES DAS FUNÇÕES, e não é gosto.
+      //
+      // ⚠️ Função com tipo próprio na ASSINATURA não compila antes do tipo
+      // existir: `public.user_role()` é `RETURNS public.user_role`. O
+      // `check_function_bodies = false` lá de cima só poupa o CORPO, nunca a
+      // assinatura. Testado em 23/09/2026: com as funções no topo, a
+      // restauração num projeto novo falhava em "type public.user_role does
+      // not exist". O pg_dump emite tipo antes de função por esse motivo
+      // exato. Agrupar as funções no topo "porque fica mais bonito" quebra a
+      // restauração de novo.
       // ---------------------------------------------------------------
       w(`-- ========== TIPOS ==========`)
       const enums = await tx`
@@ -157,8 +155,13 @@ async function main() {
       w()
 
       // ---------------------------------------------------------------
-      // Sequências soltas (as de IDENTITY nascem com a própria coluna)
+      // Sequências soltas (as de IDENTITY nascem com a própria coluna).
+      // Antes das TABELAS: o default `nextval('drizzle.…_seq'::regclass)`
+      // resolve o nome da sequência na hora do CREATE TABLE. E antes das
+      // funções junto com os tipos, que é onde o pg_dump as põe — nenhuma
+      // depende de função.
       // ---------------------------------------------------------------
+      w(`-- ========== SEQUÊNCIAS ==========`)
       const sequencias = await tx`
         select format('%I.%I', s.schemaname, s.sequencename) as nome,
                s.start_value, s.increment_by, s.min_value, s.max_value,
@@ -177,6 +180,21 @@ async function main() {
         )
       }
       w()
+
+      // ---------------------------------------------------------------
+      // Funções — DEPOIS dos tipos (ver acima) e ANTES de tudo que as chama:
+      // default de coluna, política de RLS (`is_manager()`, `user_role()`,
+      // `pode_registrar_parada()`) e trigger.
+      // ---------------------------------------------------------------
+      w(`-- ========== FUNÇÕES ==========`)
+      const funcoes = await tx`
+        select pg_get_functiondef(p.oid) as def
+          from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+         where n.nspname = any(${SCHEMAS}) and p.prokind in ('f','p')
+           and not exists (
+             select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
+         order by n.nspname, p.proname`
+      for (const f of funcoes) w(`${f.def};\n`)
 
       // ---------------------------------------------------------------
       // Tabelas (só colunas; constraint vem depois dos dados)
@@ -336,10 +354,14 @@ async function main() {
       w()
 
       // ---------------------------------------------------------------
-      // Constraints: PK/UNIQUE/CHECK primeiro, FK por último (a FK precisa
-      // do UNIQUE/PK do outro lado já existindo)
+      // Constraints e índices, na ordem do pg_dump:
+      //   PK/UNIQUE/CHECK/EXCLUDE → ÍNDICES → FK
+      // A FK vai por ÚLTIMO porque precisa de um índice único do outro lado —
+      // e esse índice pode ser de constraint (criado aqui) OU um CREATE UNIQUE
+      // INDEX solto (criado na seção de índices). Com FK antes dos índices, o
+      // segundo caso quebra a restauração. Em 23/09/2026 nenhuma FK dependia
+      // de índice solto; a ordem é pra continuar funcionando quando depender.
       // ---------------------------------------------------------------
-      w(`-- ========== CONSTRAINTS ==========`)
       const constraints = await tx`
         select format('%I.%I', n.nspname, c.relname) as tabela, k.conname,
                pg_get_constraintdef(k.oid) as def, k.contype
@@ -347,13 +369,18 @@ async function main() {
           join pg_class c on c.oid = k.conrelid
           join pg_namespace n on n.oid = c.relnamespace
          where n.nspname = any(${SCHEMAS}) and k.contype in ('p','u','c','x','f')
-         order by (k.contype = 'f'), n.nspname, c.relname, k.conname`
-      for (const k of constraints) {
+         order by n.nspname, c.relname, k.conname`
+      const addConstraint = (k: (typeof constraints)[number]) =>
         w(`ALTER TABLE ${k.tabela} ADD CONSTRAINT ${q(k.conname)} ${k.def};`)
-      }
+
+      w(`-- ========== CONSTRAINTS ==========`)
+      for (const k of constraints) if (k.contype !== 'f') addConstraint(k)
       w()
 
-      // Índices que não são de constraint (esses já nasceram acima).
+      // Índices que não nasceram de PK/UNIQUE/EXCLUDE. ⚠️ Filtrar por
+      // `conindid` de QUALQUER constraint estaria errado: o `conindid` de uma
+      // FK aponta pro índice da tabela REFERENCIADA — um índice único solto
+      // que sustenta uma FK sumiria do backup.
       w(`-- ========== ÍNDICES ==========`)
       const indices = await tx`
         select pg_get_indexdef(i.indexrelid) as def
@@ -361,9 +388,15 @@ async function main() {
           join pg_class c on c.oid = i.indrelid
           join pg_namespace n on n.oid = c.relnamespace
          where n.nspname = any(${SCHEMAS})
-           and not exists (select 1 from pg_constraint k where k.conindid = i.indexrelid)
+           and not exists (
+             select 1 from pg_constraint k
+              where k.conindid = i.indexrelid and k.contype in ('p','u','x'))
          order by 1`
       for (const i of indices) w(`${i.def};`)
+      w()
+
+      w(`-- ========== CHAVES ESTRANGEIRAS ==========`)
+      for (const k of constraints) if (k.contype === 'f') addConstraint(k)
       w()
 
       // ---------------------------------------------------------------
@@ -417,6 +450,10 @@ async function main() {
       // ---------------------------------------------------------------
       // Grants dos papéis da API. REVOKE antes de tudo: projeto novo já
       // chega concedendo tudo, e o que vale é o que ESTE banco tinha.
+      //
+      // ⚠️ O privilégio MAINTAIN só existe a partir do Postgres 17 (o banco
+      // é 17.6, e projeto novo do Supabase também nasce em 17). Restaurar
+      // num 15 falha aqui — é o único ponto do arquivo preso à versão.
       // ---------------------------------------------------------------
       w(`-- ========== GRANTS ==========`)
       const grants = await tx`
@@ -446,6 +483,27 @@ async function main() {
       for (const p of publicadas) w(`ALTER PUBLICATION supabase_realtime ADD TABLE ${p.tabela};`)
       w()
       w(`COMMIT;`)
+
+      // ---------------------------------------------------------------
+      // MANIFESTO — o que o arquivo PROMETE, pra quem restaura conferir.
+      //
+      // Vem DEPOIS do COMMIT e só em comentário: não executa nada, e lido
+      // aqui dentro ele é do MESMO retrato dos dados. `npm run db:restore`
+      // lê estas linhas e compara com o destino, tabela a tabela. Mudou o
+      // formato? Mude o leitor junto (scripts/restore-db.ts, `lerManifesto`).
+      // ---------------------------------------------------------------
+      const contador = await tx`
+        select ano, ultimo_numero from public.op_numero_counter order by ano`
+      const totalManifesto = linhasPorTabela.reduce((s, t) => s + t.linhas, 0)
+      w()
+      w(`-- ========== MANIFESTO ==========`)
+      for (const t of linhasPorTabela) w(`-- manifesto:tabela ${t.tabela} ${t.linhas}`)
+      w(`-- manifesto:total ${totalManifesto}`)
+      w(`-- manifesto:triggers ${triggers.length}`)
+      w(`-- manifesto:politicas ${politicas.length}`)
+      w(
+        `-- manifesto:op_numero_counter ${contador.map((c) => `${c.ano}=${c.ultimo_numero}`).join(',') || '-'}`,
+      )
     })
   } finally {
     await sql.end()
