@@ -528,7 +528,7 @@ export function ProdutoForm({
           </Field>
 
           {/* O NÚMERO DO PROGRAMA DA MÁQUINA, não o SKU: é o que o operador
-              lê primeiro no tablet ("059 - Peseira - LINKS - QUEEN…"). Pode
+              lê primeiro no tablet ("059 - Peseira LINKS - QUEEN…"). Pode
               repetir entre produtos — o 059 tece a peseira e a capa LINKS. */}
           <Field
             label="Código do programa"
