@@ -30,6 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# backups do banco (npm run db:backup): têm dado de cliente, preço de atacado
+# e hash de senha. NUNCA podem virar commit.
+/backups/
+
 # env files (can opt-in for committing if needed)
 .env*
 !.env.example

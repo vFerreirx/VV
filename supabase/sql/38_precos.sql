@@ -72,10 +72,14 @@ CREATE INDEX IF NOT EXISTS kit_tamanho_preco_kit_idx
   ON public.kit_tamanho_preco (kit_id);
 
 -- --------------------------------------------------------------
--- RLS — espelha `produtos` e `tamanhos` (04_rls.sql), que é o que estas
--- tabelas são: catálogo. Leitura pra qualquer autenticado (vendas precisa
--- ler o preço no builder do pedido) e escrita pra gerência, que é quem
--- entra em /produtos e /kits.
+-- RLS — escrita pra gerência, que é quem entra em /produtos e /kits.
+--
+-- ⚠️ A LEITURA TAMBÉM É SÓ DA GERÊNCIA (era `USING (true)` até a 70). Preço
+-- de atacado é a margem da casa: a área `precosCatalogo` esconde na TELA, e
+-- sem isto qualquer sessão autenticada lia pela API REST. O vendas continua
+-- vendo o preço no builder do pedido porque o builder lê pelo servidor, que
+-- não passa por RLS. Ver 70_rls_contador_e_preco.sql, que tem o raciocínio
+-- inteiro e fecha de novo caso alguém reabra aqui.
 --
 -- Como nas outras, o app NÃO depende disto: todo acesso é server-side e
 -- passa por requireArea/requireAreaEscrita. Estas policies só limitam
@@ -87,7 +91,7 @@ ALTER TABLE public.kit_tamanho_preco ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS produto_tamanho_preco_select_authenticated ON public.produto_tamanho_preco;
 CREATE POLICY produto_tamanho_preco_select_authenticated ON public.produto_tamanho_preco
   FOR SELECT TO authenticated
-  USING (true);
+  USING (public.is_manager());
 
 DROP POLICY IF EXISTS produto_tamanho_preco_manager_all ON public.produto_tamanho_preco;
 CREATE POLICY produto_tamanho_preco_manager_all ON public.produto_tamanho_preco
@@ -98,7 +102,7 @@ CREATE POLICY produto_tamanho_preco_manager_all ON public.produto_tamanho_preco
 DROP POLICY IF EXISTS kit_tamanho_preco_select_authenticated ON public.kit_tamanho_preco;
 CREATE POLICY kit_tamanho_preco_select_authenticated ON public.kit_tamanho_preco
   FOR SELECT TO authenticated
-  USING (true);
+  USING (public.is_manager());
 
 DROP POLICY IF EXISTS kit_tamanho_preco_manager_all ON public.kit_tamanho_preco;
 CREATE POLICY kit_tamanho_preco_manager_all ON public.kit_tamanho_preco

@@ -199,7 +199,7 @@ ALTER TABLE public.kit_tamanho_preco ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS kit_tamanho_preco_select_authenticated ON public.kit_tamanho_preco;
 CREATE POLICY kit_tamanho_preco_select_authenticated ON public.kit_tamanho_preco
-  FOR SELECT TO authenticated USING (true);
+  FOR SELECT TO authenticated USING (public.is_manager());  -- ver a 70
 
 DROP POLICY IF EXISTS kit_tamanho_preco_manager_all ON public.kit_tamanho_preco;
 CREATE POLICY kit_tamanho_preco_manager_all ON public.kit_tamanho_preco
