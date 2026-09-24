@@ -120,8 +120,11 @@ import {
 } from './parada-de-maquina.ts'
 import { corDoCanal } from './cor-do-canal.ts'
 import {
+  ABRE_TUDO_ATE,
   agruparPorDestino,
   agruparPorProduto,
+  alertaDoBloco,
+  blocosAbertosPorPadrao,
   cabecalhoDoProduto,
   destaqueDaVariacao,
   familiaDoProduto,
@@ -2592,4 +2595,75 @@ test('cor do canal: ML amarelo, Shopee laranja, o resto sem cor', () => {
     assert.match(cor.faixa, /text-(yellow|orange)-950/)
     assert.doesNotMatch(cor.faixa, /(^|\s)text-white/)
   }
+})
+
+test('destino: bloco de pedido diz pra quem e; a linha continua so o numero', () => {
+  assert.equal(
+    rotuloDoBlocoDeDestino({ canal: 'venda_direta', pedidoNumero: 142, pedidoCliente: 'Loja Bela' }),
+    'Pedido #142 · Loja Bela',
+  )
+  // Cliente em branco nao vira "Pedido #142 · ".
+  assert.equal(
+    rotuloDoBlocoDeDestino({ canal: 'venda_direta', pedidoNumero: 142, pedidoCliente: '  ' }),
+    'Pedido #142',
+  )
+  // Pedido vence o "sem remessa": OP de pedido nunca cai no bloco do canal.
+  assert.equal(rotuloDoBlocoDeDestino({ canal: 'full_ml', pedidoNumero: 7 }), 'Pedido #7')
+  // O cartao da maquina usa `rotuloDoDestino`, que fica sem o cliente.
+  assert.equal(
+    rotuloDoDestino({ canal: 'venda_direta', pedidoNumero: 142, pedidoCliente: 'Loja Bela' }),
+    'Pedido #142',
+  )
+})
+
+test('aviso do bloco: so quando aperta, e so o mais grave', () => {
+  const agora = new Date('2026-09-10T14:00:00')
+  const op = (prazo: string | null, prioridade = 'normal') => ({
+    dataPrevistaFim: prazo ? new Date(prazo) : null,
+    prioridade,
+  })
+  // Nada aperta (prazo longe, OP sem prazo): cabecalho sem aviso.
+  assert.deepEqual(alertaDoBloco([op('2026-09-18T00:00:00'), op(null)], agora), {
+    prazo: null,
+    urgente: false,
+  })
+  // Venceu as 8h de hoje: as 14h continua sendo HOJE, como no prazo da linha.
+  assert.equal(alertaDoBloco([op('2026-09-10T08:00:00')], agora).prazo, '1 vence HOJE')
+  assert.equal(
+    alertaDoBloco([op('2026-09-10T08:00:00'), op('2026-09-10T23:00:00')], agora).prazo,
+    '2 vencem HOJE',
+  )
+  // Com atrasada no bloco, o "vence hoje" sai: so o mais grave.
+  assert.equal(
+    alertaDoBloco(
+      [op('2026-09-10T08:00:00'), op('2026-09-09T23:59:00'), op('2026-09-01T00:00:00')],
+      agora,
+    ).prazo,
+    '2 ATRASADAS',
+  )
+  assert.equal(alertaDoBloco([op('2026-09-09T23:59:00')], agora).prazo, '1 ATRASADA')
+  // O selo e so do URGENTE: "alta" nao grita no cabecalho.
+  assert.equal(alertaDoBloco([op(null, 'alta')], agora).urgente, false)
+  assert.equal(alertaDoBloco([op(null), op(null, 'urgente')], agora).urgente, true)
+  assert.deepEqual(alertaDoBloco([], agora), { prazo: null, urgente: false })
+})
+
+test('abertos: lista curta abre tudo, longa so o primeiro, busca abre tudo', () => {
+  const bloco = (chave: string, n: number) => ({ chave, ops: Array.from({ length: n }) })
+  // O exemplo do PR: 6 OPs em 3 blocos. Fechar ali so custava toque.
+  assert.deepEqual(
+    [...blocosAbertosPorPadrao([bloco('a', 3), bloco('b', 1), bloco('c', 2)], '')],
+    ['a', 'b', 'c'],
+  )
+  // No limite ainda abre tudo; uma OP a mais e so o primeiro, o mais urgente.
+  assert.deepEqual(
+    [...blocosAbertosPorPadrao([bloco('a', ABRE_TUDO_ATE - 1), bloco('b', 1)], '')],
+    ['a', 'b'],
+  )
+  const longa = [bloco('a', ABRE_TUDO_ATE), bloco('b', 1)]
+  assert.deepEqual([...blocosAbertosPorPadrao(longa, '')], ['a'])
+  // Com busca abre tudo, mesmo longa. Espaco em branco nao e busca.
+  assert.deepEqual([...blocosAbertosPorPadrao(longa, '059')], ['a', 'b'])
+  assert.deepEqual([...blocosAbertosPorPadrao(longa, '   ')], ['a'])
+  assert.deepEqual([...blocosAbertosPorPadrao([], '')], [])
 })

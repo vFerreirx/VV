@@ -67,6 +67,8 @@ import {
 import { corDoCanal } from '@/lib/producao/cor-do-canal'
 import {
   agruparPorDestino,
+  alertaDoBloco,
+  blocosAbertosPorPadrao,
   linhaDaOp,
   prazoEmPalavras,
 } from '@/lib/producao/rotulo-da-op'
@@ -892,19 +894,6 @@ function CorpoOcupada({
 //
 // Sem nenhum dos dois, não há passo nenhum. Um diálogo de confirmação que
 // aparece sempre vira um botão a mais que ninguém lê.
-// O QUE VEM ABERTO. Sem busca, só o PRIMEIRO bloco — o mais urgente, já que
-// o bloco entra na posição da OP mais urgente dele. Os outros, fechados com a
-// contagem: 60 OPs abertas eram rolagem sem fim. COM busca, todo bloco que
-// sobrou tem resultado, então todos abrem — esconder o que ele acabou de
-// procurar atrás de mais um toque seria pior que a lista longa.
-function abrirPadrao(
-  blocos: readonly { chave: string }[],
-  termo: string,
-): Set<string> {
-  if (termo.trim() !== '') return new Set(blocos.map((b) => b.chave))
-  return new Set(blocos.slice(0, 1).map((b) => b.chave))
-}
-
 function IniciarProducaoDialog({
   maquina,
   onClose,
@@ -918,7 +907,8 @@ function IniciarProducaoDialog({
   const [lista, setLista] = useState<ListaDoIniciar | null>(null)
   const [buscando, setBuscando] = useState(true)
   // Quais blocos de destino estão ABERTOS. Decidido a cada lista que chega
-  // (`abrirPadrao`), e depois é do operador: tocar abre e fecha.
+  // (`blocosAbertosPorPadrao`, rotulo-da-op.ts), e depois é do operador:
+  // tocar abre e fecha.
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [confirmando, setConfirmando] = useState<OpParaIniciar | null>(null)
   const [erro, setErro] = useState<string | null>(null)
@@ -942,7 +932,7 @@ function IniciarProducaoDialog({
       listarOpsParaIniciar(maquina.id, { q: termo })
         .then((r) => {
           setLista(r)
-          setAbertos(abrirPadrao(agruparPorDestino(r.ops), termo))
+          setAbertos(blocosAbertosPorPadrao(agruparPorDestino(r.ops), termo))
         })
         .finally(() => setBuscando(false))
     }, 200)
@@ -1052,10 +1042,12 @@ function IniciarProducaoDialog({
             sumia — e o operador escolhe pensando "o que o caminhão de amanhã
             precisa". Regra em `agruparPorDestino` (rotulo-da-op.ts).
 
-            OS BLOCOS COMEÇAM FECHADOS, com a contagem no cabeçalho: com 60
-            OPs abertas a lista era rolagem sem fim. Só o PRIMEIRO vem aberto —
-            o mais urgente, porque o bloco entra na posição da OP mais urgente
-            dele (nada é reordenado). Com busca, abrem os blocos onde achou.
+            LISTA LONGA VEM FECHADA, com a contagem e o aviso de prazo no
+            cabeçalho: com 60 OPs abertas a lista era rolagem sem fim. Só o
+            PRIMEIRO vem aberto — o mais urgente, porque o bloco entra na
+            posição da OP mais urgente dele (nada é reordenado). Lista curta
+            vem toda aberta, e com busca abrem os blocos onde achou. Regra em
+            `blocosAbertosPorPadrao`.
 
             DENTRO do bloco, os produtos pelo PROGRAMA da máquina
             (`agruparPorProduto`): o setup segue o código — o EFEITO 3D é 076
@@ -1071,36 +1063,61 @@ function IniciarProducaoDialog({
           {blocos.map((bloco) => {
             const cor = corDoCanal(bloco.canal)
             const aberto = abertos.has(bloco.chave)
+            const alerta = alertaDoBloco(bloco.ops)
             return (
-              <section key={bloco.chave} className="overflow-hidden rounded-xl border-2">
-                {/* A FAIXA: texto escuro sobre a cor clara, barra grossa na
-                    cor cheia (ver cor-do-canal.ts). Sem cor, a faixa neutra.
-                    O nome ("Full ML · Conta 1") continua escrito: quem não
-                    distingue amarelo de laranja lê. */}
-                <button
-                  type="button"
-                  onClick={() => alternar(bloco.chave)}
-                  aria-expanded={aberto}
-                  className={cn(
-                    'flex w-full items-stretch text-left',
-                    cor ? cor.faixa : 'bg-muted',
-                  )}
-                >
-                  {cor && (
-                    <span aria-hidden className={cn('w-2.5 shrink-0', cor.barra)} />
-                  )}
-                  <span className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2">
-                    <span className="truncate text-lg font-semibold">
-                      {bloco.cabecalho}
+              // `overflow-clip` onde o navegador conhece, e não `hidden`:
+              // hidden faz do bloco um contêiner de rolagem, e o cabeçalho
+              // `sticky` grudaria no bloco (que não rola) em vez de na lista.
+              // Navegador velho fica com o hidden: cabeçalho que não gruda,
+              // mas canto arredondado certo.
+              <section
+                key={bloco.chave}
+                className="overflow-hidden rounded-xl border-2 supports-[overflow:clip]:overflow-clip"
+              >
+                {/* O CABEÇALHO GRUDA NO TOPO enquanto o bloco passa: a linha
+                    da OP não repete o destino, então é ele que diz de quem é
+                    a OP num bloco comprido. O fundo opaco embaixo é pro modo
+                    escuro, onde a faixa é um véu translúcido — sem ele, as
+                    linhas apareceriam através do cabeçalho ao rolar. */}
+                <div className="bg-popover sticky top-0 z-10">
+                  {/* A FAIXA: texto escuro sobre a cor clara, barra grossa na
+                      cor cheia (ver cor-do-canal.ts). Sem cor, a faixa neutra.
+                      O nome ("Full ML · Conta 1") continua escrito: quem não
+                      distingue amarelo de laranja lê. */}
+                  <button
+                    type="button"
+                    onClick={() => alternar(bloco.chave)}
+                    aria-expanded={aberto}
+                    className={cn(
+                      'flex w-full items-stretch text-left',
+                      cor ? cor.faixa : 'bg-muted',
+                    )}
+                  >
+                    {cor && (
+                      <span aria-hidden className={cn('w-2.5 shrink-0', cor.barra)} />
+                    )}
+                    <span className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2">
+                      <span className="truncate text-lg font-semibold">
+                        {bloco.cabecalho}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2 text-base font-medium tabular-nums">
+                        {bloco.ops.length} {bloco.ops.length === 1 ? 'OP' : 'OPs'}
+                        {/* O AVISO, só quando aperta (`alertaDoBloco`): com o
+                            bloco fechado, é o que impede a OP atrasada de
+                            sumir atrás da contagem. */}
+                        {alerta.prazo && (
+                          <span className="text-destructive font-bold">
+                            {alerta.prazo}
+                          </span>
+                        )}
+                        {alerta.urgente && <SeloDePrioridade prioridade="urgente" />}
+                        <ChevronDown
+                          className={cn('size-5 transition-transform', aberto && 'rotate-180')}
+                        />
+                      </span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-2 text-base font-medium tabular-nums">
-                      {bloco.ops.length} {bloco.ops.length === 1 ? 'OP' : 'OPs'}
-                      <ChevronDown
-                        className={cn('size-5 transition-transform', aberto && 'rotate-180')}
-                      />
-                    </span>
-                  </span>
-                </button>
+                  </button>
+                </div>
 
                 {aberto && (
                   <div className="space-y-4 p-2">
@@ -1166,9 +1183,10 @@ function IniciarProducaoDialog({
                 </div>
 
                 <div className="text-muted-foreground flex flex-wrap items-baseline gap-x-2 text-sm">
-                  {/* PRA ONDE VAI, na linha que já existia — antes do prazo,
-                      que é o "até quando" desse "pra onde". */}
-                  <Destino texto={op.destino} />
+                  {/* SEM O DESTINO: ele é o cabeçalho do bloco em volta, que
+                      gruda no topo ao rolar, e aqui só repetiria "Full ML ·
+                      Conta 1" em toda linha. Ele volta na confirmação e no
+                      cartão da máquina, onde não há bloco em volta. */}
                   <Prazo data={op.dataPrevistaFim} />
                   {/* AS TARJAS VIRARAM TEXTO NA MESMA LINHA. Como caixinhas
                       coloridas elas custavam uma quarta linha em toda OP que

@@ -2,10 +2,12 @@
 //
 // No Trello, cada Full era um painel, e a cor do marketplace era a coisa mais
 // visível da parede. Aqui ela marca o BLOCO de destino no "Iniciar" do tablet,
-// a borda de cada OP daquele Full, o cartão da máquina com OP de Full e a
-// pasta de Full do kanban. Mercado Livre AMARELO, Shopee LARANJA, o resto sem
-// cor. Tablet e kanban leem DAQUI: se cada tela escolhesse o seu tom, o
-// amarelo do gerente e o do operador seriam dois amarelos.
+// a borda de cada OP daquele Full, o cartão da máquina com OP de Full, a
+// pasta de Full do kanban e a etiqueta do envio no calendário. Mercado Livre
+// AMARELO, Shopee LARANJA, o resto sem cor. Tablet, kanban e calendário leem
+// DAQUI: se cada tela escolhesse o seu tom, o amarelo do gerente e o do
+// operador seriam dois amarelos — e foram, até o calendário (que tinha o ML
+// em âmbar) passar a ler daqui também.
 //
 // ⚠️ NUNCA NO FUNDO DA LINHA DA OP, NEM PERTO DO QUADRADINHO. O quadradinho é
 // a COR DO FIO, que o operador confere contra a máquina — duas manchas de cor

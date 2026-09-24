@@ -51,6 +51,7 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { rotuloDaSituacao } from '@/lib/parcela-estado'
+import { corDoCanal } from '@/lib/producao/cor-do-canal'
 import {
   ehEventoDuplicado,
   rotuloDoEventoFull,
@@ -64,9 +65,21 @@ import {
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 
-const CANAL_BADGE: Record<(typeof eventoFullCanalValues)[number], string> = {
-  full_ml: 'bg-amber-400/20 text-amber-700 dark:text-amber-300',
-  full_shopee: 'bg-orange-500/20 text-orange-700 dark:text-orange-300',
+// A COR DO CANAL é a de src/lib/producao/cor-do-canal.ts, a mesma do tablet
+// e do kanban. O calendário tinha a própria, com o ML em âmbar, e o ML ficava
+// com dois amarelos: o do gerente aqui e o do operador lá.
+type CanalDoEvento = (typeof eventoFullCanalValues)[number]
+
+/** A etiqueta do envio no dia: a faixa clara com texto escuro. */
+const CANAL_BADGE: Record<CanalDoEvento, string> = {
+  full_ml: corDoCanal('full_ml')?.faixa ?? '',
+  full_shopee: corDoCanal('full_shopee')?.faixa ?? '',
+}
+
+/** O quadradinho da legenda: a cor cheia, a da barra do tablet. */
+const CANAL_LEGENDA: Record<CanalDoEvento, string> = {
+  full_ml: corDoCanal('full_ml')?.barra ?? '',
+  full_shopee: corDoCanal('full_shopee')?.barra ?? '',
 }
 
 type Props = {
@@ -186,11 +199,21 @@ export function CalendarioView({
       {/* Legenda */}
       <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         <span className="flex items-center gap-1.5">
-          <span className="bg-amber-400/60 inline-block size-2.5 rounded-sm" />
+          <span
+            className={cn(
+              'inline-block size-2.5 rounded-sm',
+              CANAL_LEGENDA.full_ml,
+            )}
+          />
           Full ML
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="bg-orange-500/60 inline-block size-2.5 rounded-sm" />
+          <span
+            className={cn(
+              'inline-block size-2.5 rounded-sm',
+              CANAL_LEGENDA.full_shopee,
+            )}
+          />
           Full Shopee
         </span>
         <span className="flex items-center gap-1.5">

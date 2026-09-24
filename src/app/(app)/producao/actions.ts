@@ -88,6 +88,8 @@ type ColunasDoDestino = {
   remessaDataEnvio: string | null
   remessaContaNome: string | null
   pedidoNumero: number | null
+  /** Só as consultas do "Iniciar" e da Fila trazem — é do cabeçalho do bloco. */
+  pedidoCliente?: string | null
 }
 
 function destinoDaLinha(r: ColunasDoDestino) {
@@ -102,6 +104,7 @@ function destinoDaLinha(r: ColunasDoDestino) {
           }
         : null,
     pedidoNumero: r.pedidoNumero,
+    pedidoCliente: r.pedidoCliente ?? null,
   }
 }
 
@@ -110,7 +113,10 @@ function destinoDe(r: ColunasDoDestino): string {
   return rotuloDoDestino(destinoDaLinha(r))
 }
 
-/** O cabeçalho do bloco no "Iniciar": "Full ML · Conta 1 · envio 29/09". */
+/**
+ * O cabeçalho do bloco no "Iniciar": "Full ML · Conta 1 · envio 29/09",
+ * "Pedido #142 · Loja Bela".
+ */
 function destinoBlocoDe(r: ColunasDoDestino): string {
   return rotuloDoBlocoDeDestino(destinoDaLinha(r))
 }
@@ -321,6 +327,11 @@ export async function listarOrdensProducao(
       // DESC traz urgente/alta primeiro (mais importante no topo da coluna).
       desc(ordensProducao.prioridade),
       asc(ordensProducao.dataPrevistaFim),
+      // DESEMPATE pelo número (único): as OPs de uma remessa têm o MESMO
+      // prazo, e sem isto a ordem entre elas era a do disco, que pode mudar
+      // depois de qualquer UPDATE. A mais antiga primeiro. O "Iniciar" e a
+      // Fila desempatam igual.
+      asc(ordensProducao.numero),
     )
 
   const now = Date.now()
@@ -776,6 +787,7 @@ export async function listarOpsParaIniciar(
       remessaContaNome: contasMarketplace.nome,
       remessaDataEnvio: remessasFull.dataEnvio,
       pedidoNumero: orcamentos.numero,
+      pedidoCliente: orcamentos.cliente,
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
@@ -800,9 +812,15 @@ export async function listarOpsParaIniciar(
     // primeiro sem CASE nenhum. Prazo em ASC deixa NULL por último, que é o
     // que se quer — OP sem prazo não fura fila de OP com prazo. É ESTA ordem
     // que `agruparPorDestino` usa pra posicionar os blocos.
+    //
+    // ⚠️ O DESEMPATE PELO NÚMERO decide mais aqui do que no kanban. Dois
+    // Fulls com o mesmo "produção até" empatam, e sem desempate QUAL BLOCO
+    // VEM PRIMEIRO (e abre sozinho) era a ordem do disco, que muda a cada
+    // UPDATE: fechar e abrir o diálogo podia trocar o bloco de cima.
     .orderBy(
       desc(ordensProducao.prioridade),
       asc(ordensProducao.dataPrevistaFim),
+      asc(ordensProducao.numero),
     )
     .limit(TETO_DO_INICIAR)
 
@@ -847,7 +865,7 @@ export async function listarOpsParaIniciar(
 //
 // Agora a leitura é em dois tempos, e o caro só acontece quando alguém pede:
 //
-//   1. uma consulta MAGRA (cinco colunas, zero join, zero subquery) que
+//   1. uma consulta MAGRA (seis colunas, zero join, zero subquery) que
 //      responde "quais OPs, em que status, em que máquina" — é dela que
 //      saem os contadores;
 //   2. os campos de exibição só pra PÁGINA que o operador abriu, no máximo
@@ -865,6 +883,8 @@ type OrdemMagra = {
   maquinaId: string | null
   prioridade: PrioridadeNivel
   dataPrevistaFim: Date | null
+  /** Só pro desempate de `ordenarComoOKanban`. */
+  numero: string
 }
 
 /** As OPs que o operador enxerga, agrupadas pelo destino na tela dele. */
@@ -900,6 +920,7 @@ async function opsPorDestino(
       maquinaId: ordensProducao.maquinaId,
       prioridade: ordensProducao.prioridade,
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
+      numero: ordensProducao.numero,
     })
     .from(ordensProducao)
     .where(
@@ -937,7 +958,9 @@ function ordenarComoOKanban(a: OrdemMagra, b: OrdemMagra): number {
   // Sem prazo vai por último, como o NULLS LAST do ASC no Postgres.
   const prazoA = a.dataPrevistaFim?.getTime() ?? Infinity
   const prazoB = b.dataPrevistaFim?.getTime() ?? Infinity
-  return prazoA - prazoB
+  if (prazoA !== prazoB) return prazoA - prazoB
+  // O mesmo desempate do SQL: número, a mais antiga primeiro.
+  return a.numero < b.numero ? -1 : a.numero > b.numero ? 1 : 0
 }
 
 export type ContagensDaEstacao = {
@@ -1053,6 +1076,7 @@ export async function listarOpsDaEstacao(
       remessaContaNome: contasMarketplace.nome,
       remessaDataEnvio: remessasFull.dataEnvio,
       pedidoNumero: orcamentos.numero,
+      pedidoCliente: orcamentos.cliente,
       variacaoCor: variacoesProduto.cor,
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
