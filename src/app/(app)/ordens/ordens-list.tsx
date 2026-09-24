@@ -295,10 +295,12 @@ export function OrdensList({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="todas">Todos os Fulls</SelectItem>
+                {/* O RÓTULO COM A CONTA, o mesmo do kanban e do tablet:
+                    "Full ML · 29/09" montado aqui deixava iguais duas
+                    contas que mandam no mesmo dia. */}
                 {remessas.map((r) => (
                   <SelectItem key={r.id} value={r.id}>
-                    {CANAL_LABEL_CURTO[r.canal]} ·{' '}
-                    {`${r.dataEnvio.slice(8, 10)}/${r.dataEnvio.slice(5, 7)}`}
+                    {r.rotulo}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -392,13 +394,7 @@ export function OrdensList({
                     <TableCell>{o.maquinaNome ?? '—'}</TableCell>
                     <TableCell className="tabular-nums">{resultadoDe(o)}</TableCell>
                     <TableCell>
-                      {CANAL_LABEL_CURTO[o.canalDestino]}
-                      {o.remessaData && (
-                        <span className="text-muted-foreground">
-                          {' '}
-                          · {o.remessaData}
-                        </span>
-                      )}
+                      {o.remessaRotulo ?? CANAL_LABEL_CURTO[o.canalDestino]}
                     </TableCell>
                     <TableCell>
                       <Badge className={PRIORIDADE_BADGE[o.prioridade]}>
@@ -490,8 +486,7 @@ export function OrdensList({
                   </div>
                   <div>Canal</div>
                   <div className="text-foreground text-right">
-                    {CANAL_LABEL_CURTO[o.canalDestino]}
-                    {o.remessaData ? ` · ${o.remessaData}` : ''}
+                    {o.remessaRotulo ?? CANAL_LABEL_CURTO[o.canalDestino]}
                   </div>
                   <div>Prioridade</div>
                   <div className="text-right">
