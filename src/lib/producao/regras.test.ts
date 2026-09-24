@@ -91,6 +91,7 @@ import {
   erroDoCancelamento,
   OP_DEVOLVIDA,
   podeConcluirProducao,
+  textoDaBaixa,
 } from './transicoes-da-op.ts'
 import { buscarVariacoes, erroDaVariacao } from './catalogo-op.ts'
 import {
@@ -917,6 +918,25 @@ test('OP com baixa nao cancela, nem pelo botao nem pelo status manual', () => {
   for (const s of ['aguardando_materia_prima', 'programado', 'em_producao', 'pronto_envio'] as const) {
     assert.equal(erroDoCancelamento(s), null, s)
     assert.equal(erroDaTransicaoGenerica(s, 'cancelado', false), null, s)
+  }
+})
+
+test('baixa: "estoque reposto" so pra OP de reposicao, nao pra todo canal Estoque', () => {
+  assert.deepEqual(textoDaBaixa({ canalDestino: 'estoque', deReposicao: true }), {
+    botao: 'Dar baixa · estoque reposto',
+    aviso: 'Baixa dada · estoque reposto',
+  })
+  // A Nova OP ja abre no canal Estoque: a OP lancada a mao nao repos nada.
+  assert.deepEqual(textoDaBaixa({ canalDestino: 'estoque', deReposicao: false }), {
+    botao: 'Dar baixa · vai pro estoque',
+    aviso: 'Baixa dada · foi pro estoque',
+  })
+  for (const canal of ['full_ml', 'full_shopee', 'venda_direta']) {
+    assert.deepEqual(
+      textoDaBaixa({ canalDestino: canal, deReposicao: false }),
+      { botao: 'Dar baixa · enviada', aviso: 'Baixa dada · OP enviada' },
+      canal,
+    )
   }
 })
 
