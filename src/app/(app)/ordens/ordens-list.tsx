@@ -430,7 +430,7 @@ export function OrdensList({
         <EmptyState
           icon={ClipboardList}
           title="Nenhuma OP encontrada"
-          description="Crie ordens de produção pra acompanhar no kanban e dar entrada no estoque."
+          description="Crie ordens de produção pra acompanhar no kanban e dar baixa quando ficarem prontas."
           action={
             podeEditar ? (
               <BotaoNovaOp produtos={produtosNovaOp} size="sm">
