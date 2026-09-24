@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { fimDoDiaEmBrasilia, inicioDoDiaEmBrasilia } from '@/lib/dia-brasil'
 import { PRIORIDADE_LABEL, PRIORIDADE_NIVEIS } from '@/lib/prioridade'
 
 // Helpers (mesmo padrão dos outros validators).
@@ -18,26 +19,42 @@ const quantidadeReq = z
 
 // Data opcional vinda de <input type="date">. Aceita string 'YYYY-MM-DD',
 // Date já transformado, ou null/undefined.
-const dateOpt = z
-  .union([z.string(), z.date(), z.null(), z.undefined()])
-  .transform((v) => {
-    if (v == null) return null
-    if (v instanceof Date) return v
-    if (v === '') return null
-    return v
-  })
-  .refine(
-    (v) =>
-      v === null || v instanceof Date || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)),
-    'Data inválida (use YYYY-MM-DD)',
-  )
-  .transform((v) => {
-    if (v === null || v instanceof Date) return v
-    return new Date(`${v}T00:00:00.000Z`)
-  })
-  // .optional(): a Server Action do Next descarta undefined, então a chave
-  // pode chegar AUSENTE — sem optional o Zod 4 falha com "expected nonoptional".
-  .optional()
+//
+// ⚠️ O DIA DIGITADO É O DIA DE BRASÍLIA, e vira um INSTANTE aqui — o mesmo
+// que as outras portas gravam. O PRAZO é o FIM do dia (23:59:59,
+// `fimDoDiaEmBrasilia`), igual ao das OPs de Full: "até 30/09" vale o dia 30
+// inteiro. O INÍCIO é o COMEÇO do dia (`inicioDoDiaEmBrasilia`).
+//
+// Antes a string virava meia-noite UTC — 21h do dia ANTERIOR em Brasília. A
+// tela mostrava um dia antes, e a OP ficava atrasada ~27h antes do prazo
+// real. A volta pro formulário usa `diaEmBrasilia` (ordem-form.tsx): com
+// `toISOString` o campo mostraria o dia seguinte, e cada edição empurraria o
+// prazo um dia pra frente.
+//
+// Date já transformado passa direto: o form (zodResolver) aplica o
+// transform no navegador, e a Server Action re-valida o Date que chegou.
+function dataDigitada(borda: 'inicio' | 'fim') {
+  return z
+    .union([z.string(), z.date(), z.null(), z.undefined()])
+    .transform((v) => {
+      if (v == null) return null
+      if (v instanceof Date) return v
+      if (v === '') return null
+      return v
+    })
+    .refine(
+      (v) =>
+        v === null || v instanceof Date || (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)),
+      'Data inválida (use YYYY-MM-DD)',
+    )
+    .transform((v) => {
+      if (v === null || v instanceof Date) return v
+      return borda === 'fim' ? fimDoDiaEmBrasilia(v) : inicioDoDiaEmBrasilia(v)
+    })
+    // .optional(): a Server Action do Next descarta undefined, então a chave
+    // pode chegar AUSENTE — sem optional o Zod 4 falha com "expected nonoptional".
+    .optional()
+}
 
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -97,8 +114,8 @@ export const ordemSchema = z.object({
   prioridade: z.enum(prioridadeValues),
   status: z.enum(statusValues),
 
-  dataPrevistaInicio: dateOpt,
-  dataPrevistaFim: dateOpt,
+  dataPrevistaInicio: dataDigitada('inicio'),
+  dataPrevistaFim: dataDigitada('fim'),
 
   responsavelId: uuidOpt,
   observacoes: stringOpt(500, 'Observações'),

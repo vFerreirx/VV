@@ -1,6 +1,6 @@
 'use server'
 
-import { and, asc, eq, gte, isNull, lte, ne, sql } from 'drizzle-orm'
+import { and, asc, eq, gte, isNull, lt, lte, ne, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
@@ -16,7 +16,12 @@ import {
   remessasFull,
 } from '@/lib/db/schema'
 import { situacaoDaParcela, type SituacaoDaParcela } from '@/lib/parcela-estado'
-import { hojeEmBrasilia } from '@/lib/dia-brasil'
+import {
+  diaEmBrasilia,
+  hojeEmBrasilia,
+  inicioDoDiaEmBrasilia,
+  somarDias,
+} from '@/lib/dia-brasil'
 import {
   eventoFullSchema,
   type EventoFullInput,
@@ -262,8 +267,14 @@ export async function listarOpsComPrazo(
       and(
         isNull(ordensProducao.deletedAt),
         ne(ordensProducao.status, 'cancelado'),
-        sql`${ordensProducao.dataPrevistaFim}::date >= ${inicio}`,
-        sql`${ordensProducao.dataPrevistaFim}::date <= ${fim}`,
+        // ⚠️ A JANELA EM INSTANTES DE BRASÍLIA, e não `::date`: o prazo é o
+        // FIM do dia em Brasília (`fimDoDiaEmBrasilia`), 02:59 do dia
+        // SEGUINTE em UTC — `::date` na sessão UTC poria a OP no dia errado.
+        gte(ordensProducao.dataPrevistaFim, inicioDoDiaEmBrasilia(inicio)),
+        lt(
+          ordensProducao.dataPrevistaFim,
+          inicioDoDiaEmBrasilia(somarDias(fim, 1)),
+        ),
       ),
     )
     .orderBy(asc(ordensProducao.dataPrevistaFim))
@@ -275,7 +286,9 @@ export async function listarOpsComPrazo(
     )
     .map((r) => {
       const d = new Date(r.dataPrevistaFim)
-      const ymd = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+      // O dia de BRASÍLIA do prazo. Com `getUTC*`, todo prazo (o do Full já
+      // era assim) caía no quadradinho do dia seguinte.
+      const ymd = diaEmBrasilia(d)
       return {
         id: r.id,
         numero: r.numero,

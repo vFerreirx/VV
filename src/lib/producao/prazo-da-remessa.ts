@@ -17,7 +17,7 @@
 // Duas contas de "envio menos a folga" em dois lugares viram, um dia, um card
 // "no prazo" com as OPs dele atrasadas.
 
-import { diasEntre, somarDias } from '../dia-brasil.ts'
+import { diasEntre, fimDoDiaEmBrasilia, somarDias } from '../dia-brasil.ts'
 
 /**
  * Folga entre o fim da produção e o envio, em dias de calendário.
@@ -95,9 +95,13 @@ export function avisoDoProducaoAte(
 /**
  * O prazo da OP: fim do dia do "produção até", no horário de Brasília — a
  * mesma hora que as OPs de Full sempre usaram, só que no dia certo.
+ *
+ * A conta mora em `fimDoDiaEmBrasilia` (src/lib/dia-brasil.ts), a mesma do
+ * prazo DIGITADO na Nova OP: o "-03:00" escrito aqui era uma segunda fonte do
+ * fuso, e as duas portas de prazo têm que dar o mesmo instante.
  */
 export function prazoDaOp(producaoAte: string): Date {
-  return new Date(`${producaoAte}T23:59:59-03:00`)
+  return fimDoDiaEmBrasilia(producaoAte)
 }
 
 export type RiscoDaRemessa =
