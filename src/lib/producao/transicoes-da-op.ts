@@ -174,17 +174,54 @@ export const OP_DEVOLVIDA = {
 /**
  * Por que esta OP não pode ser cancelada, ou null se pode.
  *
- * OP com BAIXA não cancela: a peça já foi enviada ou já repôs o estoque, e
+ * OP com BAIXA não cancela: a peça já foi enviada ou já foi pro estoque, e
  * cancelar diria que ela "não foi feita". (A frase falava em "entrada no
- * estoque" até pra OP de Full — e a fábrica nem controla mais saldo; o que
- * existe é a fila de reposição.)
+ * estoque" até pra OP de Full. E não diz "repôs o estoque": nem toda OP de
+ * canal Estoque é de reposição — ver `textoDaBaixa`.)
  */
 export function erroDoCancelamento(status: StatusDaOrdem): string | null {
   if (status === 'enviado') {
-    return 'OP com baixa não cancela: a peça já foi enviada ou já repôs o estoque'
+    return 'OP com baixa não cancela: a peça já foi enviada ou já foi pro estoque'
   }
   if (status === 'cancelado') return 'Essa OP já está cancelada'
   return null
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// O QUE A BAIXA DIZ QUE FEZ — no botão e no aviso depois do toque
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Uma função pros dois textos. Quando eram dois ternários no painel, o botão
+// passou a dizer "estoque reposto" e o aviso continuou em "entrou no estoque".
+//
+// ⚠️ CANAL ESTOQUE NÃO QUER DIZER REPOSIÇÃO. A Nova OP já abre no canal
+// Estoque, então a OP que o gerente lança à mão pra ter peça na prateleira
+// também é desse canal — e ela não repõe nada que alguém tenha marcado como
+// acabando. "Estoque reposto" é só da OP DE REPOSIÇÃO, a ligada a um item da
+// fila (`reposicoes_estoque.ordem_id`, o vínculo que a baixa fecha como
+// "Reposto"); a outra só vai pro estoque. Full e venda direta: enviada.
+
+/** O texto do botão "Dar baixa" e o do aviso depois dele. */
+export type TextoDaBaixa = { botao: string; aviso: string }
+
+export function textoDaBaixa(op: {
+  canalDestino: string
+  /** Ligada a um item da fila de reposição (/estoque) — ver `OrdemDetalhe`. */
+  deReposicao: boolean
+}): TextoDaBaixa {
+  if (op.canalDestino !== 'estoque') {
+    return { botao: 'Dar baixa · enviada', aviso: 'Baixa dada · OP enviada' }
+  }
+  if (op.deReposicao) {
+    return {
+      botao: 'Dar baixa · estoque reposto',
+      aviso: 'Baixa dada · estoque reposto',
+    }
+  }
+  return {
+    botao: 'Dar baixa · vai pro estoque',
+    aviso: 'Baixa dada · foi pro estoque',
+  }
 }
 
 // Status que só existem DEPOIS de a OP entrar numa máquina. Entra na regra da

@@ -70,6 +70,7 @@ import {
   erroDaExclusao,
   erroDaTransicaoGenerica,
   erroDoCancelamento,
+  textoDaBaixa,
 } from '@/lib/producao/transicoes-da-op'
 import { cn } from '@/lib/utils'
 import {
@@ -89,8 +90,9 @@ type Status = (typeof statusValues)[number]
 // dizendo.
 //
 // ⚠️ "CONCLUIR" É SÓ A SAÍDA DA MÁQUINA. O fim comercial se chama "Dar baixa",
-// com o efeito escrito — no canal Estoque é ele que põe peça no saldo. Com as
-// duas coisas chamadas "concluir", o gerente não sabia qual tinha feito.
+// com o efeito escrito — enviada, vai pro estoque ou estoque reposto
+// (`textoDaBaixa`). Com as duas coisas chamadas "concluir", o gerente não
+// sabia qual tinha feito.
 type AcaoPrincipal = 'iniciar' | 'concluir' | 'baixa' | null
 
 function acaoPrincipalDe(status: Status): AcaoPrincipal {
@@ -360,13 +362,7 @@ function DetalheBody({
       }
       // Enviado/cancelado saem do kanban — fecha o painel e atualiza o board.
       if (novoStatus === 'enviado' || novoStatus === 'cancelado') {
-        toast.success(
-          novoStatus === 'enviado'
-            ? ordem.canalDestino === 'estoque'
-              ? 'Baixa dada · entrou no estoque'
-              : 'Baixa dada · OP enviada'
-            : 'OP cancelada',
-        )
+        toast.success(novoStatus === 'enviado' ? textoDaBaixa(ordem).aviso : 'OP cancelada')
         onClose()
         router.refresh()
         return
@@ -460,14 +456,7 @@ function DetalheBody({
                       onClick={() => handleMudarStatus('enviado')}
                     >
                       <CheckCircle2 />
-                      {/* "ESTOQUE REPOSTO", e não "entra no estoque": a fábrica
-                          não controla mais saldo — o que existe é a fila de
-                          REPOSIÇÃO (/estoque), e é ela que a baixa fecha (o
-                          item ligado vira "Reposto", `sincronizarReposicaoDaOp`).
-                          O botão fala do que o gerente acompanha. */}
-                      {ordem.canalDestino === 'estoque'
-                        ? 'Dar baixa · estoque reposto'
-                        : 'Dar baixa · enviada'}
+                      {textoDaBaixa(ordem).botao}
                     </Button>
                     {semApontamento && (
                       <p className="text-muted-foreground text-center text-xs">

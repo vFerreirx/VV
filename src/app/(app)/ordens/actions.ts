@@ -493,6 +493,13 @@ export type OrdemDetalhe = OrdemProducao & {
     dataEnvio: string
     producaoAte: string
   } | null
+  /**
+   * É OP DE REPOSIÇÃO: está ligada a um item da fila (/estoque), o item que
+   * a baixa marca como "Reposto". Canal Estoque sozinho não diz isso: a Nova
+   * OP já abre nele. É o que separa "estoque reposto" de "vai pro estoque"
+   * na baixa (`textoDaBaixa`).
+   */
+  deReposicao: boolean
   criador: Pick<User, 'id' | 'nome' | 'email'> | null
   responsavel: Pick<User, 'id' | 'nome' | 'email'> | null
 }
@@ -509,6 +516,10 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
       remessaDataEnvio: remessasFull.dataEnvio,
       remessaProducaoAte: remessasFull.producaoAte,
       remessaContaNome: contasMarketplace.nome,
+      deReposicao: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${reposicoesEstoque}
+        WHERE ${reposicoesEstoque.ordemId} = "ordens_producao"."id"
+      )`,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -565,6 +576,7 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
             }),
           }
         : null,
+    deReposicao: row.deReposicao,
     criador,
     responsavel,
   }
