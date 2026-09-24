@@ -289,6 +289,25 @@ export function rotuloDoDestino({
   return DESTINO_DO_CANAL[c] ?? c
 }
 
+/**
+ * O CABEÇALHO DO BLOCO DE DESTINO no diálogo "Iniciar" do tablet:
+ * "Full ML · Conta 1 · envio 29/09". É o `rotuloDoDestino` com a palavra
+ * "envio" — no cabeçalho a data está sozinha, longe do prazo da OP, e "29/09"
+ * solto faria o operador perguntar "29/09 o quê?". Pedido, venda direta e
+ * Estoque saem iguais ao destino. Full SEM remessa (OP de teste antiga):
+ * "Full ML · sem remessa", pra não se misturar com as que têm.
+ */
+export function rotuloDoBlocoDeDestino(d: DestinoDaOp): string {
+  if (d.remessa) {
+    const [, m, dia] = d.remessa.dataEnvio.split('-')
+    return `${rotuloDoEventoFull(d.remessa.canal, d.remessa.contaNome ?? null)} · envio ${dia}/${m}`
+  }
+  if (d.pedidoNumero == null && ehCanalFull(d.canal)) {
+    return `${rotuloDoEventoFull(d.canal, null)} · sem remessa`
+  }
+  return rotuloDoDestino(d)
+}
+
 /** "27/09" — dia e mês de uma data 'YYYY-MM-DD'. */
 export function diaMes(iso: string): string {
   const [, m, d] = iso.split('-')

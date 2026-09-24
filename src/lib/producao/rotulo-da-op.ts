@@ -207,6 +207,92 @@ export function agruparPorProduto<
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// AGRUPAR POR DESTINO — e, dentro dele, por produto
+// ─────────────────────────────────────────────────────────────────────────
+//
+// No Trello, o Full era a coisa mais visível: um PAINEL por Full, e dentro
+// dele uma COLUNA por produto. Agrupando só por produto, três OPs do mesmo
+// Full ("Full ML · Conta 1 · 29/09") apareciam espalhadas em três grupos —
+// e o Full, como unidade, sumia. O operador escolhe a OP pensando "o que o
+// caminhão de amanhã precisa", não "qual peseira".
+//
+// DOIS NÍVEIS: DESTINO → produto → OP.
+//   - cada REMESSA Full é um bloco (duas remessas do mesmo canal, duas);
+//   - cada PEDIDO é um bloco;
+//   - o ESTOQUE é um bloco só;
+//   - OP de Full SEM remessa (as de teste antigas) cai num bloco próprio por
+//     canal, sem quebrar nada e sem se misturar com as que têm remessa;
+//   - venda direta sem pedido, um bloco por canal (não tem pra quem ir).
+//
+// ⚠️ NÃO REORDENA, como `agruparPorProduto`: cada bloco entra na posição da
+// OP mais urgente que ele contém. A lista chega por prioridade + prazo, então
+// o Full com o caminhão mais perto vem primeiro — e uma OP marcada URGENTE
+// pelo gerente ainda puxa o bloco dela pro topo.
+
+export type OpComDestino = {
+  canalDestino: string
+  remessaFullId: string | null
+  orcamentoId: string | null
+  /** O cabeçalho do bloco, já pronto — `rotuloDoBlocoDeDestino`. */
+  destinoBloco: string
+  produtoCodigo: string | null
+  produtoNome: string
+}
+
+export type BlocoDeDestino<T> = {
+  /** Estável entre recargas: é por ela que a tela lembra o que está aberto. */
+  chave: string
+  /** "Full ML · Conta 1 · envio 29/09" · "Pedido #142" · "Estoque". */
+  cabecalho: string
+  /** O canal, pra cor (`corDoCanal`) — só Full tem cor. */
+  canal: string
+  ops: T[]
+  /** As colunas do Trello: os produtos dentro do bloco, sem reordenar. */
+  produtos: GrupoDeProduto<T>[]
+}
+
+export function chaveDoDestino(op: {
+  canalDestino: string
+  remessaFullId: string | null
+  orcamentoId: string | null
+}): string {
+  if (op.remessaFullId) return `remessa:${op.remessaFullId}`
+  if (op.orcamentoId) return `pedido:${op.orcamentoId}`
+  if (op.canalDestino === 'estoque') return 'estoque'
+  // Full sem remessa e venda direta sem pedido: um bloco por canal.
+  return `canal:${op.canalDestino}`
+}
+
+export function agruparPorDestino<T extends OpComDestino>(
+  ops: readonly T[],
+): BlocoDeDestino<T>[] {
+  const blocos: BlocoDeDestino<T>[] = []
+  const porChave = new Map<string, BlocoDeDestino<T>>()
+  for (const op of ops) {
+    const chave = chaveDoDestino(op)
+    let bloco = porChave.get(chave)
+    if (!bloco) {
+      bloco = {
+        chave,
+        cabecalho: op.destinoBloco,
+        canal: op.canalDestino,
+        ops: [],
+        produtos: [],
+      }
+      porChave.set(chave, bloco)
+      // Primeira aparição = a OP mais urgente do bloco (a lista chega por
+      // urgência): é ela que decide a posição do bloco.
+      blocos.push(bloco)
+    }
+    bloco.ops.push(op)
+  }
+  // Dentro de cada bloco, as colunas por produto — pela mesma regra de
+  // sempre, que também não reordena.
+  for (const b of blocos) b.produtos = agruparPorProduto(b.ops)
+  return blocos
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // O TÍTULO DA OP — uma função só, duas telas
 // ─────────────────────────────────────────────────────────────────────────
 //

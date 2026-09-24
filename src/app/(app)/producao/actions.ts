@@ -50,6 +50,7 @@ import {
 import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import {
   rotuloDaRemessa,
+  rotuloDoBlocoDeDestino,
   rotuloDoDestino,
 } from '@/lib/producao/prazo-da-remessa'
 import { erroDoAutorDoDesfazer } from '@/lib/producao/conclusao'
@@ -81,15 +82,16 @@ const tamanhoUnicoSql = sql<boolean>`(
      AND v_tam.deleted_at IS NULL
 ) <= 1`
 
-/** O destino, a partir das colunas do LEFT JOIN em remessa, conta e pedido. */
-function destinoDe(r: {
+type ColunasDoDestino = {
   canal: string
   remessaCanal: string | null
   remessaDataEnvio: string | null
   remessaContaNome: string | null
   pedidoNumero: number | null
-}): string {
-  return rotuloDoDestino({
+}
+
+function destinoDaLinha(r: ColunasDoDestino) {
+  return {
     canal: r.canal,
     remessa:
       r.remessaCanal && r.remessaDataEnvio
@@ -100,7 +102,17 @@ function destinoDe(r: {
           }
         : null,
     pedidoNumero: r.pedidoNumero,
-  })
+  }
+}
+
+/** O destino, a partir das colunas do LEFT JOIN em remessa, conta e pedido. */
+function destinoDe(r: ColunasDoDestino): string {
+  return rotuloDoDestino(destinoDaLinha(r))
+}
+
+/** O cabeçalho do bloco no "Iniciar": "Full ML · Conta 1 · envio 29/09". */
+function destinoBlocoDe(r: ColunasDoDestino): string {
+  return rotuloDoBlocoDeDestino(destinoDaLinha(r))
 }
 
 // -----------------------------------------------------------------
@@ -405,6 +417,8 @@ export type OpNaMaquina = {
   tamanhoUnico: boolean
   /** Pra onde vai: "Full ML · 24/09", "Pedido #142", "Estoque"… */
   destino: string
+  /** O canal, pra borda com a cor do marketplace no cartão (`corDoCanal`). */
+  canalDestino: string
   variacaoCor: string | null
   variacaoModelo: string | null
   variacaoTamanho: string | null
@@ -573,6 +587,7 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
                 remessaContaNome: r.remessaContaNome,
                 pedidoNumero: r.pedidoNumero,
               }),
+              canalDestino: r.opCanal ?? '',
               variacaoCor: r.variacaoCor ?? null,
               variacaoModelo: r.variacaoModelo ?? null,
               variacaoTamanho: r.variacaoTamanho ?? null,
@@ -601,9 +616,19 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
 // A FILA DE UMA MÁQUINA — o diálogo de "Iniciar produção"
 // -----------------------------------------------------------------
 //
-// A única consulta desta tela que PAGINA de verdade, no SQL. As outras
-// respondem "quantas?" ou listam o que já está na estação; esta é a que o
-// operador percorre procurando, e é a que cresce sem limite.
+// ⚠️ CARREGA A LISTA INTEIRA, E NÃO UMA PÁGINA — e foi escolha, não descuido.
+// O diálogo agrupa por DESTINO (cada Full, cada pedido, o Estoque), com a
+// contagem no cabeçalho e o bloco na posição da OP mais urgente que ele tem.
+// Com página de 20, as duas coisas mentem: um Full com 12 OPs espalhadas por
+// três páginas diria "3 OPs", e cairia na posição da OP que calhou de vir na
+// primeira página. Uma contagem agregada à parte acertaria o número mas não a
+// posição — e seriam duas consultas pra montar uma lista.
+//
+// Cabe: é pouco dado por OP (uns 20 campos curtos, sem subconsulta cara), e a
+// estação tem na casa das dezenas de OPs iniciáveis. O TETO existe pro dia em
+// que isso deixar de ser verdade: passou dele, a lista vem cortada nas mais
+// urgentes e a tela AVISA ("mostrando 300 de 412") — em vez de travar o
+// tablet, ou de esconder OP sem dizer.
 //
 // ⚠️ A MÁQUINA VEM POR PARÂMETRO E É VALIDADA CONTRA A ESTAÇÃO DELE. A
 // estação, nunca — sai do usuário autenticado. Sem a validação, mandar um
@@ -617,6 +642,9 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
 
 const OPS_POR_PAGINA = 20
 
+/** O teto de segurança da lista do "Iniciar" — ver o comentário acima. */
+const TETO_DO_INICIAR = 300
+
 export type OpParaIniciar = {
   id: string
   numero: string
@@ -628,6 +656,15 @@ export type OpParaIniciar = {
   tamanhoUnico: boolean
   /** Pra onde vai — "Full ML · 24/09", "Pedido #142", "Estoque"… */
   destino: string
+  /**
+   * O BLOCO do "Iniciar": a chave (`chaveDoDestino`, de remessa, pedido e
+   * canal) e o cabeçalho ("Full ML · Conta 1 · envio 29/09"). O canal dá a
+   * cor do marketplace (`corDoCanal`).
+   */
+  canalDestino: string
+  remessaFullId: string | null
+  orcamentoId: string | null
+  destinoBloco: string
   variacaoCor: string | null
   variacaoModelo: string | null
   variacaoTamanho: string | null
@@ -650,20 +687,22 @@ export type OpParaIniciar = {
   dataPrevistaFim: Date | null
 }
 
-export type PaginaDeOps = {
+export type ListaDoIniciar = {
   ops: OpParaIniciar[]
+  /** Quantas existem de verdade — maior que `ops.length` só se `cortada`. */
   total: number
-  temMais: boolean
+  /** Passou do teto: a lista traz só as mais urgentes, e a tela avisa. */
+  cortada: boolean
 }
 
 export async function listarOpsParaIniciar(
   maquinaId: string,
-  filtros: { q?: string; pagina?: number } = {},
-): Promise<PaginaDeOps> {
+  filtros: { q?: string } = {},
+): Promise<ListaDoIniciar> {
   const user = await requireArea('kanban')
 
   const estacao = await estacaoDoOperador(user.id)
-  if (!estacao) return { ops: [], total: 0, temMais: false }
+  if (!estacao) return { ops: [], total: 0, cortada: false }
 
   // A máquina precisa ser DESTA estação. `listarMaquinasDaEstacao` só
   // desenha cartões daqui, mas esta função não pode confiar na tela.
@@ -678,9 +717,8 @@ export async function listarOpsParaIniciar(
       ),
     )
     .limit(1)
-  if (!maquina) return { ops: [], total: 0, temMais: false }
+  if (!maquina) return { ops: [], total: 0, cortada: false }
 
-  const pagina = Math.max(1, filtros.pagina ?? 1)
   const termo = filtros.q?.trim() ?? ''
 
   const conditions = [
@@ -729,6 +767,8 @@ export async function listarOpsParaIniciar(
       observacoes: ordensProducao.observacoes,
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
       canal: ordensProducao.canalDestino,
+      remessaFullId: ordensProducao.remessaFullId,
+      orcamentoId: ordensProducao.orcamentoId,
       produtoNome: produtos.nome,
       produtoCodigo: produtos.codigo,
       tamanhoUnico: tamanhoUnicoSql,
@@ -758,13 +798,13 @@ export async function listarOpsParaIniciar(
     // A MESMA ORDEM DO KANBAN, e de propósito: o enum `ordem_prioridade` é
     // declarado baixa < normal < alta < urgente, então DESC traz urgente
     // primeiro sem CASE nenhum. Prazo em ASC deixa NULL por último, que é o
-    // que se quer — OP sem prazo não fura fila de OP com prazo.
+    // que se quer — OP sem prazo não fura fila de OP com prazo. É ESTA ordem
+    // que `agruparPorDestino` usa pra posicionar os blocos.
     .orderBy(
       desc(ordensProducao.prioridade),
       asc(ordensProducao.dataPrevistaFim),
     )
-    .limit(OPS_POR_PAGINA)
-    .offset((pagina - 1) * OPS_POR_PAGINA)
+    .limit(TETO_DO_INICIAR)
 
   return {
     ops: rows.map((r) => ({
@@ -776,6 +816,10 @@ export async function listarOpsParaIniciar(
       produtoCodigo: r.produtoCodigo ?? null,
       tamanhoUnico: Boolean(r.tamanhoUnico),
       destino: destinoDe(r),
+      canalDestino: r.canal,
+      remessaFullId: r.remessaFullId,
+      orcamentoId: r.orcamentoId,
+      destinoBloco: destinoBlocoDe(r),
       variacaoCor: r.variacaoCor ?? null,
       variacaoModelo: r.variacaoModelo ?? null,
       variacaoTamanho: r.variacaoTamanho ?? null,
@@ -786,7 +830,7 @@ export async function listarOpsParaIniciar(
       dataPrevistaFim: r.dataPrevistaFim,
     })),
     total,
-    temMais: pagina * OPS_POR_PAGINA < total,
+    cortada: total > rows.length,
   }
 }
 
@@ -1000,6 +1044,8 @@ export async function listarOpsDaEstacao(
       quantidade: ordensProducao.quantidade,
       observacoes: ordensProducao.observacoes,
       canal: ordensProducao.canalDestino,
+      remessaFullId: ordensProducao.remessaFullId,
+      orcamentoId: ordensProducao.orcamentoId,
       produtoNome: produtos.nome,
       produtoCodigo: produtos.codigo,
       tamanhoUnico: tamanhoUnicoSql,
@@ -1059,6 +1105,10 @@ export async function listarOpsDaEstacao(
           produtoCodigo: r.produtoCodigo ?? null,
           tamanhoUnico: Boolean(r.tamanhoUnico),
           destino: destinoDe(r),
+          canalDestino: r.canal,
+          remessaFullId: r.remessaFullId,
+          orcamentoId: r.orcamentoId,
+          destinoBloco: destinoBlocoDe(r),
           variacaoCor: r.variacaoCor ?? null,
           variacaoModelo: r.variacaoModelo ?? null,
           variacaoTamanho: r.variacaoTamanho ?? null,
