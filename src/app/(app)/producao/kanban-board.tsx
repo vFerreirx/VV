@@ -1,5 +1,6 @@
 'use client'
 
+import { Collapsible } from '@base-ui/react/collapsible'
 import {
   DndContext,
   DragOverlay,
@@ -41,12 +42,14 @@ import {
 } from '@/app/(app)/ordens/actions'
 import { CodigoDoProduto } from '@/components/ordens/codigo-do-produto'
 import { corDoCanal } from '@/lib/producao/cor-do-canal'
+import { itensDaColuna } from '@/lib/producao/rotulo-da-op'
 import { NovaOpDialog } from '@/components/ordens/nova-op-dialog'
 import {
   marcarEco,
   useRecargaAoVivo,
 } from '@/components/realtime/use-recarga-ao-vivo'
 import { Button } from '@/components/ui/button'
+import { PainelAnimado, RITMO_DO_PAINEL } from '@/components/ui/painel-animado'
 import {
   desfazerConclusaoAction,
   iniciarProducaoAction,
@@ -604,27 +607,12 @@ function KanbanColumn({
   const { setNodeRef, isOver } = useDroppable({ id: status })
   const styles = COLUMN_STYLES[status]
 
-  // 1º nível: OPs de uma remessa Full viram um card do Full na coluna.
-  // O restante segue o agrupamento por produto (2+ OPs -> pasta).
-  const { fulls, semFull } = useMemo(() => {
-    const porFull = new Map<string, KanbanCardData[]>()
-    const resto: KanbanCardData[] = []
-    for (const o of ordens) {
-      if (o.remessaFullId) {
-        const arr = porFull.get(o.remessaFullId)
-        if (arr) arr.push(o)
-        else porFull.set(o.remessaFullId, [o])
-      } else {
-        resto.push(o)
-      }
-    }
-    return {
-      fulls: [...porFull.entries()].map(([id, ops]) => ({ id, ops })),
-      semFull: resto,
-    }
-  }, [ordens])
-
-  const grupos = useMemo(() => agruparPorProduto(semFull), [semFull])
+  // OPs de uma remessa Full viram uma pasta do Full; o resto, pasta de
+  // produto (2+ OPs) ou cartão solto. ⚠️ NA ORDEM DO TABLET: cada item entra
+  // na posição da OP mais urgente dele, e não "todos os Fulls no topo" — o
+  // gerente vê a fila na mesma ordem que o operador (`itensDaColuna`,
+  // rotulo-da-op.ts).
+  const itens = useMemo(() => itensDaColuna(ordens), [ordens])
 
   return (
     <div className="flex w-[78vw] max-w-64 shrink-0 snap-start flex-col sm:w-64">
@@ -669,21 +657,26 @@ function KanbanColumn({
             (vazio)
           </p>
         )}
-        {fulls.map((f) => (
-          <PastaFull
-            key={f.id}
-            ops={f.ops}
-            podeMover={podeMover}
-            isPending={isPending}
-            onMover={onMover}
-            onAbrirDetalhe={onAbrirDetalhe}
-          />
-        ))}
-        {grupos.map((g) =>
-          g.ops.length >= 2 ? (
+        {itens.map((item) =>
+          item.tipo === 'full' ? (
+            <PastaFull
+              key={item.chave}
+              ops={item.ops}
+              podeMover={podeMover}
+              isPending={isPending}
+              onMover={onMover}
+              onAbrirDetalhe={onAbrirDetalhe}
+            />
+          ) : item.ops.length >= 2 ? (
             <PastaProduto
-              key={g.key}
-              grupo={g}
+              key={item.chave}
+              grupo={{
+                key: item.chave,
+                produtoNome: item.ops[0].produtoNome,
+                produtoSku: item.ops[0].produtoSku,
+                produtoCodigo: item.ops[0].produtoCodigo,
+                ops: item.ops,
+              }}
               podeMover={podeMover}
               isPending={isPending}
               onMover={onMover}
@@ -691,8 +684,8 @@ function KanbanColumn({
             />
           ) : (
             <KanbanCard
-              key={g.ops[0].id}
-              ordem={g.ops[0]}
+              key={item.ops[0].id}
+              ordem={item.ops[0]}
               podeMover={podeMover}
               isPending={isPending}
               onMover={onMover}
@@ -732,10 +725,15 @@ function PastaFull({
   const cor = corDoCanal(ops[0]?.canalDestino)
 
   return (
-    <div className="bg-card overflow-hidden rounded-lg border shadow-sm">
-      <button
-        type="button"
-        onClick={() => setAberta((v) => !v)}
+    // ABRE E FECHA ANIMADO, com o mesmo painel do "Iniciar" do tablet
+    // (painel-animado.tsx): o gerente e o operador abrem o mesmo Full com o
+    // mesmo movimento.
+    <Collapsible.Root
+      open={aberta}
+      onOpenChange={setAberta}
+      className="bg-card overflow-hidden rounded-lg border shadow-sm"
+    >
+      <Collapsible.Trigger
         className={cn(
           'flex w-full items-center justify-between gap-2 p-2.5 text-left transition-opacity hover:opacity-90',
           cor ? [cor.faixa, cor.borda, 'pl-4'] : 'hover:bg-muted/40',
@@ -775,12 +773,13 @@ function PastaFull({
         <ChevronDown
           className={cn(
             'text-muted-foreground size-3.5 shrink-0 transition-transform',
+            RITMO_DO_PAINEL,
             aberta && 'rotate-180',
           )}
         />
-      </button>
+      </Collapsible.Trigger>
 
-      {aberta && (
+      <PainelAnimado>
         <div className="space-y-1.5 border-t p-2">
           {ops.map((o) => (
             <KanbanCard
@@ -793,8 +792,8 @@ function PastaFull({
             />
           ))}
         </div>
-      )}
-    </div>
+      </PainelAnimado>
+    </Collapsible.Root>
   )
 }
 
@@ -808,24 +807,6 @@ type GrupoProduto = {
   produtoSku: string
   produtoCodigo: string | null
   ops: KanbanCardData[]
-}
-
-// Agrupa as OPs por produto, preservando a ordem de aparição.
-function agruparPorProduto(ordens: KanbanCardData[]): GrupoProduto[] {
-  const map = new Map<string, KanbanCardData[]>()
-  for (const o of ordens) {
-    const key = o.produtoSku || o.produtoNome
-    const arr = map.get(key)
-    if (arr) arr.push(o)
-    else map.set(key, [o])
-  }
-  return [...map.entries()].map(([key, ops]) => ({
-    key,
-    produtoNome: ops[0].produtoNome,
-    produtoSku: ops[0].produtoSku,
-    produtoCodigo: ops[0].produtoCodigo,
-    ops,
-  }))
 }
 
 const SEM_TAMANHO = 'Sem tamanho'
@@ -873,12 +854,15 @@ function PastaProduto({
   const algumAtrasada = nAtrasadas > 0
 
   return (
-    <div className="bg-card rounded-lg border shadow-sm">
-      <button
-        type="button"
-        onClick={() => setAberta((v) => !v)}
-        className="hover:bg-muted/40 flex w-full flex-col gap-1.5 rounded-lg p-2.5 text-left transition-colors"
-      >
+    // Anima como a pasta de Full e o bloco do tablet (painel-animado.tsx).
+    // O conteúdo muda com a pasta aberta (tamanho → cor): a altura volta a
+    // `auto` depois de abrir, então nada fica cortado.
+    <Collapsible.Root
+      open={aberta}
+      onOpenChange={setAberta}
+      className="bg-card rounded-lg border shadow-sm"
+    >
+      <Collapsible.Trigger className="hover:bg-muted/40 flex w-full flex-col gap-1.5 rounded-lg p-2.5 text-left transition-colors">
         <span className="flex w-full items-center justify-between gap-2">
           <span className="flex min-w-0 items-center gap-1.5">
             <Folder
@@ -902,6 +886,7 @@ function PastaProduto({
             <ChevronDown
               className={cn(
                 'size-3.5 transition-transform',
+                RITMO_DO_PAINEL,
                 aberta && 'rotate-180',
               )}
             />
@@ -925,9 +910,9 @@ function PastaProduto({
             </span>
           ))}
         </span>
-      </button>
+      </Collapsible.Trigger>
 
-      {aberta && (
+      <PainelAnimado>
         <div className="space-y-2 border-t p-2">
           <div>
             <div className="text-muted-foreground mb-1 text-[10px] tracking-wide uppercase">
@@ -995,8 +980,8 @@ function PastaProduto({
             </div>
           )}
         </div>
-      )}
-    </div>
+      </PainelAnimado>
+    </Collapsible.Root>
   )
 }
 

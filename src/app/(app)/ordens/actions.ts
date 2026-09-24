@@ -129,8 +129,13 @@ export type OrdemListItem = OrdemProducao & {
   variacaoTamanho: string | null
   maquinaNome: string | null
   responsavelNome: string | null
-  // "15/07" quando a OP pertence a uma remessa Full.
-  remessaData: string | null
+  /**
+   * "Full ML · Conta 1 · 15/07" quando a OP pertence a uma remessa Full —
+   * `rotuloDaRemessa`, o mesmo rótulo da pasta do kanban e do tablet. Era um
+   * "Full ML · 15/07" montado à mão, sem a conta: duas contas mandando no
+   * mesmo dia viravam duas linhas iguais.
+   */
+  remessaRotulo: string | null
   atrasada: boolean
   /** Soma dos apontamentos — a coluna "Resultado". Zero e zero = sem registro. */
   produzido: number
@@ -217,7 +222,9 @@ export async function listarOrdens(
       variacaoTamanho: variacoesProduto.tamanho,
       maquinaNome: maquinas.nome,
       responsavelNome: users.nome,
+      remessaCanal: remessasFull.canal,
       remessaDataEnvio: remessasFull.dataEnvio,
+      remessaContaNome: contasMarketplace.nome,
       // ⚠️ `"ordens_producao"."id"` QUALIFICADO À MÃO, como em
       // producao/actions.ts: sem isso o Postgres correlaciona com o `id` da
       // própria subquery e o resultado sai sempre zero.
@@ -241,6 +248,9 @@ export async function listarOrdens(
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    // A conta da remessa, pro rótulo "Full ML · Conta 1 · 15/07". 1:1: não
+    // duplica linha nem mexe no COUNT acima.
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .where(and(...conditions))
     .orderBy(desc(ordensProducao.createdAt))
     .limit(ORDENS_POR_PAGINA)
@@ -257,7 +267,9 @@ export async function listarOrdens(
       variacaoTamanho,
       maquinaNome,
       responsavelNome,
+      remessaCanal,
       remessaDataEnvio,
+      remessaContaNome,
       produzido,
       refugo,
     }) => ({
@@ -269,9 +281,10 @@ export async function listarOrdens(
       variacaoTamanho: variacaoTamanho ?? null,
       maquinaNome: maquinaNome ?? null,
       responsavelNome: responsavelNome ?? null,
-      remessaData: remessaDataEnvio
-        ? `${remessaDataEnvio.slice(8, 10)}/${remessaDataEnvio.slice(5, 7)}`
-        : null,
+      remessaRotulo:
+        remessaCanal && remessaDataEnvio
+          ? rotuloDaRemessa(remessaCanal, remessaDataEnvio, remessaContaNome)
+          : null,
       // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
       atrasada: producaoAtrasada(op.status, op.dataPrevistaFim, now),
       produzido: produzido ?? 0,

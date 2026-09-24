@@ -297,6 +297,73 @@ export function agruparPorDestino<T extends OpComDestino>(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// A COLUNA DO KANBAN — na MESMA ORDEM do "Iniciar" do tablet
+// ─────────────────────────────────────────────────────────────────────────
+//
+// O gerente e o operador olham a mesma fila, e ela tem que estar na mesma
+// ordem nas duas telas. O kanban punha TODAS as pastas de Full no topo da
+// coluna e só depois o resto: uma OP urgente de estoque ficava embaixo de um
+// Full que sai semana que vem — e no tablet ela vinha primeiro.
+//
+// Agora a coluna segue a regra de `agruparPorDestino`: NADA É REORDENADO. A
+// coluna chega por prioridade + prazo + número (o SQL do kanban, o mesmo do
+// "Iniciar"), e cada item — pasta de Full, pasta de produto ou cartão solto
+// — entra na posição da OP mais urgente dele.
+//
+// O Full é o MESMO bloco do tablet (a mesma chave, `chaveDoDestino`), e as OPs
+// dentro dele vêm na sequência em que o operador as lê no bloco: juntas por
+// produto (`agruparPorProduto`, a mesma regra). O resto continua agrupado
+// como era no kanban, por produto, na pasta com o filtro tamanho → cor, que
+// é ferramenta de gerente; pasta de uma OP só vira cartão solto na tela.
+
+export type ItemDaColuna<T> = {
+  /** 'full': a pasta da remessa; 'produto': a pasta (ou o cartão) do produto. */
+  tipo: 'full' | 'produto'
+  /** Estável entre recargas: a `key` do React. */
+  chave: string
+  ops: T[]
+}
+
+export function itensDaColuna<
+  T extends {
+    canalDestino: string
+    remessaFullId: string | null
+    produtoSku: string
+    produtoCodigo: string | null
+    produtoNome: string
+  },
+>(ops: readonly T[]): ItemDaColuna<T>[] {
+  const itens: ItemDaColuna<T>[] = []
+  const porChave = new Map<string, ItemDaColuna<T>>()
+  for (const op of ops) {
+    const full = Boolean(op.remessaFullId)
+    const chave = full
+      ? chaveDoDestino({
+          canalDestino: op.canalDestino,
+          remessaFullId: op.remessaFullId,
+          orcamentoId: null,
+        })
+      : `produto:${op.produtoSku || op.produtoNome}`
+    let item = porChave.get(chave)
+    if (!item) {
+      item = { tipo: full ? 'full' : 'produto', chave, ops: [] }
+      porChave.set(chave, item)
+      // Primeira aparição = a OP mais urgente do item: é ela que decide a
+      // posição, como o bloco do tablet.
+      itens.push(item)
+    }
+    item.ops.push(op)
+  }
+  // Dentro do Full, a sequência do bloco do tablet: produto a produto.
+  for (const item of itens) {
+    if (item.tipo === 'full') {
+      item.ops = agruparPorProduto(item.ops).flatMap((g) => g.ops)
+    }
+  }
+  return itens
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // O AVISO DO BLOCO — a urgência não some atrás da contagem
 // ─────────────────────────────────────────────────────────────────────────
 //

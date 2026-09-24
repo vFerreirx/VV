@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/dialog'
 import { ColorSwatch } from '@/components/ui/color-swatch'
 import { Input } from '@/components/ui/input'
+import { PainelAnimado, RITMO_DO_PAINEL } from '@/components/ui/painel-animado'
 import { TeclaNumerica } from '@/components/ui/tecla-numerica'
 import {
   ehDestaque,
@@ -867,17 +868,6 @@ function CorpoOcupada({
 // Iniciar produção — a fila, com a máquina JÁ escolhida
 // -----------------------------------------------------------------
 
-// O RITMO DO ABRIR E FECHAR DO BLOCO, um só pro painel e pra seta. 250ms numa
-// curva que desacelera no fim: na metade do tempo 96% do conteúdo já está na
-// tela, e o fim macio é o que tira o "seco". Mais longo que isso vira espera
-// no chão de fábrica — o mesmo motivo dos 180ms das listas
-// (use-lista-animada.ts).
-//
-// O "reduzir movimento" tira só a `transition-property`, NUNCA a duração: o
-// Collapsible lê a duração do painel pra decidir se anima (ver nav-grupo.tsx).
-const RITMO_DO_BLOCO =
-  'duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none'
-
 // A MÁQUINA VEM DO CARTÃO, e não é perguntada de novo: ele tocou no cartão da
 // TC-02, a OP vai pra TC-02. É o inverso do fluxo antigo (escolher a OP e
 // depois a máquina), e é o que faz a tela seguir a estação física. O código
@@ -1077,12 +1067,8 @@ function IniciarProducaoDialog({
             const aberto = abertos.has(bloco.chave)
             const alerta = alertaDoBloco(bloco.ops)
             return (
-              // ABRE E FECHA ANIMADO, pelo Collapsible do Base UI — o mesmo
-              // do menu lateral (nav-grupo.tsx). Com `{aberto && ...}` o bloco
-              // estalava: o conteúdo inteiro aparecia de uma vez e os blocos
-              // de baixo pulavam. O painel publica a própria altura, então ela
-              // anima nas duas direções sem medir nada na mão, e só desmonta
-              // depois que o fechar termina.
+              // ABRE E FECHA ANIMADO, com o `PainelAnimado` — o mesmo das
+              // pastas do kanban, no mesmo ritmo (painel-animado.tsx).
               //
               // `overflow-clip` onde o navegador conhece, e não `hidden`:
               // hidden faz do bloco um contêiner de rolagem, e o cabeçalho
@@ -1142,7 +1128,7 @@ function IniciarProducaoDialog({
                         <ChevronDown
                           className={cn(
                             'size-5 transition-transform',
-                            RITMO_DO_BLOCO,
+                            RITMO_DO_PAINEL,
                             aberto && 'rotate-180',
                           )}
                         />
@@ -1151,20 +1137,9 @@ function IniciarProducaoDialog({
                   </Collapsible.Trigger>
                 </div>
 
-                {/* A altura vai de 0 à do conteúdo (`--collapsible-panel-
-                    height`, que o Base UI mede) com um fade junto. Depois de
-                    aberto, a altura volta a `auto`: a busca pode mudar as OPs
-                    do bloco sem cortar nada. Fechado, o painel desmonta, como
-                    o `{aberto && ...}` fazia — bloco fechado não custa render.
-                    Com "reduzir movimento" ligado no tablet, abre sem animar. */}
-                <Collapsible.Panel
-                  className={cn(
-                    'h-[var(--collapsible-panel-height)] overflow-hidden transition-[height,opacity]',
-                    RITMO_DO_BLOCO,
-                    'data-starting-style:h-0 data-starting-style:opacity-0',
-                    'data-ending-style:h-0 data-ending-style:opacity-0',
-                  )}
-                >
+                {/* Fechado, o painel desmonta, como o `{aberto && ...}`
+                    fazia — bloco fechado não custa render. */}
+                <PainelAnimado>
                   <div className="space-y-4 p-2">
                     {bloco.produtos.map((grupo) => (
             <div key={grupo.cabecalho} className="space-y-1.5">
@@ -1253,7 +1228,7 @@ function IniciarProducaoDialog({
             </div>
                     ))}
                   </div>
-                </Collapsible.Panel>
+                </PainelAnimado>
               </Collapsible.Root>
             )
           })}

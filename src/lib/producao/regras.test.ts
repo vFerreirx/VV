@@ -125,6 +125,7 @@ import {
   agruparPorProduto,
   alertaDoBloco,
   blocosAbertosPorPadrao,
+  itensDaColuna,
   cabecalhoDoProduto,
   destaqueDaVariacao,
   familiaDoProduto,
@@ -2666,4 +2667,75 @@ test('abertos: lista curta abre tudo, longa so o primeiro, busca abre tudo', () 
   assert.deepEqual([...blocosAbertosPorPadrao(longa, '059')], ['a', 'b'])
   assert.deepEqual([...blocosAbertosPorPadrao(longa, '   ')], ['a'])
   assert.deepEqual([...blocosAbertosPorPadrao([], '')], [])
+})
+
+// -----------------------------------------------------------------
+// A coluna do kanban na MESMA ORDEM do "Iniciar" do tablet
+// -----------------------------------------------------------------
+
+// A coluna chega do SQL por prioridade + prazo + numero, como o "Iniciar".
+const opK = (
+  id: string,
+  destino: { remessa?: string; canal: string; rotulo: string },
+  sku: string,
+  nome: string,
+) => ({
+  id,
+  canalDestino: destino.canal,
+  remessaFullId: destino.remessa ?? null,
+  orcamentoId: null,
+  destinoBloco: destino.rotulo,
+  produtoCodigo: sku.slice(0, 3),
+  produtoSku: sku,
+  produtoNome: nome,
+})
+
+test('kanban: cada item entra na posicao da OP mais urgente, sem Full no topo', () => {
+  // A OP urgente do estoque vem primeiro na fila. Antes, as pastas de Full
+  // iam todas pro topo da coluna e ela descia pra baixo delas.
+  const itens = itensDaColuna([
+    opK('urgente', EST, '076-C', 'Peseira - 3D'),
+    opK('a', R1, '076-C', 'Peseira - 3D'),
+    opK('b', EST, '059-45', 'Capa de Almofada - LINKS'),
+    opK('c', R1, '059-45', 'Capa de Almofada - LINKS'),
+    opK('d', EST, '076-C', 'Peseira - 3D'),
+    opK('e', R2, '076-C', 'Peseira - 3D'),
+  ])
+  assert.deepEqual(
+    itens.map((i) => [i.tipo, i.chave, i.ops.map((o) => o.id)]),
+    [
+      ['produto', 'produto:076-C', ['urgente', 'd']],
+      ['full', 'remessa:r1', ['a', 'c']],
+      ['produto', 'produto:059-45', ['b']],
+      ['full', 'remessa:r2', ['e']],
+    ],
+  )
+  assert.deepEqual(itensDaColuna([]), [])
+})
+
+test('kanban e tablet: os Fulls na MESMA ordem e com a MESMA chave', () => {
+  const fila = [
+    opK('a', R2, '076-C', 'Peseira - 3D'),
+    opK('b', EST, '059-45', 'Capa de Almofada - LINKS'),
+    opK('c', R1, '059-45', 'Capa de Almofada - LINKS'),
+    opK('d', R2, '059-45', 'Capa de Almofada - LINKS'),
+    opK('e', R1, '076-C', 'Peseira - 3D'),
+    opK('f', R1, '059-45', 'Capa de Almofada - LINKS'),
+  ]
+  // A pasta do Full no kanban na MESMA SEQUENCIA em que o operador le o
+  // bloco: produto a produto. No r1 a fila chega c(059), e(076), f(059), e o
+  // tablet mostra 059: c, f e depois 076: e.
+  const noKanban = itensDaColuna(fila)
+    .filter((i) => i.tipo === 'full')
+    .map((i) => [i.chave, i.ops.map((o) => o.id)])
+  const noTablet = agruparPorDestino(fila)
+    .filter((b) => b.chave.startsWith('remessa:'))
+    .map((b) => [b.chave, b.produtos.flatMap((p) => p.ops).map((o) => o.id)])
+  assert.deepEqual(noKanban, noTablet)
+  assert.deepEqual(noKanban, [
+    ['remessa:r2', ['a', 'd']],
+    ['remessa:r1', ['c', 'f', 'e']],
+  ])
+  // E o primeiro item das duas telas e o da OP mais urgente da fila.
+  assert.equal(itensDaColuna(fila)[0]!.ops[0]!.id, agruparPorDestino(fila)[0]!.ops[0]!.id)
 })
