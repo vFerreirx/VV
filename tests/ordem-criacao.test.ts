@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { criarOrdemSchema, ordemSchema, statusValues } from '../src/lib/validators/ordens'
+import { diaEmBrasilia } from '../src/lib/dia-brasil'
 import {
   erroDaVariacao,
   modelosDoProduto,
@@ -119,4 +120,47 @@ test('variação sem modelo não assume outro modelo do mesmo produto na ediçã
   assert.equal((html.match(/aria-pressed="true"/g) ?? []).length, 1)
   assert.match(html, /Sem modelo/)
   assert.match(html, /Azul/)
+})
+
+// O PRAZO DIGITADO, IDA E VOLTA — pelo schema de verdade, o mesmo do form
+// (zodResolver) e da Server Action. Era gravado à meia-noite UTC: "30/09"
+// virava 29/09 às 21h em Brasília.
+test('prazo digitado 30/09: grava o fim do dia em Brasília e volta como 30/09', () => {
+  const r = ordemSchema.safeParse({
+    ...entrada,
+    dataPrevistaInicio: '2026-09-28',
+    dataPrevistaFim: '2026-09-30',
+  })
+  assert.ok(r.success)
+  const fim = r.data.dataPrevistaFim as Date
+  const inicio = r.data.dataPrevistaInicio as Date
+  // O que vai pro banco: 30/09 23:59:59 em Brasília; o início, 28/09 00:00.
+  assert.equal(fim.toISOString(), '2026-10-01T02:59:59.000Z')
+  assert.equal(inicio.toISOString(), '2026-09-28T03:00:00.000Z')
+
+  // Abrir o editar: o campo mostra o dia de BRASÍLIA do que está gravado
+  // (`dateToInput` em ordem-form.tsx chama `diaEmBrasilia`).
+  assert.equal(diaEmBrasilia(fim), '2026-09-30')
+  assert.equal(diaEmBrasilia(inicio), '2026-09-28')
+
+  // Salvar de novo sem mexer: o campo manda "2026-09-30" outra vez, e o
+  // instante é o MESMO — a edição não empurra o prazo pra frente.
+  const deNovo = ordemSchema.safeParse({
+    ...entrada,
+    dataPrevistaInicio: diaEmBrasilia(inicio),
+    dataPrevistaFim: diaEmBrasilia(fim),
+  })
+  assert.ok(deNovo.success)
+  assert.equal((deNovo.data.dataPrevistaFim as Date).getTime(), fim.getTime())
+  assert.equal((deNovo.data.dataPrevistaInicio as Date).getTime(), inicio.getTime())
+
+  // A Server Action re-valida o Date que o form já transformou: passa direto.
+  const naAction = ordemSchema.safeParse({ ...entrada, dataPrevistaFim: fim })
+  assert.ok(naAction.success)
+  assert.equal((naAction.data.dataPrevistaFim as Date).getTime(), fim.getTime())
+
+  // E a Nova OP (criarOrdemSchema) grava o mesmo instante.
+  const criada = criarOrdemSchema.safeParse({ ...entrada, dataPrevistaFim: '2026-09-30' })
+  assert.ok(criada.success)
+  assert.equal((criada.data.dataPrevistaFim as Date).toISOString(), '2026-10-01T02:59:59.000Z')
 })

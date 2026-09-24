@@ -19,6 +19,12 @@ import {
   resumoDaConclusao,
 } from './conclusao.ts'
 import { producaoAtrasada } from './atraso-da-op.ts'
+import {
+  diaEmBrasilia,
+  fimDoDiaEmBrasilia,
+  inicioDoDiaEmBrasilia,
+  somarDias,
+} from '../dia-brasil.ts'
 import { resolverVariacaoDoFaltante } from './faltante-para-op.ts'
 import { reacaoDaEstacao } from './recarga-da-estacao.ts'
 import {
@@ -2774,6 +2780,20 @@ test('kanban e tablet: os Fulls na MESMA ordem e com a MESMA chave', () => {
 // Horários escolhidos pra dar o MESMO dia em UTC e em Brasília: o teste roda
 // no fuso de quem roda, e `prazoEmPalavras` conta no fuso local.
 
+// `prazoEmPalavras` conta no fuso do APARELHO — o tablet e o navegador estão
+// em Brasília. Os testes que passam por ele rodam nesse fuso, qualquer que
+// seja o da máquina (o Node relê o TZ quando ele muda).
+function noFusoDeBrasilia(fn: () => void) {
+  const antes = process.env.TZ
+  process.env.TZ = 'America/Sao_Paulo'
+  try {
+    fn()
+  } finally {
+    if (antes === undefined) delete process.env.TZ
+    else process.env.TZ = antes
+  }
+}
+
 // Quinta-feira, 24/09/2026, meio-dia em Brasília.
 const QUINTA = new Date('2026-09-24T15:00:00Z')
 
@@ -2791,24 +2811,25 @@ test('prazo na lista: OP concluída não fica "ATRASADA" por falta de baixa', ()
   assert.equal(prazoNaLista('programado', null, QUINTA), null)
 })
 
-test('prazo na lista: hoje ainda por vir é "vence HOJE"; já passado é "venceu HOJE"', () => {
-  const maisTarde = new Date('2026-09-24T20:00:00Z')
-  const maisCedo = new Date('2026-09-24T12:00:00Z')
-  assert.deepEqual(prazoNaLista('programado', maisTarde, QUINTA), {
-    texto: 'vence HOJE',
-    urgente: true,
-  })
-  // O contador de atrasadas (cópia SQL de producaoAtrasada) já conta esta:
-  // a linha não pode dizer que ela ainda vai vencer.
-  assert.deepEqual(prazoNaLista('programado', maisCedo, QUINTA), {
-    texto: 'venceu HOJE',
-    urgente: true,
-  })
-  assert.deepEqual(
-    prazoNaLista('programado', '2026-09-26T20:00:00Z', QUINTA),
-    { texto: '2 dias', urgente: false },
-  )
-})
+test('prazo na lista: hoje ainda por vir é "vence HOJE"; já passado é "venceu HOJE"', () =>
+  noFusoDeBrasilia(() => {
+    const maisTarde = new Date('2026-09-24T20:00:00Z')
+    const maisCedo = new Date('2026-09-24T12:00:00Z')
+    assert.deepEqual(prazoNaLista('programado', maisTarde, QUINTA), {
+      texto: 'vence HOJE',
+      urgente: true,
+    })
+    // O contador de atrasadas (cópia SQL de producaoAtrasada) já conta esta:
+    // a linha não pode dizer que ela ainda vai vencer.
+    assert.deepEqual(prazoNaLista('programado', maisCedo, QUINTA), {
+      texto: 'venceu HOJE',
+      urgente: true,
+    })
+    assert.deepEqual(
+      prazoNaLista('programado', '2026-09-26T20:00:00Z', QUINTA),
+      { texto: '2 dias', urgente: false },
+    )
+  }))
 
 test('quantidade na lista: meta enquanto roda, resultado depois, âmbar só se faltou no fim', () => {
   assert.deepEqual(
@@ -2901,4 +2922,93 @@ test('resumo do destino: o Full inteiro, sem cancelada, e só a produção abert
   const vazio = resumoDoDestino([], QUINTA)
   assert.equal(vazio.total, 0)
   assert.deepEqual(vazio.alerta, { prazo: null, urgente: false })
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// O prazo DIGITADO é o dia de Brasília (dia-brasil.ts, validators/ordens.ts)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Era gravado à meia-noite UTC: "30/09" virava 29/09 às 21h em Brasília, a
+// tela mostrava um dia antes e a OP atrasava ~27h antes do prazo acabar.
+
+test('prazo digitado: "2026-09-30" é o FIM de 30/09 em Brasília; o início, o COMEÇO', () => {
+  // 23:59:59 de Brasília (UTC-3) = 02:59:59 do dia seguinte em UTC.
+  assert.equal(fimDoDiaEmBrasilia('2026-09-30').toISOString(), '2026-10-01T02:59:59.000Z')
+  assert.equal(inicioDoDiaEmBrasilia('2026-09-30').toISOString(), '2026-09-30T03:00:00.000Z')
+  // Virada de mês e de ano.
+  assert.equal(fimDoDiaEmBrasilia('2026-12-31').toISOString(), '2027-01-01T02:59:59.000Z')
+  assert.equal(fimDoDiaEmBrasilia('2026-02-28').toISOString(), '2026-03-01T02:59:59.000Z')
+})
+
+test('prazo digitado e prazo do Full dão o MESMO instante', () => {
+  // prazoDaOp tinha o "-03:00" escrito à mão; agora chama fimDoDiaEmBrasilia.
+  // O valor gravado nas OPs de Full não muda.
+  for (const dia of ['2026-09-30', '2026-01-01', '2026-12-31', '2027-02-28']) {
+    assert.equal(prazoDaOp(dia).getTime(), new Date(`${dia}T23:59:59-03:00`).getTime())
+    assert.equal(prazoDaOp(dia).getTime(), fimDoDiaEmBrasilia(dia).getTime())
+  }
+})
+
+test('ida e volta do formulário: o dia gravado volta como o MESMO dia', () => {
+  // O editar mostra `diaEmBrasilia` do que está gravado (ordem-form.tsx). Com
+  // `toISOString` o campo mostraria 01/10 e cada edição empurraria um dia.
+  let dia = '2026-01-01'
+  for (let i = 0; i < 400; i++) {
+    assert.equal(diaEmBrasilia(fimDoDiaEmBrasilia(dia)), dia, `fim de ${dia}`)
+    assert.equal(diaEmBrasilia(inicioDoDiaEmBrasilia(dia)), dia, `início de ${dia}`)
+    dia = somarDias(dia, 1)
+  }
+  // O bug que a volta evita: em UTC, o fim de 30/09 já é 01/10.
+  assert.equal(fimDoDiaEmBrasilia('2026-09-30').toISOString().slice(0, 10), '2026-10-01')
+})
+
+// Instantes em Brasília (UTC-3), escritos com offset pra valer em qualquer
+// fuso da máquina que roda o teste.
+const emBrasilia = (quando: string) => new Date(`${quando}-03:00`)
+
+test('prazo 30/09: não atrasa no dia 30 INTEIRO, atrasa depois das 23:59:59', () => {
+  const prazo = fimDoDiaEmBrasilia('2026-09-30')
+  for (const agora of ['2026-09-30T00:00:00', '2026-09-30T08:00:00', '2026-09-30T21:00:00', '2026-09-30T23:59:58']) {
+    assert.equal(producaoAtrasada('em_producao', prazo, emBrasilia(agora)), false, agora)
+  }
+  // Às 21h do dia 29 — a hora em que a OP ficava atrasada com o bug.
+  assert.equal(producaoAtrasada('em_producao', prazo, emBrasilia('2026-09-29T21:00:00')), false)
+  assert.equal(producaoAtrasada('em_producao', prazo, emBrasilia('2026-10-01T00:00:00')), true)
+  assert.equal(producaoAtrasada('em_producao', prazo, emBrasilia('2026-10-01T09:00:00')), true)
+})
+
+test('prazo 30/09: entra no "vence hoje" o dia 30 inteiro e só ele', () => {
+  // A janela do contador (`condicaoDeProducaoVenceHoje`): prazo >= agora e
+  // prazo < começo de amanhã em Brasília. Aqui, a mesma conta em JS.
+  const prazo = fimDoDiaEmBrasilia('2026-09-30').getTime()
+  const venceHoje = (agora: Date) => {
+    const amanha = inicioDoDiaEmBrasilia(somarDias(diaEmBrasilia(agora), 1))
+    return prazo >= agora.getTime() && prazo < amanha.getTime()
+  }
+  assert.equal(venceHoje(emBrasilia('2026-09-30T00:00:01')), true)
+  assert.equal(venceHoje(emBrasilia('2026-09-30T12:00:00')), true)
+  assert.equal(venceHoje(emBrasilia('2026-09-30T23:59:58')), true)
+  assert.equal(venceHoje(emBrasilia('2026-09-29T23:00:00')), false)
+  assert.equal(venceHoje(emBrasilia('2026-10-01T00:00:01')), false)
+})
+
+test('prazo 30/09 na linha: "vence HOJE" o dia 30 inteiro, "ATRASADA 1 dia" no dia 1º', () => {
+  noFusoDeBrasilia(() => {
+    const prazo = fimDoDiaEmBrasilia('2026-09-30')
+    for (const agora of ['2026-09-30T00:00:01', '2026-09-30T12:00:00', '2026-09-30T23:59:58']) {
+      assert.deepEqual(
+        prazoNaLista('programado', prazo, emBrasilia(agora)),
+        { texto: 'vence HOJE', urgente: true },
+        agora,
+      )
+    }
+    assert.deepEqual(prazoNaLista('programado', prazo, emBrasilia('2026-09-29T21:00:00')), {
+      texto: 'vence amanhã',
+      urgente: false,
+    })
+    assert.deepEqual(prazoNaLista('programado', prazo, emBrasilia('2026-10-01T08:00:00')), {
+      texto: 'ATRASADA 1 dia',
+      urgente: true,
+    })
+  })
 })

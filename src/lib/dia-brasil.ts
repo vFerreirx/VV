@@ -32,11 +32,14 @@
 // mesma tzdata. Exceção nova segue a mesma condição, ou não entra.
 //
 // O que continua PROIBIDO, e é diferente: mexer no `TimeZone` da SESSÃO do
-// Postgres. Ele é UTC e há código que depende disso — `ordens.data_prevista_fim`
-// é timestamptz que só recebe texto 'YYYY-MM-DD', gravado em meia-noite UTC
-// e lido de volta com `getUTC*` em src/app/(app)/calendario/actions.ts. Virar
-// a sessão pra 'America/Sao_Paulo' mudaria a GRAVAÇÃO dos prazos novos e os
-// dessincronizaria dos antigos, sem erro nenhum.
+// Postgres. Ele é UTC, e trocar faria todo `::date`, `now()::date` e
+// comparação de texto com data mudar de dia sem erro nenhum. Não conte com a
+// sessão pra saber o dia: pergunte a este arquivo.
+//
+// (O prazo da OP era o exemplo de quem dependia disso: gravado à meia-noite
+// UTC e lido com `getUTC*` no calendário. Deixou de ser — ver
+// `fimDoDiaEmBrasilia` abaixo. Hoje ele é sempre um INSTANTE, e quem quer o
+// dia dele chama `diaEmBrasilia`.)
 
 export const FUSO_BRASIL = 'America/Sao_Paulo'
 
@@ -154,6 +157,23 @@ export function inicioDoDiaEmBrasilia(iso: string): Date {
     .sort((a, b) => a - b)
 
   return new Date(validos[0] ?? Math.max(primeiro, segundo))
+}
+
+// Último instante do dia informado, em Brasília: 23:59:59.
+//
+// É O PRAZO. "Até 30/09" vale o dia 30 INTEIRO — a OP só atrasa depois que
+// ele acaba. O prazo da OP de Full já era assim (`prazoDaOp`, que agora chama
+// esta função em vez de ter o "-03:00" escrito à mão), e o prazo DIGITADO
+// passa a ser também: gravado à meia-noite UTC, "30/09" virava 29/09 às 21h
+// em Brasília — a tela mostrava um dia antes, e a OP ficava atrasada umas 27
+// horas antes do prazo real acabar.
+//
+// Derivado do começo do dia SEGUINTE menos um segundo, e não de "23:59:59"
+// com offset: é a mesma tzdata de `inicioDoDiaEmBrasilia`, pelo mesmo motivo
+// explicado ali. Resolução de SEGUNDO, igual ao "23:59:59" que o Full sempre
+// gravou — as duas portas dão exatamente o mesmo instante.
+export function fimDoDiaEmBrasilia(iso: string): Date {
+  return new Date(inicioDoDiaEmBrasilia(somarDias(iso, 1)).getTime() - 1000)
 }
 
 // Aritmética de CALENDÁRIO, sem fuso nenhum: 'YYYY-MM-DD' mais/menos N dias.

@@ -9,7 +9,7 @@ import { diasDesdeOBackup, estadoDoBackup } from '@/lib/backup'
 import { condicaoDeProducaoAtrasada } from '@/lib/db/atraso-da-op'
 import { db } from '@/lib/db'
 import { obterUltimoBackup } from '@/lib/db/ultimo-backup'
-import { hojeEmBrasilia } from '@/lib/dia-brasil'
+import { diaEmBrasilia, diasEntre, hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   compradores,
   coresFornecedorFio,
@@ -43,8 +43,6 @@ export type Notificacao = {
   // Timestamp do evento (data prevista que foi ultrapassada)
   referenciaEm: Date
 }
-
-const DIAS = 24 * 60 * 60 * 1000
 
 export async function listarNotificacoes(): Promise<Notificacao[]> {
   const user = await requireAuth()
@@ -113,7 +111,10 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
 
   for (const op of opsAtrasadas) {
     const data = new Date(op.dataPrevistaFim!)
-    const diasAtraso = Math.floor((now - data.getTime()) / DIAS)
+    // DIAS DE CALENDÁRIO EM BRASÍLIA, e não blocos de 24h: o prazo é o FIM
+    // do dia (`fimDoDiaEmBrasilia`), então às 10h do dia seguinte já é "1 dia
+    // de atraso" — em blocos de 24h daria 0 e o sino diria "venceu hoje".
+    const diasAtraso = diasEntre(diaEmBrasilia(data), hoje)
     notificacoes.push({
       id: `op-${op.id}`,
       tipo: 'op_atrasada',

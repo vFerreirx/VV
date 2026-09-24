@@ -10,6 +10,7 @@ import {
   atualizarOrdemAction,
   type ProdutoComVariacoesParaForm,
 } from '@/app/(app)/ordens/actions'
+import { diaEmBrasilia } from '@/lib/dia-brasil'
 import { erroDaVariacao } from '@/lib/producao/catalogo-op'
 import { erroDaTransicaoPeloFormulario } from '@/lib/producao/transicoes-da-op'
 import { CatalogoOrdem } from '@/components/forms/catalogo-ordem'
@@ -59,9 +60,13 @@ export type OrdemFormDefaults = {
   observacoes: string | null
 }
 
-function dateToInput(d: Date | null): string {
+// ⚠️ O DIA DE BRASÍLIA DO QUE ESTÁ GRAVADO, e não o de UTC. O prazo é
+// gravado no FIM do dia em Brasília (`fimDoDiaEmBrasilia`): 30/09 23:59:59 é
+// 01/10 02:59 em UTC, e `toISOString` mostraria 01/10 — salvar de novo
+// empurraria o prazo um dia pra frente a cada edição.
+function dateToInput(d: Date | string | null): string {
   if (!d) return ''
-  return d.toISOString().slice(0, 10)
+  return diaEmBrasilia(new Date(d))
 }
 
 function toFormValues(d: OrdemFormDefaults): OrdemInput {
