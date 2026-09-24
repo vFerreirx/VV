@@ -174,12 +174,14 @@ export const OP_DEVOLVIDA = {
 /**
  * Por que esta OP não pode ser cancelada, ou null se pode.
  *
- * OP com BAIXA não cancela: a entrada no estoque já aconteceu, e cancelar
- * deixaria peça no saldo de uma OP que "não foi feita".
+ * OP com BAIXA não cancela: a peça já foi enviada ou já repôs o estoque, e
+ * cancelar diria que ela "não foi feita". (A frase falava em "entrada no
+ * estoque" até pra OP de Full — e a fábrica nem controla mais saldo; o que
+ * existe é a fila de reposição.)
  */
 export function erroDoCancelamento(status: StatusDaOrdem): string | null {
   if (status === 'enviado') {
-    return 'OP com baixa não cancela: a entrada no estoque já aconteceu'
+    return 'OP com baixa não cancela: a peça já foi enviada ou já repôs o estoque'
   }
   if (status === 'cancelado') return 'Essa OP já está cancelada'
   return null

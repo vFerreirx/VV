@@ -460,8 +460,13 @@ function DetalheBody({
                       onClick={() => handleMudarStatus('enviado')}
                     >
                       <CheckCircle2 />
+                      {/* "ESTOQUE REPOSTO", e não "entra no estoque": a fábrica
+                          não controla mais saldo — o que existe é a fila de
+                          REPOSIÇÃO (/estoque), e é ela que a baixa fecha (o
+                          item ligado vira "Reposto", `sincronizarReposicaoDaOp`).
+                          O botão fala do que o gerente acompanha. */}
                       {ordem.canalDestino === 'estoque'
-                        ? 'Dar baixa · entra no estoque'
+                        ? 'Dar baixa · estoque reposto'
                         : 'Dar baixa · enviada'}
                     </Button>
                     {semApontamento && (
