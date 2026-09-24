@@ -27,6 +27,7 @@ import {
 import {
   concluirProducaoAction,
   desfazerConclusaoAction,
+  devolverOpParaFilaAction,
   pegarOrdemAction,
 } from '@/app/(app)/ordens/actions'
 import { marcarEco, useRecargaAoVivo } from '@/components/realtime/use-recarga-ao-vivo'
@@ -249,6 +250,10 @@ function Estacao({
     op: OpNaMaquina
     maquinaCodigo: string
   } | null>(null)
+  const [devolvendo, setDevolvendo] = useState<{
+    op: OpNaMaquina
+    maquinaCodigo: string
+  } | null>(null)
   const [consultando, setConsultando] = useState<'fila' | 'terminadas' | null>(
     null,
   )
@@ -451,9 +456,24 @@ function Estacao({
                 )
               }
               onObservacao={() => m.op && setObservacao(m.op)}
+              onDevolver={() =>
+                exigirIdentidade(
+                  () =>
+                    m.op &&
+                    setDevolvendo({ op: m.op, maquinaCodigo: m.codigo }),
+                )
+              }
             />
           ))}
         </div>
+      )}
+
+      {devolvendo && (
+        <DevolverDialog
+          op={devolvendo.op}
+          maquinaCodigo={devolvendo.maquinaCodigo}
+          onClose={() => setDevolvendo(null)}
+        />
       )}
 
       {iniciando && (
@@ -509,6 +529,7 @@ function CartaoMaquina({
   onParou,
   onVoltou,
   onObservacao,
+  onDevolver,
 }: {
   maquina: MaquinaDaEstacao
   podeAgir: boolean
@@ -517,6 +538,7 @@ function CartaoMaquina({
   onParou: () => void
   onVoltou: () => void
   onObservacao: () => void
+  onDevolver: () => void
 }) {
   const { agoraNoServidor } = useTravaDoTablet()
   // OS DOIS EIXOS, e não um estado colapsado. A versão anterior escolhia um
@@ -571,8 +593,24 @@ function CartaoMaquina({
           {m.codigo}
         </span>
         {m.op && (
-          <span className="text-muted-foreground truncate text-xs tabular-nums">
-            {m.op.numero}
+          <span className="flex min-w-0 items-baseline gap-2">
+            <span className="text-muted-foreground truncate text-xs tabular-nums">
+              {m.op.numero}
+            </span>
+            {/* "PEGUEI ERRADO" NO TOPO, LONGE DO "CONCLUIR". O botão grande
+                fica no rodapé do cartão; um dedo que erra ele não pode cair
+                em desfazer produção. Discreto de propósito — é a exceção,
+                não o gesto do dia — e na linha que já existia: o cartão não
+                cresce, os botões não saem do lugar. Confirma antes. */}
+            {podeAgir && (
+              <button
+                type="button"
+                onClick={onDevolver}
+                className="text-muted-foreground hover:text-foreground shrink-0 text-xs underline underline-offset-2"
+              >
+                Peguei errado
+              </button>
+            )}
           </span>
         )}
       </div>
@@ -1801,6 +1839,96 @@ function hora(d: Date): string {
 // pronto_envio, máquina livre, e quem concluiu é quem está logado). Quem
 // recusa de verdade continua sendo o servidor: entre o render e o toque, o
 // mundo pode ter andado — e a pessoa, trocado.
+// -----------------------------------------------------------------
+// "Peguei errado" — devolver a OP à fila
+// -----------------------------------------------------------------
+
+// "0167", e não "OP-2026-0167": é o número que ele fala em voz alta.
+function numeroCurto(numero: string): string {
+  return numero.split('-').pop() || numero
+}
+
+// A CONFIRMAÇÃO É OBRIGATÓRIA, e diz as duas consequências numa frase: a OP
+// sai da máquina e a máquina fica livre. Nada de produção é apagado — no
+// fluxo do tablet não há apontamento antes do Concluir —, mas a máquina muda
+// de estado na frente de todo mundo, e isso pede o "sim".
+//
+// Quem pode, e o que volta a vazio, é do servidor
+// (`devolverOpParaFilaAction`): a mesma regra de quem conclui.
+function DevolverDialog({
+  op,
+  maquinaCodigo,
+  onClose,
+}: {
+  op: OpNaMaquina
+  maquinaCodigo: string
+  onClose: () => void
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [erro, setErro] = useState<string | null>(null)
+  const { exigirIdentidade, travarEPerguntar } = useTravaDoTablet()
+
+  function devolver() {
+    setErro(null)
+    startTransition(async () => {
+      marcarEco(op.id)
+      const r = await devolverOpParaFilaAction(op.id)
+      if (!r.success && r.error === ERRO_TABLET_TRAVADO) {
+        travarEPerguntar(devolver)
+        return
+      }
+      if (!r.success) {
+        // No diálogo, em tipo grande: num toast ele sumiria atrás do diálogo.
+        setErro(r.error)
+        return
+      }
+      toast.success(r.message ?? 'OP devolvida à fila')
+      router.refresh()
+      onClose()
+    })
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !isPending && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-2xl">
+            Devolver a OP {numeroCurto(op.numero)} pra fila?
+          </DialogTitle>
+          <DialogDescription className="text-base">
+            A máquina {maquinaCodigo} fica livre.
+          </DialogDescription>
+        </DialogHeader>
+
+        <p className="text-lg">
+          <LinhaDaPeca op={op} comQuantidade />
+        </p>
+
+        {erro && <Erro>{erro}</Erro>}
+
+        <Button
+          variant="destructive"
+          className="h-14 text-lg"
+          loading={isPending}
+          disabled={isPending}
+          onClick={() => exigirIdentidade(devolver)}
+        >
+          Sim, devolver pra fila
+        </Button>
+        <Button
+          variant="ghost"
+          className="h-12"
+          onClick={onClose}
+          disabled={isPending}
+        >
+          Voltar
+        </Button>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function BotaoDesfazer({
   op,
   onFeito,

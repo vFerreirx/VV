@@ -519,8 +519,10 @@ export async function despacharRemessaAction(
       id: remessasFull.id,
       canal: remessasFull.canal,
       dataEnvio: remessasFull.dataEnvio,
+      contaNome: contasMarketplace.nome,
     })
     .from(remessasFull)
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .where(and(eq(remessasFull.id, remessaId), isNull(remessasFull.deletedAt)))
     .limit(1)
   if (!remessa) return { success: false, error: 'Remessa não encontrada' }
@@ -558,7 +560,7 @@ export async function despacharRemessaAction(
     }
   }
 
-  const rotulo = rotuloDaRemessa(remessa.canal, remessa.dataEnvio)
+  const rotulo = rotuloDaRemessa(remessa.canal, remessa.dataEnvio, remessa.contaNome)
   const gravadas = await db.transaction(async (tx) => {
     let n = 0
     for (const op of vao) {

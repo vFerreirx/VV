@@ -109,6 +109,50 @@ export function podeConcluirProducao(
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// DEVOLVER À FILA — o "Peguei errado"
+// ─────────────────────────────────────────────────────────────────────────
+//
+// O operador toca na OP errada no "Iniciar", e até aqui só o gerente
+// desfazia, arrastando no kanban. Devolver desfaz EXATAMENTE o que o
+// `pegarOrdemAction` gravou, e mais nada:
+//
+//   status → 'programado'   máquina → null   responsável → null
+//   data_real_inicio → null
+//
+// ⚠️ A DATA TEM QUE SAIR. O Iniciar só grava a data quando ela está vazia
+// (`atual.dataRealInicio ?? new Date()`). Deixada aqui, o próximo Iniciar
+// herdaria o início falso, e o tempo parado na fila viraria tempo de
+// produção. (Consequência: a OP devolvida volta a poder ser EXCLUÍDA — ver
+// `erroDaExclusao` abaixo. Está certo: ela não produziu nada; se tivesse
+// produzido, teria apontamento, e o apontamento continua barrando.)
+//
+// O QUE NÃO MUDA: a remessa Full e o prazo. A OP continua indo pro mesmo
+// lugar, só não está mais numa máquina.
+//
+// ⚠️ UMA REGRA, DOIS GESTOS: o "Peguei errado" do tablet e o arrastar do
+// gerente de "Em produção" pra "Programado" (inclusive o "Desfazer" de um
+// Iniciar no kanban) gravam isto, pela mesma função (devolucao-da-op.ts).
+
+/** Por que esta OP não volta pra fila, ou null se volta. */
+export function erroDaDevolucao(status: StatusDaOrdem): string | null {
+  if (status === 'em_producao') return null
+  return 'Só a OP em produção volta pra fila'
+}
+
+/** O que a OP devolvida grava — o avesso exato do Iniciar. */
+export const OP_DEVOLVIDA = {
+  status: 'programado',
+  maquinaId: null,
+  responsavelId: null,
+  dataRealInicio: null,
+} as const satisfies {
+  status: StatusDaOrdem
+  maquinaId: null
+  responsavelId: null
+  dataRealInicio: null
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // CANCELAR E EXCLUIR SÃO COISAS DIFERENTES
 // ─────────────────────────────────────────────────────────────────────────
 //
@@ -143,7 +187,8 @@ export function erroDoCancelamento(status: StatusDaOrdem): string | null {
 
 // Status que só existem DEPOIS de a OP entrar numa máquina. Entra na regra da
 // exclusão junto com `dataRealInicio`, e não no lugar dela: a data cobre a OP
-// que entrou em produção e voltou pra fila pelo Desfazer; o status cobre o
+// que entrou em produção e voltou pra fila por outro caminho que não o
+// "devolver" (que limpa a data de propósito — ver acima); o status cobre o
 // legado que chegou nessas colunas sem a data preenchida.
 const STATUS_DEPOIS_DA_MAQUINA = [
   'em_producao',

@@ -39,6 +39,7 @@ import {
 import type { ContaMarketplace } from '@/lib/db/schema'
 import {
   diaMes,
+  rotuloDaRemessa,
   erroDoProducaoAte,
   type RiscoDaRemessa,
 } from '@/lib/producao/prazo-da-remessa'
@@ -54,7 +55,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { CANAL_LABEL_CURTO, STATUS_LABEL_CURTO } from '@/lib/validators/ordens'
+import { STATUS_LABEL_CURTO } from '@/lib/validators/ordens'
 
 // Mesmas cores usadas por etapa no kanban (src/app/(app)/producao/kanban-board.tsx),
 // duplicadas aqui pra não importar um componente client grande só por uma constante.
@@ -102,9 +103,23 @@ type Props = {
   podeEditarOrdens: boolean
 }
 
-function dataCurta(dataEnvio: string): string {
-  const [, m, d] = dataEnvio.split('-')
-  return `${d}/${m}`
+// O NOME DA REMESSA É O MESMO EM TODO LUGAR: "Full Shopee · Conta 5 · 30/09"
+// (`rotuloDaRemessa`) — a pasta do kanban, o tablet, o calendário e esta
+// tela. Antes esta tela montava "Full Shopee · 30/09 · Conta 5 Shopee" à mão,
+// em outra ordem.
+function nomeDaRemessa(r: {
+  canal: string
+  dataEnvio: string
+  contaNome?: string | null
+}): string {
+  return rotuloDaRemessa(r.canal, r.dataEnvio, r.contaNome ?? null)
+}
+
+// Remessa antiga, de antes do cadastro de contas: o rótulo fica sem conta, e
+// a lista avisa — é aqui que se edita pra pôr uma.
+function SemConta({ contaNome }: { contaNome: string | null }) {
+  if (contaNome) return null
+  return <span className="text-muted-foreground font-normal"> (sem conta)</span>
 }
 
 export function RemessasView({
@@ -199,11 +214,8 @@ export function RemessasView({
               >
                 <PackageSearch className="text-muted-foreground size-4 shrink-0" />
                 <span className="text-sm font-medium">
-                  {CANAL_LABEL_CURTO[r.canal]} · {dataCurta(r.dataEnvio)}
-                  <span className="text-muted-foreground font-normal">
-                    {' '}
-                    · {r.contaNome ?? 'sem conta'}
-                  </span>
+                  {nomeDaRemessa(r)}
+                  <SemConta contaNome={r.contaNome} />
                 </span>
                 <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
                   {r.envioId ? (
@@ -277,8 +289,7 @@ function ExcluirRemessaDialog({
           <DialogDescription>
             A remessa{' '}
             <span className="text-foreground font-medium">
-              {remessa && CANAL_LABEL_CURTO[remessa.canal]}
-              {remessa && ` · ${dataCurta(remessa.dataEnvio)}`}
+              {remessa && nomeDaRemessa(remessa)}
             </span>{' '}
             vai pra lixeira, de onde dá pra restaurar. As OPs excluídas dela não
             são afetadas.
@@ -342,10 +353,13 @@ function RemessaCard({
             )}
           />
           <span className="min-w-0">
-            {CANAL_LABEL_CURTO[r.canal]} · {dataCurta(r.dataEnvio)}
+            {nomeDaRemessa(r)}
+            <SemConta contaNome={r.contaNome} />
+            {/* O PRAZO DA PRODUÇÃO continua ao lado, onde estava: o rótulo
+                diz o dia do caminhão, isto diz até quando a malharia tem. */}
             <span className="text-muted-foreground font-normal">
               {' '}
-              · {r.contaNome ?? 'sem conta'} · {prazoLabel(r.diasRestantes)}
+              · {prazoLabel(r.diasRestantes)}
             </span>
           </span>
         </button>
@@ -580,7 +594,7 @@ function DespacharDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            Despachar {CANAL_LABEL_CURTO[r.canal]} · {dataCurta(r.dataEnvio)}?
+            Despachar {nomeDaRemessa(r)}?
           </DialogTitle>
           <DialogDescription>
             Dá baixa nas OPs com produção concluída, de uma vez. As outras ficam
@@ -679,7 +693,7 @@ function EditarRemessaDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            Editar {CANAL_LABEL_CURTO[r.canal]} · {dataCurta(r.dataEnvio)}
+            Editar {nomeDaRemessa(r)}
           </DialogTitle>
           <DialogDescription>
             Mudar a data de envio ou o &ldquo;Produção até&rdquo; muda o prazo das
@@ -765,11 +779,8 @@ function ListaDespachadas({ despachadas }: { despachadas: RemessaDespachada[] })
           <div key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">
             <Truck className="text-muted-foreground size-4 shrink-0" />
             <span className="text-sm font-medium">
-              {CANAL_LABEL_CURTO[r.canal]} · {dataCurta(r.dataEnvio)}
-              <span className="text-muted-foreground font-normal">
-                {' '}
-                · {r.contaNome ?? 'sem conta'}
-              </span>
+              {nomeDaRemessa(r)}
+              <SemConta contaNome={r.contaNome} />
             </span>
             <span className="text-muted-foreground text-xs tabular-nums">
               {r.ops} OP{r.ops === 1 ? '' : 's'}

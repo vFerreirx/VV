@@ -8,6 +8,7 @@ import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAreaEscrita, requireAuth } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { erroDeProdutoDeParceiro } from '@/lib/db/origem-do-produto'
+import { erroDaRemessaDaOp } from '@/lib/producao/prazo-da-remessa'
 import { tamanhosPesoPorProduto } from '@/lib/db/pesos'
 import { precosPorProduto } from '@/lib/db/precos'
 import {
@@ -413,6 +414,17 @@ export async function gerarOpsKitAction(
     return {
       success: false,
       error: `Não dá pra gerar o kit ${kit.nome}: ${erroOrigem}`,
+    }
+  }
+
+  // FULL SÓ DENTRO DE UMA REMESSA (`erroDaRemessaDaOp`). O "Gerar de kit" não
+  // escolhe remessa, então kit pro Full se cria pelo Full (cadastrar OPs numa
+  // remessa, ou importar o PDF) — lá a remessa e a conta vêm junto.
+  const erroRemessa = erroDaRemessaDaOp(canalDestino, null)
+  if (erroRemessa) {
+    return {
+      success: false,
+      error: `${erroRemessa}. Kit pro Full: use "Full" em Ordens, que já cria dentro da remessa.`,
     }
   }
 

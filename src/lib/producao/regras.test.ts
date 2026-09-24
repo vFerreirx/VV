@@ -84,10 +84,12 @@ import {
 } from './reposicao.ts'
 import { destinoDaOrdem } from './destino-da-ordem.ts'
 import {
+  erroDaDevolucao,
   erroDaExclusao,
   erroDaTransicaoGenerica,
   erroDaTransicaoPeloFormulario,
   erroDoCancelamento,
+  OP_DEVOLVIDA,
   podeConcluirProducao,
 } from './transicoes-da-op.ts'
 import { buscarVariacoes, erroDaVariacao } from './catalogo-op.ts'
@@ -100,6 +102,8 @@ import {
   producaoAteEfetivo,
   producaoAtePadrao,
   riscoDaRemessa,
+  erroDaRemessaDaOp,
+  nomeDaContaNoRotulo,
   rotuloDaRemessa,
   rotuloDoDestino,
   rotuloDoEventoFull,
@@ -2370,4 +2374,99 @@ test('destino da OP: pedido, venda direta, estoque, e nunca vazio', () => {
   // Canal desconhecido aparece cru; vazio vira texto, nunca ''.
   assert.equal(rotuloDoDestino({ canal: 'full_amazon' }), 'full_amazon')
   assert.equal(rotuloDoDestino({ canal: '' }), 'Sem destino')
+})
+
+// -----------------------------------------------------------------
+// Devolver a OP a fila — "Peguei errado" (transicoes-da-op.ts)
+// -----------------------------------------------------------------
+
+test('devolver: so a OP em producao volta pra fila', () => {
+  assert.equal(erroDaDevolucao('em_producao'), null)
+  for (const s of [
+    'aguardando_materia_prima',
+    'programado',
+    'acabamento',
+    'embalagem',
+    'pronto_envio',
+    'enviado',
+    'cancelado',
+  ] as const) {
+    assert.equal(erroDaDevolucao(s), 'Só a OP em produção volta pra fila', s)
+  }
+})
+
+test('devolver: desfaz EXATAMENTE o Iniciar — status, maquina, responsavel e data', () => {
+  assert.deepEqual(OP_DEVOLVIDA, {
+    status: 'programado',
+    maquinaId: null,
+    responsavelId: null,
+    // A data TEM que sair: o Iniciar so grava quando esta vazia, e o
+    // proximo herdaria o inicio falso.
+    dataRealInicio: null,
+  })
+  // Remessa e prazo NAO estao no que volta a vazio: a OP continua indo pro
+  // mesmo lugar.
+  assert.equal('remessaFullId' in OP_DEVOLVIDA, false)
+  assert.equal('dataPrevistaFim' in OP_DEVOLVIDA, false)
+  // E a OP devolvida volta a poder ser excluida (nao produziu nada), a menos
+  // que tenha apontamento.
+  assert.equal(
+    erroDaExclusao({ status: OP_DEVOLVIDA.status, dataRealInicio: null, temApontamento: false }),
+    null,
+  )
+  assert.notEqual(
+    erroDaExclusao({ status: OP_DEVOLVIDA.status, dataRealInicio: null, temApontamento: true }),
+    null,
+  )
+})
+
+// -----------------------------------------------------------------
+// Full: conta no rotulo e OP sempre dentro de remessa (prazo-da-remessa.ts)
+// -----------------------------------------------------------------
+
+test('conta no rotulo: a palavra do canal sai quando repete o "Full …"', () => {
+  assert.equal(nomeDaContaNoRotulo('full_shopee', 'Conta 5 Shopee'), 'Conta 5')
+  assert.equal(nomeDaContaNoRotulo('full_ml', 'Conta 1 ML'), 'Conta 1')
+  assert.equal(nomeDaContaNoRotulo('full_ml', 'Conta 2 Mercado Livre'), 'Conta 2')
+  // Sem caixa: "shopee" tambem sai.
+  assert.equal(nomeDaContaNoRotulo('full_shopee', 'Conta 6 shopee'), 'Conta 6')
+  // Nome sem a palavra fica como esta.
+  assert.equal(nomeDaContaNoRotulo('full_shopee', 'Loja Vanvest'), 'Loja Vanvest')
+  // Palavra INTEIRA: "Mlk" nao perde o "Ml"; e a palavra de OUTRO canal fica.
+  assert.equal(nomeDaContaNoRotulo('full_ml', 'Mlk Casa'), 'Mlk Casa')
+  assert.equal(nomeDaContaNoRotulo('full_ml', 'Conta 5 Shopee'), 'Conta 5 Shopee')
+  // Se sobrasse vazio, repete em vez de sumir com a conta.
+  assert.equal(nomeDaContaNoRotulo('full_shopee', 'Shopee'), 'Shopee')
+})
+
+test('rotulo da remessa: canal · conta · data do ENVIO', () => {
+  assert.equal(
+    rotuloDaRemessa('full_shopee', '2026-09-30', 'Conta 5 Shopee'),
+    'Full Shopee · Conta 5 · 30/09',
+  )
+  assert.equal(rotuloDaRemessa('full_ml', '2026-09-30', 'Conta 1 ML'), 'Full ML · Conta 1 · 30/09')
+  // Sem conta (remessa antiga): so canal e data, sem ponto sobrando.
+  assert.equal(rotuloDaRemessa('full_shopee', '2026-09-30', null), 'Full Shopee · 30/09')
+  assert.equal(rotuloDaRemessa('full_shopee', '2026-09-30', '  '), 'Full Shopee · 30/09')
+  // O calendario fala igual, so sem a data.
+  assert.equal(rotuloDoEventoFull('full_shopee', 'Conta 5 Shopee'), 'Full Shopee · Conta 5')
+  // E o destino do tablet tambem.
+  assert.equal(
+    rotuloDoDestino({
+      canal: 'full_shopee',
+      remessa: { canal: 'full_shopee', dataEnvio: '2026-09-30', contaNome: 'Conta 5 Shopee' },
+    }),
+    'Full Shopee · Conta 5 · 30/09',
+  )
+})
+
+test('Full sempre dentro de remessa, e do mesmo canal', () => {
+  assert.match(erroDaRemessaDaOp('full_shopee', null) ?? '', /precisa de uma remessa/)
+  assert.equal(erroDaRemessaDaOp('full_shopee', { canal: 'full_ml' }), 'A remessa é de outro canal')
+  assert.equal(erroDaRemessaDaOp('full_shopee', { canal: 'full_shopee' }), null)
+  assert.equal(erroDaRemessaDaOp('full_ml', { canal: 'full_ml' }), null)
+  // Fora do Full, sem remessa e pronto.
+  assert.equal(erroDaRemessaDaOp('estoque', null), null)
+  assert.equal(erroDaRemessaDaOp('venda_direta', null), null)
+  assert.equal(erroDaRemessaDaOp('estoque', { canal: 'full_ml' }), 'Só OP de Full vai numa remessa')
 })

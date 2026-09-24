@@ -26,10 +26,17 @@ import {
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
 import { gravarBaixa } from '@/lib/db/baixa-da-op'
+import { devolverOpParaFila } from '@/lib/db/devolucao-da-op'
+import {
+  remessaDaTransacao,
+  validarRemessaDaNovaOp,
+  type RemessaDaNovaOp,
+} from '@/lib/db/remessa-da-op'
 import { erroDeProdutoDeParceiro } from '@/lib/db/origem-do-produto'
 import { sincronizarReposicaoDaOp } from '@/lib/db/reposicao-da-op'
 import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
+  erroDaRemessaDaOp,
   prazoDaOp,
   producaoAteEfetivo,
   rotuloDaRemessa,
@@ -43,6 +50,7 @@ import {
 } from '@/lib/db/estacao-operadores'
 import {
   apontamentosProducao,
+  contasMarketplace,
   cores,
   estacoes,
   eventosKanban,
@@ -80,6 +88,7 @@ import {
   podeIniciar,
 } from '@/lib/producao/inicio-da-op'
 import {
+  erroDaDevolucao,
   erroDaExclusao,
   erroDaTransicaoGenerica,
   erroDaTransicaoPeloFormulario,
@@ -303,6 +312,7 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
       remessaCanal: remessasFull.canal,
       remessaDataEnvio: remessasFull.dataEnvio,
       remessaProducaoAte: remessasFull.producaoAte,
+      remessaContaNome: contasMarketplace.nome,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -312,6 +322,7 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
     )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .where(and(eq(ordensProducao.id, id), isNull(ordensProducao.deletedAt)))
     .limit(1)
 
@@ -346,7 +357,11 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
       row.op.remessaFullId && row.remessaCanal && row.remessaDataEnvio
         ? {
             id: row.op.remessaFullId,
-            rotulo: rotuloDaRemessa(row.remessaCanal, row.remessaDataEnvio),
+            rotulo: rotuloDaRemessa(
+              row.remessaCanal,
+              row.remessaDataEnvio,
+              row.remessaContaNome,
+            ),
             dataEnvio: row.remessaDataEnvio,
             producaoAte: producaoAteEfetivo({
               dataEnvio: row.remessaDataEnvio,
@@ -525,6 +540,7 @@ export async function criarOrdemAction(
   {
     reposicaoId,
     pedido,
+    remessa,
   }: {
     /**
      * O item da fila de reposição (/estoque) que esta OP vai atender. A OP
@@ -532,12 +548,18 @@ export async function criarOrdemAction(
      */
     reposicaoId?: string
     /**
+     * A remessa da OP de FULL — uma existente ou uma nova (conta + data de
+     * envio). Obrigatória no canal Full, proibida fora dele
+     * (`erroDaRemessaDaOp`). A OP herda o prazo da produção da remessa.
+     */
+    remessa?: RemessaDaNovaOp
+    /**
      * O faltante de pedido que esta OP produz: o pedido e a chave da linha
      * (src/lib/separacao.ts). A OP nasce com os dois gravados.
      */
     pedido?: { orcamentoId: string; chave: string }
   } = {},
-): Promise<ActionResult<{ id: string }>> {
+): Promise<ActionResult<{ id: string; remessaFullId: string | null }>> {
   const user = await requireAreaEscrita('ordens')
 
   const parsed = criarOrdemSchema.safeParse(input)
@@ -612,11 +634,22 @@ export async function criarOrdemAction(
   // que passam todas por aqui. Ver src/lib/db/origem-do-produto.ts.
   const erroOrigem = await erroDeProdutoDeParceiro([data.produtoId])
   if (erroOrigem) return { success: false, error: erroOrigem }
+
+  // FULL SÓ DENTRO DE UMA REMESSA, do mesmo canal. Antes a OP de Full nascia
+  // sem conta e sem data de envio. Ver src/lib/db/remessa-da-op.ts.
+  const remessaValidada = await validarRemessaDaNovaOp(data.canalDestino, remessa)
+  if ('erro' in remessaValidada) {
+    return { success: false, error: remessaValidada.erro }
+  }
   // Variação SEMPRE obrigatória — ver `erroDaVariacao` (catalogo-op.ts).
   const erroVariacao = erroDaVariacao(data.variacaoId, catalogo.flatMap((v) => v.variacaoId ? [{ id: v.variacaoId }] : []))
   if (erroVariacao) return { success: false, error: erroVariacao }
 
   const novoId = await db.transaction(async (tx) => {
+    // A remessa (criada aqui, se é nova) e o prazo que a OP HERDA dela — o
+    // prazo da produção, e não a data do caminhão. Sem remessa, vale o prazo
+    // digitado.
+    const doFull = await remessaDaTransacao(tx, remessaValidada.ok)
     const [inserted] = await tx
       .insert(ordensProducao)
       .values({
@@ -630,7 +663,8 @@ export async function criarOrdemAction(
         prioridade: data.prioridade,
         status: data.status,
         dataPrevistaInicio: data.dataPrevistaInicio,
-        dataPrevistaFim: data.dataPrevistaFim,
+        dataPrevistaFim: doFull?.dataPrevistaFim ?? data.dataPrevistaFim,
+        remessaFullId: doFull?.remessaFullId ?? null,
         criadoPor: user.id,
         responsavelId: data.responsavelId,
         observacoes: data.observacoes ?? null,
@@ -667,7 +701,9 @@ export async function criarOrdemAction(
       if (ligados.length === 0) throw new ReposicaoIndisponivel()
     }
 
-    return inserted!.id
+    // A remessa volta junto: criada na hora, a Nova OP passa a escolhê-la
+    // pra próxima OP, em vez de criar outra igual a cada "Salvar".
+    return { id: inserted!.id, remessaFullId: doFull?.remessaFullId ?? null }
   }).catch((erro: unknown) => {
     if (erro instanceof ReposicaoIndisponivel) return null
     throw erro
@@ -689,7 +725,11 @@ export async function criarOrdemAction(
     revalidatePath(`/pedidos/${pedido.orcamentoId}`)
     revalidatePath(`/pedidos/${pedido.orcamentoId}/faltantes`)
   }
-  return { success: true, data: { id: novoId }, message: 'OP criada' }
+  if (remessaValidada.ok.tipo !== 'nenhuma') {
+    revalidatePath('/remessas')
+    revalidatePath('/calendario')
+  }
+  return { success: true, data: novoId, message: 'OP criada' }
 }
 
 // -----------------------------------------------------------------
@@ -758,6 +798,30 @@ export async function atualizarOrdemAction(
   if (data.produtoId !== atual.produtoId) {
     const erroOrigem = await erroDeProdutoDeParceiro([data.produtoId])
     if (erroOrigem) return { success: false, error: erroOrigem }
+  }
+
+  // TROCAR O CANAL pelo formulário não pode fazer uma OP de Full sem remessa
+  // (nem deixar a OP numa remessa de outro canal). Mesmo guarda da criação,
+  // `erroDaRemessaDaOp`. Só quando o canal MUDA: a OP de teste antiga que já
+  // viola a regra continua editável. Pra mudar de remessa, ou tirar a OP
+  // dela, o caminho é o "Mudar destino" da ficha.
+  if (data.canalDestino !== atual.canalDestino) {
+    const remessaAtual = atual.remessaFullId
+      ? (
+          await db
+            .select({ canal: remessasFull.canal })
+            .from(remessasFull)
+            .where(eq(remessasFull.id, atual.remessaFullId))
+            .limit(1)
+        )[0] ?? null
+      : null
+    const erroRemessa = erroDaRemessaDaOp(data.canalDestino, remessaAtual)
+    if (erroRemessa) {
+      return {
+        success: false,
+        error: `${erroRemessa}. Pra mudar pra onde a OP vai, use "Mudar destino".`,
+      }
+    }
   }
 
   const statusMudou = atual.status !== data.status
@@ -875,6 +939,35 @@ export async function mudarStatusOrdemAction(
     precisaDoApontamento ? await temApontamento(id) : false,
   )
   if (erroDaPorta) return { success: false, error: erroDaPorta }
+
+  // ⚠️ DE "EM PRODUÇÃO" PRA "PROGRAMADO" É DEVOLVER À FILA — o avesso do
+  // Iniciar, e não só a troca de coluna. O caminho genérico mudava o status e
+  // deixava máquina, responsável e `data_real_inicio`: a OP "voltava pra
+  // fila" ocupando a máquina no cadastro, e o próximo Iniciar herdava o
+  // início falso. Agora grava pela mesma função do "Peguei errado" do tablet
+  // (src/lib/db/devolucao-da-op.ts). É também o "Desfazer" de um Iniciar.
+  if (atual.status === 'em_producao' && data.status === 'programado') {
+    const gravou = await db.transaction((tx) =>
+      devolverOpParaFila(
+        tx,
+        { id, status: 'em_producao', maquinaId: atual.maquinaId },
+        { id: user.id, nome: user.nome },
+      ),
+    )
+    if (!gravou) {
+      return {
+        success: false,
+        error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.',
+      }
+    }
+    revalidatePath('/ordens')
+    revalidatePath(`/ordens/${id}`)
+    revalidatePath('/producao')
+    revalidatePath('/estoque')
+    revalidatePath('/dashboard')
+    // A devolução LIMPA o responsável — ninguém "assume" uma OP devolvida.
+    return { success: true, message: 'OP devolvida à fila', assumiu: false }
+  }
 
   // ⚠️ A BAIXA TEM EFEITO PRÓPRIO — status, data de fim, histórico e
   // entrada no estoque — e mora em src/lib/db/baixa-da-op.ts, a mesma função
@@ -1617,8 +1710,10 @@ export async function listarDestinosDaOrdem(
       canal: remessasFull.canal,
       dataEnvio: remessasFull.dataEnvio,
       producaoAte: remessasFull.producaoAte,
+      contaNome: contasMarketplace.nome,
     })
     .from(remessasFull)
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .where(
       and(
         isNull(remessasFull.deletedAt),
@@ -1631,7 +1726,7 @@ export async function listarDestinosDaOrdem(
 
   return rows.map((r) => ({
     id: r.id,
-    rotulo: rotuloDaRemessa(r.canal, r.dataEnvio),
+    rotulo: rotuloDaRemessa(r.canal, r.dataEnvio, r.contaNome),
     producaoAte: producaoAteEfetivo(r),
   }))
 }
@@ -1651,9 +1746,11 @@ export async function mudarDestinoDaOrdemAction(
       remessaFullId: ordensProducao.remessaFullId,
       remessaCanal: remessasFull.canal,
       remessaDataEnvio: remessasFull.dataEnvio,
+      remessaContaNome: contasMarketplace.nome,
     })
     .from(ordensProducao)
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
     .limit(1)
   if (!op) return { success: false, error: 'OP não encontrada' }
@@ -1669,7 +1766,7 @@ export async function mudarDestinoDaOrdemAction(
 
   const origem =
     op.remessaCanal && op.remessaDataEnvio
-      ? rotuloDaRemessa(op.remessaCanal, op.remessaDataEnvio)
+      ? rotuloDaRemessa(op.remessaCanal, op.remessaDataEnvio, op.remessaContaNome)
       : 'remessa'
 
   let alvo: { remessaFullId: string | null; canal: typeof op.canal; prazo: Date | null; rotulo: string }
@@ -1683,8 +1780,10 @@ export async function mudarDestinoDaOrdemAction(
         canal: remessasFull.canal,
         dataEnvio: remessasFull.dataEnvio,
         producaoAte: remessasFull.producaoAte,
+        contaNome: contasMarketplace.nome,
       })
       .from(remessasFull)
+      .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
       .where(and(eq(remessasFull.id, destino.remessaId), isNull(remessasFull.deletedAt)))
       .limit(1)
     if (!r) return { success: false, error: 'Remessa não encontrada' }
@@ -1701,7 +1800,7 @@ export async function mudarDestinoDaOrdemAction(
       remessaFullId: r.id,
       canal: r.canal,
       prazo: prazoDaOp(producaoAteEfetivo(r)),
-      rotulo: rotuloDaRemessa(r.canal, r.dataEnvio),
+      rotulo: rotuloDaRemessa(r.canal, r.dataEnvio, r.contaNome),
     }
   }
 
@@ -1957,6 +2056,99 @@ export type ConclusaoInput = {
   maquinaId?: string
 }
 
+/**
+ * QUEM PODE AGIR NA OP QUE ESTÁ NUMA MÁQUINA — concluir e devolver à fila.
+ *
+ * - O OPERADOR: qualquer um DA ESTAÇÃO da máquina, e não só quem pegou. É a
+ *   troca de turno: o operador 1 inicia, o 2 conclui (ou percebe que era a
+ *   OP errada). `assumiu` diz se ele está tomando a OP de outro.
+ * - O GERENTE (e o admin): qualquer OP.
+ * - Os demais cargos com escrita no kanban: só a OP que é deles.
+ *
+ * Uma função, e não um `if` copiado em cada action: se o concluir e o
+ * devolver divergissem, o operador que pode concluir a OP do colega não
+ * poderia desfazer um toque errado nela — ou o contrário.
+ */
+async function quemAgeNaOpDaMaquina(
+  user: { id: string; role: Parameters<typeof isManagerRole>[0] },
+  op: { maquinaId: string | null; responsavelId: string | null },
+  verbo: string,
+): Promise<{ erro: string | null; assumiu: boolean }> {
+  if (user.role === 'operador') {
+    const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
+    if (!permissao.pode) return { erro: permissao.erro, assumiu: false }
+    return { erro: null, assumiu: op.responsavelId !== user.id }
+  }
+  if (!isManagerRole(user.role) && op.responsavelId !== user.id) {
+    return { erro: `Pegue a OP pra você antes de ${verbo}`, assumiu: false }
+  }
+  return { erro: null, assumiu: false }
+}
+
+// -----------------------------------------------------------------
+// DEVOLVER À FILA — o "Peguei errado" do tablet
+// -----------------------------------------------------------------
+//
+// Desfaz o Iniciar: a regra do que volta a vazio está em
+// src/lib/producao/transicoes-da-op.ts (`erroDaDevolucao`, `OP_DEVOLVIDA`), e
+// a gravação em src/lib/db/devolucao-da-op.ts — a mesma que o arrastar do
+// gerente de "Em produção" pra "Programado" usa.
+//
+// Quem pode é quem pode CONCLUIR (`quemAgeNaOpDaMaquina`): qualquer operador
+// da estação, por causa da troca de turno, e o gerente.
+export async function devolverOpParaFilaAction(
+  ordemId: string,
+): Promise<ActionResult> {
+  const user = await requireAuth()
+  // Tablet travado não grava — ver src/lib/auth/inatividade.ts.
+  const travado = await recusaSeTabletTravado()
+  if (travado) return travado
+  if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
+
+  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
+    return { success: false, error: 'Sem permissão no kanban' }
+  }
+
+  const [op] = await db
+    .select({
+      id: ordensProducao.id,
+      status: ordensProducao.status,
+      maquinaId: ordensProducao.maquinaId,
+      responsavelId: ordensProducao.responsavelId,
+    })
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
+    .limit(1)
+  if (!op) return { success: false, error: 'OP não encontrada' }
+
+  const erro = erroDaDevolucao(op.status)
+  if (erro || op.status !== 'em_producao') {
+    return { success: false, error: erro ?? 'Só a OP em produção volta pra fila' }
+  }
+
+  const quem = await quemAgeNaOpDaMaquina(user, op, 'devolver')
+  if (quem.erro) return { success: false, error: quem.erro }
+
+  const gravou = await db.transaction((tx) =>
+    devolverOpParaFila(
+      tx,
+      { id: op.id, status: op.status as 'em_producao', maquinaId: op.maquinaId },
+      { id: user.id, nome: user.nome },
+    ),
+  )
+  if (!gravou) {
+    return {
+      success: false,
+      error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.',
+    }
+  }
+
+  revalidatePath('/producao')
+  revalidatePath('/ordens')
+  revalidatePath('/estoque')
+  return { success: true, message: 'OP devolvida à fila. A máquina está livre.' }
+}
+
 export async function concluirProducaoAction(
   ordemId: string,
   input: ConclusaoInput,
@@ -2022,14 +2214,9 @@ export async function concluirProducaoAction(
 
   // Mesma regra do mover e do apontar: é da estação dele, e concluir TOMA a
   // OP — a virada de turno fica registrada sozinha.
-  let assumiu = false
-  if (user.role === 'operador') {
-    const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
-    if (!permissao.pode) return { success: false, error: permissao.erro }
-    assumiu = op.responsavelId !== user.id
-  } else if (!isManagerRole(user.role) && op.responsavelId !== user.id) {
-    return { success: false, error: 'Pegue a OP pra você antes de concluir' }
-  }
+  const quem = await quemAgeNaOpDaMaquina(user, op, 'concluir')
+  if (quem.erro) return { success: false, error: quem.erro }
+  const assumiu = quem.assumiu
 
   try {
     let resumo = ''
