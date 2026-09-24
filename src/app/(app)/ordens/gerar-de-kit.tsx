@@ -30,6 +30,7 @@ import {
   canalValues,
   prioridadeValues,
 } from '@/lib/validators/ordens'
+import { ehCanalFull } from '@/lib/producao/prazo-da-remessa'
 
 type Produtos = Awaited<ReturnType<typeof listarProdutosParaOrdem>>
 
@@ -175,11 +176,17 @@ export function GerarDeKit({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {canalValues.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {CANAL_LABEL_CURTO[c]}
-                      </SelectItem>
-                    ))}
+                    {/* SEM FULL: OP de Full só nasce dentro de uma remessa, e
+                        este diálogo não escolhe remessa — kit pro Full se cria
+                        pelo botão "Full", que já cria dentro dela. A action
+                        recusa do mesmo jeito (`erroDaRemessaDaOp`). */}
+                    {canalValues
+                      .filter((c) => !ehCanalFull(c))
+                      .map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {CANAL_LABEL_CURTO[c]}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

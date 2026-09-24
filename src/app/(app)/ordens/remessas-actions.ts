@@ -1,11 +1,12 @@
 'use server'
 
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireArea, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import { erroDeProdutoDeParceiro } from '@/lib/db/origem-do-produto'
+import { hojeEmBrasilia } from '@/lib/dia-brasil'
 import {
   contasMarketplace,
   eventosKanban,
@@ -13,8 +14,12 @@ import {
   remessasFull,
   variacoesProduto,
 } from '@/lib/db/schema'
-import { prazoDaOp, producaoAteEfetivo } from '@/lib/producao/prazo-da-remessa'
-import { CANAL_LABEL_CURTO } from '@/lib/validators/ordens'
+import {
+  erroDaRemessaDaOp,
+  prazoDaOp,
+  producaoAteEfetivo,
+  rotuloDaRemessa,
+} from '@/lib/producao/prazo-da-remessa'
 import {
   criarOpsFullSchema,
   type CriarOpsFullInput,
@@ -28,19 +33,16 @@ export type RemessaFullOpcao = {
   id: string
   canal: 'full_ml' | 'full_shopee'
   dataEnvio: string
+  /** Prazo da produção escolhido; nulo = o padrão (envio menos a folga). */
+  producaoAte: string | null
+  contaNome: string | null
+  /** "Full Shopee · Conta 5 · 30/09" — `rotuloDaRemessa`, igual em todo lugar. */
+  rotulo: string
   ops: number
 }
 
-// "Full ML · 15/07" — rótulo padrão da remessa.
-function labelRemessa(canal: string, dataEnvio: string): string {
-  const [, m, d] = dataEnvio.split('-')
-  const canalLabel =
-    CANAL_LABEL_CURTO[canal as keyof typeof CANAL_LABEL_CURTO] ?? canal
-  return `${canalLabel} · ${d}/${m}`
-}
-
-// Fulls recentes (não excluídos), com contagem de OPs — pro filtro e pro
-// dialog de "cadastrar dentro de um Full existente".
+// Fulls recentes (não excluídos), com contagem de OPs — pro filtro, pro
+// dialog de "cadastrar dentro de um Full existente" e pra Nova OP de Full.
 export async function listarRemessasFull(): Promise<RemessaFullOpcao[]> {
   await requireArea('ordens')
   const rows = await db
@@ -48,6 +50,8 @@ export async function listarRemessasFull(): Promise<RemessaFullOpcao[]> {
       id: remessasFull.id,
       canal: remessasFull.canal,
       dataEnvio: remessasFull.dataEnvio,
+      producaoAte: remessasFull.producaoAte,
+      contaNome: contasMarketplace.nome,
       // Qualifica "remessas_full"."id" — sem isso o Postgres correlaciona
       // com o `id` da própria subquery (ordens_producao) e o count nunca
       // bate (sempre 0).
@@ -58,6 +62,7 @@ export async function listarRemessasFull(): Promise<RemessaFullOpcao[]> {
       )`,
     })
     .from(remessasFull)
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .where(isNull(remessasFull.deletedAt))
     .orderBy(desc(remessasFull.dataEnvio))
     .limit(30)
@@ -66,8 +71,73 @@ export async function listarRemessasFull(): Promise<RemessaFullOpcao[]> {
     id: r.id,
     canal: r.canal as 'full_ml' | 'full_shopee',
     dataEnvio: r.dataEnvio,
+    producaoAte: r.producaoAte,
+    contaNome: r.contaNome ?? null,
+    rotulo: rotuloDaRemessa(r.canal, r.dataEnvio, r.contaNome),
     ops: r.ops,
   }))
+}
+
+// -----------------------------------------------------------------
+// A REMESSA DA NOVA OP DE FULL
+// -----------------------------------------------------------------
+//
+// OP de Full só nasce dentro de uma remessa (`erroDaRemessaDaOp`). A Nova OP
+// oferece as remessas DAQUELE canal com envio de hoje em diante — a mesma
+// janela do "Mudar destino" da ficha (`listarDestinosDaOrdem`) — ou cria uma
+// na hora, com uma CONTA do canal e a DATA DE ENVIO.
+
+export type OpcoesDeRemessaDaNovaOp = {
+  remessas: { id: string; rotulo: string; producaoAte: string }[]
+  contas: { id: string; nome: string }[]
+}
+
+export async function opcoesDeRemessaParaNovaOp(
+  canal: string,
+): Promise<OpcoesDeRemessaDaNovaOp> {
+  await requireArea('ordens')
+  if (canal !== 'full_ml' && canal !== 'full_shopee') {
+    return { remessas: [], contas: [] }
+  }
+  const [remessas, contas] = await Promise.all([
+    db
+      .select({
+        id: remessasFull.id,
+        canal: remessasFull.canal,
+        dataEnvio: remessasFull.dataEnvio,
+        producaoAte: remessasFull.producaoAte,
+        contaNome: contasMarketplace.nome,
+      })
+      .from(remessasFull)
+      .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
+      .where(
+        and(
+          isNull(remessasFull.deletedAt),
+          eq(remessasFull.canal, canal),
+          sql`${remessasFull.dataEnvio} >= ${hojeEmBrasilia()}`,
+        ),
+      )
+      .orderBy(asc(remessasFull.dataEnvio)),
+    db
+      .select({ id: contasMarketplace.id, nome: contasMarketplace.nome })
+      .from(contasMarketplace)
+      .where(
+        and(
+          eq(contasMarketplace.canal, canal),
+          eq(contasMarketplace.ativo, true),
+          isNull(contasMarketplace.deletedAt),
+        ),
+      )
+      .orderBy(asc(contasMarketplace.nome)),
+  ])
+  return {
+    remessas: remessas.map((r) => ({
+      id: r.id,
+      rotulo: rotuloDaRemessa(r.canal, r.dataEnvio, r.contaNome),
+      producaoAte: producaoAteEfetivo(r),
+    })),
+    contas,
+  }
 }
 
 // Cria as OPs dentro de um Full (novo ou existente). Cada item vira uma
@@ -110,6 +180,8 @@ export async function criarOpsFullAction(
       dataEnvio: string
       producaoAte: string | null
     }
+    // A conta entra no rótulo gravado no histórico das OPs.
+    let contaNome: string | null = null
     if (data.remessaId) {
       const [r] = await tx
         .select({
@@ -117,19 +189,22 @@ export async function criarOpsFullAction(
           canal: remessasFull.canal,
           dataEnvio: remessasFull.dataEnvio,
           producaoAte: remessasFull.producaoAte,
+          contaNome: contasMarketplace.nome,
         })
         .from(remessasFull)
+        .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
         .where(
           and(eq(remessasFull.id, data.remessaId), isNull(remessasFull.deletedAt)),
         )
         .limit(1)
       if (!r) throw new Error('FULL_NAO_ENCONTRADO')
       remessa = r
+      contaNome = r.contaNome ?? null
     } else {
       // A conta tem que ser do MESMO canal do Full e estar ativa — a trava
       // da tela (o seletor já vem filtrado) não é garantia de nada.
       const [conta] = await tx
-        .select({ id: contasMarketplace.id })
+        .select({ id: contasMarketplace.id, nome: contasMarketplace.nome })
         .from(contasMarketplace)
         .where(
           and(
@@ -141,6 +216,7 @@ export async function criarOpsFullAction(
         )
         .limit(1)
       if (!conta) throw new Error('CONTA_INVALIDA')
+      contaNome = conta.nome
 
       const [r] = await tx
         .insert(remessasFull)
@@ -164,7 +240,11 @@ export async function criarOpsFullAction(
     // Brasil) — o da remessa nova ou o da existente, que é o que faz a OP
     // cadastrada depois herdar o prazo de quem já estava lá.
     const prazo = prazoDaOp(producaoAteEfetivo(remessa))
-    const rotulo = labelRemessa(remessa.canal, remessa.dataEnvio)
+    const rotulo = rotuloDaRemessa(remessa.canal, remessa.dataEnvio, contaNome)
+    // O guarda único: toda OP daqui nasce na remessa, com o canal DELA.
+    if (erroDaRemessaDaOp(remessa.canal, remessa)) {
+      throw new Error('FULL_NAO_ENCONTRADO')
+    }
 
     for (const it of data.itens) {
       const [op] = await tx

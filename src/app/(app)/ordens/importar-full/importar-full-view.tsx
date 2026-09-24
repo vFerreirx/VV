@@ -65,9 +65,10 @@ function nomePeca(c: ComponenteResolvido): string {
   return detalhe ? `${c.produtoNome} — ${detalhe}` : c.produtoNome
 }
 
+// O rótulo vem pronto do servidor (`rotuloDaRemessa`, com a conta): o mesmo
+// nome da pasta do kanban e do tablet.
 function labelRemessa(r: RemessaFullOpcao): string {
-  const [, m, d] = r.dataEnvio.split('-')
-  return `${CANAL_LABEL_CURTO[r.canal]} · ${d}/${m} (${r.ops} OPs)`
+  return `${r.rotulo} (${r.ops} OPs)`
 }
 
 export function ImportarFullView({

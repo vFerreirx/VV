@@ -32,6 +32,16 @@ import {
   criarOrdemAction,
   type ProdutoComVariacoesParaForm,
 } from '@/app/(app)/ordens/actions'
+import {
+  opcoesDeRemessaParaNovaOp,
+  type OpcoesDeRemessaDaNovaOp,
+} from '@/app/(app)/ordens/remessas-actions'
+import type { RemessaDaNovaOp } from '@/lib/db/remessa-da-op'
+import {
+  diaMes,
+  ehCanalFull,
+  producaoAtePadrao,
+} from '@/lib/producao/prazo-da-remessa'
 import { CatalogoOrdem } from '@/components/forms/catalogo-ordem'
 import { Button } from '@/components/ui/button'
 import { ColorSwatch } from '@/components/ui/color-swatch'
@@ -133,8 +143,39 @@ export function NovaOpDialog({
   const [situacao, setSituacao] = useState<StatusInicial>('programado')
   const [observacoes, setObservacoes] = useState('')
 
+  // FULL SÓ DENTRO DE UMA REMESSA — escolhida entre as que ainda não saíram,
+  // ou criada aqui com conta e data de envio. As opções são buscadas quando o
+  // canal vira Full (não pesam no diálogo de quem cria OP de estoque).
+  // `remessaEscolhida`: '' (falta escolher), o id de uma remessa, ou 'nova'.
+  const [opcoesFull, setOpcoesFull] = useState<OpcoesDeRemessaDaNovaOp | null>(null)
+  const [remessaEscolhida, setRemessaEscolhida] = useState('')
+  const [contaId, setContaId] = useState('')
+  const [dataEnvio, setDataEnvio] = useState('')
+  const ehFull = ehCanalFull(canal)
+
   const [criadas, setCriadas] = useState(0)
   const [erro, setErro] = useState<string | null>(null)
+
+  function carregarOpcoesFull(doCanal: Canal, selecionar = '') {
+    setOpcoesFull(null)
+    opcoesDeRemessaParaNovaOp(doCanal)
+      .then((o) => {
+        setOpcoesFull(o)
+        setRemessaEscolhida(selecionar)
+      })
+      .catch(() => setErro('Não deu pra carregar as remessas. Tente de novo.'))
+  }
+
+  // O PRAZO QUE A OP VAI HERDAR, mostrado antes de salvar: o prazo da
+  // PRODUÇÃO da remessa (a data do caminhão menos a folga, ou o escolhido),
+  // pela mesma conta que o servidor faz.
+  const prazoDoFull =
+    remessaEscolhida === 'nova'
+      ? dataEnvio
+        ? producaoAtePadrao(dataEnvio)
+        : null
+      : (opcoesFull?.remessas.find((r) => r.id === remessaEscolhida)
+          ?.producaoAte ?? null)
 
   const busca = useMemo(
     () => buscarVariacoes(produtos, termo, { escopo }),
@@ -162,6 +203,11 @@ export function NovaOpDialog({
     // VENDA DIRETA TEM CLIENTE ESPERANDO: o prazo deixa de ser detalhe. Abre
     // no toque, e não num efeito — é consequência do gesto, não do estado.
     if (novo === 'venda_direta') setMaisDetalhes(true)
+    // Trocou pra Full (ou de um Full pro outro): a remessa é do canal, então
+    // a escolha anterior não vale mais.
+    setRemessaEscolhida('')
+    setContaId('')
+    if (ehCanalFull(novo)) carregarOpcoesFull(novo)
   }
 
   // ⚠️ ENTER NA BUSCA ESCOLHE A VARIAÇÃO DESTACADA, e não salva. Sem essa
@@ -215,6 +261,22 @@ export function NovaOpDialog({
       return
     }
 
+    // A remessa do Full. A action recusa sem ela; a frase vem antes daqui.
+    let remessa: RemessaDaNovaOp | undefined
+    if (ehFull) {
+      if (!remessaEscolhida) {
+        setErro('OP de Full vai dentro de uma remessa: escolha uma ou crie uma nova.')
+        return
+      }
+      if (remessaEscolhida === 'nova') {
+        if (!contaId) return setErro('Escolha a conta da remessa.')
+        if (!dataEnvio) return setErro('Informe a data de envio da remessa.')
+        remessa = { nova: { contaId, dataEnvio } }
+      } else {
+        remessa = { remessaId: remessaEscolhida }
+      }
+    }
+
     startTransition(async () => {
       const r = await criarOrdemAction(
         entrada,
@@ -222,11 +284,16 @@ export function NovaOpDialog({
           ? { reposicaoId: reposicao.id }
           : pedido
             ? { pedido: { orcamentoId: pedido.orcamentoId, chave: pedido.chave } }
-            : undefined,
+            : { remessa },
       )
       if (!r.success) {
         setErro(r.error)
         return
+      }
+      // A REMESSA CRIADA AGORA vira a escolhida pra próxima OP. Sem isto,
+      // cada "Salvar" do criar-e-continuar criaria outra remessa igual.
+      if (remessaEscolhida === 'nova' && r.data?.remessaFullId) {
+        carregarOpcoesFull(canal, r.data.remessaFullId)
       }
       if (reposicao || pedido) {
         toast.success(
@@ -516,6 +583,91 @@ export function NovaOpDialog({
             </div>
           </div>
 
+          {/* ─── A REMESSA DO FULL ───────────────────────────────────── */}
+          {/* OP de Full só existe DENTRO de uma remessa: sem ela a OP nascia
+              sem conta e sem data de envio. Escolhe uma das que ainda não
+              saíram (a mesma lista do "Mudar destino"), ou cria na hora. */}
+          {ehFull && (
+            <div className="space-y-3 rounded-lg border p-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="nova-op-remessa">
+                  Remessa <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={remessaEscolhida || null}
+                  onValueChange={(v) => setRemessaEscolhida(v ?? '')}
+                  disabled={isPending || opcoesFull === null}
+                >
+                  <SelectTrigger id="nova-op-remessa" className="w-full">
+                    <SelectValue
+                      placeholder={
+                        opcoesFull === null ? 'Carregando…' : 'Escolha a remessa'
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {opcoesFull?.remessas.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.rotulo}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="nova">+ Nova remessa…</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {remessaEscolhida === 'nova' && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="nova-op-conta">
+                      Conta <span className="text-destructive">*</span>
+                    </Label>
+                    <Select
+                      value={contaId || null}
+                      onValueChange={(v) => setContaId(v ?? '')}
+                      disabled={isPending}
+                    >
+                      <SelectTrigger id="nova-op-conta" className="w-full">
+                        <SelectValue placeholder="Escolha a conta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {opcoesFull?.contas.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.nome}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {opcoesFull?.contas.length === 0 && (
+                      <p className="text-muted-foreground text-xs">
+                        Nenhuma conta ativa desse canal. Cadastre em Contas de
+                        marketplace.
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="nova-op-envio">
+                      Data de envio <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="nova-op-envio"
+                      type="date"
+                      value={dataEnvio}
+                      onChange={(e) => setDataEnvio(e.target.value)}
+                      disabled={isPending}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {prazoDoFull && (
+                <p className="text-muted-foreground text-xs">
+                  Prazo da produção: {diaMes(prazoDoFull)} — vem da remessa.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* ─── MAIS DETALHES ──────────────────────────────────────── */}
           <div className="rounded-lg border">
             <button
@@ -543,8 +695,15 @@ export function NovaOpDialog({
                     type="date"
                     value={prazo}
                     onChange={(e) => setPrazo(e.target.value)}
-                    disabled={isPending}
+                    // No Full o prazo VEM DA REMESSA (o servidor sobrescreve):
+                    // digitar aqui seria digitar à toa.
+                    disabled={isPending || ehFull}
                   />
+                  {ehFull && (
+                    <p className="text-muted-foreground text-xs">
+                      No Full, o prazo vem da remessa.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="nova-op-situacao">Situação inicial</Label>

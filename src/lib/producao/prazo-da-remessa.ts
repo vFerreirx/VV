@@ -134,16 +134,111 @@ export function riscoDaRemessa({
   return 'no_prazo'
 }
 
+// -----------------------------------------------------------------
+// O NOME DE UMA REMESSA: canal · conta · data do envio
+// -----------------------------------------------------------------
+//
+// "Full Shopee · Conta 5 · 30/09". SEM A CONTA, dois Fulls do mesmo canal no
+// mesmo dia, de contas diferentes, tinham o mesmo nome — e a conta é o que
+// decide o CNPJ da caixa. A DATA É A DO ENVIO (o dia do caminhão); o prazo da
+// produção aparece ao lado, onde já aparecia.
+//
+// ⚠️ UMA FUNÇÃO PRA TODO LUGAR: pasta do kanban, destino do tablet, tela de
+// remessas, histórico da OP, "mudar destino" e o evento do calendário
+// (`rotuloDoEventoFull`, que é o mesmo nome sem a data). Se cada tela montasse
+// o seu, o operador e o gerente chamariam a mesma caixa de nomes diferentes.
+
+const NOME_DO_CANAL_FULL: Record<string, string> = {
+  full_ml: 'Full ML',
+  full_shopee: 'Full Shopee',
+}
+
+// As palavras que "Full ML" / "Full Shopee" JÁ DIZEM, por canal. ENUMERADAS,
+// e não comparação solta com o rótulo: "Conta Mercado Livre 2" tem que perder
+// "Mercado Livre", e uma conta chamada "Mlk" não pode perder nada.
+const PALAVRAS_DO_CANAL: Record<string, readonly string[]> = {
+  full_shopee: ['Shopee'],
+  full_ml: ['Mercado Livre', 'ML'],
+}
+
 /**
- * "Full ML · 30/09" — como uma remessa se chama em todo lugar (histórico da
- * OP, destino, card). Aqui, e não com o CANAL_LABEL dos validators, pra este
- * módulo continuar sem dependência e rodar no runner do Node.
+ * O nome da conta como vai no rótulo. A conta está gravada como "Conta 5
+ * Shopee"; ao lado de "Full Shopee", o "Shopee" é repetido e sai: "Conta 5".
+ *
+ * Só a palavra INTEIRA (sem diferenciar maiúscula): "Conta 1 ML" perde o
+ * "ML", "Mlk" não perde nada. O que sobrar vazio devolve o nome como estava —
+ * melhor repetir do que sumir com a conta.
  */
-export function rotuloDaRemessa(canal: string, dataEnvio: string): string {
-  const nome =
-    canal === 'full_ml' ? 'Full ML' : canal === 'full_shopee' ? 'Full Shopee' : canal
+export function nomeDaContaNoRotulo(canal: string, contaNome: string): string {
+  const original = contaNome.trim()
+  let nome = original
+  for (const palavra of PALAVRAS_DO_CANAL[canal] ?? []) {
+    const alvo = palavra.replace(/\s+/g, '\\s+')
+    // Fronteira de palavra à mão: começo, espaço ou separador antes e depois.
+    const re = new RegExp(`(^|[\\s\\-–—·/(])${alvo}(?=$|[\\s\\-–—·/)])`, 'gi')
+    nome = nome.replace(re, '$1')
+  }
+  const limpo = nome
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s*[-–—·/]\s*$/u, '')
+    .replace(/^\s*[-–—·/]\s*/u, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  return limpo || original
+}
+
+/**
+ * "Full Shopee · Conta 5 · 30/09" — como uma remessa se chama em todo lugar.
+ * Sem conta (remessa antiga, de antes do cadastro de contas): "Full Shopee ·
+ * 30/09". Aqui, e não com o CANAL_LABEL dos validators, pra este módulo
+ * continuar sem dependência e rodar no runner do Node.
+ */
+export function rotuloDaRemessa(
+  canal: string,
+  dataEnvio: string,
+  contaNome?: string | null,
+): string {
   const [, m, d] = dataEnvio.split('-')
-  return `${nome} · ${d}/${m}`
+  return [rotuloDoEventoFull(canal, contaNome ?? null), `${d}/${m}`].join(' · ')
+}
+
+// -----------------------------------------------------------------
+// OP DE FULL SÓ EXISTE DENTRO DE UMA REMESSA
+// -----------------------------------------------------------------
+//
+// A Nova OP deixava escolher "Full Shopee" SEM remessa: a OP nascia sem conta
+// e sem data de envio — ninguém sabia em que caixa ela ia, nem até quando.
+// Toda action que cria OP pergunta aqui (um guarda só), e a tela só oferece
+// Full com remessa escolhida ou criada na hora.
+//
+// ⚠️ NÃO HÁ CHECK NO BANCO, de propósito: existe OP de teste que viola a
+// regra (a 0167), e soft delete não tira a linha da tabela — o CHECK
+// falharia na criação. A regra vale pra OP NOVA.
+
+const CANAIS_FULL = ['full_ml', 'full_shopee'] as const
+
+export function ehCanalFull(canal: string): boolean {
+  return (CANAIS_FULL as readonly string[]).includes(canal)
+}
+
+/**
+ * Por que esta OP não pode nascer com este canal e esta remessa, ou null se
+ * pode. `remessa` é a remessa que a OP vai receber (a escolhida ou a criada
+ * na hora), ou null.
+ */
+export function erroDaRemessaDaOp(
+  canal: string,
+  remessa: { canal: string } | null,
+): string | null {
+  if (ehCanalFull(canal)) {
+    if (!remessa) {
+      return 'OP de Full precisa de uma remessa: escolha uma ou crie com a conta e a data de envio'
+    }
+    if (remessa.canal !== canal) return 'A remessa é de outro canal'
+    return null
+  }
+  if (remessa) return 'Só OP de Full vai numa remessa'
+  return null
 }
 
 // -----------------------------------------------------------------
@@ -162,8 +257,12 @@ export function rotuloDaRemessa(canal: string, dataEnvio: string): string {
 
 export type DestinoDaOp = {
   canal: string
-  /** A remessa Full da OP, quando ela tem uma. */
-  remessa?: { canal: string; dataEnvio: string } | null
+  /** A remessa Full da OP, quando ela tem uma — com a conta, se tiver. */
+  remessa?: {
+    canal: string
+    dataEnvio: string
+    contaNome?: string | null
+  } | null
   /** O número do pedido, quando a OP produz o faltante de um. */
   pedidoNumero?: number | null
 }
@@ -181,7 +280,9 @@ export function rotuloDoDestino({
   remessa,
   pedidoNumero,
 }: DestinoDaOp): string {
-  if (remessa) return rotuloDaRemessa(remessa.canal, remessa.dataEnvio)
+  if (remessa) {
+    return rotuloDaRemessa(remessa.canal, remessa.dataEnvio, remessa.contaNome)
+  }
   if (pedidoNumero != null) return `Pedido #${pedidoNumero}`
   const c = canal.trim()
   if (c === '') return 'Sem destino'
@@ -205,20 +306,20 @@ export function diaMes(iso: string): string {
 // Evento antigo não tem conta, e isso é permanente (ver a migration 69): o
 // rótulo cai no canal sozinho, sem inventar uma conta que ninguém escolheu.
 
-/** "Full ML · Conta 1" — ou só "Full ML" quando o evento não tem conta. */
+/**
+ * "Full ML · Conta 1" — ou só "Full ML" quando o evento não tem conta. É o
+ * começo de `rotuloDaRemessa`: o calendário e a remessa falam igual. A
+ * palavra do canal sai do nome da conta (`nomeDaContaNoRotulo`).
+ */
 export function rotuloDoEventoFull(
   canal: string,
   contaNome: string | null,
 ): string {
-  const nome =
-    canal === 'full_ml'
-      ? 'Full ML'
-      : canal === 'full_shopee'
-        ? 'Full Shopee'
-        : // Canal desconhecido aparece como veio: o rótulo é pra LER, e
-          // esconder o valor cru deixaria o dado estranho invisível.
-          canal
-  return contaNome ? `${nome} · ${contaNome}` : nome
+  // Canal desconhecido aparece como veio: o rótulo é pra LER, e esconder o
+  // valor cru deixaria o dado estranho invisível.
+  const nome = NOME_DO_CANAL_FULL[canal] ?? canal
+  const conta = contaNome?.trim() ? nomeDaContaNoRotulo(canal, contaNome) : null
+  return conta ? `${nome} · ${conta}` : nome
 }
 
 // -----------------------------------------------------------------

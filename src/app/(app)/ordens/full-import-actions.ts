@@ -17,7 +17,11 @@ import {
   remessasFull,
   variacoesProduto,
 } from '@/lib/db/schema'
-import { prazoDaOp, producaoAteEfetivo } from '@/lib/producao/prazo-da-remessa'
+import {
+  erroDaRemessaDaOp,
+  prazoDaOp,
+  producaoAteEfetivo,
+} from '@/lib/producao/prazo-da-remessa'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import { ErroLeitura, lerEnvioFull } from '@/lib/full-import'
 import { normalizarSku } from '@/lib/full-import/pdf-texto'
@@ -517,7 +521,8 @@ export async function importarFullAction(
           .where(and(eq(remessasFull.id, d.remessaId), isNull(remessasFull.deletedAt)))
           .limit(1)
         if (!r) throw new Error('FULL_NAO_ENCONTRADO')
-        if (r.canal !== d.canal) throw new Error('CANAL_DIFERENTE')
+        // O guarda único de "Full dentro de remessa do mesmo canal".
+        if (erroDaRemessaDaOp(d.canal, r)) throw new Error('CANAL_DIFERENTE')
         remessa = r
         // Carimba o identificador do envio no Full escolhido, se ainda não
         // tiver — é o que impede reimportar o mesmo envio depois.

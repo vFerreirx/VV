@@ -27,6 +27,7 @@ import {
 } from '@/lib/db/estacao-operadores'
 import {
   apontamentosProducao,
+  contasMarketplace,
   cores,
   maquinaParadas,
   estacaoOperadores,
@@ -80,18 +81,23 @@ const tamanhoUnicoSql = sql<boolean>`(
      AND v_tam.deleted_at IS NULL
 ) <= 1`
 
-/** O destino, a partir das colunas do LEFT JOIN em remessa e pedido. */
+/** O destino, a partir das colunas do LEFT JOIN em remessa, conta e pedido. */
 function destinoDe(r: {
   canal: string
   remessaCanal: string | null
   remessaDataEnvio: string | null
+  remessaContaNome: string | null
   pedidoNumero: number | null
 }): string {
   return rotuloDoDestino({
     canal: r.canal,
     remessa:
       r.remessaCanal && r.remessaDataEnvio
-        ? { canal: r.remessaCanal, dataEnvio: r.remessaDataEnvio }
+        ? {
+            canal: r.remessaCanal,
+            dataEnvio: r.remessaDataEnvio,
+            contaNome: r.remessaContaNome,
+          }
         : null,
     pedidoNumero: r.pedidoNumero,
   })
@@ -214,6 +220,7 @@ export async function listarOrdensProducao(
       maquinaCodigo: maquinas.codigo,
       maquinaNome: maquinas.nome,
       remessaCanal: remessasFull.canal,
+      remessaContaNome: contasMarketplace.nome,
       remessaDataEnvio: remessasFull.dataEnvio,
       estacaoCorMaq: estMaq.cor,
       estacaoNomeMaq: estMaq.nome,
@@ -270,6 +277,8 @@ export async function listarOrdensProducao(
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    // A conta da remessa, pro rótulo "Full Shopee · Conta 5 · 30/09". 1:1.
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .leftJoin(
       estMaq,
       and(eq(estMaq.id, maquinas.estacaoId), isNull(estMaq.deletedAt)),
@@ -317,6 +326,7 @@ export async function listarOrdensProducao(
       maquinaNome,
       remessaCanal,
       remessaDataEnvio,
+      remessaContaNome,
       estacaoCorMaq,
       estacaoNomeMaq,
       estacaoCorResp,
@@ -344,10 +354,11 @@ export async function listarOrdensProducao(
       // O rótulo da pasta sai da fonte única (`rotuloDaRemessa`), a mesma
       // que o destino do tablet usa — era uma cópia montada à mão aqui, e a
       // pasta do gerente e a linha do operador precisam dizer a mesma coisa.
-      // Mesmo texto de antes: "Full ML · 24/09".
+      // Com a conta: "Full Shopee · Conta 5 · 30/09" — sem ela, dois Fulls
+      // do mesmo canal e dia viravam duas pastas com o mesmo nome.
       remessaLabel:
         remessaCanal && remessaDataEnvio
-          ? rotuloDaRemessa(remessaCanal, remessaDataEnvio)
+          ? rotuloDaRemessa(remessaCanal, remessaDataEnvio, remessaContaNome)
           : null,
       responsavelId: op.responsavelId,
       responsavelNome: responsavelNome ?? null,
@@ -475,6 +486,7 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
       produtoCodigo: produtos.codigo,
       tamanhoUnico: tamanhoUnicoSql,
       remessaCanal: remessasFull.canal,
+      remessaContaNome: contasMarketplace.nome,
       remessaDataEnvio: remessasFull.dataEnvio,
       pedidoNumero: orcamentos.numero,
       variacaoCor: variacoesProduto.cor,
@@ -522,6 +534,8 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
     // O DESTINO: remessa e pedido são 1:1 com a OP (FK na OP), então não
     // duplicam a linha da máquina.
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    // A conta da remessa, pro rótulo "Full Shopee · Conta 5 · 30/09". 1:1.
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .leftJoin(orcamentos, eq(orcamentos.id, ordensProducao.orcamentoId))
     .leftJoin(
       maquinaParadas,
@@ -556,6 +570,7 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
                 canal: r.opCanal ?? '',
                 remessaCanal: r.remessaCanal,
                 remessaDataEnvio: r.remessaDataEnvio,
+                remessaContaNome: r.remessaContaNome,
                 pedidoNumero: r.pedidoNumero,
               }),
               variacaoCor: r.variacaoCor ?? null,
@@ -718,6 +733,7 @@ export async function listarOpsParaIniciar(
       produtoCodigo: produtos.codigo,
       tamanhoUnico: tamanhoUnicoSql,
       remessaCanal: remessasFull.canal,
+      remessaContaNome: contasMarketplace.nome,
       remessaDataEnvio: remessasFull.dataEnvio,
       pedidoNumero: orcamentos.numero,
       variacaoCor: variacoesProduto.cor,
@@ -735,6 +751,8 @@ export async function listarOpsParaIniciar(
     .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     // O destino, 1:1 com a OP: não duplica linha nem mexe no COUNT acima.
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    // A conta da remessa, pro rótulo "Full Shopee · Conta 5 · 30/09". 1:1.
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .leftJoin(orcamentos, eq(orcamentos.id, ordensProducao.orcamentoId))
     .where(and(...conditions))
     // A MESMA ORDEM DO KANBAN, e de propósito: o enum `ordem_prioridade` é
@@ -986,6 +1004,7 @@ export async function listarOpsDaEstacao(
       produtoCodigo: produtos.codigo,
       tamanhoUnico: tamanhoUnicoSql,
       remessaCanal: remessasFull.canal,
+      remessaContaNome: contasMarketplace.nome,
       remessaDataEnvio: remessasFull.dataEnvio,
       pedidoNumero: orcamentos.numero,
       variacaoCor: variacoesProduto.cor,
@@ -1016,6 +1035,8 @@ export async function listarOpsDaEstacao(
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    // A conta da remessa, pro rótulo "Full Shopee · Conta 5 · 30/09". 1:1.
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
     .leftJoin(orcamentos, eq(orcamentos.id, ordensProducao.orcamentoId))
     .where(
       inArray(
