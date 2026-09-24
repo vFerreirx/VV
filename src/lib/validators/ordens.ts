@@ -166,6 +166,12 @@ export const ordensFiltrosSchema = z.object({
   prioridade: z.union([z.enum(prioridadeValues), z.literal('todas')]).optional(),
   maquinaId: z.string().trim().optional(),
   remessaId: z.string().trim().optional(),
+  // O pedido de onde a OP produz o faltante — o rótulo "Pedido #142" da
+  // lista filtra por ele, como o do Full filtra pela remessa.
+  pedidoId: z.string().trim().optional(),
+  // Os contadores do topo de /ordens: "Atrasadas" e "Vencem hoje". "Falta dar
+  // baixa" não precisa de filtro próprio: é o status `pronto_envio`.
+  prazo: z.enum(['atrasadas', 'hoje']).optional(),
   // Página da listagem (1-based).
   pagina: z.coerce.number().int().min(1).optional(),
 })

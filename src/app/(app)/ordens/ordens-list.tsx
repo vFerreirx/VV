@@ -1,13 +1,11 @@
 'use client'
 
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 import {
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
   ClipboardList,
   Search,
+  X,
 } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useMemo, useState, useTransition } from 'react'
@@ -15,17 +13,24 @@ import { toast } from 'sonner'
 
 import {
   excluirMultiplasOrdensAction,
+  type ContagensDaLista,
+  type DestinoFiltrado,
   type OrdemListItem,
   type ProdutoComVariacoesParaForm,
 } from './actions'
 import { OpDetailSheet } from '@/app/(app)/producao/op-detail-sheet'
-import { CodigoDoProduto } from '@/components/ordens/codigo-do-produto'
+import {
+  LinhaDaPeca,
+  SeloDePrioridade,
+  TextoDoPrazo,
+} from '@/components/ordens/linha-da-peca'
 import { BotaoNovaOp } from '@/components/ordens/nova-op-dialog'
 import type { RemessaFullOpcao } from './remessas-actions'
 import { Badge } from '@/components/ui/badge'
 import { BulkActionBar } from '@/components/ui/bulk-action-bar'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ColorSwatch } from '@/components/ui/color-swatch'
 import {
   Dialog,
   DialogContent,
@@ -43,15 +48,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { corDoCanal } from '@/lib/producao/cor-do-canal'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { PRIORIDADE_BADGE } from '@/lib/prioridade'
+  agruparPorDia,
+  prazoNaLista,
+  quantidadeNaLista,
+} from '@/lib/producao/lista-de-ordens'
 import { cn } from '@/lib/utils'
 import {
   CANAL_LABEL_CURTO,
@@ -75,11 +77,21 @@ const STATUS_BADGE: Record<(typeof statusValues)[number], string> = {
   cancelado: 'bg-muted text-muted-foreground',
 }
 
+// ALVO DE TOQUE DE 48px em tudo que é ação: a mesma tela roda no escritório
+// e no tablet do galpão, de luva ou com a mão ocupada. Os componentes de UI
+// nascem com 28–32px (feitos pro mouse); aqui eles crescem.
+//
+// O Select precisa do `data-[size=default]:` porque a altura dele vem
+// num seletor de atributo, mais específico que um `h-12` solto.
+const ALTURA_DO_SELECT = 'data-[size=default]:h-12'
+
 type Props = {
   ordens: OrdemListItem[]
   total: number
   pagina: number
   totalPaginas: number
+  contagens: ContagensDaLista
+  destino: DestinoFiltrado | null
   remessas: RemessaFullOpcao[]
   podeEditar: boolean
   filtrosIniciais: OrdensFiltros
@@ -90,12 +102,13 @@ type Props = {
   podeMoverKanban: boolean
 }
 
-// "27/30 · 2 ref." — o que a OP rendeu, contra a meta. Vazio enquanto não há
-// apontamento: um "0/30" diria que a produção deu zero, quando ela nem foi
-// registrada.
-function resultadoDe(o: OrdemListItem): string {
-  if (o.produzido === 0 && o.refugo === 0) return ''
-  return `${o.produzido}/${o.quantidade}${o.refugo > 0 ? ` · ${o.refugo} ref.` : ''}`
+// O FILTRO QUE O RÓTULO DO DESTINO APLICA. O Full filtra pela remessa, o
+// pedido pelo pedido — e esses dois ganham a faixa-resumo no topo. Estoque e
+// venda direta não têm "um" destino pra resumir: filtram pelo canal.
+function filtroDoDestino(o: OrdemListItem): Record<string, string | undefined> {
+  if (o.remessaFullId) return { remessaId: o.remessaFullId, pedidoId: undefined }
+  if (o.orcamentoId) return { pedidoId: o.orcamentoId, remessaId: undefined }
+  return { canal: o.canalDestino }
 }
 
 export function OrdensList({
@@ -103,6 +116,8 @@ export function OrdensList({
   total,
   pagina,
   totalPaginas,
+  contagens,
+  destino,
   remessas,
   podeEditar,
   filtrosIniciais,
@@ -144,6 +159,8 @@ export function OrdensList({
     () => Array.from(selecionados),
     [selecionados],
   )
+  // Os separadores por dia de criação — a lista já chega ordenada por ela.
+  const porDia = useMemo(() => agruparPorDia(ordens), [ordens])
 
   function aplicarFiltro(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(searchParams.toString())
@@ -175,10 +192,67 @@ export function OrdensList({
 
   // Sem status na URL = "abertas" (ver `listarOrdens`).
   const statusAtual = filtrosIniciais.status ?? 'abertas'
+  const prazoAtual = filtrosIniciais.prazo
+
+  // O rótulo do destino filtra, e NÃO abre o painel da linha.
+  function filtrarPeloDestino(e: React.MouseEvent, o: OrdemListItem) {
+    e.stopPropagation()
+    aplicarFiltro(filtroDoDestino(o))
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-1.5">
+    <div className="space-y-5">
+      {/* O QUE APERTA, PRIMEIRO. É o que o gerente vem ver aqui: o kanban e
+          o tablet já mostram a fila; a lista é onde ele confere o que está
+          atrasado, o que vence hoje e o que falta dar baixa — e dali parte
+          pra OP. Cada contador é o filtro dele: clicar aplica, clicar de
+          novo tira. Os números contam o conjunto filtrado inteiro (não só a
+          página) e não mudam ao clicar um deles (`ContagensDaLista`). */}
+      <div className="flex flex-wrap gap-3" role="group" aria-label="O que aperta">
+        <Contador
+          n={contagens.atrasadas}
+          rotulo="Atrasadas"
+          ativo={prazoAtual === 'atrasadas'}
+          tom="atrasada"
+          disabled={isPending}
+          onClick={() =>
+            aplicarFiltro({
+              prazo: prazoAtual === 'atrasadas' ? undefined : 'atrasadas',
+              status: 'abertas',
+            })
+          }
+        />
+        <Contador
+          n={contagens.vencemHoje}
+          rotulo={contagens.vencemHoje === 1 ? 'Vence hoje' : 'Vencem hoje'}
+          ativo={prazoAtual === 'hoje'}
+          tom="hoje"
+          disabled={isPending}
+          onClick={() =>
+            aplicarFiltro({
+              prazo: prazoAtual === 'hoje' ? undefined : 'hoje',
+              status: 'abertas',
+            })
+          }
+        />
+        {/* "Falta dar baixa" é o status `pronto_envio` — o mesmo âmbar de
+            "Produção concluída" no board e nas remessas. */}
+        <Contador
+          n={contagens.faltaBaixa}
+          rotulo="Falta dar baixa"
+          ativo={statusAtual === 'pronto_envio' && !prazoAtual}
+          tom="baixa"
+          disabled={isPending}
+          onClick={() =>
+            aplicarFiltro({
+              status: statusAtual === 'pronto_envio' ? 'abertas' : 'pronto_envio',
+              prazo: undefined,
+            })
+          }
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-2">
         {[
           // ABERTAS É O PADRÃO: tudo sem baixa e sem cancelamento — o que se
           // procura aqui no dia a dia, e o que o gerente confere na virada.
@@ -189,15 +263,18 @@ export function OrdensList({
           { label: 'Canceladas', val: 'cancelado' },
           { label: 'Todas', val: 'todos' },
         ].map((chip) => {
-          const ativo = statusAtual === chip.val
+          const ativo = statusAtual === chip.val && !prazoAtual
           return (
             <button
               key={chip.label}
               type="button"
-              onClick={() => aplicarFiltro({ status: chip.val })}
+              aria-pressed={ativo}
+              // Trocar de chip tira o filtro de prazo: "Atrasadas" dentro de
+              // "Com baixa" é sempre vazio, e a lista vazia pareceria bug.
+              onClick={() => aplicarFiltro({ status: chip.val, prazo: undefined })}
               disabled={isPending}
               className={cn(
-                'rounded-full border px-3 py-1 text-xs transition-colors',
+                'focus-visible:ring-ring h-12 rounded-full border px-5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none motion-reduce:transition-none',
                 ativo
                   ? 'bg-primary text-primary-foreground border-primary'
                   : 'hover:bg-accent',
@@ -209,30 +286,41 @@ export function OrdensList({
         })}
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <form onSubmit={onBuscaSubmit} className="flex flex-1 items-center gap-2">
-          <div className="relative flex-1 sm:max-w-xs">
-            <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+          <div className="relative flex-1 lg:max-w-sm">
+            <Search className="text-muted-foreground absolute top-1/2 left-3 size-5 -translate-y-1/2" />
             <Input
-              placeholder="Buscar por número, código, SKU ou produto…"
+              placeholder="Número, código (076), SKU ou produto…"
+              aria-label="Buscar OP"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              className="pl-8"
+              className="h-12 pl-10 text-base md:text-base"
               disabled={isPending}
             />
           </div>
-          <Button type="submit" variant="outline" size="sm" disabled={isPending}>
+          <Button
+            type="submit"
+            variant="outline"
+            className="h-12 px-4"
+            disabled={isPending}
+          >
             Buscar
           </Button>
         </form>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           <Select
             value={statusAtual}
-            onValueChange={(v) => aplicarFiltro({ status: v ?? undefined })}
+            onValueChange={(v) =>
+              aplicarFiltro({ status: v ?? undefined, prazo: undefined })
+            }
           >
-            <SelectTrigger size="sm" className="min-w-[10rem]">
-              <SelectValue placeholder="Status" />
+            <SelectTrigger
+              aria-label="Etapa"
+              className={cn(ALTURA_DO_SELECT, 'w-full sm:w-auto sm:min-w-40')}
+            >
+              <SelectValue placeholder="Etapa" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="abertas">Abertas</SelectItem>
@@ -253,7 +341,10 @@ export function OrdensList({
             value={filtrosIniciais.canal ?? 'todos'}
             onValueChange={(v) => aplicarFiltro({ canal: v ?? undefined })}
           >
-            <SelectTrigger size="sm" className="min-w-[8rem]">
+            <SelectTrigger
+              aria-label="Canal"
+              className={cn(ALTURA_DO_SELECT, 'w-full sm:w-auto sm:min-w-36')}
+            >
               <SelectValue placeholder="Canal" />
             </SelectTrigger>
             <SelectContent>
@@ -272,7 +363,10 @@ export function OrdensList({
               aplicarFiltro({ prioridade: v ?? undefined })
             }
           >
-            <SelectTrigger size="sm" className="min-w-[8rem]">
+            <SelectTrigger
+              aria-label="Prioridade"
+              className={cn(ALTURA_DO_SELECT, 'w-full sm:w-auto sm:min-w-40')}
+            >
               <SelectValue placeholder="Prioridade" />
             </SelectTrigger>
             <SelectContent>
@@ -288,9 +382,14 @@ export function OrdensList({
           {remessas.length > 0 && (
             <Select
               value={filtrosIniciais.remessaId ?? 'todas'}
-              onValueChange={(v) => aplicarFiltro({ remessaId: v ?? undefined })}
+              onValueChange={(v) =>
+                aplicarFiltro({ remessaId: v ?? undefined, pedidoId: undefined })
+              }
             >
-              <SelectTrigger size="sm" className="min-w-[9rem]">
+              <SelectTrigger
+                aria-label="Full"
+                className={cn(ALTURA_DO_SELECT, 'w-full sm:w-auto sm:min-w-44')}
+              >
                 <SelectValue placeholder="Full" />
               </SelectTrigger>
               <SelectContent>
@@ -309,11 +408,21 @@ export function OrdensList({
         </div>
       </div>
 
+      {destino && (
+        <FaixaDoDestino
+          destino={destino}
+          disabled={isPending}
+          onLimpar={() => aplicarFiltro({ [destino.filtro]: undefined })}
+        />
+      )}
+
       {podeEditar && (
         <BulkActionBar
           count={selecionados.size}
           onClear={limparSelecao}
           onDelete={() => setBulkExcluindo(true)}
+          // Por cima do cabeçalho da tabela, que também gruda no topo.
+          className="z-20"
         />
       )}
 
@@ -332,183 +441,200 @@ export function OrdensList({
         />
       ) : (
         <>
-          {/* Desktop */}
+          {/* Desktop.
+              ⚠️ `<table>` DIRETO, e não o <Table> do ui/: ele embrulha a
+              tabela num `overflow-x-auto`, e aí o cabeçalho `sticky` grudaria
+              nessa caixa (que não rola) em vez de na página. Com seis colunas
+              a tabela cabe na tela grande — não precisa da rolagem lateral.
+
+              SEIS COLUNAS, E ERAM NOVE. Máquina desceu pra baixo da peça,
+              Qtd e Resultado viraram uma coluna só, e Prioridade virou um
+              selo que só aparece quando é Alta ou Urgente (`ehDestaque`). */}
           <div className="hidden rounded-lg border md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
                   {podeEditar && (
-                    <TableHead className="w-10">
+                    <Th className="w-12 rounded-tl-lg px-0 text-center">
                       <Checkbox
                         aria-label="Selecionar tudo"
                         checked={allChecked}
                         indeterminate={someChecked}
                         onCheckedChange={toggleAll}
+                        className="mx-auto after:-inset-4"
                       />
-                    </TableHead>
+                    </Th>
                   )}
-                  <TableHead>Número</TableHead>
-                  <TableHead>Produto</TableHead>
-                  <TableHead className="text-right">Qtd (un)</TableHead>
-                  <TableHead>Máquina</TableHead>
-                  <TableHead>Resultado</TableHead>
-                  <TableHead>Canal</TableHead>
-                  <TableHead>Prioridade</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Prev. fim</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ordens.map((o) => (
-                  <TableRow
-                    key={o.id}
-                    data-state={selecionados.has(o.id) ? 'selected' : undefined}
-                    onClick={() => setDetalheId(o.id)}
-                    className="cursor-pointer"
-                  >
-                    {podeEditar && (
-                      // O checkbox seleciona e NÃO abre o painel.
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <Checkbox
-                          aria-label={`Selecionar ${o.numero}`}
-                          checked={selecionados.has(o.id)}
-                          onCheckedChange={() => toggleOne(o.id)}
-                        />
-                      </TableCell>
-                    )}
-                    <TableCell className="font-mono text-xs">{o.numero}</TableCell>
-                    <TableCell>
-                      <div className="font-medium">
-                        <CodigoDoProduto codigo={o.produtoCodigo} />
-                        {o.produtoNome}
-                      </div>
-                      <div className="text-muted-foreground text-xs">
-                        {[o.variacaoCor, o.variacaoTamanho]
-                          .filter(Boolean)
-                          .join(' / ') || o.produtoSku}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {o.quantidade.toLocaleString('pt-BR')}
-                    </TableCell>
-                    <TableCell>{o.maquinaNome ?? '—'}</TableCell>
-                    <TableCell className="tabular-nums">{resultadoDe(o)}</TableCell>
-                    <TableCell>
-                      {o.remessaRotulo ?? CANAL_LABEL_CURTO[o.canalDestino]}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={PRIORIDADE_BADGE[o.prioridade]}>
-                        {PRIORIDADE_LABEL[o.prioridade]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={STATUS_BADGE[o.status]}>
-                        {STATUS_LABEL_CURTO[o.status]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell
+                  <Th className={cn(!podeEditar && 'rounded-tl-lg')}>Nº</Th>
+                  <Th>OP</Th>
+                  <Th className="text-right">Quantidade</Th>
+                  <Th>Destino</Th>
+                  <Th>Status</Th>
+                  <Th className="rounded-tr-lg">Prazo</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {porDia.map((grupo) => [
+                  <tr key={`dia:${grupo.rotulo}`}>
+                    <td
+                      colSpan={podeEditar ? 7 : 6}
+                      className="bg-muted/60 text-muted-foreground border-b px-4 py-1.5 text-xs font-semibold tracking-wide uppercase"
+                    >
+                      <SeparadorDoDia rotulo={grupo.rotulo} n={grupo.ops.length} />
+                    </td>
+                  </tr>,
+                  ...grupo.ops.map((o) => (
+                    <tr
+                      key={o.id}
+                      data-state={selecionados.has(o.id) ? 'selected' : undefined}
+                      tabIndex={0}
+                      aria-label={`Abrir ${o.numero}`}
+                      onClick={() => setDetalheId(o.id)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setDetalheId(o.id)
+                        }
+                      }}
                       className={cn(
-                        'tabular-nums',
-                        o.atrasada && 'text-destructive font-medium',
+                        'hover:bg-muted/50 data-[state=selected]:bg-muted focus-visible:ring-ring cursor-pointer border-b transition-colors last:border-0 focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset motion-reduce:transition-none',
+                        // A COR DO FULL É SÓ UMA BORDA À ESQUERDA, do lado do
+                        // checkbox e longe do quadradinho do fio
+                        // (cor-do-canal.ts). O nome do Full continua escrito
+                        // na coluna Destino.
+                        corDoCanal(o.canalDestino)?.borda,
                       )}
                     >
-                      <span className="inline-flex items-center gap-1">
-                        {o.atrasada && <CircleAlert className="size-3.5" />}
-                        {o.dataPrevistaFim
-                          ? format(new Date(o.dataPrevistaFim), 'dd/MM/yy', {
-                              locale: ptBR,
-                            })
-                          : '—'}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                      {podeEditar && (
+                        // O checkbox seleciona e NÃO abre o painel.
+                        <td
+                          className="w-12 px-0 text-center align-middle"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Checkbox
+                            aria-label={`Selecionar ${o.numero}`}
+                            checked={selecionados.has(o.id)}
+                            onCheckedChange={() => toggleOne(o.id)}
+                            className="mx-auto after:-inset-4"
+                          />
+                        </td>
+                      )}
+                      <td className="text-muted-foreground px-3 py-2 align-middle font-mono text-xs whitespace-nowrap">
+                        {o.numero}
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <div className="flex items-center gap-3">
+                          {/* O QUADRADINHO É A COR DO FIO, o mesmo do tablet:
+                              o olho varre a coluna de cores em vez de ler
+                              vinte nomes que começam igual. */}
+                          <ColorSwatch hex={o.corHex} hex2={o.corHex2} />
+                          <div className="min-w-0">
+                            <div className="text-base leading-snug">
+                              <LinhaDaPeca op={o} />
+                            </div>
+                            <div className="text-muted-foreground text-xs">
+                              <Maquina nome={o.maquinaNome} />
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 text-right align-middle whitespace-nowrap">
+                        <Quantidade o={o} />
+                      </td>
+                      <td className="text-muted-foreground px-3 py-0 align-middle whitespace-nowrap">
+                        <BotaoDoDestino o={o} onClick={filtrarPeloDestino} />
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <div className="flex items-center gap-1.5 whitespace-nowrap">
+                          <Status o={o} />
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 align-middle whitespace-nowrap">
+                        <PrazoDaLinha o={o} />
+                      </td>
+                    </tr>
+                  )),
+                ])}
+              </tbody>
+            </table>
           </div>
 
-          {/* Mobile / tablet retrato */}
+          {/* Mobile / tablet retrato — a MESMA hierarquia da tabela: a peça
+              com a cor do fio; status e prazo logo abaixo; destino e
+              quantidade; e por último número e máquina, que identificam mas
+              não decidem nada. */}
           <div className="vv-reveal space-y-3 md:hidden">
-            {ordens.map((o) => (
-              <div
-                key={o.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setDetalheId(o.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
-                    setDetalheId(o.id)
-                  }
-                }}
-                className="cursor-pointer rounded-lg border p-4"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-start gap-2">
-                    {podeEditar && (
-                      <Checkbox
-                        aria-label={`Selecionar ${o.numero}`}
-                        checked={selecionados.has(o.id)}
-                        onCheckedChange={() => toggleOne(o.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="mt-1"
-                      />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="font-mono text-xs">{o.numero}</div>
-                      <div className="truncate font-medium">
-                        <CodigoDoProduto codigo={o.produtoCodigo} />
-                        {o.produtoNome}
+            {porDia.map((grupo) => (
+              <section key={grupo.rotulo} className="space-y-3">
+                <h2 className="text-muted-foreground px-1 pt-2 text-xs font-semibold tracking-wide uppercase">
+                  <SeparadorDoDia rotulo={grupo.rotulo} n={grupo.ops.length} />
+                </h2>
+                {grupo.ops.map((o) => {
+                  const cor = corDoCanal(o.canalDestino)
+                  return (
+                    <div
+                      key={o.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Abrir ${o.numero}`}
+                      onClick={() => setDetalheId(o.id)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setDetalheId(o.id)
+                        }
+                      }}
+                      className={cn(
+                        'bg-card focus-visible:ring-ring cursor-pointer rounded-xl border p-3 focus-visible:ring-2 focus-visible:outline-none',
+                        selecionados.has(o.id) && 'bg-muted',
+                        // Borda do Full, e o conteúdo afasta (`pl-5`) pra ela
+                        // não encostar no quadradinho do fio — como no tablet.
+                        cor && [cor.borda, 'pl-5'],
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <ColorSwatch hex={o.corHex} hex2={o.corHex2} tamanho="lg" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-lg leading-snug">
+                            <LinhaDaPeca op={o} />
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
+                            <Status o={o} />
+                            <PrazoDaLinha o={o} semTraco />
+                          </div>
+                        </div>
+                        {podeEditar && (
+                          <div
+                            className="-mt-1 -mr-1 flex size-12 shrink-0 items-center justify-center"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Checkbox
+                              aria-label={`Selecionar ${o.numero}`}
+                              checked={selecionados.has(o.id)}
+                              onCheckedChange={() => toggleOne(o.id)}
+                              className="size-5 after:-inset-3.5"
+                            />
+                          </div>
+                        )}
                       </div>
-                      <div className="text-muted-foreground text-xs">
-                        {[o.variacaoCor, o.variacaoTamanho]
-                          .filter(Boolean)
-                          .join(' / ') || o.produtoSku}
+                      <div className="mt-2 flex items-center justify-between gap-3 border-t pt-1 text-sm">
+                        <span className="text-muted-foreground min-w-0 truncate">
+                          <BotaoDoDestino o={o} onClick={filtrarPeloDestino} />
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <Quantidade o={o} />
+                        </span>
+                      </div>
+                      <div className="text-muted-foreground flex justify-between gap-2 text-xs">
+                        <span className="font-mono">{o.numero}</span>
+                        <Maquina nome={o.maquinaNome} />
                       </div>
                     </div>
-                  </div>
-                  <Badge className={STATUS_BADGE[o.status]}>
-                    {STATUS_LABEL_CURTO[o.status]}
-                  </Badge>
-                </div>
-                <div className="text-muted-foreground mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                  <div>Quantidade</div>
-                  <div className="text-foreground text-right tabular-nums">
-                    {o.quantidade.toLocaleString('pt-BR')} un
-                  </div>
-                  <div>Máquina</div>
-                  <div className="text-foreground text-right">
-                    {o.maquinaNome ?? '—'}
-                  </div>
-                  <div>Resultado</div>
-                  <div className="text-foreground text-right tabular-nums">
-                    {resultadoDe(o) || '—'}
-                  </div>
-                  <div>Canal</div>
-                  <div className="text-foreground text-right">
-                    {o.remessaRotulo ?? CANAL_LABEL_CURTO[o.canalDestino]}
-                  </div>
-                  <div>Prioridade</div>
-                  <div className="text-right">
-                    <Badge className={PRIORIDADE_BADGE[o.prioridade]}>
-                      {PRIORIDADE_LABEL[o.prioridade]}
-                    </Badge>
-                  </div>
-                  <div>Prev. fim</div>
-                  <div
-                    className={cn(
-                      'text-right tabular-nums',
-                      o.atrasada && 'text-destructive font-medium',
-                    )}
-                  >
-                    {o.dataPrevistaFim
-                      ? format(new Date(o.dataPrevistaFim), 'dd/MM/yy', {
-                          locale: ptBR,
-                        })
-                      : '—'}
-                  </div>
-                </div>
-              </div>
+                  )
+                })}
+              </section>
             ))}
           </div>
 
@@ -518,10 +644,10 @@ export function OrdensList({
               <span className="text-muted-foreground text-sm tabular-nums">
                 Página {pagina} de {totalPaginas} · {total} OPs
               </span>
-              <div className="flex gap-1.5">
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  size="sm"
+                  className="h-12 px-4"
                   onClick={() => irPagina(pagina - 1)}
                   disabled={isPending || pagina <= 1}
                 >
@@ -530,7 +656,7 @@ export function OrdensList({
                 </Button>
                 <Button
                   variant="outline"
-                  size="sm"
+                  className="h-12 px-4"
                   onClick={() => irPagina(pagina + 1)}
                   disabled={isPending || pagina >= totalPaginas}
                 >
@@ -560,6 +686,265 @@ export function OrdensList({
         }}
       />
     </div>
+  )
+}
+
+// O cabeçalho da coluna GRUDA NO TOPO ao rolar as 50 linhas. O fundo opaco é
+// pra linha que passa por baixo não aparecer através dele.
+function Th({
+  className,
+  children,
+}: {
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <th
+      className={cn(
+        'bg-background text-muted-foreground sticky top-0 z-10 h-11 border-b px-3 text-left align-middle text-xs font-semibold tracking-wide whitespace-nowrap uppercase',
+        className,
+      )}
+    >
+      {children}
+    </th>
+  )
+}
+
+// "Hoje · 24/09 · 4 OPs". A contagem é a da PÁGINA: um dia pode continuar na
+// próxima. O rótulo depende do relógio — ver `TextoDoPrazo` sobre o aviso de
+// hidratação.
+function SeparadorDoDia({ rotulo, n }: { rotulo: string; n: number }) {
+  return (
+    <span suppressHydrationWarning>
+      {rotulo}{' '}
+      <span className="font-normal normal-case">
+        · {n} {n === 1 ? 'OP' : 'OPs'}
+      </span>
+    </span>
+  )
+}
+
+function Maquina({ nome }: { nome: string | null }) {
+  return <span>{nome ? `Máquina ${nome}` : 'Sem máquina'}</span>
+}
+
+// "30 pç" enquanto roda; "27/30 pç" e "2 ref." depois — `quantidadeNaLista`.
+// Âmbar quando a produção fechou abaixo da meta.
+function Quantidade({ o }: { o: OrdemListItem }) {
+  const q = quantidadeNaLista(o)
+  return (
+    <>
+      <span
+        className={cn(
+          'tabular-nums',
+          q.faltou && 'font-semibold text-amber-700 dark:text-amber-400',
+        )}
+      >
+        {q.texto}
+      </span>
+      {q.refugo && (
+        <span className="text-muted-foreground block text-xs tabular-nums">
+          {q.refugo}
+        </span>
+      )}
+    </>
+  )
+}
+
+function Status({ o }: { o: OrdemListItem }) {
+  return (
+    <>
+      <Badge className={cn('h-6 px-2.5', STATUS_BADGE[o.status])}>
+        {STATUS_LABEL_CURTO[o.status]}
+      </Badge>
+      <SeloDePrioridade
+        prioridade={o.prioridade}
+        className="text-xs font-semibold"
+      />
+    </>
+  )
+}
+
+// O prazo em palavras, e só em vermelho quando aperta — `prazoNaLista`, que
+// cala o prazo da OP já concluída (o que falta nela é a baixa). Sem prazo, a
+// tabela mostra "—" pra coluna não parecer quebrada; o cartão não mostra nada.
+function PrazoDaLinha({
+  o,
+  semTraco = false,
+}: {
+  o: OrdemListItem
+  semTraco?: boolean
+}) {
+  const prazo = prazoNaLista(o.status, o.dataPrevistaFim)
+  if (!prazo) {
+    return semTraco ? null : <span className="text-muted-foreground">—</span>
+  }
+  return <TextoDoPrazo prazo={prazo} comIcone />
+}
+
+// O DESTINO É UM ATALHO: clicar filtra a lista por ele (o Full pela remessa,
+// o pedido pelo pedido) e abre a faixa-resumo. 48px de altura, e o
+// sublinhado no hover diz que é clicável sem gritar numa coluna inteira.
+function BotaoDoDestino({
+  o,
+  onClick,
+}: {
+  o: OrdemListItem
+  onClick: (e: React.MouseEvent, o: OrdemListItem) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => onClick(e, o)}
+      title={`Ver só ${o.destino}`}
+      className="hover:text-foreground focus-visible:ring-ring inline-flex min-h-12 max-w-full items-center truncate rounded-md text-left underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:outline-none"
+    >
+      {o.destino}
+    </button>
+  )
+}
+
+// Os três contadores do topo. Vermelho cheio pra atrasada, contorno
+// vermelho pra "vence hoje" (aperta, mas ainda dá tempo), âmbar pra baixa —
+// o âmbar que "Produção concluída" já tem no resto do sistema.
+//
+// ZERO NÃO GRITA: o contador vazio fica neutro e desabilitado. Três caixas
+// coloridas com "0" dentro ensinariam o olho a ignorar a cor.
+const TOM_DO_CONTADOR = {
+  atrasada:
+    'border-destructive bg-destructive/10 text-destructive dark:bg-destructive/20',
+  hoje: 'border-destructive/60 text-destructive',
+  baixa:
+    'border-amber-500/70 bg-amber-500/10 text-amber-800 dark:text-amber-300',
+} as const
+
+function Contador({
+  n,
+  rotulo,
+  ativo,
+  tom,
+  disabled,
+  onClick,
+}: {
+  n: number
+  rotulo: string
+  ativo: boolean
+  tom: keyof typeof TOM_DO_CONTADOR
+  disabled: boolean
+  onClick: () => void
+}) {
+  const vazio = n === 0 && !ativo
+  return (
+    <button
+      type="button"
+      aria-pressed={ativo}
+      onClick={onClick}
+      disabled={disabled || vazio}
+      className={cn(
+        'focus-visible:ring-ring flex min-h-16 flex-1 items-center gap-3 rounded-xl border-2 px-4 py-2 text-left transition-colors focus-visible:ring-2 focus-visible:outline-none disabled:cursor-default motion-reduce:transition-none sm:min-w-44 sm:flex-none',
+        vazio ? 'text-muted-foreground' : TOM_DO_CONTADOR[tom],
+        ativo && 'ring-foreground ring-offset-background ring-2 ring-offset-2',
+      )}
+    >
+      <span className="text-3xl font-bold tabular-nums">{n}</span>
+      <span className="max-w-24 text-sm leading-tight font-semibold">
+        {rotulo}
+      </span>
+    </button>
+  )
+}
+
+// A FAIXA DO FULL (OU DO PEDIDO) FILTRADO — o cabeçalho do bloco de destino
+// do tablet, com a mesma cor (cor-do-canal.ts: texto escuro sobre a cor
+// clara, barra grossa na cor cheia) e o mesmo aviso (`alertaDoBloco`). Com um
+// destino filtrado a pergunta é "como está esse Full?", e a faixa responde
+// com ele INTEIRO: OPs por status e peças sobre a meta.
+//
+// A BARRA MORA AQUI, E NÃO NA LINHA: a produção só é registrada na conclusão,
+// então por OP ela seria 0% ou cheia. No destino inteiro ela anda a cada OP
+// concluída — aí mede algo.
+function FaixaDoDestino({
+  destino,
+  disabled,
+  onLimpar,
+}: {
+  destino: DestinoFiltrado
+  disabled: boolean
+  onLimpar: () => void
+}) {
+  const cor = corDoCanal(destino.canal)
+  const { resumo } = destino
+  const pct =
+    resumo.meta > 0
+      ? Math.min(100, Math.round((resumo.produzido / resumo.meta) * 100))
+      : 0
+  return (
+    <section
+      aria-label={`Resumo de ${destino.cabecalho}`}
+      className="overflow-hidden rounded-xl border-2"
+    >
+      <div className={cn('flex items-stretch', cor ? cor.faixa : 'bg-muted')}>
+        {cor && <span aria-hidden className={cn('w-2.5 shrink-0', cor.barra)} />}
+        <div className="flex min-w-0 flex-1 flex-col gap-3 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <h2 className="text-lg font-semibold">{destino.cabecalho}</h2>
+            <div className="flex items-center gap-2 text-base font-medium tabular-nums">
+              <span>
+                {resumo.total} {resumo.total === 1 ? 'OP' : 'OPs'}
+              </span>
+              {resumo.alerta.prazo && (
+                <span className="text-destructive font-bold">
+                  {resumo.alerta.prazo}
+                </span>
+              )}
+              {resumo.alerta.urgente && <SeloDePrioridade prioridade="urgente" />}
+              <button
+                type="button"
+                onClick={onLimpar}
+                disabled={disabled}
+                aria-label={`Tirar o filtro de ${destino.cabecalho}`}
+                className="focus-visible:ring-ring -mr-2 inline-flex size-12 items-center justify-center rounded-lg hover:bg-current/10 focus-visible:ring-2 focus-visible:outline-none"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+          </div>
+          {/* Na ordem do fluxo (`statusValues`), só os que têm OP. */}
+          <div className="flex flex-wrap items-center gap-2">
+            {statusValues
+              .filter((s) => (resumo.porStatus[s] ?? 0) > 0)
+              .map((s) => (
+                <Badge key={s} className={cn('h-6 px-2.5', STATUS_BADGE[s])}>
+                  <span className="font-bold tabular-nums">
+                    {resumo.porStatus[s]}
+                  </span>
+                  {STATUS_LABEL_CURTO[s]}
+                </Badge>
+              ))}
+          </div>
+          {resumo.meta > 0 && (
+            <div className="flex items-center gap-3">
+              <div
+                role="progressbar"
+                aria-label="Peças produzidas"
+                aria-valuemin={0}
+                aria-valuemax={resumo.meta}
+                aria-valuenow={resumo.produzido}
+                className="h-2.5 flex-1 overflow-hidden rounded-full bg-current/15"
+              >
+                <div
+                  className="h-full rounded-full bg-current/70"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="shrink-0 text-sm font-medium tabular-nums">
+                {resumo.produzido}/{resumo.meta} pç produzidas
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   )
 }
 

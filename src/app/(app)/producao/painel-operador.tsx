@@ -43,16 +43,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  LinhaDaPeca,
+  SeloDePrioridade,
+  TextoDoPrazo,
+} from '@/components/ordens/linha-da-peca'
 import { ColorSwatch } from '@/components/ui/color-swatch'
 import { Input } from '@/components/ui/input'
 import { PainelAnimado, RITMO_DO_PAINEL } from '@/components/ui/painel-animado'
 import { TeclaNumerica } from '@/components/ui/tecla-numerica'
-import {
-  ehDestaque,
-  PRIORIDADE_BADGE,
-  PRIORIDADE_LABEL,
-  type PrioridadeNivel,
-} from '@/lib/prioridade'
 import { ERRO_TABLET_TRAVADO } from '@/lib/auth/inatividade'
 import {
   calcularConclusao,
@@ -71,7 +70,6 @@ import {
   agruparPorDestino,
   alertaDoBloco,
   blocosAbertosPorPadrao,
-  linhaDaOp,
   prazoEmPalavras,
 } from '@/lib/producao/rotulo-da-op'
 import {
@@ -1342,55 +1340,8 @@ function ConfirmarInicioDialog({
   )
 }
 
-// A PEÇA COMO O CHÃO DE FÁBRICA LÊ — a linha do Trello, igual em todo lugar
-// do tablet: "059 - Peseira LINKS - QUEEN - AREIA". As partes vêm de
-// `linhaDaOp` (src/lib/producao/rotulo-da-op.ts); aqui só se decide o peso.
-//
-// O CÓDIGO EM NEGRITO E PRIMEIRO: é o número do programa, o que ele digita na
-// busca e o que confere contra a máquina. O resto em peso normal, na ordem de
-// sempre. Sem código (produto novo, sem programa), a linha começa direto no
-// produto — sem traço sobrando.
-//
-// A QUANTIDADE fica fora por padrão: o cartão tem "Meta: X peças" e a lista
-// tem "X pç" no canto. Os diálogos, que não têm esse lugar, pedem `comQuantidade`.
-type OpDaLinha = {
-  produtoCodigo: string | null
-  produtoNome: string
-  variacaoTamanho: string | null
-  variacaoCor: string | null
-  quantidade: number
-  tamanhoUnico: boolean
-}
-
-function linhaDe(op: OpDaLinha) {
-  return linhaDaOp({
-    codigo: op.produtoCodigo,
-    produtoNome: op.produtoNome,
-    tamanho: op.variacaoTamanho,
-    cor: op.variacaoCor,
-    quantidade: op.quantidade,
-    tamanhoUnico: op.tamanhoUnico,
-  })
-}
-
-function LinhaDaPeca({
-  op,
-  comQuantidade = false,
-}: {
-  op: OpDaLinha
-  comQuantidade?: boolean
-}) {
-  const l = linhaDe(op)
-  const resto = comQuantidade ? l.semCodigo : l.descricao
-  return (
-    <>
-      {l.codigo && (
-        <span className="font-bold tabular-nums">{l.codigo} - </span>
-      )}
-      <span className="font-normal">{resto}</span>
-    </>
-  )
-}
+// A linha, o prazo e o selo moram em src/components/ordens/linha-da-peca.tsx,
+// compartilhados com /ordens: gerente e operador leem a OP do mesmo jeito.
 
 // PRA ONDE VAI, numa linha curta. A seta é o "vai pra": economiza a palavra e
 // não disputa com o prazo, que fica pintado ao lado quando aperta.
@@ -1400,39 +1351,9 @@ function Destino({ texto }: { texto: string }) {
 
 // O PRAZO, QUE ERA INVISÍVEL. A fila é ordenada por prioridade E prazo, mas
 // só a prioridade aparecia — o operador via a ordem sem ver o motivo dela.
-// "vence HOJE" e "ATRASADA" vêm pintados; os outros, em texto normal. Se
-// todo prazo gritasse, nenhum gritaria.
+// Aqui só aparece OP a produzir, então `prazoEmPalavras` basta.
 function Prazo({ data }: { data: Date | null }) {
-  const prazo = prazoEmPalavras(data ? new Date(data) : null)
-  if (!prazo) return null
-  return (
-    <span
-      className={cn(
-        prazo.urgente
-          ? 'text-destructive font-semibold'
-          : 'text-muted-foreground',
-      )}
-    >
-      {prazo.texto}
-    </span>
-  )
-}
-
-// Selo de prioridade. Só alta e urgente ganham um — a regra é do
-// `ehDestaque` em src/lib/prioridade.ts: um selo em cada linha vira ruído, e
-// o ruído esconde justamente o urgente.
-function SeloDePrioridade({ prioridade }: { prioridade: PrioridadeNivel }) {
-  if (!ehDestaque(prioridade)) return null
-  return (
-    <span
-      className={cn(
-        'shrink-0 rounded px-2 py-0.5 text-sm font-medium',
-        PRIORIDADE_BADGE[prioridade],
-      )}
-    >
-      {PRIORIDADE_LABEL[prioridade]}
-    </span>
-  )
+  return <TextoDoPrazo prazo={prazoEmPalavras(data ? new Date(data) : null)} />
 }
 
 // -----------------------------------------------------------------

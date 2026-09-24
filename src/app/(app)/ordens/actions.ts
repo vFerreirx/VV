@@ -34,12 +34,23 @@ import {
 } from '@/lib/db/remessa-da-op'
 import { erroDeProdutoDeParceiro } from '@/lib/db/origem-do-produto'
 import { sincronizarReposicaoDaOp } from '@/lib/db/reposicao-da-op'
-import { hojeEmBrasilia } from '@/lib/dia-brasil'
+import { hojeEmBrasilia, inicioDoDiaEmBrasilia, somarDias } from '@/lib/dia-brasil'
+import {
+  condicaoDeProducaoAtrasada,
+  condicaoDeProducaoVenceHoje,
+} from '@/lib/db/atraso-da-op'
+import { tamanhoUnicoSql } from '@/lib/db/tamanho-unico'
+import {
+  resumoDoDestino,
+  type ResumoDoDestino,
+} from '@/lib/producao/lista-de-ordens'
 import {
   erroDaRemessaDaOp,
   prazoDaOp,
   producaoAteEfetivo,
   rotuloDaRemessa,
+  rotuloDoBlocoDeDestino,
+  rotuloDoDestino,
 } from '@/lib/producao/prazo-da-remessa'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { db } from '@/lib/db'
@@ -127,6 +138,11 @@ export type OrdemListItem = OrdemProducao & {
   produtoCodigo: string | null
   variacaoCor: string | null
   variacaoTamanho: string | null
+  /** A cor do fio, pro quadradinho (`ColorSwatch`) — a mesma do tablet. */
+  corHex: string | null
+  corHex2: string | null
+  /** Produto de um tamanho só: a linha do Trello não escreve o tamanho. */
+  tamanhoUnico: boolean
   maquinaNome: string | null
   responsavelNome: string | null
   /**
@@ -136,8 +152,13 @@ export type OrdemListItem = OrdemProducao & {
    * mesmo dia viravam duas linhas iguais.
    */
   remessaRotulo: string | null
+  /**
+   * Pra onde a OP vai: o rótulo da remessa, "Pedido #142", "Estoque" —
+   * `rotuloDoDestino`, o mesmo do tablet. É o que a coluna Destino mostra.
+   */
+  destino: string
   atrasada: boolean
-  /** Soma dos apontamentos — a coluna "Resultado". Zero e zero = sem registro. */
+  /** Soma dos apontamentos. Zero e zero = sem registro (`quantidadeNaLista`). */
   produzido: number
   refugo: number
 }
@@ -145,31 +166,58 @@ export type OrdemListItem = OrdemProducao & {
 // Tamanho da página da listagem de ordens.
 const ORDENS_POR_PAGINA = 50
 
+/**
+ * Os contadores do topo: o que APERTA. Contam o conjunto inteiro dos outros
+ * filtros (canal, Full, busca…), não só a página, e IGNORAM o de status e o
+ * de prazo — senão clicar em "Atrasadas" zeraria os outros dois, e o gerente
+ * perderia de vista o que ainda falta olhar.
+ */
+export type ContagensDaLista = {
+  atrasadas: number
+  vencemHoje: number
+  /** Produção concluída sem baixa (`pronto_envio`). */
+  faltaBaixa: number
+}
+
+/** A faixa do Full ou do pedido filtrado — `resumoDoDestino`. */
+export type DestinoFiltrado = {
+  /** "Full ML · Conta 1 · envio 29/09" · "Pedido #142 · Loja Bela". */
+  cabecalho: string
+  /** O canal da remessa, pra cor (`corDoCanal`); pedido não tem cor. */
+  canal: string | null
+  /** Qual filtro a faixa representa — o X dela tira este. */
+  filtro: 'remessaId' | 'pedidoId'
+  resumo: ResumoDoDestino
+}
+
 export type OrdensPagina = {
   ordens: OrdemListItem[]
   total: number
   pagina: number
   totalPaginas: number
+  contagens: ContagensDaLista
+  destino: DestinoFiltrado | null
 }
 
-export async function listarOrdens(
-  filtros: OrdensFiltros = {},
-): Promise<OrdensPagina> {
-  const user = await requireAuth()
-  const parsed = ordensFiltrosSchema.safeParse(filtros)
-  const f = parsed.success ? parsed.data : {}
-
-  const conditions = [isNull(ordensProducao.deletedAt)]
+// OS FILTROS DA LISTA, em duas metades. A de BASE vale pra tudo — página,
+// total e contadores. A de SITUAÇÃO (status e prazo) só vale pra página e
+// total: os contadores são justamente o menu dela (ver `ContagensDaLista`).
+async function condicoesDaLista(
+  f: OrdensFiltros,
+  user: { id: string; role: string },
+  fimDeHoje: Date,
+) {
+  const base = [isNull(ordensProducao.deletedAt)]
 
   // O operador enxerga a fila comum + a estação dele. A regra mora em
   // src/lib/db/estacao-operadores.ts porque ela vale IGUAL aqui e na lista
   // de /ordens — eram duas cópias da versão antiga, e divergir faria a OP
   // aparecer no board e sumir da lista. Os demais cargos veem tudo.
   if (user.role === 'operador') {
-    conditions.push(await condicaoDeVisaoDoOperador(user.id))
+    base.push(await condicaoDeVisaoDoOperador(user.id))
   }
   if (f.q && f.q.length > 0) {
-    conditions.push(
+    base.push(
       or(
         ilike(ordensProducao.numero, `%${f.q}%`),
         ilike(produtos.nome, `%${f.q}%`),
@@ -178,6 +226,23 @@ export async function listarOrdens(
       )!,
     )
   }
+  if (f.canal && f.canal !== 'todos') {
+    base.push(eq(ordensProducao.canalDestino, f.canal))
+  }
+  if (f.prioridade && f.prioridade !== 'todas') {
+    base.push(eq(ordensProducao.prioridade, f.prioridade))
+  }
+  if (f.maquinaId && f.maquinaId.length > 0) {
+    base.push(eq(ordensProducao.maquinaId, f.maquinaId))
+  }
+  if (f.remessaId && f.remessaId.length > 0) {
+    base.push(eq(ordensProducao.remessaFullId, f.remessaId))
+  }
+  if (f.pedidoId && f.pedidoId.length > 0) {
+    base.push(eq(ordensProducao.orcamentoId, f.pedidoId))
+  }
+
+  const situacao = []
   // ⚠️ SEM STATUS NA URL É "ABERTAS", e não "todas". A lista abre no que
   // está em andamento — tudo que não teve baixa nem foi cancelado —, porque é
   // isso que se procura aqui no dia a dia. "Todas" é um valor EXPLÍCITO
@@ -185,114 +250,232 @@ export async function listarOrdens(
   // baixa (a busca global, o calendário do Full) manda ele junto.
   const status = f.status ?? 'abertas'
   if (status === 'abertas') {
-    conditions.push(notInArray(ordensProducao.status, ['enviado', 'cancelado']))
+    situacao.push(notInArray(ordensProducao.status, ['enviado', 'cancelado']))
   } else if (status !== 'todos') {
-    conditions.push(eq(ordensProducao.status, status))
+    situacao.push(eq(ordensProducao.status, status))
   }
-  if (f.canal && f.canal !== 'todos') {
-    conditions.push(eq(ordensProducao.canalDestino, f.canal))
-  }
-  if (f.prioridade && f.prioridade !== 'todas') {
-    conditions.push(eq(ordensProducao.prioridade, f.prioridade))
-  }
-  if (f.maquinaId && f.maquinaId.length > 0) {
-    conditions.push(eq(ordensProducao.maquinaId, f.maquinaId))
-  }
-  if (f.remessaId && f.remessaId.length > 0) {
-    conditions.push(eq(ordensProducao.remessaFullId, f.remessaId))
-  }
+  // As regras dos contadores, as MESMAS cópias SQL de `producaoAtrasada`: o
+  // número do botão e o que a lista mostra ao clicar nele não divergem.
+  if (f.prazo === 'atrasadas') situacao.push(condicaoDeProducaoAtrasada())
+  if (f.prazo === 'hoje') situacao.push(condicaoDeProducaoVenceHoje(fimDeHoje))
 
-  // Total (com os mesmos filtros/joins) pra paginação.
-  const [{ total }] = await db
-    .select({ total: sql<number>`count(*)::int` })
+  return { base, situacao }
+}
+
+// ⚠️ `"ordens_producao"."id"` QUALIFICADO À MÃO, como em producao/actions.ts:
+// sem isso o Postgres correlaciona com o `id` da própria subquery e o
+// resultado sai sempre zero.
+const produzidoSql = sql<number>`(
+  SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)::int
+  FROM ${apontamentosProducao}
+  WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+)`
+const refugoSql = sql<number>`(
+  SELECT COALESCE(SUM(${apontamentosProducao.quantidadeRefugo}), 0)::int
+  FROM ${apontamentosProducao}
+  WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
+)`
+
+export async function listarOrdens(
+  filtros: OrdensFiltros = {},
+): Promise<OrdensPagina> {
+  const user = await requireAuth()
+  const parsed = ordensFiltrosSchema.safeParse(filtros)
+  const f = parsed.success ? parsed.data : {}
+
+  // "Vence hoje" termina quando AMANHÃ começa em Brasília — o instante vem de
+  // src/lib/dia-brasil.ts, a fonte única do fuso.
+  const fimDeHoje = inicioDoDiaEmBrasilia(somarDias(hojeEmBrasilia(), 1))
+  const { base, situacao } = await condicoesDaLista(f, user, fimDeHoje)
+
+  // TOTAL E CONTADORES NUMA CONSULTA SÓ, com `count(*) FILTER`: os três
+  // contadores ignoram a situação (ver `ContagensDaLista`), o total não.
+  const naSituacao = situacao.length > 0 ? and(...situacao)! : sql`true`
+  const [agregado] = await db
+    .select({
+      total: sql<number>`count(*) FILTER (WHERE ${naSituacao})::int`,
+      atrasadas: sql<number>`count(*) FILTER (WHERE ${condicaoDeProducaoAtrasada()})::int`,
+      vencemHoje: sql<number>`count(*) FILTER (WHERE ${condicaoDeProducaoVenceHoje(fimDeHoje)})::int`,
+      faltaBaixa: sql<number>`count(*) FILTER (WHERE ${eq(ordensProducao.status, 'pronto_envio')})::int`,
+    })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
-    .where(and(...conditions))
+    .where(and(...base))
+  const total = agregado?.total ?? 0
 
   const totalPaginas = Math.max(1, Math.ceil(total / ORDENS_POR_PAGINA))
   const pagina = Math.min(f.pagina ?? 1, totalPaginas)
 
-  const rows = await db
-    .select({
-      op: ordensProducao,
-      produtoNome: produtos.nome,
-      produtoSku: produtos.sku,
-      produtoCodigo: produtos.codigo,
-      variacaoCor: variacoesProduto.cor,
-      variacaoTamanho: variacoesProduto.tamanho,
-      maquinaNome: maquinas.nome,
-      responsavelNome: users.nome,
-      remessaCanal: remessasFull.canal,
-      remessaDataEnvio: remessasFull.dataEnvio,
-      remessaContaNome: contasMarketplace.nome,
-      // ⚠️ `"ordens_producao"."id"` QUALIFICADO À MÃO, como em
-      // producao/actions.ts: sem isso o Postgres correlaciona com o `id` da
-      // própria subquery e o resultado sai sempre zero.
-      produzido: sql<number>`(
-        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)::int
-        FROM ${apontamentosProducao}
-        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
-      )`,
-      refugo: sql<number>`(
-        SELECT COALESCE(SUM(${apontamentosProducao.quantidadeRefugo}), 0)::int
-        FROM ${apontamentosProducao}
-        WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
-      )`,
-    })
-    .from(ordensProducao)
-    .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
-    .leftJoin(
-      variacoesProduto,
-      eq(variacoesProduto.id, ordensProducao.variacaoId),
-    )
-    .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
-    .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
-    .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
-    // A conta da remessa, pro rótulo "Full ML · Conta 1 · 15/07". 1:1: não
-    // duplica linha nem mexe no COUNT acima.
-    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
-    .where(and(...conditions))
-    .orderBy(desc(ordensProducao.createdAt))
-    .limit(ORDENS_POR_PAGINA)
-    .offset((pagina - 1) * ORDENS_POR_PAGINA)
+  const [rows, destino] = await Promise.all([
+    db
+      .select({
+        op: ordensProducao,
+        produtoNome: produtos.nome,
+        produtoSku: produtos.sku,
+        produtoCodigo: produtos.codigo,
+        variacaoCor: variacoesProduto.cor,
+        variacaoTamanho: variacoesProduto.tamanho,
+        corHex: cores.codigoHex,
+        corHex2: cores.codigoHex2,
+        tamanhoUnico: tamanhoUnicoSql,
+        maquinaNome: maquinas.nome,
+        responsavelNome: users.nome,
+        remessaCanal: remessasFull.canal,
+        remessaDataEnvio: remessasFull.dataEnvio,
+        remessaContaNome: contasMarketplace.nome,
+        pedidoNumero: orcamentos.numero,
+        produzido: produzidoSql,
+        refugo: refugoSql,
+      })
+      .from(ordensProducao)
+      .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
+      .leftJoin(
+        variacoesProduto,
+        eq(variacoesProduto.id, ordensProducao.variacaoId),
+      )
+      // A cor do fio pelo NOME, como o tablet (`cores.nome` é único): 1:1,
+      // não duplica linha.
+      .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
+      .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
+      .leftJoin(users, eq(users.id, ordensProducao.responsavelId))
+      .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+      // A conta da remessa, pro rótulo "Full ML · Conta 1 · 15/07". 1:1: não
+      // duplica linha.
+      .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
+      // O pedido, pro "Pedido #142". 1:1 também.
+      .leftJoin(orcamentos, eq(orcamentos.id, ordensProducao.orcamentoId))
+      .where(and(...base, ...situacao))
+      .orderBy(desc(ordensProducao.createdAt))
+      .limit(ORDENS_POR_PAGINA)
+      .offset((pagina - 1) * ORDENS_POR_PAGINA),
+    destinoFiltrado(f, user),
+  ])
 
   const now = Date.now()
-  const ordens = rows.map(
-    ({
-      op,
-      produtoNome,
-      produtoSku,
-      produtoCodigo,
-      variacaoCor,
-      variacaoTamanho,
-      maquinaNome,
-      responsavelNome,
-      remessaCanal,
-      remessaDataEnvio,
-      remessaContaNome,
-      produzido,
-      refugo,
-    }) => ({
-      ...op,
-      produtoNome,
-      produtoSku,
-      produtoCodigo: produtoCodigo ?? null,
-      variacaoCor: variacaoCor ?? null,
-      variacaoTamanho: variacaoTamanho ?? null,
-      maquinaNome: maquinaNome ?? null,
-      responsavelNome: responsavelNome ?? null,
-      remessaRotulo:
-        remessaCanal && remessaDataEnvio
-          ? rotuloDaRemessa(remessaCanal, remessaDataEnvio, remessaContaNome)
-          : null,
+  const ordens = rows.map((r): OrdemListItem => {
+    const remessa =
+      r.remessaCanal && r.remessaDataEnvio
+        ? {
+            canal: r.remessaCanal,
+            dataEnvio: r.remessaDataEnvio,
+            contaNome: r.remessaContaNome,
+          }
+        : null
+    return {
+      ...r.op,
+      produtoNome: r.produtoNome,
+      produtoSku: r.produtoSku,
+      produtoCodigo: r.produtoCodigo ?? null,
+      variacaoCor: r.variacaoCor ?? null,
+      variacaoTamanho: r.variacaoTamanho ?? null,
+      corHex: r.corHex ?? null,
+      corHex2: r.corHex2 ?? null,
+      tamanhoUnico: Boolean(r.tamanhoUnico),
+      maquinaNome: r.maquinaNome ?? null,
+      responsavelNome: r.responsavelNome ?? null,
+      remessaRotulo: remessa
+        ? rotuloDaRemessa(remessa.canal, remessa.dataEnvio, remessa.contaNome)
+        : null,
+      destino: rotuloDoDestino({
+        canal: r.op.canalDestino,
+        remessa,
+        pedidoNumero: r.pedidoNumero ?? null,
+      }),
       // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
-      atrasada: producaoAtrasada(op.status, op.dataPrevistaFim, now),
-      produzido: produzido ?? 0,
-      refugo: refugo ?? 0,
-    }),
-  )
+      atrasada: producaoAtrasada(r.op.status, r.op.dataPrevistaFim, now),
+      produzido: r.produzido ?? 0,
+      refugo: r.refugo ?? 0,
+    }
+  })
 
-  return { ordens, total, pagina, totalPaginas }
+  return {
+    ordens,
+    total,
+    pagina,
+    totalPaginas,
+    contagens: {
+      atrasadas: agregado?.atrasadas ?? 0,
+      vencemHoje: agregado?.vencemHoje ?? 0,
+      faltaBaixa: agregado?.faltaBaixa ?? 0,
+    },
+    destino,
+  }
+}
+
+// A FAIXA DO DESTINO FILTRADO. Duas consultas pequenas, e só quando há um
+// Full ou um pedido na URL: o cabeçalho (remessa + conta, ou o pedido) e as
+// OPs DELE com o mínimo pra `resumoDoDestino` — nunca a tabela inteira.
+//
+// ⚠️ O DESTINO INTEIRO, sem os filtros de status, busca e prioridade: a faixa
+// responde "como está esse Full?", e tirar dela as OPs com baixa esconderia
+// as peças que já saíram. A visão do OPERADOR vale aqui também: o que ele não
+// vê na lista não entra na conta dele.
+async function destinoFiltrado(
+  f: OrdensFiltros,
+  user: { id: string; role: string },
+): Promise<DestinoFiltrado | null> {
+  const remessaId = f.remessaId?.trim() || null
+  const pedidoId = remessaId ? null : f.pedidoId?.trim() || null
+  if (!remessaId && !pedidoId) return null
+
+  let cabecalho: string
+  let canal: string | null = null
+  if (remessaId) {
+    const [r] = await db
+      .select({
+        canal: remessasFull.canal,
+        dataEnvio: remessasFull.dataEnvio,
+        contaNome: contasMarketplace.nome,
+      })
+      .from(remessasFull)
+      .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
+      .where(eq(remessasFull.id, remessaId))
+      .limit(1)
+    if (!r) return null
+    canal = r.canal
+    cabecalho = rotuloDoBlocoDeDestino({ canal: r.canal, remessa: r })
+  } else {
+    const [p] = await db
+      .select({ numero: orcamentos.numero, cliente: orcamentos.cliente })
+      .from(orcamentos)
+      .where(eq(orcamentos.id, pedidoId!))
+      .limit(1)
+    if (!p) return null
+    cabecalho = rotuloDoBlocoDeDestino({
+      canal: '',
+      pedidoNumero: p.numero,
+      pedidoCliente: p.cliente,
+    })
+  }
+
+  const condicoes = [
+    isNull(ordensProducao.deletedAt),
+    remessaId
+      ? eq(ordensProducao.remessaFullId, remessaId)
+      : eq(ordensProducao.orcamentoId, pedidoId!),
+  ]
+  if (user.role === 'operador') {
+    condicoes.push(await condicaoDeVisaoDoOperador(user.id))
+  }
+  const ops = await db
+    .select({
+      status: ordensProducao.status,
+      quantidade: ordensProducao.quantidade,
+      dataPrevistaFim: ordensProducao.dataPrevistaFim,
+      prioridade: ordensProducao.prioridade,
+      produzido: produzidoSql,
+    })
+    .from(ordensProducao)
+    .where(and(...condicoes))
+
+  return {
+    cabecalho,
+    canal,
+    filtro: remessaId ? 'remessaId' : 'pedidoId',
+    resumo: resumoDoDestino(
+      ops.map((o) => ({ ...o, produzido: o.produzido ?? 0 })),
+    ),
+  }
 }
 
 export type OrdemDetalhe = OrdemProducao & {

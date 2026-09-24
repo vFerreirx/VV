@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { and, inArray, isNotNull, sql, type SQL } from 'drizzle-orm'
+import { and, inArray, isNotNull, lt, sql, type SQL } from 'drizzle-orm'
 
 import { ordensProducao } from '@/lib/db/schema'
 import { ANTES_DA_CONCLUSAO } from '@/lib/producao/transicoes-da-op'
@@ -16,5 +16,25 @@ export function condicaoDeProducaoAtrasada(): SQL {
     inArray(ordensProducao.status, [...ANTES_DA_CONCLUSAO]),
     isNotNull(ordensProducao.dataPrevistaFim),
     sql`${ordensProducao.dataPrevistaFim} < now()`,
+  )!
+}
+
+// VENCE HOJE, pro contador de /ordens: produção não concluída e prazo entre
+// AGORA e o fim do dia de Brasília. É a contraparte SQL do "vence HOJE" de
+// `prazoNaLista` (src/lib/producao/lista-de-ordens.ts).
+//
+// ⚠️ `>= now()` e não "o dia é hoje": o que já passou das horas é atrasada
+// (`condicaoDeProducaoAtrasada`), e a mesma OP não pode entrar nos dois
+// contadores — a linha diz "venceu HOJE" pra ela, pintada como atraso.
+//
+// ⚠️ O FIM DO DIA VEM DE FORA, como instante (`inicioDoDiaEmBrasilia` de
+// amanhã, src/lib/dia-brasil.ts), e não de um `AT TIME ZONE` aqui: o fuso
+// mora naquele arquivo e só lá.
+export function condicaoDeProducaoVenceHoje(fimDeHoje: Date): SQL {
+  return and(
+    inArray(ordensProducao.status, [...ANTES_DA_CONCLUSAO]),
+    isNotNull(ordensProducao.dataPrevistaFim),
+    sql`${ordensProducao.dataPrevistaFim} >= now()`,
+    lt(ordensProducao.dataPrevistaFim, fimDeHoje),
   )!
 }
