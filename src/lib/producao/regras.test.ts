@@ -135,6 +135,13 @@ import {
   tituloDaOp,
 } from './rotulo-da-op.ts'
 import {
+  agruparPorDia,
+  prazoNaLista,
+  quantidadeNaLista,
+  resumoDoDestino,
+  rotuloDoDia,
+} from './lista-de-ordens.ts'
+import {
   contarMaquinas,
   disponibilidadeDe,
   grupoDaSituacao,
@@ -2738,4 +2745,140 @@ test('kanban e tablet: os Fulls na MESMA ordem e com a MESMA chave', () => {
   ])
   // E o primeiro item das duas telas e o da OP mais urgente da fila.
   assert.equal(itensDaColuna(fila)[0]!.ops[0]!.id, agruparPorDestino(fila)[0]!.ops[0]!.id)
+})
+
+// ─────────────────────────────────────────────────────────────────────────
+// /ordens — a lista lida num relance (lista-de-ordens.ts)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Horários escolhidos pra dar o MESMO dia em UTC e em Brasília: o teste roda
+// no fuso de quem roda, e `prazoEmPalavras` conta no fuso local.
+
+// Quinta-feira, 24/09/2026, meio-dia em Brasília.
+const QUINTA = new Date('2026-09-24T15:00:00Z')
+
+test('prazo na lista: OP concluída não fica "ATRASADA" por falta de baixa', () => {
+  const venceu = new Date('2026-09-21T20:00:00Z')
+  assert.equal(prazoNaLista('pronto_envio', venceu, QUINTA), null)
+  assert.equal(prazoNaLista('enviado', venceu, QUINTA), null)
+  assert.equal(prazoNaLista('cancelado', venceu, QUINTA), null)
+  assert.deepEqual(prazoNaLista('em_producao', venceu, QUINTA), {
+    texto: 'ATRASADA 3 dias',
+    urgente: true,
+  })
+  // Legado ainda não concluído continua atrasando (ANTES_DA_CONCLUSAO).
+  assert.equal(prazoNaLista('acabamento', venceu, QUINTA)?.urgente, true)
+  assert.equal(prazoNaLista('programado', null, QUINTA), null)
+})
+
+test('prazo na lista: hoje ainda por vir é "vence HOJE"; já passado é "venceu HOJE"', () => {
+  const maisTarde = new Date('2026-09-24T20:00:00Z')
+  const maisCedo = new Date('2026-09-24T12:00:00Z')
+  assert.deepEqual(prazoNaLista('programado', maisTarde, QUINTA), {
+    texto: 'vence HOJE',
+    urgente: true,
+  })
+  // O contador de atrasadas (cópia SQL de producaoAtrasada) já conta esta:
+  // a linha não pode dizer que ela ainda vai vencer.
+  assert.deepEqual(prazoNaLista('programado', maisCedo, QUINTA), {
+    texto: 'venceu HOJE',
+    urgente: true,
+  })
+  assert.deepEqual(
+    prazoNaLista('programado', '2026-09-26T20:00:00Z', QUINTA),
+    { texto: '2 dias', urgente: false },
+  )
+})
+
+test('quantidade na lista: meta enquanto roda, resultado depois, âmbar só se faltou no fim', () => {
+  assert.deepEqual(
+    quantidadeNaLista({ status: 'programado', quantidade: 30, produzido: 0, refugo: 0 }),
+    { texto: '30 pç', refugo: null, faltou: false },
+  )
+  assert.deepEqual(
+    quantidadeNaLista({ status: 'pronto_envio', quantidade: 40, produzido: 38, refugo: 2 }),
+    { texto: '38/40 pç', refugo: '2 ref.', faltou: true },
+  )
+  // Apontamento parcial do gerente no meio da produção: andamento, não falta.
+  assert.equal(
+    quantidadeNaLista({ status: 'em_producao', quantidade: 30, produzido: 12, refugo: 0 }).faltou,
+    false,
+  )
+  assert.deepEqual(
+    quantidadeNaLista({ status: 'enviado', quantidade: 30, produzido: 30, refugo: 0 }),
+    { texto: '30/30 pç', refugo: null, faltou: false },
+  )
+  // Só refugo registrado: mostra o resultado (0 peças boas), não a meta.
+  assert.equal(
+    quantidadeNaLista({ status: 'pronto_envio', quantidade: 10, produzido: 0, refugo: 3 }).texto,
+    '0/10 pç',
+  )
+})
+
+test('dia de criação: hoje, ontem, esta semana e a data — no fuso de Brasília', () => {
+  assert.equal(rotuloDoDia('2026-09-24T11:00:00Z', QUINTA), 'Hoje · 24/09')
+  // 22h30 de quinta em Brasília já é sexta em UTC: continua "Hoje".
+  assert.equal(rotuloDoDia('2026-09-25T01:30:00Z', QUINTA), 'Hoje · 24/09')
+  // 23h de quarta em Brasília (02h de quinta em UTC): "Ontem".
+  assert.equal(rotuloDoDia('2026-09-24T02:00:00Z', QUINTA), 'Ontem · 23/09')
+  assert.equal(rotuloDoDia('2026-09-22T15:00:00Z', QUINTA), 'Esta semana')
+  assert.equal(rotuloDoDia('2026-09-21T15:00:00Z', QUINTA), 'Esta semana')
+  assert.equal(rotuloDoDia('2026-09-20T15:00:00Z', QUINTA), 'Dom · 20/09')
+  assert.equal(rotuloDoDia('2026-09-16T15:00:00Z', QUINTA), 'Qua · 16/09')
+  // Na segunda, "Esta semana" não existe: sábado já é a semana passada.
+  const segunda = new Date('2026-09-21T15:00:00Z')
+  assert.equal(rotuloDoDia('2026-09-20T15:00:00Z', segunda), 'Ontem · 20/09')
+  assert.equal(rotuloDoDia('2026-09-19T15:00:00Z', segunda), 'Sáb · 19/09')
+})
+
+test('agruparPorDia: corta onde o rótulo muda, sem reordenar', () => {
+  const ops = [
+    { id: 'a', createdAt: '2026-09-24T14:00:00Z' },
+    { id: 'b', createdAt: '2026-09-24T12:00:00Z' },
+    { id: 'c', createdAt: '2026-09-23T12:00:00Z' },
+    { id: 'd', createdAt: '2026-09-22T12:00:00Z' },
+    { id: 'e', createdAt: '2026-09-21T12:00:00Z' },
+    { id: 'f', createdAt: '2026-09-18T12:00:00Z' },
+  ]
+  assert.deepEqual(
+    agruparPorDia(ops, QUINTA).map((g) => [g.rotulo, g.ops.map((o) => o.id)]),
+    [
+      ['Hoje · 24/09', ['a', 'b']],
+      ['Ontem · 23/09', ['c']],
+      ['Esta semana', ['d', 'e']],
+      ['Sex · 18/09', ['f']],
+    ],
+  )
+  assert.deepEqual(agruparPorDia([], QUINTA), [])
+})
+
+test('resumo do destino: o Full inteiro, sem cancelada, e só a produção aberta avisa', () => {
+  const venceu = '2026-09-22T20:00:00Z'
+  const hoje = '2026-09-24T20:00:00Z'
+  const r = resumoDoDestino(
+    [
+      { status: 'programado', quantidade: 30, produzido: 0, dataPrevistaFim: hoje, prioridade: 'normal' },
+      { status: 'aguardando_materia_prima', quantidade: 25, produzido: 0, dataPrevistaFim: hoje, prioridade: 'urgente' },
+      // Concluída depois do prazo: é peça, mas não é atraso.
+      { status: 'pronto_envio', quantidade: 40, produzido: 38, dataPrevistaFim: venceu, prioridade: 'normal' },
+      { status: 'enviado', quantidade: 20, produzido: 20, dataPrevistaFim: venceu, prioridade: 'normal' },
+      // Cancelada não é meta, nem peça, nem status.
+      { status: 'cancelado', quantidade: 99, produzido: 0, dataPrevistaFim: venceu, prioridade: 'urgente' },
+    ],
+    QUINTA,
+  )
+  assert.equal(r.total, 4)
+  assert.deepEqual(r.porStatus, {
+    programado: 1,
+    aguardando_materia_prima: 1,
+    pronto_envio: 1,
+    enviado: 1,
+  })
+  assert.equal(r.produzido, 58)
+  assert.equal(r.meta, 115)
+  assert.deepEqual(r.alerta, { prazo: '2 vencem HOJE', urgente: true })
+
+  const vazio = resumoDoDestino([], QUINTA)
+  assert.equal(vazio.total, 0)
+  assert.deepEqual(vazio.alerta, { prazo: null, urgente: false })
 })

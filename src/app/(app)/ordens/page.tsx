@@ -91,6 +91,8 @@ export default async function OrdensPage({
           total={pagina.total}
           pagina={pagina.pagina}
           totalPaginas={pagina.totalPaginas}
+          contagens={pagina.contagens}
+          destino={pagina.destino}
           remessas={remessas}
           podeEditar={podeEditar}
           filtrosIniciais={filtros}
