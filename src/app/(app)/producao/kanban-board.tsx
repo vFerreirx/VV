@@ -40,6 +40,7 @@ import {
   type ProdutoComVariacoesParaForm,
 } from '@/app/(app)/ordens/actions'
 import { CodigoDoProduto } from '@/components/ordens/codigo-do-produto'
+import { corDoCanal } from '@/lib/producao/cor-do-canal'
 import { NovaOpDialog } from '@/components/ordens/nova-op-dialog'
 import {
   marcarEco,
@@ -726,24 +727,41 @@ function PastaFull({
   const totalUn = ops.reduce((s, o) => s + o.quantidade, 0)
   const nAtrasadas = ops.filter((o) => o.atrasada).length
   const label = ops[0]?.remessaLabel ?? 'Full'
+  // A COR DO MARKETPLACE, a mesma do tablet (src/lib/producao/cor-do-canal.ts):
+  // o gerente e o operador olham pro mesmo Full e veem o mesmo amarelo.
+  const cor = corDoCanal(ops[0]?.canalDestino)
 
   return (
-    <div className="bg-card rounded-lg border shadow-sm">
+    <div className="bg-card overflow-hidden rounded-lg border shadow-sm">
       <button
         type="button"
         onClick={() => setAberta((v) => !v)}
-        className="hover:bg-muted/40 flex w-full items-center justify-between gap-2 rounded-lg p-2.5 text-left transition-colors"
+        className={cn(
+          'flex w-full items-center justify-between gap-2 p-2.5 text-left transition-opacity hover:opacity-90',
+          cor ? [cor.faixa, cor.borda, 'pl-4'] : 'hover:bg-muted/40',
+        )}
       >
         <span className="flex min-w-0 items-center gap-1.5">
           <PackageOpen
             className={cn(
               'size-4 shrink-0',
-              nAtrasadas > 0 ? 'text-destructive' : 'text-muted-foreground',
+              nAtrasadas > 0
+                ? 'text-destructive'
+                : cor
+                  ? 'opacity-70'
+                  : 'text-muted-foreground',
             )}
           />
           <span className="flex min-w-0 flex-col">
-            <span className="truncate text-xs font-medium">{label}</span>
-            <span className="text-muted-foreground text-[10px] tabular-nums">
+            <span className="truncate text-xs font-semibold">{label}</span>
+            {/* Sobre a faixa colorida, o cinza "muted" some: a linha herda o
+                texto escuro da faixa, só mais leve. */}
+            <span
+              className={cn(
+                'text-[10px] tabular-nums',
+                cor ? 'opacity-80' : 'text-muted-foreground',
+              )}
+            >
               {ops.length} OP{ops.length > 1 ? 's' : ''} · {totalUn} un
               {nAtrasadas > 0 && (
                 <span className="text-destructive font-medium">

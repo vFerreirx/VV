@@ -265,6 +265,11 @@ export type DestinoDaOp = {
   } | null
   /** O número do pedido, quando a OP produz o faltante de um. */
   pedidoNumero?: number | null
+  /**
+   * O cliente do pedido. Só o cabeçalho do bloco usa
+   * (`rotuloDoBlocoDeDestino`); a linha de destino continua "Pedido #142".
+   */
+  pedidoCliente?: string | null
 }
 
 const DESTINO_DO_CANAL: Record<string, string> = {
@@ -287,6 +292,31 @@ export function rotuloDoDestino({
   const c = canal.trim()
   if (c === '') return 'Sem destino'
   return DESTINO_DO_CANAL[c] ?? c
+}
+
+/**
+ * O CABEÇALHO DO BLOCO DE DESTINO no diálogo "Iniciar" do tablet:
+ * "Full ML · Conta 1 · envio 29/09". É o `rotuloDoDestino` com a palavra
+ * "envio" — no cabeçalho a data está sozinha, longe do prazo da OP, e "29/09"
+ * solto faria o operador perguntar "29/09 o quê?". O pedido ganha o CLIENTE,
+ * "Pedido #142 · Loja Bela": o Full diz a conta, o pedido diz pra quem é.
+ * Venda direta e Estoque saem iguais ao destino. Full SEM remessa (OP de
+ * teste antiga): "Full ML · sem remessa", pra não se misturar com as que têm.
+ */
+export function rotuloDoBlocoDeDestino(d: DestinoDaOp): string {
+  if (d.remessa) {
+    const [, m, dia] = d.remessa.dataEnvio.split('-')
+    return `${rotuloDoEventoFull(d.remessa.canal, d.remessa.contaNome ?? null)} · envio ${dia}/${m}`
+  }
+  if (d.pedidoNumero != null) {
+    const pedido = rotuloDoDestino(d)
+    const cliente = d.pedidoCliente?.trim()
+    return cliente ? `${pedido} · ${cliente}` : pedido
+  }
+  if (ehCanalFull(d.canal)) {
+    return `${rotuloDoEventoFull(d.canal, null)} · sem remessa`
+  }
+  return rotuloDoDestino(d)
 }
 
 /** "27/09" — dia e mês de uma data 'YYYY-MM-DD'. */

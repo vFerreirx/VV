@@ -105,6 +105,7 @@ import {
   erroDaRemessaDaOp,
   nomeDaContaNoRotulo,
   rotuloDaRemessa,
+  rotuloDoBlocoDeDestino,
   rotuloDoDestino,
   rotuloDoEventoFull,
 } from './prazo-da-remessa.ts'
@@ -117,8 +118,13 @@ import {
   oQueParou,
   rotuloDoMotivo,
 } from './parada-de-maquina.ts'
+import { corDoCanal } from './cor-do-canal.ts'
 import {
+  ABRE_TUDO_ATE,
+  agruparPorDestino,
   agruparPorProduto,
+  alertaDoBloco,
+  blocosAbertosPorPadrao,
   cabecalhoDoProduto,
   destaqueDaVariacao,
   familiaDoProduto,
@@ -2469,4 +2475,195 @@ test('Full sempre dentro de remessa, e do mesmo canal', () => {
   assert.equal(erroDaRemessaDaOp('estoque', null), null)
   assert.equal(erroDaRemessaDaOp('venda_direta', null), null)
   assert.equal(erroDaRemessaDaOp('estoque', { canal: 'full_ml' }), 'Só OP de Full vai numa remessa')
+})
+
+// -----------------------------------------------------------------
+// "Iniciar" agrupado por DESTINO, e dentro por produto (rotulo-da-op.ts)
+// -----------------------------------------------------------------
+
+// A fila chega por urgencia (prioridade + prazo) — e a ordem desta lista e
+// essa. Tres OPs do mesmo Full (r1), espalhadas entre outras.
+const op = (
+  id: string,
+  destino: { remessa?: string; pedido?: string; canal: string; rotulo: string },
+  produto: [string, string],
+) => ({
+  id,
+  canalDestino: destino.canal,
+  remessaFullId: destino.remessa ?? null,
+  orcamentoId: destino.pedido ?? null,
+  destinoBloco: destino.rotulo,
+  produtoCodigo: produto[0],
+  produtoNome: produto[1],
+})
+const R1 = { remessa: 'r1', canal: 'full_ml', rotulo: 'Full ML · Conta 1 · envio 29/09' }
+const R2 = { remessa: 'r2', canal: 'full_ml', rotulo: 'Full ML · Conta 3 · envio 02/10' }
+const EST = { canal: 'estoque', rotulo: 'Estoque' }
+const PESEIRA_3D: [string, string] = ['076', 'Peseira - 3D']
+const CAPA_LINKS: [string, string] = ['059', 'Capa de Almofada - LINKS']
+const PESEIRA_LINKS: [string, string] = ['059', 'Peseira - LINKS']
+
+test('destino: o mesmo Full vira UM bloco, com os produtos dentro', () => {
+  // O caso do print: tres OPs do Full ML Conta 1 espalhadas em tres grupos.
+  const blocos = agruparPorDestino([
+    op('a', R1, PESEIRA_3D),
+    op('b', EST, PESEIRA_3D),
+    op('c', R1, CAPA_LINKS),
+    op('d', R1, PESEIRA_LINKS),
+  ])
+  assert.deepEqual(
+    blocos.map((b) => [b.cabecalho, b.ops.map((o) => o.id)]),
+    [
+      ['Full ML · Conta 1 · envio 29/09', ['a', 'c', 'd']],
+      ['Estoque', ['b']],
+    ],
+  )
+  // As colunas do Trello continuam dentro do bloco, na ordem de chegada.
+  assert.deepEqual(
+    blocos[0]!.produtos.map((p) => p.cabecalho),
+    ['076 · Peseira 3D', '059 · Capa de Almofada LINKS', '059 · Peseira LINKS'],
+  )
+  assert.equal(blocos[0]!.canal, 'full_ml')
+})
+
+test('destino: duas remessas do mesmo canal ficam em blocos separados', () => {
+  const blocos = agruparPorDestino([op('a', R1, PESEIRA_3D), op('b', R2, PESEIRA_3D)])
+  assert.deepEqual(blocos.map((b) => b.chave), ['remessa:r1', 'remessa:r2'])
+})
+
+test('destino: o estoque e um bloco so; pedido e Full sem remessa tem o seu', () => {
+  const blocos = agruparPorDestino([
+    op('a', EST, PESEIRA_3D),
+    op('b', { pedido: 'p1', canal: 'venda_direta', rotulo: 'Pedido #142' }, CAPA_LINKS),
+    op('c', EST, CAPA_LINKS),
+    op('d', { canal: 'full_shopee', rotulo: 'Full Shopee · sem remessa' }, PESEIRA_3D),
+    op('e', EST, PESEIRA_LINKS),
+  ])
+  assert.deepEqual(
+    blocos.map((b) => [b.chave, b.ops.length]),
+    [
+      ['estoque', 3],
+      ['pedido:p1', 1],
+      ['canal:full_shopee', 1],
+    ],
+  )
+})
+
+test('destino: NAO reordena — o bloco entra na posicao da OP mais urgente', () => {
+  // A OP urgente do Estoque vem primeiro na fila: o bloco Estoque sobe, mesmo
+  // o Full tendo mais OPs. E a ordem dentro de cada bloco nao muda.
+  const blocos = agruparPorDestino([
+    op('urgente', EST, PESEIRA_3D),
+    op('a', R1, PESEIRA_3D),
+    op('b', R2, CAPA_LINKS),
+    op('c', R1, CAPA_LINKS),
+    op('d', EST, CAPA_LINKS),
+  ])
+  assert.deepEqual(
+    blocos.map((b) => [b.chave, b.ops.map((o) => o.id)]),
+    [
+      ['estoque', ['urgente', 'd']],
+      ['remessa:r1', ['a', 'c']],
+      ['remessa:r2', ['b']],
+    ],
+  )
+  assert.deepEqual(agruparPorDestino([]), [])
+})
+
+test('destino: cabecalho do bloco diz "envio" e nao some com Full sem remessa', () => {
+  assert.equal(
+    rotuloDoBlocoDeDestino({
+      canal: 'full_ml',
+      remessa: { canal: 'full_ml', dataEnvio: '2026-09-29', contaNome: 'Conta 1 ML' },
+    }),
+    'Full ML · Conta 1 · envio 29/09',
+  )
+  assert.equal(rotuloDoBlocoDeDestino({ canal: 'full_shopee' }), 'Full Shopee · sem remessa')
+  assert.equal(rotuloDoBlocoDeDestino({ canal: 'venda_direta', pedidoNumero: 142 }), 'Pedido #142')
+  assert.equal(rotuloDoBlocoDeDestino({ canal: 'estoque' }), 'Estoque')
+})
+
+test('cor do canal: ML amarelo, Shopee laranja, o resto sem cor', () => {
+  assert.match(corDoCanal('full_ml')?.barra ?? '', /yellow/)
+  assert.match(corDoCanal('full_shopee')?.barra ?? '', /orange/)
+  assert.equal(corDoCanal('estoque'), null)
+  assert.equal(corDoCanal('venda_direta'), null)
+  assert.equal(corDoCanal(null), null)
+  // Legibilidade: texto ESCURO sobre fundo claro — nunca texto branco.
+  for (const canal of ['full_ml', 'full_shopee']) {
+    const cor = corDoCanal(canal)!
+    assert.match(cor.faixa, /text-(yellow|orange)-950/)
+    assert.doesNotMatch(cor.faixa, /(^|\s)text-white/)
+  }
+})
+
+test('destino: bloco de pedido diz pra quem e; a linha continua so o numero', () => {
+  assert.equal(
+    rotuloDoBlocoDeDestino({ canal: 'venda_direta', pedidoNumero: 142, pedidoCliente: 'Loja Bela' }),
+    'Pedido #142 · Loja Bela',
+  )
+  // Cliente em branco nao vira "Pedido #142 · ".
+  assert.equal(
+    rotuloDoBlocoDeDestino({ canal: 'venda_direta', pedidoNumero: 142, pedidoCliente: '  ' }),
+    'Pedido #142',
+  )
+  // Pedido vence o "sem remessa": OP de pedido nunca cai no bloco do canal.
+  assert.equal(rotuloDoBlocoDeDestino({ canal: 'full_ml', pedidoNumero: 7 }), 'Pedido #7')
+  // O cartao da maquina usa `rotuloDoDestino`, que fica sem o cliente.
+  assert.equal(
+    rotuloDoDestino({ canal: 'venda_direta', pedidoNumero: 142, pedidoCliente: 'Loja Bela' }),
+    'Pedido #142',
+  )
+})
+
+test('aviso do bloco: so quando aperta, e so o mais grave', () => {
+  const agora = new Date('2026-09-10T14:00:00')
+  const op = (prazo: string | null, prioridade = 'normal') => ({
+    dataPrevistaFim: prazo ? new Date(prazo) : null,
+    prioridade,
+  })
+  // Nada aperta (prazo longe, OP sem prazo): cabecalho sem aviso.
+  assert.deepEqual(alertaDoBloco([op('2026-09-18T00:00:00'), op(null)], agora), {
+    prazo: null,
+    urgente: false,
+  })
+  // Venceu as 8h de hoje: as 14h continua sendo HOJE, como no prazo da linha.
+  assert.equal(alertaDoBloco([op('2026-09-10T08:00:00')], agora).prazo, '1 vence HOJE')
+  assert.equal(
+    alertaDoBloco([op('2026-09-10T08:00:00'), op('2026-09-10T23:00:00')], agora).prazo,
+    '2 vencem HOJE',
+  )
+  // Com atrasada no bloco, o "vence hoje" sai: so o mais grave.
+  assert.equal(
+    alertaDoBloco(
+      [op('2026-09-10T08:00:00'), op('2026-09-09T23:59:00'), op('2026-09-01T00:00:00')],
+      agora,
+    ).prazo,
+    '2 ATRASADAS',
+  )
+  assert.equal(alertaDoBloco([op('2026-09-09T23:59:00')], agora).prazo, '1 ATRASADA')
+  // O selo e so do URGENTE: "alta" nao grita no cabecalho.
+  assert.equal(alertaDoBloco([op(null, 'alta')], agora).urgente, false)
+  assert.equal(alertaDoBloco([op(null), op(null, 'urgente')], agora).urgente, true)
+  assert.deepEqual(alertaDoBloco([], agora), { prazo: null, urgente: false })
+})
+
+test('abertos: lista curta abre tudo, longa so o primeiro, busca abre tudo', () => {
+  const bloco = (chave: string, n: number) => ({ chave, ops: Array.from({ length: n }) })
+  // O exemplo do PR: 6 OPs em 3 blocos. Fechar ali so custava toque.
+  assert.deepEqual(
+    [...blocosAbertosPorPadrao([bloco('a', 3), bloco('b', 1), bloco('c', 2)], '')],
+    ['a', 'b', 'c'],
+  )
+  // No limite ainda abre tudo; uma OP a mais e so o primeiro, o mais urgente.
+  assert.deepEqual(
+    [...blocosAbertosPorPadrao([bloco('a', ABRE_TUDO_ATE - 1), bloco('b', 1)], '')],
+    ['a', 'b'],
+  )
+  const longa = [bloco('a', ABRE_TUDO_ATE), bloco('b', 1)]
+  assert.deepEqual([...blocosAbertosPorPadrao(longa, '')], ['a'])
+  // Com busca abre tudo, mesmo longa. Espaco em branco nao e busca.
+  assert.deepEqual([...blocosAbertosPorPadrao(longa, '059')], ['a', 'b'])
+  assert.deepEqual([...blocosAbertosPorPadrao(longa, '   ')], ['a'])
+  assert.deepEqual([...blocosAbertosPorPadrao([], '')], [])
 })

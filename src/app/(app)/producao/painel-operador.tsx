@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  ChevronDown,
   ChevronRight,
   Delete,
   RefreshCw,
@@ -9,7 +10,7 @@ import {
   WifiOff,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -17,12 +18,12 @@ import {
   listarOpsDaEstacao,
   listarOpsParaIniciar,
   type ContagensDaEstacao,
+  type ListaDoIniciar,
   type MaquinaDaEstacao,
   type OpDaConsulta,
   type OpNaMaquina,
   type OpParaIniciar,
   type PaginaDaConsulta,
-  type PaginaDeOps,
 } from './actions'
 import {
   concluirProducaoAction,
@@ -63,8 +64,11 @@ import {
   oQueParou,
   type MotivoDeParada,
 } from '@/lib/producao/parada-de-maquina'
+import { corDoCanal } from '@/lib/producao/cor-do-canal'
 import {
-  agruparPorProduto,
+  agruparPorDestino,
+  alertaDoBloco,
+  blocosAbertosPorPadrao,
   linhaDaOp,
   prazoEmPalavras,
 } from '@/lib/producao/rotulo-da-op'
@@ -581,6 +585,10 @@ function CartaoMaquina({
           !podeVoltar &&
           'bg-muted/40 border-dashed opacity-70',
         impedida && (s.ocupacao === 'com_op' || podeVoltar) && 'border-amber-500/50',
+        // OP DE FULL: a borda à esquerda na cor do marketplace, a mesma do
+        // "Iniciar". Sombra interna, e não borda: não ocupa espaço, então
+        // nada no cartão anda — os botões ficam onde ele aprendeu que estão.
+        m.op && corDoCanal(m.op.canalDestino)?.borda,
       )}
     >
       {/* O CÓDIGO DA MÁQUINA NO TOPO, sempre — é por ele que ele acha o
@@ -896,10 +904,12 @@ function IniciarProducaoDialog({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [termo, setTermo] = useState('')
-  const [pagina, setPagina] = useState<PaginaDeOps | null>(null)
-  const [ops, setOps] = useState<OpParaIniciar[]>([])
-  const [paginaAtual, setPaginaAtual] = useState(1)
+  const [lista, setLista] = useState<ListaDoIniciar | null>(null)
   const [buscando, setBuscando] = useState(true)
+  // Quais blocos de destino estão ABERTOS. Decidido a cada lista que chega
+  // (`blocosAbertosPorPadrao`, rotulo-da-op.ts), e depois é do operador:
+  // tocar abre e fecha.
+  const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [confirmando, setConfirmando] = useState<OpParaIniciar | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const { exigirIdentidade, travarEPerguntar } = useTravaDoTablet()
@@ -908,9 +918,9 @@ function IniciarProducaoDialog({
   // tecla vira uma consulta, e num tablet a digitação é lenta o bastante pra
   // isso virar dez consultas por palavra.
   //
-  // Toda mudança de termo VOLTA PRA PÁGINA 1 e descarta o que estava
-  // acumulado — senão o "Carregar mais" da busca anterior emendaria
-  // resultados de duas buscas diferentes na mesma lista.
+  // A LISTA VEM INTEIRA (com teto — ver `listarOpsParaIniciar`), e não em
+  // páginas: o bloco de destino precisa de todas as OPs dele pra contar certo
+  // e pra entrar na posição da mais urgente.
   //
   // `setBuscando` fica DENTRO do timeout, e não no corpo do efeito: o React
   // recusa setState sincrono ali (cascata de renders), e de quebra o
@@ -919,27 +929,26 @@ function IniciarProducaoDialog({
   useEffect(() => {
     const t = setTimeout(() => {
       setBuscando(true)
-      listarOpsParaIniciar(maquina.id, { q: termo, pagina: 1 })
+      listarOpsParaIniciar(maquina.id, { q: termo })
         .then((r) => {
-          setPagina(r)
-          setOps(r.ops)
-          setPaginaAtual(1)
+          setLista(r)
+          setAbertos(blocosAbertosPorPadrao(agruparPorDestino(r.ops), termo))
         })
         .finally(() => setBuscando(false))
     }, 200)
     return () => clearTimeout(t)
   }, [termo, maquina.id])
 
-  function carregarMais() {
-    const proxima = paginaAtual + 1
-    setBuscando(true)
-    listarOpsParaIniciar(maquina.id, { q: termo, pagina: proxima })
-      .then((r) => {
-        setPagina(r)
-        setOps((atuais) => [...atuais, ...r.ops])
-        setPaginaAtual(proxima)
-      })
-      .finally(() => setBuscando(false))
+  const ops = useMemo(() => lista?.ops ?? [], [lista])
+  const blocos = useMemo(() => agruparPorDestino(ops), [ops])
+
+  function alternar(chave: string) {
+    setAbertos((atuais) => {
+      const novos = new Set(atuais)
+      if (novos.has(chave)) novos.delete(chave)
+      else novos.add(chave)
+      return novos
+    })
   }
 
   // Um toque quando não há o que ler antes; passo de confirmação quando há.
@@ -1027,23 +1036,94 @@ function IniciarProducaoDialog({
           />
         </div>
 
-        {/* ⚠️ AGRUPADA POR PRODUTO — pelo PROGRAMA da máquina —, e não
-            por modelo. O motivo de agrupar é o setup: três OPs da mesma peça
-            espalhadas pelas posições 2, 5 e 6 obrigavam a armar a máquina
-            três vezes. Mas o setup segue o programa, e o programa é o código
-            do produto: o EFEITO 3D é 076 na peseira e 115 na manta, e o
-            grupo "3D" juntava os dois como se não houvesse troca.
+        {/* ⚠️ DOIS NÍVEIS: DESTINO → PRODUTO → OP. O painel do Trello era um
+            por Full, e dentro dele uma coluna por produto. Agrupando só por
+            produto, três OPs do mesmo Full apareciam em três grupos e o Full
+            sumia — e o operador escolhe pensando "o que o caminhão de amanhã
+            precisa". Regra em `agruparPorDestino` (rotulo-da-op.ts).
 
-            O CABEÇALHO É A COLUNA DO TRELLO: "085 · Peseira ARAN". O antigo
-            ("ARAN") só repetia a palavra que já está na linha.
+            LISTA LONGA VEM FECHADA, com a contagem e o aviso de prazo no
+            cabeçalho: com 60 OPs abertas a lista era rolagem sem fim. Só o
+            PRIMEIRO vem aberto — o mais urgente, porque o bloco entra na
+            posição da OP mais urgente dele (nada é reordenado). Lista curta
+            vem toda aberta, e com busca abrem os blocos onde achou. Regra em
+            `blocosAbertosPorPadrao`.
 
-            A urgência não afunda: `agruparPorProduto` NÃO reordena, e como a
-            lista chega do SQL por prioridade + prazo, cada grupo entra na
-            posição da OP mais urgente que ele contém. */}
-        <div className="max-h-[70vh] space-y-5 overflow-y-auto">
-          {agruparPorProduto(ops).map((grupo) => (
+            DENTRO do bloco, os produtos pelo PROGRAMA da máquina
+            (`agruparPorProduto`): o setup segue o código — o EFEITO 3D é 076
+            na peseira e 115 na manta. */}
+        <div className="max-h-[70vh] space-y-2 overflow-y-auto">
+          {lista?.cortada && (
+            <p className="rounded-lg border border-amber-500/50 p-2 text-sm text-amber-800 dark:text-amber-300">
+              Mostrando as {ops.length} mais urgentes de {lista.total}. Use a
+              busca pra achar as outras.
+            </p>
+          )}
+
+          {blocos.map((bloco) => {
+            const cor = corDoCanal(bloco.canal)
+            const aberto = abertos.has(bloco.chave)
+            const alerta = alertaDoBloco(bloco.ops)
+            return (
+              // `overflow-clip` onde o navegador conhece, e não `hidden`:
+              // hidden faz do bloco um contêiner de rolagem, e o cabeçalho
+              // `sticky` grudaria no bloco (que não rola) em vez de na lista.
+              // Navegador velho fica com o hidden: cabeçalho que não gruda,
+              // mas canto arredondado certo.
+              <section
+                key={bloco.chave}
+                className="overflow-hidden rounded-xl border-2 supports-[overflow:clip]:overflow-clip"
+              >
+                {/* O CABEÇALHO GRUDA NO TOPO enquanto o bloco passa: a linha
+                    da OP não repete o destino, então é ele que diz de quem é
+                    a OP num bloco comprido. O fundo opaco embaixo é pro modo
+                    escuro, onde a faixa é um véu translúcido — sem ele, as
+                    linhas apareceriam através do cabeçalho ao rolar. */}
+                <div className="bg-popover sticky top-0 z-10">
+                  {/* A FAIXA: texto escuro sobre a cor clara, barra grossa na
+                      cor cheia (ver cor-do-canal.ts). Sem cor, a faixa neutra.
+                      O nome ("Full ML · Conta 1") continua escrito: quem não
+                      distingue amarelo de laranja lê. */}
+                  <button
+                    type="button"
+                    onClick={() => alternar(bloco.chave)}
+                    aria-expanded={aberto}
+                    className={cn(
+                      'flex w-full items-stretch text-left',
+                      cor ? cor.faixa : 'bg-muted',
+                    )}
+                  >
+                    {cor && (
+                      <span aria-hidden className={cn('w-2.5 shrink-0', cor.barra)} />
+                    )}
+                    <span className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2">
+                      <span className="truncate text-lg font-semibold">
+                        {bloco.cabecalho}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2 text-base font-medium tabular-nums">
+                        {bloco.ops.length} {bloco.ops.length === 1 ? 'OP' : 'OPs'}
+                        {/* O AVISO, só quando aperta (`alertaDoBloco`): com o
+                            bloco fechado, é o que impede a OP atrasada de
+                            sumir atrás da contagem. */}
+                        {alerta.prazo && (
+                          <span className="text-destructive font-bold">
+                            {alerta.prazo}
+                          </span>
+                        )}
+                        {alerta.urgente && <SeloDePrioridade prioridade="urgente" />}
+                        <ChevronDown
+                          className={cn('size-5 transition-transform', aberto && 'rotate-180')}
+                        />
+                      </span>
+                    </span>
+                  </button>
+                </div>
+
+                {aberto && (
+                  <div className="space-y-4 p-2">
+                    {bloco.produtos.map((grupo) => (
             <div key={grupo.cabecalho} className="space-y-1.5">
-              <div className="bg-background sticky top-0 flex items-baseline justify-between gap-2 border-b pb-1">
+              <div className="flex items-baseline justify-between gap-2 border-b pb-1">
                 <h3 className="text-lg font-semibold tabular-nums">
                   {grupo.cabecalho}
                 </h3>
@@ -1059,7 +1139,13 @@ function IniciarProducaoDialog({
               type="button"
               disabled={isPending}
               onClick={() => escolher(op)}
-              className="hover:border-primary hover:bg-primary/5 focus-visible:ring-ring flex w-full gap-3 rounded-xl border-2 p-2.5 text-left focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50"
+              className={cn(
+                'hover:border-primary hover:bg-primary/5 focus-visible:ring-ring flex w-full gap-3 rounded-xl border-2 p-2.5 text-left focus-visible:ring-2 focus-visible:outline-none disabled:opacity-50',
+                // A COR DO FULL É SÓ UMA BORDA À ESQUERDA, e o conteúdo
+                // afasta (`pl-5`) pra ela não encostar no quadradinho — que é
+                // a cor do FIO, a que ele confere contra a máquina.
+                cor && [cor.borda, 'pl-5'],
+              )}
             >
               {/* O SWATCH É A ÂNCORA DO OLHO: ele varre uma coluna de cores
                   em vez de ler nomes de produto que começam igual — e a cor
@@ -1097,9 +1183,10 @@ function IniciarProducaoDialog({
                 </div>
 
                 <div className="text-muted-foreground flex flex-wrap items-baseline gap-x-2 text-sm">
-                  {/* PRA ONDE VAI, na linha que já existia — antes do prazo,
-                      que é o "até quando" desse "pra onde". */}
-                  <Destino texto={op.destino} />
+                  {/* SEM O DESTINO: ele é o cabeçalho do bloco em volta, que
+                      gruda no topo ao rolar, e aqui só repetiria "Full ML ·
+                      Conta 1" em toda linha. Ele volta na confirmação e no
+                      cartão da máquina, onde não há bloco em volta. */}
                   <Prazo data={op.dataPrevistaFim} />
                   {/* AS TARJAS VIRARAM TEXTO NA MESMA LINHA. Como caixinhas
                       coloridas elas custavam uma quarta linha em toda OP que
@@ -1119,7 +1206,12 @@ function IniciarProducaoDialog({
             </button>
               ))}
             </div>
-          ))}
+                    ))}
+                  </div>
+                )}
+              </section>
+            )
+          })}
 
           {ops.length === 0 && !buscando && (
             <p className="text-muted-foreground py-8 text-center text-lg">
@@ -1135,19 +1227,6 @@ function IniciarProducaoDialog({
             </p>
           )}
 
-          {/* CARREGAMENTO EM PARTES. 20 por vez: a lista inteira num tablet
-              é rolagem infinita, e o que ele procura está quase sempre no
-              topo — a ordem é a mesma do kanban, urgente primeiro. */}
-          {pagina?.temMais && !buscando && (
-            <Button
-              variant="outline"
-              className="h-12 w-full text-base"
-              onClick={carregarMais}
-              disabled={isPending}
-            >
-              Carregar mais ({ops.length} de {pagina.total})
-            </Button>
-          )}
         </div>
 
         {erro && <Erro>{erro}</Erro>}

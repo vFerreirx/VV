@@ -207,6 +207,170 @@ export function agruparPorProduto<
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// AGRUPAR POR DESTINO — e, dentro dele, por produto
+// ─────────────────────────────────────────────────────────────────────────
+//
+// No Trello, o Full era a coisa mais visível: um PAINEL por Full, e dentro
+// dele uma COLUNA por produto. Agrupando só por produto, três OPs do mesmo
+// Full ("Full ML · Conta 1 · 29/09") apareciam espalhadas em três grupos —
+// e o Full, como unidade, sumia. O operador escolhe a OP pensando "o que o
+// caminhão de amanhã precisa", não "qual peseira".
+//
+// DOIS NÍVEIS: DESTINO → produto → OP.
+//   - cada REMESSA Full é um bloco (duas remessas do mesmo canal, duas);
+//   - cada PEDIDO é um bloco;
+//   - o ESTOQUE é um bloco só;
+//   - OP de Full SEM remessa (as de teste antigas) cai num bloco próprio por
+//     canal, sem quebrar nada e sem se misturar com as que têm remessa;
+//   - venda direta sem pedido, um bloco por canal (não tem pra quem ir).
+//
+// ⚠️ NÃO REORDENA, como `agruparPorProduto`: cada bloco entra na posição da
+// OP mais urgente que ele contém. A lista chega por prioridade + prazo, então
+// o Full com o caminhão mais perto vem primeiro — e uma OP marcada URGENTE
+// pelo gerente ainda puxa o bloco dela pro topo.
+
+export type OpComDestino = {
+  canalDestino: string
+  remessaFullId: string | null
+  orcamentoId: string | null
+  /** O cabeçalho do bloco, já pronto — `rotuloDoBlocoDeDestino`. */
+  destinoBloco: string
+  produtoCodigo: string | null
+  produtoNome: string
+}
+
+export type BlocoDeDestino<T> = {
+  /**
+   * Estável entre recargas: é a `key` do bloco e o que a tela guarda em
+   * "abertos". Quem abre de partida é `blocosAbertosPorPadrao`, a cada lista
+   * que chega (uma busca nova recomeça daí); depois, é o toque do operador.
+   */
+  chave: string
+  /** "Full ML · Conta 1 · envio 29/09" · "Pedido #142 · Loja Bela" · "Estoque". */
+  cabecalho: string
+  /** O canal, pra cor (`corDoCanal`) — só Full tem cor. */
+  canal: string
+  ops: T[]
+  /** As colunas do Trello: os produtos dentro do bloco, sem reordenar. */
+  produtos: GrupoDeProduto<T>[]
+}
+
+export function chaveDoDestino(op: {
+  canalDestino: string
+  remessaFullId: string | null
+  orcamentoId: string | null
+}): string {
+  if (op.remessaFullId) return `remessa:${op.remessaFullId}`
+  if (op.orcamentoId) return `pedido:${op.orcamentoId}`
+  if (op.canalDestino === 'estoque') return 'estoque'
+  // Full sem remessa e venda direta sem pedido: um bloco por canal.
+  return `canal:${op.canalDestino}`
+}
+
+export function agruparPorDestino<T extends OpComDestino>(
+  ops: readonly T[],
+): BlocoDeDestino<T>[] {
+  const blocos: BlocoDeDestino<T>[] = []
+  const porChave = new Map<string, BlocoDeDestino<T>>()
+  for (const op of ops) {
+    const chave = chaveDoDestino(op)
+    let bloco = porChave.get(chave)
+    if (!bloco) {
+      bloco = {
+        chave,
+        cabecalho: op.destinoBloco,
+        canal: op.canalDestino,
+        ops: [],
+        produtos: [],
+      }
+      porChave.set(chave, bloco)
+      // Primeira aparição = a OP mais urgente do bloco (a lista chega por
+      // urgência): é ela que decide a posição do bloco.
+      blocos.push(bloco)
+    }
+    bloco.ops.push(op)
+  }
+  // Dentro de cada bloco, as colunas por produto — pela mesma regra de
+  // sempre, que também não reordena.
+  for (const b of blocos) b.produtos = agruparPorProduto(b.ops)
+  return blocos
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// O AVISO DO BLOCO — a urgência não some atrás da contagem
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Bloco fechado mostra "3 OPs", e uma OP ATRASADA no segundo bloco ficava
+// escondida atrás de um toque que ninguém dá. A pasta de Full do kanban já
+// dizia "2 atrasadas" em vermelho; o cabeçalho do bloco diz também.
+//
+// SÓ QUANDO APERTA, como o prazo da linha: ATRASADA ou vence HOJE, na mesma
+// conta de dias de calendário de `prazoEmPalavras` — e o selo URGENTE quando
+// o gerente marcou alguma OP assim. "Vence em 5 dias" não entra: se todo
+// cabeçalho gritasse, nenhum gritaria. E só o MAIS GRAVE: com atrasada no
+// bloco, o "vence hoje" do lado seria ruído.
+
+export type AlertaDoBloco = {
+  /** "2 ATRASADAS" · "1 vence HOJE" — ou null quando nada aperta. */
+  prazo: string | null
+  /** Alguma OP do bloco está marcada URGENTE. */
+  urgente: boolean
+}
+
+export function alertaDoBloco(
+  ops: readonly { dataPrevistaFim: Date | null; prioridade: string }[],
+  agora: Date = new Date(),
+): AlertaDoBloco {
+  let atrasadas = 0
+  let hoje = 0
+  for (const op of ops) {
+    if (!op.dataPrevistaFim) continue
+    // `new Date` porque a data atravessa a server action: o mesmo cuidado
+    // do prazo da linha.
+    const dias = diasDeCalendario(agora, new Date(op.dataPrevistaFim))
+    if (dias < 0) atrasadas++
+    else if (dias === 0) hoje++
+  }
+  const prazo =
+    atrasadas > 0
+      ? `${atrasadas} ${atrasadas === 1 ? 'ATRASADA' : 'ATRASADAS'}`
+      : hoje > 0
+        ? `${hoje} ${hoje === 1 ? 'vence' : 'vencem'} HOJE`
+        : null
+  return { prazo, urgente: ops.some((o) => o.prioridade === 'urgente') }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// O QUE VEM ABERTO
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Fechar bloco serve pra lista LONGA: com 60 OPs abertas, era rolagem sem
+// fim. Com 6 OPs em 3 blocos, fechar só custava toque — o operador abria dois
+// blocos pra ver três OPs. Então:
+//
+//   - COM BUSCA, todo bloco que sobrou tem resultado: abrem todos. Esconder o
+//     que ele acabou de procurar atrás de mais um toque seria pior que a
+//     lista longa;
+//   - LISTA CURTA (até ABRE_TUDO_ATE OPs, uma tela e pouco no tablet): abre
+//     tudo — rolar isso custa menos que abrir bloco por bloco;
+//   - LISTA LONGA: só o PRIMEIRO, o mais urgente (o bloco entra na posição
+//     da OP mais urgente dele). Os outros ficam fechados, com a contagem e o
+//     aviso de `alertaDoBloco` no cabeçalho.
+
+export const ABRE_TUDO_ATE = 8
+
+export function blocosAbertosPorPadrao(
+  blocos: readonly { chave: string; ops: readonly unknown[] }[],
+  termo: string,
+): Set<string> {
+  const total = blocos.reduce((n, b) => n + b.ops.length, 0)
+  if (termo.trim() !== '' || total <= ABRE_TUDO_ATE) {
+    return new Set(blocos.map((b) => b.chave))
+  }
+  return new Set(blocos.slice(0, 1).map((b) => b.chave))
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // O TÍTULO DA OP — uma função só, duas telas
 // ─────────────────────────────────────────────────────────────────────────
 //
