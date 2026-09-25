@@ -45,7 +45,7 @@ export default async function EstoquePage({
         <h1 className="text-2xl font-semibold">Reposição de estoque</h1>
         <p className="text-muted-foreground mt-1 text-sm">
           Peças que alguém avisou que estão acabando. Cada uma vira uma OP de
-          canal Estoque, e sai da fila quando essa OP recebe baixa.
+          canal Estoque, e sai da fila quando essa OP é finalizada.
         </p>
       </div>
       <ReposicaoView

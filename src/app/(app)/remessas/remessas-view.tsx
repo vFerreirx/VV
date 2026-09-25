@@ -43,7 +43,7 @@ import {
   erroDoProducaoAte,
   type RiscoDaRemessa,
 } from '@/lib/producao/prazo-da-remessa'
-import { erroDaTransicaoGenerica } from '@/lib/producao/transicoes-da-op'
+import { erroDoDespacho } from '@/lib/producao/transicoes-da-op'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -66,15 +66,15 @@ const STATUS_BAR_COLOR: Record<EtapaKanban, string> = {
   pronto_envio: 'bg-amber-500',
 }
 
-// ⚠️ VERMELHO É SÓ PRAZO DE PRODUÇÃO FURADO. "Envio passou · falta dar
-// baixa" é pendência de fechamento, não atraso da malharia — âmbar, com nome
+// ⚠️ VERMELHO É SÓ PRAZO DE PRODUÇÃO FURADO. "Envio passou · falta
+// despachar" é pendência de fechamento, não atraso da malharia — âmbar, com nome
 // próprio (src/lib/producao/prazo-da-remessa.ts).
 const RISCO_INFO: Record<RiscoDaRemessa, { label: string; badge: string }> = {
   no_prazo: { label: 'No prazo', badge: 'bg-emerald-500/15 text-emerald-600' },
   em_risco: { label: 'Em risco', badge: 'bg-amber-500/15 text-amber-600' },
   atrasada: { label: 'Atrasada', badge: 'bg-destructive/15 text-destructive' },
   baixa_pendente: {
-    label: 'Envio passou · falta dar baixa',
+    label: 'Envio passou · falta despachar',
     badge: 'bg-amber-500/15 text-amber-600',
   },
 }
@@ -329,10 +329,10 @@ function RemessaCard({
   const pctPecas =
     r.unidades > 0 ? Math.round((r.produzidas / r.unidades) * 100) : 0
   const risco = RISCO_INFO[r.risco]
-  // Só oferece Despachar quando há o que despachar: alguma OP que a regra
-  // da baixa deixa ir.
+  // Só oferece Despachar quando há o que despachar: alguma OP que
+  // `erroDoDespacho` deixa ir.
   const temParaDespachar = ops.some(
-    (o) => erroDaTransicaoGenerica(o.status, 'enviado', o.temApontamento) === null,
+    (o) => erroDoDespacho(o.status, o.temApontamento) === null,
   )
 
   return (
@@ -545,8 +545,8 @@ function OpRow({
 // Despachar
 // -----------------------------------------------------------------
 
-// A CONFIRMAÇÃO DIZ O QUE VAI E O QUE FICA, com a mesma regra da baixa
-// individual (`erroDaTransicaoGenerica`). O servidor confere de novo — isto só
+// A CONFIRMAÇÃO DIZ O QUE VAI E O QUE FICA, com a mesma regra do servidor
+// (`erroDoDespacho`). O servidor confere de novo — isto só
 // mostra antes o que ele vai decidir.
 function DespacharDialog({
   remessa: r,
@@ -561,7 +561,7 @@ function DespacharDialog({
   const [isPending, startTransition] = useTransition()
   const pendentes = ops.filter((o) => o.status !== 'enviado')
   const vao = pendentes.filter(
-    (o) => erroDaTransicaoGenerica(o.status, 'enviado', o.temApontamento) === null,
+    (o) => erroDoDespacho(o.status, o.temApontamento) === null,
   )
   const ficam = pendentes.filter((o) => !vao.includes(o))
 
@@ -597,7 +597,7 @@ function DespacharDialog({
             Despachar {nomeDaRemessa(r)}?
           </DialogTitle>
           <DialogDescription>
-            Dá baixa nas OPs com produção concluída, de uma vez. As outras ficam
+            Finaliza as OPs com produção concluída, de uma vez. As outras ficam
             na remessa.
           </DialogDescription>
         </DialogHeader>
@@ -622,7 +622,7 @@ function DespacharDialog({
                   linha(
                     o,
                     // Produção concluída sem apontamento fica, e diz por quê:
-                    // a baixa sem apontamento é recusa, nunca número inventado.
+                    // despachar sem apontamento é recusa, nunca número inventado.
                     o.status === 'pronto_envio' && !o.temApontamento
                       ? 'sem apontamento'
                       : STATUS_LABEL_CURTO[o.status],
@@ -697,7 +697,7 @@ function EditarRemessaDialog({
           </DialogTitle>
           <DialogDescription>
             Mudar a data de envio ou o &ldquo;Produção até&rdquo; muda o prazo das
-            OPs sem baixa, com uma linha no histórico de cada uma.
+            OPs ainda não despachadas, com uma linha no histórico de cada uma.
           </DialogDescription>
         </DialogHeader>
 
@@ -773,7 +773,7 @@ function ListaDespachadas({ despachadas }: { despachadas: RemessaDespachada[] })
     <div className="divide-y rounded-xl border">
       {despachadas.map((r) => {
         // Enviadas contra pedidas: o que de fato foi no caminhão, somado dos
-        // apontamentos das OPs com baixa.
+        // apontamentos das OPs despachadas.
         const falta = r.pecasPedidas - r.pecasEnviadas
         return (
           <div key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3">

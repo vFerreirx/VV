@@ -1,6 +1,6 @@
 'use client'
 
-// Line chart com unidades produzidas (e refugo) por dia.
+// Line chart com unidades produzidas (e com defeito) por dia.
 // Usa cores derivadas das CSS variables do tema pra respeitar light/dark.
 
 import { format } from 'date-fns'
@@ -91,7 +91,7 @@ export function ProducaoChart({ data }: Props) {
           <Area
             type="monotone"
             dataKey="refugo"
-            name="Refugo"
+            name="Com defeito"
             stroke="oklch(0.65 0.18 25)"
             strokeWidth={2}
             fill="url(#refugoFill)"

@@ -111,12 +111,17 @@ export type RiscoDaRemessa =
   | 'baixa_pendente'
 
 /**
- * A situação da remessa ABERTA (com alguma OP sem baixa).
+ * A situação da remessa ABERTA (com alguma OP não despachada).
  *
  * ⚠️ O VERMELHO É SÓ PRAZO DE PRODUÇÃO FURADO. "O envio passou e ainda tem OP
- * sem baixa" com a produção toda concluída não é atraso da malharia: é
- * pendência de baixa — âmbar, com nome próprio, pra ninguém ler como
- * "atrasou" o que é "esqueceram de fechar".
+ * não despachada" com a produção toda concluída não é atraso da malharia: é
+ * pendência de DESPACHO — âmbar, com nome próprio ("Falta despachar"), pra
+ * ninguém ler como "atrasou" o que é "esqueceram de fechar".
+ *
+ * ⚠️ É A ÚNICA PENDÊNCIA DO FULL. OP de Full pronta esperando a data de
+ * envio é normal e não acende nada; o card "Falta despachar" do dashboard
+ * conta as remessas em 'baixa_pendente' daqui (o nome ficou do tempo da
+ * baixa).
  *
  * `diasAteProducao` e `diasAteEnvio` são dias de calendário a partir de hoje
  * em Brasília; negativo = já passou.

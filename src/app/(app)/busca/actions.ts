@@ -124,8 +124,8 @@ export async function buscarGlobal(q: string): Promise<ResultadoBusca[]> {
         titulo: `${o.numero} — ${o.produtoNome}`,
         subtitulo: STATUS_LABEL_CURTO[o.status],
         // Lista filtrada pelo número (acessível a qualquer cargo com a área).
-        // `status=todos`: a lista abre em "Abertas", e a busca acha OP com
-        // baixa — sem isto, o resultado levaria a uma lista vazia.
+        // `status=todos`: a lista abre em "Abertas", e a busca acha OP
+        // finalizada — sem isto, o resultado levaria a uma lista vazia.
         href: `/ordens?q=${encodeURIComponent(o.numero)}&status=todos`,
       }),
     ),

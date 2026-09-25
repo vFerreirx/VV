@@ -225,7 +225,7 @@ export type OrdemParaConcluir = {
 }
 
 // O MESMO CONTEÚDO DO DIÁLOGO DO OPERADOR — peças boas sugeridas com o que
-// falta pra meta, e o refugo ao lado —, mas não o mesmo componente. O do
+// falta pra meta, e o defeito ao lado —, mas não o mesmo componente. O do
 // tablet tem teclado próprio, trava de dígito no teto e rascunho que
 // sobrevive ao logoff por inatividade; nada disso é problema de quem está no
 // escritório com mouse e teclado.
@@ -340,7 +340,7 @@ export function ConcluirProducaoDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="concluir-refugo">Refugo</Label>
+              <Label htmlFor="concluir-refugo">Defeito</Label>
               <Input
                 id="concluir-refugo"
                 type="number"

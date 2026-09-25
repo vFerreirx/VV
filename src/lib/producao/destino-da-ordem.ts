@@ -22,8 +22,8 @@
 // ponto do arquivo. Acrescentar um valor ao enum de status QUEBRA O BUILD
 // aqui até alguém decidir onde ele aparece na estação. Antes disto a
 // exaustividade dependia de um filtro que mora longe — `listarOrdensProducao`
-// corta 'enviado' e 'cancelado' na consulta —, e bastava alguém afrouxar
-// aquele WHERE pra OP enviada brotar na fila do operador sem ninguém ter
+// cortava 'enviado' e 'cancelado' na consulta —, e bastava alguém afrouxar
+// aquele WHERE pra OP finalizada brotar na fila do operador sem ninguém ter
 // mudado uma linha desta tela.
 //
 // ─────────────────────────────────────────────────────────────────────────
@@ -33,13 +33,26 @@
 //   maquina     — está no cartão da máquina. É a ÚNICA que ocupa a área
 //                 principal, e é por isso que a tela não cresce com a fila.
 //   fila        — esperando pra começar. Atrás do botão "Fila (N)".
-//   terminadas  — saiu da máquina e espera o gerente. Atrás do botão
-//                 "Terminadas (N)". É pra onde vai a OP recém-concluída: sem
-//                 este destino ela sumiria no toque de "Terminei" e ele não
-//                 saberia se deu certo.
+//   terminadas  — a produção foi concluída nas últimas 24 h
+//                 (`JANELA_DAS_TERMINADAS_MS`), qualquer que seja o status
+//                 agora: esperando o despacho do Full ou já finalizada. Atrás
+//                 do botão "Terminadas (N)". É pra onde vai a OP
+//                 recém-concluída: sem este destino ela sumiria no toque de
+//                 "Terminei" e ele não saberia se deu certo.
 //   fora        — não é assunto de quem produz. Existe pra ser um destino
-//                 EXPLÍCITO, e não uma omissão: 'enviado' e 'cancelado'
-//                 sumirem é decisão escrita, não esquecimento.
+//                 EXPLÍCITO, e não uma omissão: cancelada, e a concluída há
+//                 mais de 24 h (o Full que espera despacho há dias é assunto
+//                 do gerente, não do operador), sumirem é decisão escrita.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// A JANELA DE 24 H — contada da CONCLUSÃO, não do despacho
+// ─────────────────────────────────────────────────────────────────────────
+//
+// Uma constante só, usada pelo QUADRO (a coluna "Produção concluída" mostra
+// as finalizadas desta janela) e pelo TABLET (as Terminadas). Passadas as 24
+// h, a OP sai sozinha na próxima carga — não há timer. As duas consultas
+// recebem o instante de corte por parâmetro (`inicioDaJanela`), então o
+// número não está escrito em SQL.
 
 import type { statusValues } from '@/lib/validators/ordens'
 
@@ -47,9 +60,26 @@ export type StatusDaOrdem = (typeof statusValues)[number]
 
 export type DestinoNaEstacao = 'maquina' | 'fila' | 'terminadas' | 'fora'
 
+export const JANELA_DAS_TERMINADAS_MS = 24 * 60 * 60 * 1000
+
+/** O instante a partir do qual uma conclusão ainda está à vista. */
+export function inicioDaJanela(agora: Date): Date {
+  return new Date(agora.getTime() - JANELA_DAS_TERMINADAS_MS)
+}
+
+/** A conclusão ainda está dentro das 24 h? Null = não há conclusão. */
+export function concluidaNaJanela(concluidaEm: Date | null, agora: Date): boolean {
+  return (
+    concluidaEm !== null &&
+    concluidaEm.getTime() >= inicioDaJanela(agora).getTime()
+  )
+}
+
 export function destinoDaOrdem(
   status: StatusDaOrdem,
   estaNumaMaquinaDaEstacao: boolean,
+  /** `concluidaNaJanela` da conclusão mais recente. */
+  naJanela: boolean,
 ): DestinoNaEstacao {
   // A MÁQUINA VENCE O STATUS, e nesta ordem. Quem responde "está no cartão?"
   // é a máquina ter a OP em produção — o mesmo recorte do índice único
@@ -68,12 +98,17 @@ export function destinoDaOrdem(
     case 'em_producao':
       return 'fila'
 
+    // Concluída — esperando o despacho do Full ou já finalizada. À vista
+    // só dentro da janela.
+    case 'pronto_envio':
+    case 'enviado':
+      return naJanela ? 'terminadas' : 'fora'
+
+    // LEGADO do fluxo antigo, sem conclusão registrada — nenhuma OP viva
+    // está nesses status. O operador não age nelas (só o gerente conclui de
+    // lá, pelo board).
     case 'acabamento':
     case 'embalagem':
-    case 'pronto_envio':
-      return 'terminadas'
-
-    case 'enviado':
     case 'cancelado':
       return 'fora'
 

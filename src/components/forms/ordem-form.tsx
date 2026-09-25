@@ -103,7 +103,7 @@ export function OrdemForm({
   const produtoId = useWatch({ control: form.control, name: 'produtoId' })
   const variacaoId = useWatch({ control: form.control, name: 'variacaoId' })
   // ⚠️ O SELECT NÃO OFERECE O QUE O SERVIDOR RECUSA. Entrar em produção,
-  // concluir a produção e dar baixa têm porta própria na tela de Produção —
+  // concluir a produção e finalizar têm porta própria na tela de Produção —
   // máquina, quantidades, apontamento —, e `atualizarOrdemAction` recusa as
   // três vindas daqui. A regra é a mesma função (transicoes-da-op.ts). O
   // status ATUAL continua na lista: some a transição, não a informação.

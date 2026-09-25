@@ -120,7 +120,7 @@ export const AREAS: Area[] = [
     key: 'dashboard',
     secao: 'Geral',
     label: 'Dashboard',
-    descricao: 'Painel da gestão: máquinas, atrasos, baixas e produção.',
+    descricao: 'Painel da gestão: máquinas, atrasos, despachos e produção.',
     href: '/dashboard',
     // ⚠️ TRAVADO EM ADMIN E GERENTE. É painel de gestão — a fábrica inteira,
     // com o que precisa de decisão. Os outros cargos têm a casa deles

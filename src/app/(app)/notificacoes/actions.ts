@@ -75,7 +75,7 @@ export async function listarNotificacoes(): Promise<Notificacao[]> {
       )
 
   // 1) OPs com PRODUÇÃO atrasada: prazo vencido e produção não concluída.
-  // Concluída e sem baixa não é atraso — ver src/lib/producao/atraso-da-op.ts.
+  // Concluída e não despachada não é atraso — ver src/lib/producao/atraso-da-op.ts.
   const opsAtrasadasP = db
     .select({
       id: ordensProducao.id,

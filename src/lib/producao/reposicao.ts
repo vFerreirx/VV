@@ -3,7 +3,7 @@
 // O /estoque deixou de mostrar saldo (nada registra saída, então o número era
 // maior que o estoque real) e virou a lista de peças que alguém avisou que
 // estão acabando. O item de produto PRODUZIDO termina em OP: "Produzir" liga
-// uma OP de canal Estoque, e a baixa dessa OP marca o item como reposto. O de
+// uma OP de canal Estoque, e a finalização dessa OP marca o item como reposto. O de
 // produto de PARCEIRO não vira OP: "Pedir ao parceiro" e depois "Chegou"
 // (ver `proximoEstadoDoParceiro`, mais abaixo).
 //
@@ -134,8 +134,8 @@ export type OpDaReposicao = {
  *
  * - OP sumiu, foi cancelada, excluída, trocou de variação ou saiu do canal
  *   Estoque: ela não repõe mais esta peça, e o item volta pra fila.
- * - OP com baixa: a peça entrou no estoque — reposto.
- * - Qualquer outro status: em produção (inclusive a baixa desfeita).
+ * - OP finalizada: a peça entrou no estoque — reposto.
+ * - Qualquer outro status: em produção (inclusive a conclusão desfeita).
  */
 export function estadoDaReposicaoPelaOp(
   op: OpDaReposicao | null,

@@ -27,7 +27,7 @@ import {
   type RiscoDaRemessa,
 } from '@/lib/producao/prazo-da-remessa'
 import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
-import { erroDaTransicaoGenerica } from '@/lib/producao/transicoes-da-op'
+import { erroDoDespacho } from '@/lib/producao/transicoes-da-op'
 import {
   STATUS_KANBAN,
   type StatusKanban,
@@ -127,8 +127,8 @@ export async function listarRemessasAbertas(): Promise<RemessaAberta[]> {
           WHERE ${apontamentosProducao.ordemId} = "ordens_producao"."id"
         ))
       ), 0)::int`,
-      // A MESMA REGRA de `producaoAtrasada`, em SQL: concluída e sem baixa
-      // não conta — a baixa pendente tem o âmbar dela.
+      // A MESMA REGRA de `producaoAtrasada`, em SQL: concluída e não
+      // despachada não conta — o despacho pendente tem o âmbar dela.
       atrasadas: sql<number>`count(*) filter (
         where ${condicaoDeProducaoAtrasada()}
       )::int`,
@@ -233,7 +233,7 @@ export type OpDaRemessa = {
   quantidade: number
   produzido: number
   status: (typeof statusValues)[number]
-  /** Pra o despacho decidir, com a regra da baixa, o que vai e o que fica. */
+  /** Pra o despacho decidir, com `erroDoDespacho`, o que vai e o que fica. */
   temApontamento: boolean
   atrasada: boolean
 }
@@ -296,7 +296,7 @@ export async function listarOpsDasRemessas(
     produzido: r.produzido,
     status: r.status,
     temApontamento: r.temApontamento,
-    // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
+    // Atrasada é a PRODUÇÃO não concluída, não a OP não despachada — atraso-da-op.ts.
     atrasada: producaoAtrasada(r.status, r.dataPrevistaFim, now),
   }))
 }
@@ -423,13 +423,13 @@ export type RemessaDespachada = {
   ops: number
   /** Soma das quantidades das OPs ativas — o que o marketplace pediu. */
   pecasPedidas: number
-  /** Soma dos apontamentos das OPs com baixa — o que de fato foi. */
+  /** Soma dos apontamentos das OPs despachadas — o que de fato foi. */
   pecasEnviadas: number
-  /** Quando saiu a última baixa. */
+  /** Quando saiu o último despacho. */
   despachadaEm: Date | null
 }
 
-// Despachada = sem OP pendente de baixa, com ao menos uma OP ativa, e envio
+// Despachada = sem OP pendente de despacho, com ao menos uma OP ativa, e envio
 // de 30 DIAS ATRÁS EM DIANTE. Sem limite pra frente de propósito: um Full
 // despachado ANTES da data de envio sai das Abertas e, com "últimos 30 dias"
 // ao pé da letra, não apareceria em lugar nenhum.
@@ -494,17 +494,19 @@ export async function listarRemessasDespachadas(): Promise<RemessaDespachada[]> 
 }
 
 // -----------------------------------------------------------------
-// DESPACHAR — baixa em tudo o que está pronto, numa transação
+// DESPACHAR — finaliza tudo o que está pronto, numa transação
 // -----------------------------------------------------------------
 //
-// ⚠️ AS MESMAS REGRAS E OS MESMOS EFEITOS DA BAIXA INDIVIDUAL. Cada OP passa
-// por `erroDaTransicaoGenerica` (só a partir de Produção concluída, e com
-// apontamento) e é gravada por `gravarBaixa` — a função que o "Dar baixa" do
-// painel também usa. O que não passa FICA, e a resposta diz quantas.
+// É A ÚNICA PORTA DE SAÍDA DO FULL. A OP fora de remessa finaliza na
+// conclusão; a de remessa espera aqui, e não existe mais baixa individual
+// (Q181). Cada OP passa por `erroDoDespacho` (Produção concluída, e com
+// apontamento) e é gravada por `gravarBaixa` — a MESMA finalização da
+// conclusão e do Mudar destino. O que não passa FICA, e a resposta diz
+// quantas.
 //
 // Numa transação só: ou o despacho inteiro entra, ou nada entra. Um despacho
 // pela metade deixaria o gerente sem saber quais peças já constam como
-// enviadas.
+// despachadas.
 
 const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -549,14 +551,12 @@ export async function despacharRemessaAction(
       ),
     )
 
-  const vao = ops.filter(
-    (o) => erroDaTransicaoGenerica(o.status, 'enviado', o.temApontamento) === null,
-  )
+  const vao = ops.filter((o) => erroDoDespacho(o.status, o.temApontamento) === null)
   const ficam = ops.length - vao.length
   if (vao.length === 0) {
     return {
       success: false,
-      error: 'Nenhuma OP dessa remessa está pronta pra baixa (produção concluída e com apontamento)',
+      error: 'Nenhuma OP dessa remessa está pronta pra despachar (produção concluída e com apontamento)',
     }
   }
 
@@ -593,7 +593,7 @@ export async function despacharRemessaAction(
   return {
     success: true,
     message:
-      `${gravadas} OP${gravadas > 1 ? 's' : ''} com baixa` +
+      `${gravadas} OP${gravadas > 1 ? 's' : ''} despachada${gravadas > 1 ? 's' : ''}` +
       (ficam > 0 ? ` · ${ficam} ficou${ficam > 1 ? 'ram' : ''} na remessa` : ''),
   }
 }
@@ -603,7 +603,7 @@ export async function despacharRemessaAction(
 // -----------------------------------------------------------------
 //
 // ⚠️ MUDAR O PRAZO MUDA AS OPs, NA MESMA TRANSAÇÃO. Se a data de envio ou o
-// "produção até" mudar, as OPs da remessa ainda sem baixa recebem o prazo
+// "produção até" mudar, as OPs da remessa ainda não despachadas recebem o prazo
 // novo, cada uma com uma linha no histórico ("Prazo da remessa: 27/09 →
 // 02/10"). É evento sem transição, que o relógio do aging ignora. Remessa com
 // um prazo e OPs com outro é o card "no prazo" com as OPs atrasadas.

@@ -3,13 +3,15 @@
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
-  CheckCircle2,
   ChevronDown,
   Cog,
   ExternalLink,
   Loader2,
   PackageCheck,
+  Pencil,
   Trash2,
+  Truck,
+  Undo2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -25,8 +27,8 @@ import {
   IniciarNaMaquinaDialog,
 } from './dialogos-do-gerente'
 import {
-  apontarProducaoAction,
   cancelarOrdemAction,
+  corrigirQuantidadesAction,
   listarDestinosDaOrdem,
   mudarDestinoDaOrdemAction,
   type RemessaDestino,
@@ -70,8 +72,9 @@ import {
   erroDaExclusao,
   erroDaTransicaoGenerica,
   erroDoCancelamento,
-  textoDaBaixa,
+  finalizaNaConclusao,
 } from '@/lib/producao/transicoes-da-op'
+import { erroDaCorrecao } from '@/lib/producao/correcao'
 import { cn } from '@/lib/utils'
 import {
   CANAL_LABEL,
@@ -89,11 +92,11 @@ type Status = (typeof statusValues)[number]
 // manual), e o gerente tinha que descobrir qual era a da vez. Agora ela abre
 // dizendo.
 //
-// ⚠️ "CONCLUIR" É SÓ A SAÍDA DA MÁQUINA. O fim comercial se chama "Dar baixa",
-// com o efeito escrito — enviada, vai pro estoque ou estoque reposto
-// (`textoDaBaixa`). Com as duas coisas chamadas "concluir", o gerente não
-// sabia qual tinha feito.
-type AcaoPrincipal = 'iniciar' | 'concluir' | 'baixa' | null
+// ⚠️ NÃO HÁ MAIS "DAR BAIXA" (Q181, 25/09/2026). A OP fora de remessa
+// finaliza sozinha na conclusão; a de Full sai pelo Despachar da REMESSA, e
+// o botão dela aqui é um ATALHO pra /remessas — uma baixa individual partiria
+// a remessa, e o Despachar já leva só as OPs prontas.
+type AcaoPrincipal = 'iniciar' | 'concluir' | 'despachar' | null
 
 function acaoPrincipalDe(status: Status): AcaoPrincipal {
   switch (status) {
@@ -108,7 +111,7 @@ function acaoPrincipalDe(status: Status): AcaoPrincipal {
     case 'embalagem':
       return 'concluir'
     case 'pronto_envio':
-      return 'baixa'
+      return 'despachar'
     case 'enviado':
     case 'cancelado':
       return null
@@ -181,36 +184,13 @@ function DetalheBody({
   const [mudandoDestino, setMudandoDestino] = useState(false)
   const [acaoPend, startAcao] = useTransition()
   const [porta, setPorta] = useState<'maquina' | 'concluir' | null>(null)
-  const [apontarOpen, setApontarOpen] = useState(false)
-  const [qtdProduzida, setQtdProduzida] = useState('')
-  const [qtdRefugo, setQtdRefugo] = useState('')
-  const [apontando, startApontar] = useTransition()
+  const [corrigindo, setCorrigindo] = useState(false)
 
   async function recarregarApontamentos(id: string) {
     const a = await listarApontamentos(id)
     setApontamentos(a.itens)
     setProduzido(a.totalProduzido)
     setRefugoTotal(a.totalRefugo)
-  }
-
-  function apontar() {
-    if (!ordem) return
-    startApontar(async () => {
-      const result = await apontarProducaoAction(ordem.id, {
-        produzida: qtdProduzida,
-        refugo: qtdRefugo,
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      toast.success(result.message ?? 'Apontado')
-      setQtdProduzida('')
-      setQtdRefugo('')
-      setApontarOpen(false)
-      await recarregarApontamentos(ordem.id)
-      router.refresh()
-    })
   }
 
   // Depois de qualquer ação o sheet relê a OP inteira: status, máquina,
@@ -360,9 +340,9 @@ function DetalheBody({
         toast.error(result.error)
         return
       }
-      // Enviado/cancelado saem do kanban — fecha o painel e atualiza o board.
-      if (novoStatus === 'enviado' || novoStatus === 'cancelado') {
-        toast.success(novoStatus === 'enviado' ? textoDaBaixa(ordem).aviso : 'OP cancelada')
+      // Cancelada sai do kanban — fecha o painel e atualiza o board.
+      if (novoStatus === 'cancelado') {
+        toast.success('OP cancelada')
         onClose()
         router.refresh()
         return
@@ -406,7 +386,6 @@ function DetalheBody({
           (() => {
             const acao = acaoPrincipalDe(ordem.status)
             if (!acao) return null
-            const semApontamento = apontamentos.length === 0
             return (
               <section className="space-y-1.5">
                 {acao === 'iniciar' && (
@@ -445,26 +424,26 @@ function DetalheBody({
                   </>
                 )}
 
-                {acao === 'baixa' && (
-                  <>
+                {acao === 'despachar' &&
+                  (ordem.remessa ? (
+                    // O FULL SAI PELA REMESSA. Um atalho, e não uma baixa
+                    // individual: o Despachar leva todas as prontas juntas.
                     <Button
-                      className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
-                      // Sem apontamento a baixa é recusada no servidor — e antes
-                      // entrava a META no estoque. A tela explica embaixo em vez
-                      // de deixar o toque virar erro.
-                      disabled={acaoPend || semApontamento}
-                      onClick={() => handleMudarStatus('enviado')}
+                      className="w-full"
+                      variant="outline"
+                      render={<Link href="/remessas" />}
                     >
-                      <CheckCircle2 />
-                      {textoDaBaixa(ordem).botao}
+                      <Truck />
+                      Despachar pela remessa · {ordem.remessa.rotulo}
                     </Button>
-                    {semApontamento && (
-                      <p className="text-muted-foreground text-center text-xs">
-                        Sem apontamento. Lance as peças abaixo antes de dar baixa.
-                      </p>
-                    )}
-                  </>
-                )}
+                  ) : (
+                    // Fora de remessa não fica em Produção concluída — só o
+                    // legado; o Desfazer e o Concluir de novo a finalizam.
+                    <p className="text-muted-foreground text-center text-xs">
+                      OP fora de remessa em Produção concluída (legado).
+                      Desfaça a conclusão e conclua de novo pra finalizar.
+                    </p>
+                  ))}
               </section>
             )
           })()}
@@ -480,7 +459,7 @@ function DetalheBody({
               {produzido}/{ordem.quantidade} un
               {refugoTotal > 0 && (
                 <span className="text-destructive ml-2">
-                  {refugoTotal} refugo
+                  {refugoTotal} com defeito
                 </span>
               )}
             </span>
@@ -509,26 +488,47 @@ function DetalheBody({
                   <span className="text-foreground shrink-0 tabular-nums">
                     +{a.produzida}
                     {a.refugo > 0 && (
-                      <span className="text-destructive"> /{a.refugo}r</span>
+                      <span className="text-destructive">
+                        {' '}
+                        · {a.refugo} com defeito
+                      </span>
                     )}
                   </span>
                 </li>
               ))}
             </ul>
           )}
-          {/* FERRAMENTA DE CORREÇÃO, NÃO O CAMINHO. As quantidades entram pela
-              conclusão; isto existe pra OP antiga que chegou em Produção
-              concluída sem apontamento, e pro ajuste que só aparece na
-              conferência. Só soma — pra tirar, desfaz-se a conclusão. */}
-          {gestor && ordem.status !== 'enviado' && ordem.status !== 'cancelado' && (
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-foreground text-xs underline-offset-2 hover:underline"
-              onClick={() => setApontarOpen(true)}
-            >
-              Lançar apontamento avulso
-            </button>
-          )}
+          {/* CONSERTAR DEPOIS DA CONCLUSÃO — só gerente e admin (o servidor
+              recusa os outros). Corrigir muda o número no DIA em que a
+              produção aconteceu e o estoque acompanha; Desfazer volta a OP
+              pra máquina (ou pra coluna de origem), e só aparece quando a
+              action aceitaria — `podeDesfazer`. */}
+          {gestor &&
+            podeMover &&
+            (ordem.status === 'pronto_envio' || ordem.status === 'enviado') && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={acaoPend}
+                  onClick={() => setCorrigindo(true)}
+                >
+                  <Pencil />
+                  Corrigir quantidades…
+                </Button>
+                {ordem.podeDesfazer && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={acaoPend}
+                    onClick={desfazerConclusao}
+                  >
+                    <Undo2 />
+                    Desfazer conclusão
+                  </Button>
+                )}
+              </div>
+            )}
         </section>
 
         <section className="space-y-2">
@@ -701,9 +701,12 @@ function DetalheBody({
                   )}
                   {STATUS_FILTRAVEIS.map((st) => {
                     // As portas com diálogo ficam habilitadas: o diálogo é
-                    // quem pergunta o que falta. A baixa não tem diálogo, e só
-                    // vale a partir de Produção concluída.
-                    const temPorta = st === 'em_producao' || st === 'pronto_envio'
+                    // quem pergunta o que falta. Finalizada não é escolhível
+                    // (a regra diz por quê), e de Finalizada não se sai por
+                    // aqui — só pelo Desfazer ou pelo Corrigir.
+                    const temPorta =
+                      ordem.status !== 'enviado' &&
+                      (st === 'em_producao' || st === 'pronto_envio')
                     // Cancelar exige escrita em ordens: sem ela, a opção
                     // levaria a uma action que recusa.
                     const bloqueio = temPorta
@@ -714,6 +717,7 @@ function DetalheBody({
                             ordem.status,
                             st,
                             apontamentos.length > 0,
+                            finalizaNaConclusao(ordem),
                           )
                     return (
                       <SelectItem key={st} value={st} disabled={bloqueio !== null}>
@@ -733,8 +737,8 @@ function DetalheBody({
             engano de cadastro, que só existe enquanto a OP nunca produziu. */}
         <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
           <div className="flex flex-wrap gap-1">
-            {/* MUDAR DESTINO: a OP de remessa, sem baixa, vai pra outro Full do
-                mesmo canal ou pro estoque. */}
+            {/* MUDAR DESTINO: a OP de remessa, não despachada, vai pra outro
+                Full do mesmo canal ou pro estoque. */}
             {podeEditarOrdens &&
               ordem.remessa &&
               ordem.status !== 'enviado' &&
@@ -821,6 +825,7 @@ function DetalheBody({
         <MudarDestinoDialog
           ordemId={ordem.id}
           origem={ordem.remessa.rotulo}
+          pronta={ordem.status === 'pronto_envio'}
           onClose={() => setMudandoDestino(false)}
           onFeito={async () => {
             setMudandoDestino(false)
@@ -863,60 +868,23 @@ function DetalheBody({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={apontarOpen} onOpenChange={(o) => !o && setApontarOpen(false)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Lançar apontamento avulso</DialogTitle>
-            <DialogDescription>
-              Soma ao que já está registrado ({produzido}/{ordem.quantidade}).
-              É correção: o caminho normal é concluir a produção.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="ap-prod">Peças boas</Label>
-              <Input
-                id="ap-prod"
-                type="number"
-                inputMode="numeric"
-                min="0"
-                step="1"
-                placeholder="0"
-                value={qtdProduzida}
-                onChange={(e) => setQtdProduzida(e.target.value)}
-                disabled={apontando}
-                autoFocus
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="ap-refugo">Refugo</Label>
-              <Input
-                id="ap-refugo"
-                type="number"
-                inputMode="numeric"
-                min="0"
-                step="1"
-                placeholder="0"
-                value={qtdRefugo}
-                onChange={(e) => setQtdRefugo(e.target.value)}
-                disabled={apontando}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setApontarOpen(false)}
-              disabled={apontando}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={apontar} disabled={apontando}>
-              {apontando ? 'Salvando…' : 'Lançar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {corrigindo && (
+        <CorrigirQuantidadesDialog
+          ordemId={ordem.id}
+          numero={ordem.numero}
+          finalizadaNoEstoque={
+            ordem.status === 'enviado' && ordem.canalDestino === 'estoque'
+          }
+          atual={{ produzida: produzido, refugo: refugoTotal }}
+          onClose={() => setCorrigindo(false)}
+          onFeito={async (mensagem) => {
+            setCorrigindo(false)
+            toast.success(mensagem)
+            await recarregar(ordem.id)
+            router.refresh()
+          }}
+        />
+      )}
 
       {porta === 'maquina' && (
         <IniciarNaMaquinaDialog
@@ -984,11 +952,14 @@ function diaMesDe(iso: string): string {
 function MudarDestinoDialog({
   ordemId,
   origem,
+  pronta,
   onClose,
   onFeito,
 }: {
   ordemId: string
   origem: string
+  /** Produção concluída: indo pro estoque, ela FINALIZA na hora. */
+  pronta: boolean
   onClose: () => void
   onFeito: () => void
 }) {
@@ -1056,13 +1027,131 @@ function MudarDestinoDialog({
             className="hover:border-primary hover:bg-primary/5 flex w-full items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-2 text-left text-sm disabled:opacity-60"
           >
             <span className="font-medium">Estoque</span>
-            <span className="text-muted-foreground text-xs">sai da remessa, sem prazo</span>
+            <span className="text-muted-foreground text-xs">
+              {pronta ? 'sai da remessa e finaliza · vai pro estoque' : 'sai da remessa, sem prazo'}
+            </span>
           </button>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Voltar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// -----------------------------------------------------------------
+// Corrigir quantidades — só gerente e admin (correcao.ts)
+// -----------------------------------------------------------------
+
+function CorrigirQuantidadesDialog({
+  ordemId,
+  numero,
+  finalizadaNoEstoque,
+  atual,
+  onClose,
+  onFeito,
+}: {
+  ordemId: string
+  numero: string
+  /** Pra dizer que o estoque acompanha. */
+  finalizadaNoEstoque: boolean
+  /** Os totais de agora — vão pro servidor como os "vistos". */
+  atual: { produzida: number; refugo: number }
+  onClose: () => void
+  onFeito: (mensagem: string) => void
+}) {
+  const [boas, setBoas] = useState(String(atual.produzida))
+  const [defeito, setDefeito] = useState(String(atual.refugo))
+  const [erro, setErro] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  function salvar() {
+    const novo = {
+      boas: boas.trim() === '' ? 0 : Number(boas),
+      defeito: defeito.trim() === '' ? 0 : Number(defeito),
+    }
+    // A MESMA regra do servidor — a tela explica antes do toque virar erro.
+    const recusa = erroDaCorrecao(
+      'enviado',
+      { boas: atual.produzida, defeito: atual.refugo },
+      novo,
+    )
+    if (recusa) {
+      setErro(recusa)
+      return
+    }
+    startTransition(async () => {
+      const r = await corrigirQuantidadesAction(ordemId, {
+        produzida: novo.boas,
+        refugo: novo.defeito,
+        vistos: atual,
+      })
+      if (!r.success) {
+        setErro(r.error)
+        return
+      }
+      onFeito(r.message ?? 'Quantidades corrigidas')
+    })
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && !isPending && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Corrigir quantidades · {numero}</DialogTitle>
+          <DialogDescription>
+            Hoje: {atual.produzida} peças boas · {atual.refugo} com defeito. O
+            número muda no dia em que a produção aconteceu
+            {finalizadaNoEstoque ? ', e o estoque acompanha' : ''}. A correção
+            fica no histórico.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="corrigir-boas">Peças boas</Label>
+            <Input
+              id="corrigir-boas"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              step="1"
+              value={boas}
+              onChange={(e) => {
+                setErro(null)
+                setBoas(e.target.value)
+              }}
+              disabled={isPending}
+              autoFocus
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="corrigir-defeito">Com defeito</Label>
+            <Input
+              id="corrigir-defeito"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              step="1"
+              value={defeito}
+              onChange={(e) => {
+                setErro(null)
+                setDefeito(e.target.value)
+              }}
+              disabled={isPending}
+            />
+          </div>
+        </div>
+        {erro && <p className="text-destructive text-sm">{erro}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isPending}>
+            Voltar
+          </Button>
+          <Button onClick={salvar} loading={isPending} disabled={isPending}>
+            Corrigir
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -125,6 +125,9 @@ export default async function DashboardPage() {
     // que também abre o dashboard, não entra. `undefined` = não consultou.
     ehAdmin ? obterUltimoBackup() : Promise.resolve(undefined),
   ])
+  const faltaDespachar = remessas.filter(
+    (r) => r.risco === 'baixa_pendente',
+  ).length
 
   // Entrada do reveal de Suspense: par do exit no loading.tsx desta rota.
   // `default="none"` impede este ViewTransition de animar junto em qualquer
@@ -180,15 +183,22 @@ export default async function DashboardPage() {
               }
               tom={kpis.producaoAtrasada > 0 ? 'vermelho' : undefined}
             />
+            {/* FALTA DESPACHAR = remessas com o envio vencido e a produção
+                toda concluída — o 'baixa_pendente' de `riscoDaRemessa`, a
+                MESMA regra do âmbar de /remessas e do card abaixo. Não conta
+                OP pronta: desde que a OP fora de remessa finaliza na
+                conclusão, o que fica pronto é o Full esperando a data dele,
+                e isso é normal a semana inteira. */}
             <KPICard
-              href="/ordens?status=pronto_envio"
-              label="Falta dar baixa"
-              value={kpis.faltaBaixa}
+              href="/remessas"
+              label="Falta despachar"
+              value={faltaDespachar}
+              subtitle={faltaDespachar > 0 ? 'o envio já passou' : undefined}
               icon={PackageCheck}
               accent={
-                kpis.faltaBaixa > 0 ? 'text-amber-600' : 'text-muted-foreground'
+                faltaDespachar > 0 ? 'text-amber-600' : 'text-muted-foreground'
               }
-              tom={kpis.faltaBaixa > 0 ? 'ambar' : undefined}
+              tom={faltaDespachar > 0 ? 'ambar' : undefined}
             />
           </div>
 
@@ -289,7 +299,7 @@ function KPICard({
   icon: typeof Factory
   accent: string
   subtitle?: string
-  /** Vermelho é atraso; âmbar é pendência (a baixa). */
+  /** Vermelho é atraso; âmbar é pendência (o despacho). */
   tom?: 'vermelho' | 'ambar'
 }) {
   return (
@@ -432,7 +442,7 @@ function RemessasAlerta({ remessas }: { remessas: RemessaAberta[] }) {
   const emRisco = remessas.filter((r) => r.risco !== 'no_prazo')
   const atrasadas = emRisco.filter((r) => r.risco === 'atrasada')
   const risco = emRisco.filter((r) => r.risco === 'em_risco')
-  // Envio passou e ainda há OP sem baixa, com a produção concluída: é
+  // Envio passou e ainda há OP não despachada, com a produção concluída: é
   // pendência de fechamento, não atraso — âmbar, contada à parte.
   const baixaPendente = emRisco.filter((r) => r.risco === 'baixa_pendente')
 
@@ -475,7 +485,7 @@ function RemessasAlerta({ remessas }: { remessas: RemessaAberta[] }) {
                 ' · '}
               {baixaPendente.length > 0 && (
                 <span className="text-amber-600">
-                  {baixaPendente.length} com baixa pendente
+                  {baixaPendente.length} com despacho pendente
                 </span>
               )}
             </p>
@@ -501,7 +511,7 @@ function RemessasAlerta({ remessas }: { remessas: RemessaAberta[] }) {
                       {r.risco === 'atrasada'
                         ? 'Atrasada'
                         : r.risco === 'baixa_pendente'
-                          ? 'Falta dar baixa'
+                          ? 'Falta despachar'
                           : 'Em risco'}
                     </Badge>
                   </li>

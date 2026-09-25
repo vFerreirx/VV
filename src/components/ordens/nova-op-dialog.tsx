@@ -545,7 +545,7 @@ export function NovaOpDialog({
                 items={CANAL_LABEL}
                 value={canal}
                 onValueChange={(v) => v && trocarCanal(v as Canal)}
-                // Repor estoque é canal Estoque (só nele a baixa dá entrada);
+                // Repor estoque é canal Estoque (só nele a finalização dá entrada);
                 // faltante de pedido é Venda direta. Os dois vêm travados.
                 disabled={isPending || reposicao !== undefined || pedido !== undefined}
               >

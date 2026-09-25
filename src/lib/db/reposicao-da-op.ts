@@ -18,8 +18,8 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 // "um item ativo por variação" impede marcar a peça de novo.
 //
 // É UMA função, e não um `if` por caminho: ela lê a OP como ficou DEPOIS da
-// escrita e aplica a regra pura (`estadoDaReposicaoPelaOp`). Assim a baixa
-// desfeita pelo board devolve o item a "Em produção", e trocar a variação no
+// escrita e aplica a regra pura (`estadoDaReposicaoPelaOp`). Assim a
+// conclusão desfeita devolve o item a "Em produção", e trocar a variação no
 // formulário devolve o item à fila, sem que cada action precise saber disso.
 //
 // ⚠️ SERVER-ONLY e fora de arquivo 'use server': recebe a transação por
@@ -69,7 +69,7 @@ export async function sincronizarReposicaoDaOp(
     // ESTADOS_ATIVOS_DE_REPOSICAO; mudou lá, muda aqui). Sai
     // de "reposto" só quando ninguém marcou a peça de novo nesse meio tempo.
     // A condição vai no UPDATE, e não num catch: erro dentro da transação a
-    // derrubaria inteira — e com ela a baixa ou o cancelamento da OP.
+    // derrubaria inteira — e com ela a finalização ou o cancelamento da OP.
     const semOutroAtivo = sql`NOT EXISTS (
       SELECT 1 FROM reposicoes_estoque r2
       WHERE r2.variacao_id = ${item.variacaoId}

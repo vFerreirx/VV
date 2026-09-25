@@ -356,7 +356,7 @@ function EventoChip({
   if (evento.remessa) {
     return (
       <Link
-        // `status=todos`: as OPs de um Full incluem as que já tiveram baixa, e
+        // `status=todos`: as OPs de um Full incluem as já despachadas, e
         // a lista abre em "Abertas" quando a URL não diz nada.
         href={`/ordens?remessaId=${evento.id}&status=todos`}
         title={`${rotuloDoEventoFull(evento.canal, evento.contaNome)} — ${evento.observacao ?? ''}`}

@@ -26,6 +26,8 @@ import {
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
 import { gravarBaixa } from '@/lib/db/baixa-da-op'
+import { marcosDaOp } from '@/lib/db/conclusao-da-op'
+import { sincronizarEntradaDaOp } from '@/lib/db/entrada-da-op'
 import { devolverOpParaFila } from '@/lib/db/devolucao-da-op'
 import {
   remessaDaTransacao,
@@ -90,6 +92,7 @@ import {
   diasDeAtrasoNaConclusao,
   erroDeQuantidade,
   erroDoAutorDoDesfazer,
+  quantidadesDaConclusao,
   resumoDaConclusao,
 } from '@/lib/producao/conclusao'
 import {
@@ -99,21 +102,29 @@ import {
   podeIniciar,
 } from '@/lib/producao/inicio-da-op'
 import {
+  desfazerAlcanca,
   erroDaDevolucao,
   erroDaExclusao,
   erroDaTransicaoGenerica,
   erroDaTransicaoPeloFormulario,
   erroDoCancelamento,
+  finalizaNaConclusao,
   podeConcluirProducao,
+  posicaoNoMesmoInstante,
+  textoDaFinalizacao,
 } from '@/lib/producao/transicoes-da-op'
 import {
-  apontamentoSchema,
+  erroDaCorrecao,
+  planoDaCorrecao,
+  textoDaCorrecao,
+  type Quantidades,
+} from '@/lib/producao/correcao'
+import {
   criarOrdemSchema,
   mudarStatusOrdemSchema,
   ordemSchema,
   ordensFiltrosSchema,
   STATUS_LABEL_CURTO,
-  type ApontamentoInput,
   type MudarStatusOrdemInput,
   type OrdemInput,
   type OrdensFiltros,
@@ -169,14 +180,18 @@ const ORDENS_POR_PAGINA = 50
 /**
  * Os contadores do topo: o que APERTA. Contam o conjunto inteiro dos outros
  * filtros (canal, Full, busca…), não só a página, e IGNORAM o de status e o
- * de prazo — senão clicar em "Atrasadas" zeraria os outros dois, e o gerente
+ * de prazo — senão clicar em "Atrasadas" zeraria o outro, e o gerente
  * perderia de vista o que ainda falta olhar.
+ *
+ * ⚠️ NÃO HÁ MAIS "FALTA DAR BAIXA" AQUI. Desde 25/09/2026 a OP fora de
+ * remessa finaliza na conclusão, e o que sobra em Produção concluída é o Full
+ * esperando o despacho — normal a semana inteira. A pendência de verdade é
+ * "o envio passou e não despachou", e ela é da REMESSA: mora em /remessas e
+ * no card "Falta despachar" do dashboard (`riscoDaRemessa`).
  */
 export type ContagensDaLista = {
   atrasadas: number
   vencemHoje: number
-  /** Produção concluída sem baixa (`pronto_envio`). */
-  faltaBaixa: number
 }
 
 /** A faixa do Full ou do pedido filtrado — `resumoDoDestino`. */
@@ -244,10 +259,10 @@ async function condicoesDaLista(
 
   const situacao = []
   // ⚠️ SEM STATUS NA URL É "ABERTAS", e não "todas". A lista abre no que
-  // está em andamento — tudo que não teve baixa nem foi cancelado —, porque é
-  // isso que se procura aqui no dia a dia. "Todas" é um valor EXPLÍCITO
-  // (`status=todos`), e quem linka pra uma OP específica que pode estar com
-  // baixa (a busca global, o calendário do Full) manda ele junto.
+  // está em andamento — tudo que não foi finalizado nem cancelado —, porque
+  // é isso que se procura aqui no dia a dia. "Todas" é um valor EXPLÍCITO
+  // (`status=todos`), e quem linka pra uma OP específica que pode estar
+  // finalizada (a busca global, o calendário do Full) manda ele junto.
   const status = f.status ?? 'abertas'
   if (status === 'abertas') {
     situacao.push(notInArray(ordensProducao.status, ['enviado', 'cancelado']))
@@ -288,7 +303,7 @@ export async function listarOrdens(
   const fimDeHoje = inicioDoDiaEmBrasilia(somarDias(hojeEmBrasilia(), 1))
   const { base, situacao } = await condicoesDaLista(f, user, fimDeHoje)
 
-  // TOTAL E CONTADORES NUMA CONSULTA SÓ, com `count(*) FILTER`: os três
+  // TOTAL E CONTADORES NUMA CONSULTA SÓ, com `count(*) FILTER`: os dois
   // contadores ignoram a situação (ver `ContagensDaLista`), o total não.
   const naSituacao = situacao.length > 0 ? and(...situacao)! : sql`true`
   const [agregado] = await db
@@ -296,7 +311,6 @@ export async function listarOrdens(
       total: sql<number>`count(*) FILTER (WHERE ${naSituacao})::int`,
       atrasadas: sql<number>`count(*) FILTER (WHERE ${condicaoDeProducaoAtrasada()})::int`,
       vencemHoje: sql<number>`count(*) FILTER (WHERE ${condicaoDeProducaoVenceHoje(fimDeHoje)})::int`,
-      faltaBaixa: sql<number>`count(*) FILTER (WHERE ${eq(ordensProducao.status, 'pronto_envio')})::int`,
     })
     .from(ordensProducao)
     .innerJoin(produtos, eq(produtos.id, ordensProducao.produtoId))
@@ -381,7 +395,7 @@ export async function listarOrdens(
         remessa,
         pedidoNumero: r.pedidoNumero ?? null,
       }),
-      // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
+      // Atrasada é a PRODUÇÃO não concluída, não a OP não finalizada — atraso-da-op.ts.
       atrasada: producaoAtrasada(r.op.status, r.op.dataPrevistaFim, now),
       produzido: r.produzido ?? 0,
       refugo: r.refugo ?? 0,
@@ -396,7 +410,6 @@ export async function listarOrdens(
     contagens: {
       atrasadas: agregado?.atrasadas ?? 0,
       vencemHoje: agregado?.vencemHoje ?? 0,
-      faltaBaixa: agregado?.faltaBaixa ?? 0,
     },
     destino,
   }
@@ -407,7 +420,7 @@ export async function listarOrdens(
 // OPs DELE com o mínimo pra `resumoDoDestino` — nunca a tabela inteira.
 //
 // ⚠️ O DESTINO INTEIRO, sem os filtros de status, busca e prioridade: a faixa
-// responde "como está esse Full?", e tirar dela as OPs com baixa esconderia
+// responde "como está esse Full?", e tirar dela as OPs despachadas esconderia
 // as peças que já saíram. A visão do OPERADOR vale aqui também: o que ele não
 // vê na lista não entra na conta dele.
 async function destinoFiltrado(
@@ -495,11 +508,18 @@ export type OrdemDetalhe = OrdemProducao & {
   } | null
   /**
    * É OP DE REPOSIÇÃO: está ligada a um item da fila (/estoque), o item que
-   * a baixa marca como "Reposto". Canal Estoque sozinho não diz isso: a Nova
-   * OP já abre nele. É o que separa "estoque reposto" de "vai pro estoque"
-   * na baixa (`textoDaBaixa`).
+   * a finalização marca como "Reposto". Canal Estoque sozinho não diz isso: a
+   * Nova OP já abre nele. É o que separa "estoque reposto" de "foi pro
+   * estoque" (`textoDaFinalizacao`).
    */
   deReposicao: boolean
+  /**
+   * O "Desfazer conclusão" da ficha vale agora? `desfazerAlcanca` mais a
+   * máquina livre, quando a OP volta pra ela — as guardas de
+   * `desfazerConclusaoAction`, calculadas aqui pra que o botão não apareça só
+   * pra devolver erro. Quem recusa de verdade é a action.
+   */
+  podeDesfazer: boolean
   criador: Pick<User, 'id' | 'nome' | 'email'> | null
   responsavel: Pick<User, 'id' | 'nome' | 'email'> | null
 }
@@ -577,9 +597,55 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
           }
         : null,
     deReposicao: row.deReposicao,
+    podeDesfazer: await desfazerOferecido(row.op),
     criador,
     responsavel,
   }
+}
+
+// O Desfazer alcança a OP (`desfazerAlcanca`) e, se ela volta pra máquina, a
+// máquina está livre? A MESMA leitura de `desfazerConclusaoAction`.
+async function desfazerOferecido(op: {
+  id: string
+  status: (typeof statusValues)[number]
+  remessaFullId: string | null
+  maquinaId: string | null
+}): Promise<boolean> {
+  if (op.status !== 'pronto_envio' && op.status !== 'enviado') return false
+  const marcos = await marcosDaOp(op.id)
+  if (
+    !desfazerAlcanca({
+      status: op.status,
+      remessaFullId: op.remessaFullId,
+      conclusaoEm: marcos.conclusao?.em ?? null,
+      ultimaTransicao: marcos.ultimaTransicao,
+    })
+  ) {
+    return false
+  }
+  const de = marcos.conclusao?.de ?? null
+  if (de !== null && de !== 'em_producao') return true
+  if (!op.maquinaId) return false
+  return (await ocupanteDaMaquina(op.maquinaId)) === null
+}
+
+// A OP em produção na máquina agora, ou null se ela está livre.
+async function ocupanteDaMaquina(
+  maquinaId: string,
+): Promise<{ numero: string; codigo: string } | null> {
+  const [ocupada] = await db
+    .select({ numero: ordensProducao.numero, codigo: maquinas.codigo })
+    .from(ordensProducao)
+    .innerJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
+    .where(
+      and(
+        eq(ordensProducao.maquinaId, maquinaId),
+        eq(ordensProducao.status, 'em_producao'),
+        isNull(ordensProducao.deletedAt),
+      ),
+    )
+    .limit(1)
+  return ocupada ?? null
 }
 
 // -----------------------------------------------------------------
@@ -781,8 +847,8 @@ export async function criarOrdemAction(
 
   if (reposicaoId !== undefined) {
     if (!uuidRe.test(reposicaoId)) return { success: false, error: 'ID inválido' }
-    // REPOR ESTOQUE É CANAL ESTOQUE. A baixa só dá entrada no estoque nesse
-    // canal (gravarBaixa); com outro, o item viraria "Reposto" sem nenhuma
+    // REPOR ESTOQUE É CANAL ESTOQUE. A finalização só dá entrada no estoque
+    // nesse canal (entrada-da-op.ts); com outro, o item viraria "Reposto" sem nenhuma
     // peça ter entrado.
     if (data.canalDestino !== 'estoque') {
       return { success: false, error: 'A OP de reposição é do canal Estoque' }
@@ -974,7 +1040,8 @@ export async function atualizarOrdemAction(
     return { success: false, error: 'Essa etapa não faz mais parte do fluxo de produção' }
   }
 
-  // ⚠️ ENTRAR EM PRODUÇÃO, CONCLUIR E DAR BAIXA NÃO PASSAM POR AQUI. O
+  // ⚠️ ENTRAR EM PRODUÇÃO, CONCLUIR E FINALIZAR NÃO PASSAM POR AQUI, e a
+  // OP finalizada não sai de Finalizada por aqui. O
   // formulário não tem como pedir máquina nem quantidade, e cada uma dessas
   // transições tem action própria que registra o que falta. A regra mora em
   // src/lib/producao/transicoes-da-op.ts, e o select do formulário usa a
@@ -1071,6 +1138,9 @@ export async function atualizarOrdemAction(
     // O formulário cancela e troca variação e canal: qualquer um dos três
     // tira a OP da reposição da peça, e o item volta pra fila.
     await sincronizarReposicaoDaOp(tx, [id])
+    // E numa OP FINALIZADA, trocar produto, variação ou canal muda o que
+    // entrou no estoque — a entrada acompanha (entrada-da-op.ts).
+    await sincronizarEntradaDaOp(tx, id, user.id)
   })
 
   revalidatePath('/ordens')
@@ -1135,16 +1205,15 @@ export async function mudarStatusOrdemAction(
 
   // ⚠️ AS TRÊS PORTAS PRÓPRIAS. Este é o caminho GENÉRICO — arrastar card,
   // Status manual — e ele não sabe perguntar máquina nem quantidade. Pra
-  // `em_producao` ele recusa sempre; pra `pronto_envio` e `enviado`, só
-  // aceita OP que já tem apontamento (e `enviado` só a partir de
-  // `pronto_envio`). A frase e a regra são as de transicoes-da-op.ts, as
-  // mesmas que a tela usa pra decidir o que oferecer.
-  const precisaDoApontamento =
-    data.status === 'pronto_envio' || data.status === 'enviado'
+  // `em_producao` ele recusa sempre; pra `pronto_envio`, só a OP de remessa
+  // que já tem apontamento (a de fora finaliza na conclusão); pra `enviado`,
+  // e pra sair dele, nunca. A frase e a regra são as de transicoes-da-op.ts,
+  // as mesmas que a tela usa pra decidir o que oferecer.
   const erroDaPorta = erroDaTransicaoGenerica(
     atual.status,
     data.status,
-    precisaDoApontamento ? await temApontamento(id) : false,
+    data.status === 'pronto_envio' ? await temApontamento(id) : false,
+    finalizaNaConclusao(atual),
   )
   if (erroDaPorta) return { success: false, error: erroDaPorta }
 
@@ -1177,33 +1246,6 @@ export async function mudarStatusOrdemAction(
     return { success: true, message: 'OP devolvida à fila', assumiu: false }
   }
 
-  // ⚠️ A BAIXA TEM EFEITO PRÓPRIO — status, data de fim, histórico e
-  // entrada no estoque — e mora em src/lib/db/baixa-da-op.ts, a mesma função
-  // que o DESPACHO da remessa usa. As duas não podem dar baixa de jeitos
-  // diferentes.
-  if (data.status === 'enviado') {
-    const gravou = await db.transaction((tx) =>
-      gravarBaixa(tx, atual, {
-        usuarioId: user.id,
-        observacao: data.observacao ?? null,
-        ...(assumiu ? { responsavelId: user.id } : {}),
-      }),
-    )
-    if (!gravou) {
-      return {
-        success: false,
-        error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.',
-      }
-    }
-    revalidatePath('/ordens')
-    revalidatePath(`/ordens/${id}`)
-    revalidatePath('/producao')
-    revalidatePath('/estoque')
-    revalidatePath('/remessas')
-    revalidatePath('/dashboard')
-    return { success: true, message: 'Status atualizado', assumiu }
-  }
-
   await db.transaction(async (tx) => {
     await tx
       .update(ordensProducao)
@@ -1232,8 +1274,7 @@ export async function mudarStatusOrdemAction(
       usuarioId: user.id,
       observacao: data.observacao ?? null,
     })
-    // Cancelar pelo board devolve o item à fila; tirar a OP de `enviado`
-    // (baixa desfeita) devolve o item a "Em produção".
+    // Cancelar pelo board devolve o item à fila.
     await sincronizarReposicaoDaOp(tx, [id])
   })
 
@@ -1245,8 +1286,8 @@ export async function mudarStatusOrdemAction(
   return { success: true, message: 'Status atualizado', assumiu }
 }
 
-// A OP tem ao menos um apontamento? É a exceção das portas de `pronto_envio`
-// e `enviado` — ver transicoes-da-op.ts.
+// A OP tem ao menos um apontamento? É a exceção da porta de `pronto_envio`
+// — ver transicoes-da-op.ts.
 async function temApontamento(ordemId: string): Promise<boolean> {
   const [linha] = await db
     .select({ id: apontamentosProducao.id })
@@ -1342,8 +1383,14 @@ export async function historicoDaOrdem(
     ),
   ]
 
-  // Cronológica INVERSA: o que aconteceu por último aparece primeiro.
-  return itens.sort((a, b) => b.em.getTime() - a.em.getTime())
+  // Cronológica INVERSA: o que aconteceu por último aparece primeiro. No
+  // MESMO instante (conclusão, apontamento e finalização nascem na mesma
+  // transação), a ordem em que aconteceram — `posicaoNoMesmoInstante`.
+  return itens.sort(
+    (a, b) =>
+      b.em.getTime() - a.em.getTime() ||
+      posicaoNoMesmoInstante(b) - posicaoNoMesmoInstante(a),
+  )
 }
 
 // -----------------------------------------------------------------
@@ -1887,9 +1934,14 @@ export async function iniciarProducaoAction(
 //                   semana que vem). A OP herda o prazo da produção dela.
 //   estoque       — sai da remessa, o canal vira `estoque` e fica sem prazo.
 //
-// Só OP sem baixa e não cancelada: a que teve baixa já foi embora no
+// Só OP não finalizada e não cancelada: a finalizada já foi embora no
 // caminhão. O histórico ganha uma linha sem transição dizendo de onde pra
 // onde — o relógio do aging ignora esse tipo de evento.
+//
+// ⚠️ O FULL JÁ PRONTO QUE VAI PRO ESTOQUE FINALIZA AQUI, na mesma transação.
+// Ele vira OP fora de remessa em Produção concluída, e essa não espera
+// despacho nenhum: sem isto ficaria parada lá pra sempre (Q180). A
+// finalização passa pela mesma `gravarBaixa` da conclusão e do despacho.
 
 export type DestinoDaOrdem = { tipo: 'remessa'; remessaId: string } | { tipo: 'estoque' }
 
@@ -1952,6 +2004,7 @@ export async function mudarDestinoDaOrdemAction(
       status: ordensProducao.status,
       canal: ordensProducao.canalDestino,
       remessaFullId: ordensProducao.remessaFullId,
+      dataRealFim: ordensProducao.dataRealFim,
       remessaCanal: remessasFull.canal,
       remessaDataEnvio: remessasFull.dataEnvio,
       remessaContaNome: contasMarketplace.nome,
@@ -1966,7 +2019,7 @@ export async function mudarDestinoDaOrdemAction(
     return { success: false, error: 'Essa OP não é de nenhuma remessa' }
   }
   if (op.status === 'enviado') {
-    return { success: false, error: 'Essa OP já teve baixa: foi embora com a remessa' }
+    return { success: false, error: 'Essa OP já foi despachada: foi embora com a remessa' }
   }
   if (op.status === 'cancelado') {
     return { success: false, error: 'Essa OP está cancelada' }
@@ -2012,8 +2065,9 @@ export async function mudarDestinoDaOrdemAction(
     }
   }
 
+  const finaliza = alvo.remessaFullId === null && op.status === 'pronto_envio'
   const gravou = await db.transaction(async (tx) => {
-    // Condicional na remessa e no status lidos: se alguém deu baixa ou
+    // Condicional na remessa e no status lidos: se alguém despachou ou
     // mudou o destino no meio, nada muda.
     const linhas = await tx
       .update(ordensProducao)
@@ -2040,17 +2094,43 @@ export async function mudarDestinoDaOrdemAction(
       usuarioId: user.id,
       observacao: `Destino: ${origem} → ${alvo.rotulo}`,
     })
+
+    if (finaliza) {
+      const aviso = textoDaFinalizacao({
+        canalDestino: 'estoque',
+        deReposicao: false,
+        remessa: null,
+        pedidoNumero: null,
+      })
+      const ok = await gravarBaixa(
+        tx,
+        { id: ordemId, status: 'pronto_envio', dataRealFim: op.dataRealFim },
+        { usuarioId: user.id, observacao: aviso },
+      )
+      // Não tem como: o UPDATE acima confirmou o status nesta transação.
+      if (!ok) throw new ConflitoDeOrdem()
+    }
     return true
+  }).catch((erro) => {
+    if (erro instanceof ConflitoDeOrdem) return false
+    throw erro
   })
   if (!gravou) {
     return { success: false, error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.' }
   }
 
   revalidatePath('/ordens')
+  revalidatePath(`/ordens/${ordemId}`)
   revalidatePath('/producao')
   revalidatePath('/remessas')
   revalidatePath('/estoque')
-  return { success: true, message: `OP agora vai pra ${alvo.rotulo}` }
+  revalidatePath('/dashboard')
+  return {
+    success: true,
+    message: finaliza
+      ? 'OP foi pro estoque e está finalizada'
+      : `OP agora vai pra ${alvo.rotulo}`,
+  }
 }
 
 export async function soltarOrdemAction(id: string): Promise<ActionResult> {
@@ -2104,8 +2184,14 @@ export async function soltarOrdemAction(id: string): Promise<ActionResult> {
 }
 
 // -----------------------------------------------------------------
-// Apontar produção + listar apontamentos
+// Listar apontamentos
 // -----------------------------------------------------------------
+//
+// NÃO HÁ MAIS "APONTAR PRODUÇÃO" AVULSO (saiu em 25/09/2026). Ele somava
+// peça em qualquer OP, inclusive finalizada, sem mexer no estoque. O registro
+// é feito só no fim (`concluirProducaoAction`), e consertar número é o
+// Corrigir quantidades (`corrigirQuantidadesAction`), que mantém o estoque
+// igual às peças boas. Um terceiro caminho seria um buraco nessa regra.
 
 export type ApontamentoItem = {
   id: string
@@ -2152,75 +2238,6 @@ export async function listarApontamentos(ordemId: string): Promise<{
   }
 }
 
-export async function apontarProducaoAction(
-  ordemId: string,
-  input: ApontamentoInput,
-): Promise<ActionResult> {
-  const user = await requireAuth()
-  // Tablet travado não grava — ver src/lib/auth/inatividade.ts.
-  const travado = await recusaSeTabletTravado()
-  if (travado) return travado
-  if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
-
-  const parsed = apontamentoSchema.safeParse(input)
-  if (!parsed.success) {
-    return {
-      success: false,
-      error: parsed.error.issues[0]?.message ?? 'Dados inválidos',
-    }
-  }
-  const data = parsed.data
-
-  const [op] = await db
-    .select({
-      id: ordensProducao.id,
-      responsavelId: ordensProducao.responsavelId,
-      maquinaId: ordensProducao.maquinaId,
-    })
-    .from(ordensProducao)
-    .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
-    .limit(1)
-  if (!op) return { success: false, error: 'OP não encontrada' }
-
-  if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
-    return { success: false, error: 'Sem permissão pra apontar produção' }
-  }
-  // Mesma regra do mover: é da estação dele, e apontar TOMA a OP.
-  let assumiu = false
-  if (user.role === 'operador') {
-    const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
-    if (!permissao.pode) {
-      return { success: false, error: permissao.erro }
-    }
-    assumiu = op.responsavelId !== user.id
-  } else if (!isManagerRole(user.role) && op.responsavelId !== user.id) {
-    return { success: false, error: 'Pegue a OP pra você antes de apontar' }
-  }
-
-  const agora = new Date()
-  await db.insert(apontamentosProducao).values({
-    ordemId,
-    operadorId: user.id,
-    inicio: agora,
-    fim: agora,
-    quantidadeProduzida: data.produzida,
-    quantidadeRefugo: data.refugo,
-  })
-
-  revalidatePath('/producao')
-  // Admin e gerente apontam sem tomar a OP — a posse fica com o operador.
-  if (assumiu) {
-    await db
-      .update(ordensProducao)
-      .set({ responsavelId: user.id })
-      .where(eq(ordensProducao.id, ordemId))
-  }
-
-  revalidatePath('/dashboard')
-  revalidatePath(`/ordens/${ordemId}`)
-  return { success: true, message: 'Apontamento registrado', assumiu }
-}
-
 // -----------------------------------------------------------------
 // CONCLUIR PRODUÇÃO — o registro e o fim da OP, numa transação só
 // -----------------------------------------------------------------
@@ -2249,10 +2266,18 @@ export async function apontarProducaoAction(
 // isso a recusa por "já concluída" volta como `success: true` com aviso,
 // e não como erro.
 //
-// ⚠️ NÃO FINALIZA NADA COMERCIAL. Vai pra `pronto_envio`, não pra
-// `enviado` — quem gera `movimentacoes_estoque` é a passagem pra 'enviado',
-// que continua sendo do gerente. (E `ordens_producao` não tem ligação
-// nenhuma com orçamento ou pedido, então não há o que disparar.)
+// ⚠️ A OP FORA DE REMESSA TERMINA AQUI (Q180, 25/09/2026). Na MESMA
+// transação, depois de gravar a conclusão, `gravarBaixa` a leva pra
+// `enviado`: data de fim, estoque, reposição. Se ela devolver false, a
+// transação inteira volta — não existe conclusão sem a finalização que a
+// acompanha. A OP de REMESSA (Full) fica em `pronto_envio` até o Despachar.
+// O critério é estar numa remessa, não o canal: `finalizaNaConclusao`.
+//
+// ⚠️ OS DOIS EVENTOS TÊM O MESMO INSTANTE. `created_at` é `default now()`,
+// o início da transação. É de propósito: é assim que o desfazer reconhece
+// "a finalização que saiu junto com a conclusão" (`desfazerAlcanca`), e o
+// histórico desempata pela ordem em que aconteceram
+// (`posicaoNoMesmoInstante`).
 
 export type ConclusaoInput = {
   produzida: number
@@ -2383,17 +2408,47 @@ export async function concluirProducaoAction(
       maquinaId: ordensProducao.maquinaId,
       // Pra dizer no histórico se saiu depois do prazo.
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
+      // Pra finalizar (fora de remessa) e dizer no aviso pra onde foi.
+      remessaFullId: ordensProducao.remessaFullId,
+      canalDestino: ordensProducao.canalDestino,
+      dataRealFim: ordensProducao.dataRealFim,
+      remessaCanal: remessasFull.canal,
+      remessaDataEnvio: remessasFull.dataEnvio,
+      remessaContaNome: contasMarketplace.nome,
+      pedidoNumero: orcamentos.numero,
+      deReposicao: sql<boolean>`EXISTS (
+        SELECT 1 FROM ${reposicoesEstoque}
+        WHERE ${reposicoesEstoque.ordemId} = "ordens_producao"."id"
+      )`,
     })
     .from(ordensProducao)
+    .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
+    .leftJoin(contasMarketplace, eq(contasMarketplace.id, remessasFull.contaId))
+    .leftJoin(orcamentos, eq(orcamentos.id, ordensProducao.orcamentoId))
     .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
     .limit(1)
   if (!op) return { success: false, error: 'OP não encontrada' }
+
+  const finaliza = finalizaNaConclusao(op)
+  // "Finalizada · foi pro estoque", "… · estoque reposto", "… · Pedido #142",
+  // ou, no Full, "Produção concluída · espera o despacho do Full ML · 24/09".
+  const aviso = textoDaFinalizacao({
+    canalDestino: op.canalDestino,
+    deReposicao: op.deReposicao,
+    remessa:
+      op.remessaFullId && op.remessaCanal && op.remessaDataEnvio
+        ? rotuloDaRemessa(op.remessaCanal, op.remessaDataEnvio, op.remessaContaNome)
+        : op.remessaFullId
+          ? 'Full'
+          : null,
+    pedidoNumero: op.pedidoNumero ?? null,
+  })
 
   // DE ONDE DÁ PRA CONCLUIR. O operador, só de `em_producao`: no tablet a OP
   // sai de uma máquina ou não sai de lugar nenhum. O gerente, de qualquer
   // coluna anterior — é a OP que saiu do tear enquanto o board ainda não
   // sabia dela (a virada do Trello). Fora disso, `concluidaAntes` diz a
-  // verdade: já concluída, já com baixa, cancelada ou fora de produção.
+  // verdade: já concluída, já finalizada, cancelada ou fora de produção.
   const gestor = isManagerRole(user.role)
   if (!podeConcluirProducao(op.status, gestor)) {
     return concluidaAntes(op.status)
@@ -2428,6 +2483,7 @@ export async function concluirProducaoAction(
 
   try {
     let resumo = ''
+    let quantidades = ''
     await db.transaction(async (tx) => {
       // ⚠️ O UPDATE CONDICIONAL VEM PRIMEIRO, E A ORDEM IMPORTA.
       //
@@ -2531,6 +2587,7 @@ export async function concluirProducaoAction(
           diasDeAtraso: diasDeAtrasoNaConclusao(op.dataPrevistaFim, new Date()),
         },
       )
+      quantidades = quantidadesDaConclusao(input.produzida, input.refugo, conclusao)
       // `statusAnterior` é a ORIGEM real. É ela que identifica, numa análise
       // futura, as conclusões que não passaram por máquina — e é ela que
       // `desfazerConclusaoAction` lê pra saber pra onde devolver.
@@ -2541,12 +2598,32 @@ export async function concluirProducaoAction(
         usuarioId: user.id,
         observacao: resumo,
       })
+
+      // E A OP FORA DE REMESSA TERMINA JUNTO — ver o comentário do topo.
+      if (finaliza) {
+        const ok = await gravarBaixa(
+          tx,
+          { id: ordemId, status: 'pronto_envio', dataRealFim: op.dataRealFim },
+          { usuarioId: user.id, observacao: aviso },
+        )
+        if (!ok) throw new ConflitoDeOrdem()
+      }
     })
 
     revalidatePath('/producao')
     revalidatePath('/dashboard')
+    revalidatePath('/ordens')
     revalidatePath(`/ordens/${ordemId}`)
-    return { success: true, message: resumo, assumiu, data: { concluiu: true } }
+    if (finaliza) {
+      revalidatePath('/estoque')
+      revalidatePath('/remessas')
+    }
+    return {
+      success: true,
+      message: `${aviso} — ${quantidades}`,
+      assumiu,
+      data: { concluiu: true },
+    }
   } catch (erro) {
     if (erro instanceof QuantidadeRecusada) {
       return { success: false, error: erro.message }
@@ -2576,8 +2653,9 @@ export async function concluirProducaoAction(
 // resolve editando número.
 //
 // ⚠️ POR ISSO É DESFAZER, E NÃO EDITAR. Ajustar quantidade horas depois é
-// CONFERÊNCIA, e conferência é do gerente — que já tem `apontarProducaoAction`
-// sem teto no detalhe da OP. Um segundo fluxo numérico na tela do operador
+// CONFERÊNCIA, e conferência é do gerente — que tem o Corrigir quantidades
+// (`corrigirQuantidadesAction`) na ficha da OP. Um segundo fluxo numérico na
+// tela do operador
 // devolveria a ambiguidade que a Fase 3 tirou: "registrar" e "terminar"
 // voltariam a ser duas coisas na cabeça dele, com uma delas chamada
 // "corrigir".
@@ -2586,8 +2664,11 @@ export async function concluirProducaoAction(
 // TRÊS GUARDAS DE FATO, E NENHUMA DE RELÓGIO
 // ─────────────────────────────────────────────────────────────────────────
 //
-//   1. A OP ainda tem que estar em `pronto_envio`. Se o gerente já moveu,
-//      não há mais volta pelo tablet — quem está adiante na esteira decide.
+//   1. A OP ainda tem que estar no ponto (`desfazerAlcanca`): em Produção
+//      concluída, ou FINALIZADA PELA CONCLUSÃO sem nada depois — a OP fora de
+//      remessa termina junto com a conclusão (Q180), e sem isto o Desfazer
+//      deixaria de existir pra ela. Full despachado, ou OP que alguém já
+//      mexeu, não volta por aqui.
 //   2. A máquina tem que estar LIVRE. Se alguém já iniciou outra OP na
 //      TC-02, o mundo físico andou: tem peça na máquina agora.
 //   3. No tablet, SÓ QUEM CONCLUIU desfaz (`erroDoAutorDoDesfazer`). O erro
@@ -2599,6 +2680,12 @@ export async function concluirProducaoAction(
 // minutos" seria um guarda arbitrário, que recusa sem conseguir explicar por
 // quê. As três condições acima SÃO fatos, e toda recusa delas tem uma frase
 // que o operador entende e pode agir sobre.
+//
+// ⚠️ E DESFAZ TUDO, NA MESMA TRANSAÇÃO: o status volta, `data_real_fim`
+// volta a nulo (senão a próxima finalização herdaria a data velha — a
+// `gravarBaixa` usa `op.dataRealFim ?? new Date()`), os apontamentos da
+// conclusão saem, a entrada no estoque sai (`sincronizarEntradaDaOp`) e a
+// reposição volta pra "Em produção".
 //
 // ⚠️ O APONTAMENTO É APAGADO, e isso é decisão, não descuido. Manter o
 // número errado inflaria a produção do dia — que é justamente o dado que
@@ -2627,6 +2714,7 @@ export async function desfazerConclusaoAction(
       numero: ordensProducao.numero,
       status: ordensProducao.status,
       maquinaId: ordensProducao.maquinaId,
+      remessaFullId: ordensProducao.remessaFullId,
     })
     .from(ordensProducao)
     .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
@@ -2638,14 +2726,29 @@ export async function desfazerConclusaoAction(
   // mesmo seria só esquisito.
   const operador = user.role === 'operador'
 
-  if (op.status !== 'pronto_envio') {
+  // A conclusão mais recente (quando, de onde a OP veio, quem concluiu) e a
+  // última transição — ver src/lib/db/conclusao-da-op.ts.
+  const marcos = await marcosDaOp(ordemId)
+  const origem = marcos.conclusao
+
+  if (
+    !desfazerAlcanca({
+      status: op.status,
+      remessaFullId: op.remessaFullId,
+      conclusaoEm: origem?.em ?? null,
+      ultimaTransicao: marcos.ultimaTransicao,
+    })
+  ) {
     return {
       success: false,
       error: operador
-        ? `O gerente já moveu essa OP (${STATUS_LABEL_CURTO[op.status]}). Fale com ele.`
-        : `Essa OP já saiu de Produção concluída (${STATUS_LABEL_CURTO[op.status]})`,
+        ? `Essa OP não volta mais pelo tablet (${STATUS_LABEL_CURTO[op.status]}). Fale com o gerente.`
+        : op.status === 'enviado'
+          ? 'Essa OP não foi finalizada pela conclusão mais recente. Pra consertar o número, use Corrigir quantidades'
+          : `Essa OP não está com a produção concluída (${STATUS_LABEL_CURTO[op.status]})`,
     }
   }
+  const estavaFinalizada = op.status === 'enviado'
 
   // ─────────────────────────────────────────────────────────────────────
   // PRA ONDE ELA VOLTA: DE ONDE ELA VEIO
@@ -2658,7 +2761,6 @@ export async function desfazerConclusaoAction(
   //
   // Sem evento (OP legada) ou sem origem, vale o caminho de sempre: a
   // máquina.
-  const origem = await conclusaoMaisRecente(ordemId)
 
   // A GUARDA DO AUTOR vem antes das de máquina e vale pros dois ramos. A
   // sessão é a que o "Quem é você?" do tablet confirmou — é ela que conta.
@@ -2690,18 +2792,7 @@ export async function desfazerConclusaoAction(
 
     // A MÁQUINA TEM QUE ESTAR LIVRE. O índice único pegaria isso no UPDATE,
     // mas com um 23505 traduzido genérico; aqui dá pra dizer QUAL OP ocupou.
-    const [ocupada] = await db
-      .select({ numero: ordensProducao.numero, codigo: maquinas.codigo })
-      .from(ordensProducao)
-      .innerJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
-      .where(
-        and(
-          eq(ordensProducao.maquinaId, op.maquinaId),
-          eq(ordensProducao.status, 'em_producao'),
-          isNull(ordensProducao.deletedAt),
-        ),
-      )
-      .limit(1)
+    const ocupada = await ocupanteDaMaquina(op.maquinaId)
     if (ocupada) {
       return {
         success: false,
@@ -2723,12 +2814,14 @@ export async function desfazerConclusaoAction(
   try {
     let desfeito = 0
     await db.transaction(async (tx) => {
-      // Mesmo UPDATE condicional das outras: se alguém mexeu entre o SELECT
-      // e agora, zero linhas e nada acontece.
+      // Mesmo UPDATE condicional das outras, no status LIDO: se alguém mexeu
+      // entre o SELECT e agora, zero linhas e nada acontece.
       const gravadas = await tx
         .update(ordensProducao)
         .set({
           status: destino,
+          // Sem isto a próxima finalização herdaria a data velha.
+          dataRealFim: null,
           // O ramo da fila volta sem máquina — ela já saiu sem, e a coluna de
           // origem não é lugar de OP presa a tear.
           ...(voltaPraMaquina ? {} : { maquinaId: null }),
@@ -2737,7 +2830,7 @@ export async function desfazerConclusaoAction(
           and(
             eq(ordensProducao.id, ordemId),
             isNull(ordensProducao.deletedAt),
-            eq(ordensProducao.status, 'pronto_envio'),
+            eq(ordensProducao.status, op.status),
           ),
         )
         .returning({ id: ordensProducao.id })
@@ -2745,21 +2838,11 @@ export async function desfazerConclusaoAction(
 
       // QUAIS APONTAMENTOS SÃO DA CONCLUSÃO: os criados de lá pra cá. Achar
       // pelo evento é preciso; "o último apontamento" seria um chute que
-      // erraria se o gerente tivesse lançado algo depois.
+      // erraria se houvesse um apontamento legado de antes.
       //
       // Relido DENTRO da transação e conferido com o de fora: se outra
       // conclusão entrou no meio, a origem que decidiu o destino já não vale.
-      const [conclusao] = await tx
-        .select({ em: eventosKanban.createdAt })
-        .from(eventosKanban)
-        .where(
-          and(
-            eq(eventosKanban.ordemId, ordemId),
-            eq(eventosKanban.statusNovo, 'pronto_envio'),
-          ),
-        )
-        .orderBy(desc(eventosKanban.createdAt))
-        .limit(1)
+      const { conclusao } = await marcosDaOp(ordemId, tx)
       if (
         origem !== null &&
         (!conclusao || conclusao.em.getTime() !== origem.em.getTime())
@@ -2780,20 +2863,29 @@ export async function desfazerConclusaoAction(
         desfeito = apagados.reduce((soma, a) => soma + a.q, 0)
       }
 
+      const registro = `o registro de ${desfeito} peças foi cancelado`
       await tx.insert(eventosKanban).values({
         ordemId,
-        statusAnterior: 'pronto_envio',
+        statusAnterior: op.status,
         statusNovo: destino,
         usuarioId: user.id,
         observacao: voltaPraMaquina
-          ? `Conclusão desfeita — o registro de ${desfeito} peças foi cancelado`
-          : `Conclusão desfeita — voltou pra ${STATUS_LABEL_CURTO[destino]} sem máquina; o registro de ${desfeito} peças foi cancelado`,
+          ? `Conclusão desfeita — ${estavaFinalizada ? 'deixou de ser finalizada; ' : ''}${registro}`
+          : `Conclusão desfeita — voltou pra ${STATUS_LABEL_CURTO[destino]} sem máquina${estavaFinalizada ? ' e deixou de ser finalizada' : ''}; ${registro}`,
       })
+
+      // O que a finalização fez, desfeito: a entrada no estoque sai (a OP não
+      // está mais finalizada) e o item da reposição volta pra "Em produção".
+      await sincronizarEntradaDaOp(tx, ordemId, user.id)
+      await sincronizarReposicaoDaOp(tx, [ordemId])
     })
 
     revalidatePath('/producao')
     revalidatePath('/dashboard')
+    revalidatePath('/ordens')
     revalidatePath(`/ordens/${ordemId}`)
+    revalidatePath('/estoque')
+    revalidatePath('/remessas')
     return {
       success: true,
       message: voltaPraMaquina
@@ -2819,33 +2911,154 @@ export async function desfazerConclusaoAction(
   }
 }
 
-// A conclusão mais recente da OP: quando foi (pra achar os apontamentos dela),
-// de onde a OP veio (pra saber pra onde devolver) e QUEM concluiu (no tablet,
-// só essa pessoa desfaz).
-async function conclusaoMaisRecente(ordemId: string): Promise<{
-  em: Date
-  de: (typeof statusValues)[number] | null
-  porId: string | null
-  porNome: string | null
-} | null> {
-  const [ev] = await db
+// -----------------------------------------------------------------
+// CORRIGIR QUANTIDADES — o número errado, consertado depois (Q183)
+// -----------------------------------------------------------------
+//
+// A regra (quem, quando, e como a diferença se distribui nos apontamentos
+// sem mudar o DIA em que a produção aconteceu) está em
+// src/lib/producao/correcao.ts. Aqui fica a gravação, numa transação:
+//
+//   - um UPDATE condicional no status lido é o CADEADO — e, de quebra, mexe
+//     no `updated_at` da OP, o que avisa os tablets pelo Realtime;
+//   - os totais são relidos lá dentro e têm que bater com os que a tela
+//     mostrou (`vistos`): dois gerentes corrigindo ao mesmo tempo não somam
+//     um por cima do outro;
+//   - evento SEM transição, com o antes e o depois — o relógio do aging e as
+//     leituras de conclusão (conclusao-da-op.ts) ignoram esse tipo;
+//   - o estoque acompanha (`sincronizarEntradaDaOp`).
+
+export type CorrecaoInput = {
+  produzida: number
+  refugo: number
+  /** Os totais que a tela mostrava. Se mudaram desde então, é conflito. */
+  vistos: { produzida: number; refugo: number }
+}
+
+export async function corrigirQuantidadesAction(
+  ordemId: string,
+  input: CorrecaoInput,
+): Promise<ActionResult> {
+  const user = await requireAuth()
+  if (!uuidRe.test(ordemId)) return { success: false, error: 'ID inválido' }
+
+  if (
+    !isManagerRole(user.role) ||
+    !podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))
+  ) {
+    return { success: false, error: 'Só gerente ou admin corrige quantidades' }
+  }
+
+  const [op] = await db
     .select({
-      em: eventosKanban.createdAt,
-      de: eventosKanban.statusAnterior,
-      porId: eventosKanban.usuarioId,
-      porNome: users.nome,
+      id: ordensProducao.id,
+      status: ordensProducao.status,
+      maquinaId: ordensProducao.maquinaId,
     })
-    .from(eventosKanban)
-    .leftJoin(users, eq(users.id, eventosKanban.usuarioId))
-    .where(
-      and(
-        eq(eventosKanban.ordemId, ordemId),
-        eq(eventosKanban.statusNovo, 'pronto_envio'),
-      ),
-    )
-    .orderBy(desc(eventosKanban.createdAt))
+    .from(ordensProducao)
+    .where(and(eq(ordensProducao.id, ordemId), isNull(ordensProducao.deletedAt)))
     .limit(1)
-  return ev ?? null
+  if (!op) return { success: false, error: 'OP não encontrada' }
+
+  const vistos: Quantidades = {
+    boas: input.vistos?.produzida,
+    defeito: input.vistos?.refugo,
+  }
+  const novo: Quantidades = { boas: input.produzida, defeito: input.refugo }
+  const erro = erroDaCorrecao(op.status, vistos, novo)
+  if (erro) return { success: false, error: erro }
+
+  try {
+    await db.transaction(async (tx) => {
+      const travada = await tx
+        .update(ordensProducao)
+        .set({ updatedAt: new Date() })
+        .where(
+          and(
+            eq(ordensProducao.id, ordemId),
+            isNull(ordensProducao.deletedAt),
+            eq(ordensProducao.status, op.status),
+          ),
+        )
+        .returning({ id: ordensProducao.id })
+      if (travada.length === 0) throw new ConflitoDeOrdem()
+
+      // Do mais antigo pro mais recente: é a ordem que `planoDaCorrecao` pede.
+      const linhas = await tx
+        .select({
+          id: apontamentosProducao.id,
+          boas: apontamentosProducao.quantidadeProduzida,
+          defeito: apontamentosProducao.quantidadeRefugo,
+        })
+        .from(apontamentosProducao)
+        .where(eq(apontamentosProducao.ordemId, ordemId))
+        .orderBy(asc(apontamentosProducao.inicio), asc(apontamentosProducao.createdAt))
+      const atual: Quantidades = {
+        boas: linhas.reduce((s, l) => s + l.boas, 0),
+        defeito: linhas.reduce((s, l) => s + l.defeito, 0),
+      }
+      if (atual.boas !== vistos.boas || atual.defeito !== vistos.defeito) {
+        throw new ConflitoDeOrdem()
+      }
+
+      const plano = planoDaCorrecao(linhas, novo)
+      for (const u of plano.atualizar) {
+        await tx
+          .update(apontamentosProducao)
+          .set({
+            quantidadeProduzida: u.boas,
+            quantidadeRefugo: u.defeito,
+            updatedAt: new Date(),
+          })
+          .where(eq(apontamentosProducao.id, u.id))
+      }
+      if (plano.apagar.length > 0) {
+        await tx
+          .delete(apontamentosProducao)
+          .where(inArray(apontamentosProducao.id, plano.apagar))
+      }
+      if (plano.criar) {
+        // Sem apontamento nenhum: a linha nasce NO DIA DA CONCLUSÃO, no nome
+        // de quem concluiu — é quando e por quem a produção foi registrada.
+        const { conclusao } = await marcosDaOp(ordemId, tx)
+        const em = conclusao?.em ?? new Date()
+        await tx.insert(apontamentosProducao).values({
+          ordemId,
+          maquinaId: op.maquinaId,
+          operadorId: conclusao?.porId ?? user.id,
+          inicio: em,
+          fim: em,
+          quantidadeProduzida: plano.criar.boas,
+          quantidadeRefugo: plano.criar.defeito,
+        })
+      }
+
+      await tx.insert(eventosKanban).values({
+        ordemId,
+        statusAnterior: op.status,
+        statusNovo: op.status,
+        usuarioId: user.id,
+        observacao: textoDaCorrecao(atual, novo),
+      })
+      await sincronizarEntradaDaOp(tx, ordemId, user.id)
+    })
+  } catch (e) {
+    if (e instanceof ConflitoDeOrdem) {
+      return {
+        success: false,
+        error: 'Alguém mexeu nessa OP agora mesmo. Atualize a tela.',
+      }
+    }
+    throw e
+  }
+
+  revalidatePath('/producao')
+  revalidatePath('/dashboard')
+  revalidatePath('/ordens')
+  revalidatePath(`/ordens/${ordemId}`)
+  revalidatePath('/estoque')
+  revalidatePath('/remessas')
+  return { success: true, message: textoDaCorrecao(vistos, novo) }
 }
 
 // A quantidade recusada pelo teto. Classe própria pra desfazer a transação
@@ -2855,7 +3068,7 @@ class QuantidadeRecusada extends Error {}
 
 // A RESPOSTA PRA "CONCLUIR" NUMA OP QUE NÃO ESTÁ EM PONTO DE CONCLUIR.
 //
-// Dois casos são SUCESSO de propósito: já concluída e já com baixa são o
+// Dois casos são SUCESSO de propósito: já concluída e já finalizada são o
 // reenvio depois de queda de conexão, e um "falhou" ali seria mentira sobre
 // algo que deu certo. Cancelada e fora de produção são recusa de verdade.
 function concluidaAntes(status: (typeof statusValues)[number]): ActionResult {
@@ -2863,7 +3076,7 @@ function concluidaAntes(status: (typeof statusValues)[number]): ActionResult {
     return { success: true, message: 'Essa OP já estava com a produção concluída' }
   }
   if (status === 'enviado') {
-    return { success: true, message: 'Essa OP já tem baixa' }
+    return { success: true, message: 'Essa OP já está finalizada' }
   }
   if (status === 'cancelado') {
     return { success: false, error: 'Essa OP foi cancelada' }
@@ -2904,7 +3117,7 @@ export async function cancelarOrdemAction(id: string): Promise<ActionResult> {
   if (erro) return { success: false, error: erro }
 
   const gravadas = await db.transaction(async (tx) => {
-    // Condicional no status lido: se alguém deu baixa no meio, nada muda.
+    // Condicional no status lido: se alguém finalizou no meio, nada muda.
     const linhas = await tx
       .update(ordensProducao)
       .set({ status: 'cancelado' })

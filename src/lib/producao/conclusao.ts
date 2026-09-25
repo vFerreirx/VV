@@ -4,6 +4,14 @@
 // `inicio-da-op.ts`. Este responde as duas perguntas do fim da OP: quanto
 // sugerir, e até quanto deixar registrar.
 //
+// ⚠️ NA TELA É "DEFEITO" DESDE 25/09/2026; NO BANCO E NO CÓDIGO, `refugo`.
+// Os operadores entendem melhor "defeito" (Q185), e só o texto mudou: a
+// coluna `apontamentos_producao.quantidade_refugo`, os identificadores e as
+// chaves do rascunho do tablet continuam `refugo`, e o histórico gravado
+// antes disso continua dizendo "refugo". A regra também não mudou: peça com
+// defeito não conta como boa, não vai pro estoque nem pro Full, e não tem
+// teto.
+//
 // ─────────────────────────────────────────────────────────────────────────
 // O TETO É A META DO GERENTE. NÃO DÁ PRA PASSAR.
 // ─────────────────────────────────────────────────────────────────────────
@@ -11,14 +19,14 @@
 // O operador não registra mais peças boas do que a quantidade que o gerente
 // pediu na OP. Uma OP de 30 aceita 30, aceita 27, e não aceita 31.
 //
-// ⚠️ O TETO É SÓ SOBRE PEÇAS BOAS. Refugo NÃO entra na conta: refugo é peça
+// ⚠️ O TETO É SÓ SOBRE PEÇAS BOAS. Defeito NÃO entra na conta: é peça
 // perdida, não produção. Se o fio veio ruim e queimaram 5 além da meta, isso
-// precisa caber no registro — tampar o refugo faria o operador arredondar
+// precisa caber no registro — tampar o defeito faria o operador arredondar
 // pra baixo pra conseguir salvar, e o número que sobra mente sobre o
 // rendimento do lote.
 //
-// ⚠️ E O TETO É SÓ DO OPERADOR. O gerente conclui pelo board e aponta pelo
-// sheet sem limite: se a fábrica de fato fizer 32 numa OP de 30, as peças
+// ⚠️ E O TETO É SÓ DO OPERADOR. O gerente conclui pelo board e corrige pela
+// ficha sem limite: se a fábrica de fato fizer 32 numa OP de 30, as peças
 // existem no mundo e alguém tem que conseguir registrar — a decisão é que
 // essa pessoa é quem planejou, não quem está na máquina. É por isso que o
 // teto é uma OPÇÃO de `erroDeQuantidade`, ligada por padrão: quem esquecer
@@ -31,16 +39,17 @@
 // Recusar uma conclusão porque saíram 27 de 30 travaria a máquina com um
 // trabalho que já acabou — a tela existe pra destravar a estação, não pra
 // prendê-la. Então conclui, e a diferença vira texto no `eventos_kanban`,
-// que é onde o gerente confere antes de mandar pra 'enviado'.
+// que é onde o gerente confere — e, se o número estiver errado, usa o
+// Corrigir quantidades da ficha (correcao.ts).
 //
 // ─────────────────────────────────────────────────────────────────────────
 // O QUE JÁ FOI REGISTRADO NÃO CONTA DE NOVO
 // ─────────────────────────────────────────────────────────────────────────
 //
 // No fluxo novo o registro é feito só no fim, então `jaRegistrado` é zero
-// quase sempre. Mas OP legada tem apontamento, e o gerente pode apontar pelo
-// sheet no meio do caminho. Nesses casos o sugerido (e o teto) é O QUE
-// FALTA, e o apontamento novo grava só o incremento. Somar a meta cheia por
+// quase sempre. Mas OP legada pode ter apontamento de antes (o "apontamento
+// avulso" do sheet existiu até 25/09/2026). Nesses casos o sugerido (e o
+// teto) é O QUE FALTA, e o apontamento novo grava só o incremento. Somar a meta cheia por
 // cima do que já existe dobraria a produção do dia em silêncio.
 
 import { diaEmBrasilia, diasEntre } from '../dia-brasil.ts'
@@ -86,7 +95,14 @@ export function erroDeQuantidade(
     return 'Quantidade inválida'
   }
   if (!Number.isInteger(refugo) || refugo < 0) {
-    return 'Refugo inválido'
+    return 'Defeito inválido'
+  }
+  // 0 E 0 SEM NADA REGISTRADO NÃO CONCLUI. Desde que a OP fora de remessa
+  // finaliza na conclusão, isso fecharia na hora uma OP que não produziu
+  // nada. Com apontamento de antes (legado) o zero é válido: o total já
+  // está lá, e concluir só registra que acabou.
+  if (produzida === 0 && refugo === 0 && jaRegistrado === 0) {
+    return 'Informe as peças. Se a OP não produziu nada, devolva à fila ou cancele'
   }
   if (teto && produzida > restante) {
     // A mensagem muda conforme haja registro anterior: "o máximo é 30" numa
@@ -101,8 +117,8 @@ export function erroDeQuantidade(
 
 /**
  * O texto que fica no `eventos_kanban`. É onde o gerente lê o que aconteceu
- * antes de mandar a OP pra 'enviado' — por isso diz o total contra a meta, e
- * não só o que entrou agora.
+ * na conclusão — por isso diz o total contra a meta, e não só o que entrou
+ * agora.
  *
  * ⚠️ QUEM REGISTROU NÃO É QUEM PRODUZIU, e desde que o registro passou a ser
  * feito só no fim isso ficou invisível. Existe UM apontamento, no nome de
@@ -119,8 +135,9 @@ export function erroDeQuantidade(
  * começou e terminou, "iniciada por ela mesma" é ruído.
  *
  * ⚠️ "PRODUÇÃO CONCLUÍDA", NUNCA "CONCLUÍDA" SOZINHA. A OP tem dois fins: sair
- * da máquina (esta linha) e receber baixa (`enviado`). Com a palavra solta, o
- * gerente lendo o histórico não distingue um do outro.
+ * da máquina (esta linha) e ser finalizada (`enviado` — na conclusão, fora de
+ * remessa; no despacho, no Full). Com a palavra solta, o gerente lendo o
+ * histórico não distingue um do outro.
  *
  * `maquinaInformada` marca a conclusão que o gerente faz de uma OP que não
  * estava numa máquina — a que saiu do tear enquanto o board ainda não sabia
@@ -138,14 +155,9 @@ export function resumoDaConclusao(
     diasDeAtraso = 0,
   }: { maquinaInformada?: string | null; diasDeAtraso?: number } = {},
 ): string {
-  const total = jaRegistrado + produzida
-  const diferenca = meta - total
-  const partes = [`Produção concluída com ${total} de ${meta} peças`]
-  if (diferenca > 0) partes.push(`(${diferenca} a menos)`)
-  // Só o gerente passa da meta — o teto do operador não deixa. Sem isto, 32
-  // de 30 saía igual a 30 de 30 no histórico.
-  if (diferenca < 0) partes.push(`(${-diferenca} a mais)`)
-  if (refugo > 0) partes.push(`· ${refugo} refugo`)
+  const partes = [
+    `Produção concluída com ${quantidadesDaConclusao(produzida, refugo, { meta, jaRegistrado })}`,
+  ]
   if (iniciadaPor) partes.push(`· iniciada por ${iniciadaPor}`)
   if (maquinaInformada) {
     partes.push(`· máquina ${maquinaInformada} informada na conclusão`)
@@ -158,6 +170,28 @@ export function resumoDaConclusao(
       `· concluída com ${diasDeAtraso} ${diasDeAtraso === 1 ? 'dia' : 'dias'} de atraso`,
     )
   }
+  return partes.join(' ')
+}
+
+/**
+ * "27 de 30 peças (3 a menos) · 3 com defeito" — o miolo do resumo. Sai
+ * sozinho no AVISO do "Terminei" e do "Concluir produção", depois do destino
+ * ("Finalizada · foi pro estoque — 27 de 30 peças…"): repetir "Produção
+ * concluída" ali faria o aviso do Full dizer isso duas vezes.
+ */
+export function quantidadesDaConclusao(
+  produzida: number,
+  refugo: number,
+  { meta, jaRegistrado }: Pick<Conclusao, 'meta' | 'jaRegistrado'>,
+): string {
+  const total = jaRegistrado + produzida
+  const diferenca = meta - total
+  const partes = [`${total} de ${meta} peças`]
+  if (diferenca > 0) partes.push(`(${diferenca} a menos)`)
+  // Só o gerente passa da meta — o teto do operador não deixa. Sem isto, 32
+  // de 30 saía igual a 30 de 30 no histórico.
+  if (diferenca < 0) partes.push(`(${-diferenca} a mais)`)
+  if (refugo > 0) partes.push(`· ${refugo} com defeito`)
   return partes.join(' ')
 }
 

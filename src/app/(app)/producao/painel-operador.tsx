@@ -822,7 +822,7 @@ function CorpoOcupada({
       {(op.produzido > 0 || op.refugo > 0) && (
         <p className="text-muted-foreground text-xs tabular-nums">
           já registradas: {op.produzido}
-          {op.refugo > 0 && ` · ${op.refugo} refugo`}
+          {op.refugo > 0 && ` · ${op.refugo} com defeito`}
         </p>
       )}
 
@@ -1431,7 +1431,7 @@ function ConsultaDialog({
           <DialogDescription className="text-base">
             {ehFila
               ? 'OPs esperando pra começar. Pra iniciar uma, toque em "Iniciar produção" na máquina.'
-              : 'Saíram da máquina e esperam o gerente concluir.'}
+              : 'Concluídas nas últimas 24 horas.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -1469,10 +1469,15 @@ function ConsultaDialog({
                 <div className="mt-2 border-t pt-2">
                   <p className="text-base tabular-nums">
                     {op.produzido} peças
-                    {op.refugo > 0 && ` · ${op.refugo} refugo`}
+                    {op.refugo > 0 && ` · ${op.refugo} com defeito`}
                     {' · '}
                     {hora(op.concluidaEm)}
                     {op.concluidaPor && ` · ${op.concluidaPor}`}
+                    {/* Fora de remessa ela já terminou; o Full espera o
+                        despacho da remessa, que é do gerente. */}
+                    {op.status === 'enviado'
+                      ? ' · Finalizada'
+                      : ' · espera o despacho'}
                   </p>
                   {op.resumo && (
                     <p className="text-muted-foreground mt-0.5 text-sm">
@@ -1534,11 +1539,11 @@ function ConsultaDialog({
 // ⚠️ O TETO É A META DO GERENTE (src/lib/producao/conclusao.ts). O teclado
 // RECUSA o dígito que passaria do limite, em vez de aceitar e reclamar
 // depois: número errado que aparece na tela por um instante é número que
-// alguém pode confirmar sem reler. Refugo não tem teto — peça perdida não é
-// produção.
+// alguém pode confirmar sem reler. Defeito não tem teto — peça perdida não é
+// produção. (Na tela é "Defeito"; no código, `refugo` — ver conclusao.ts.)
 //
 // ⚠️ E O QUE JÁ FOI REGISTRADO NÃO CONTA DE NOVO. Numa OP que já tem
-// apontamento (legado, ou o gerente pelo sheet), o sugerido e o teto são o
+// apontamento (legado), o sugerido e o teto são o
 // QUE FALTA, com o "já registradas: X" à vista pra explicar por que o número
 // não é a meta cheia.
 //
@@ -1740,7 +1745,7 @@ function ConcluirDialog({
             onSelecionar={() => setAtivo('produzida')}
           />
           <CampoNumero
-            rotulo="Refugo"
+            rotulo="Defeito"
             valor={valores.refugo}
             ativo={ativo === 'refugo'}
             onSelecionar={() => setAtivo('refugo')}
