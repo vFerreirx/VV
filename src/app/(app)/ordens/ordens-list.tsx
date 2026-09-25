@@ -204,8 +204,9 @@ export function OrdensList({
     <div className="space-y-5">
       {/* O QUE APERTA, PRIMEIRO. É o que o gerente vem ver aqui: o kanban e
           o tablet já mostram a fila; a lista é onde ele confere o que está
-          atrasado, o que vence hoje e o que falta dar baixa — e dali parte
-          pra OP. Cada contador é o filtro dele: clicar aplica, clicar de
+          atrasado e o que vence hoje — e dali parte pra OP. (O "Falta dar
+          baixa" saiu em 25/09/2026: a OP fora de remessa finaliza na
+          conclusão, e o que falta despachar é da remessa, em /remessas.) Cada contador é o filtro dele: clicar aplica, clicar de
           novo tira. Os números contam o conjunto filtrado inteiro (não só a
           página) e não mudam ao clicar um deles (`ContagensDaLista`). */}
       <div className="flex flex-wrap gap-3" role="group" aria-label="O que aperta">
@@ -235,31 +236,17 @@ export function OrdensList({
             })
           }
         />
-        {/* "Falta dar baixa" é o status `pronto_envio` — o mesmo âmbar de
-            "Produção concluída" no board e nas remessas. */}
-        <Contador
-          n={contagens.faltaBaixa}
-          rotulo="Falta dar baixa"
-          ativo={statusAtual === 'pronto_envio' && !prazoAtual}
-          tom="baixa"
-          disabled={isPending}
-          onClick={() =>
-            aplicarFiltro({
-              status: statusAtual === 'pronto_envio' ? 'abertas' : 'pronto_envio',
-              prazo: undefined,
-            })
-          }
-        />
       </div>
 
       <div className="flex flex-wrap gap-2">
         {[
-          // ABERTAS É O PADRÃO: tudo sem baixa e sem cancelamento — o que se
+          // ABERTAS É O PADRÃO: tudo não finalizado e não cancelado — o que se
           // procura aqui no dia a dia, e o que o gerente confere na virada.
           { label: 'Abertas', val: 'abertas' },
-          // "Com baixa", e não "Concluídas": concluída é a PRODUÇÃO, que
-          // continua no board. Este chip filtra `enviado`.
-          { label: 'Com baixa', val: 'enviado' },
+          // "Finalizadas", e não "Concluídas": concluída é a PRODUÇÃO, e o
+          // Full concluído continua esperando o despacho. Este chip filtra
+          // `enviado`.
+          { label: 'Finalizadas', val: 'enviado' },
           { label: 'Canceladas', val: 'cancelado' },
           { label: 'Todas', val: 'todos' },
         ].map((chip) => {
@@ -270,7 +257,7 @@ export function OrdensList({
               type="button"
               aria-pressed={ativo}
               // Trocar de chip tira o filtro de prazo: "Atrasadas" dentro de
-              // "Com baixa" é sempre vazio, e a lista vazia pareceria bug.
+              // "Finalizadas" é sempre vazio, e a lista vazia pareceria bug.
               onClick={() => aplicarFiltro({ status: chip.val, prazo: undefined })}
               disabled={isPending}
               className={cn(
@@ -430,7 +417,7 @@ export function OrdensList({
         <EmptyState
           icon={ClipboardList}
           title="Nenhuma OP encontrada"
-          description="Crie ordens de produção pra acompanhar no kanban e dar baixa quando ficarem prontas."
+          description="Crie ordens de produção pra acompanhar no kanban até ficarem prontas."
           action={
             podeEditar ? (
               <BotaoNovaOp produtos={produtosNovaOp} size="sm">
@@ -728,7 +715,7 @@ function Maquina({ nome }: { nome: string | null }) {
   return <span>{nome ? `Máquina ${nome}` : 'Sem máquina'}</span>
 }
 
-// "30 pç" enquanto roda; "27/30 pç" e "2 ref." depois — `quantidadeNaLista`.
+// "30 pç" enquanto roda; "27/30 pç" e "2 com defeito" depois — `quantidadeNaLista`.
 // Âmbar quando a produção fechou abaixo da meta.
 function Quantidade({ o }: { o: OrdemListItem }) {
   const q = quantidadeNaLista(o)
@@ -766,7 +753,7 @@ function Status({ o }: { o: OrdemListItem }) {
 }
 
 // O prazo em palavras, e só em vermelho quando aperta — `prazoNaLista`, que
-// cala o prazo da OP já concluída (o que falta nela é a baixa). Sem prazo, a
+// cala o prazo da OP já concluída (a produção terminou; o resto é despacho). Sem prazo, a
 // tabela mostra "—" pra coluna não parecer quebrada; o cartão não mostra nada.
 function PrazoDaLinha({
   o,
@@ -804,18 +791,15 @@ function BotaoDoDestino({
   )
 }
 
-// Os três contadores do topo. Vermelho cheio pra atrasada, contorno
-// vermelho pra "vence hoje" (aperta, mas ainda dá tempo), âmbar pra baixa —
-// o âmbar que "Produção concluída" já tem no resto do sistema.
+// Os dois contadores do topo. Vermelho cheio pra atrasada, contorno
+// vermelho pra "vence hoje" (aperta, mas ainda dá tempo).
 //
-// ZERO NÃO GRITA: o contador vazio fica neutro e desabilitado. Três caixas
+// ZERO NÃO GRITA: o contador vazio fica neutro e desabilitado. Caixas
 // coloridas com "0" dentro ensinariam o olho a ignorar a cor.
 const TOM_DO_CONTADOR = {
   atrasada:
     'border-destructive bg-destructive/10 text-destructive dark:bg-destructive/20',
   hoje: 'border-destructive/60 text-destructive',
-  baixa:
-    'border-amber-500/70 bg-amber-500/10 text-amber-800 dark:text-amber-300',
 } as const
 
 function Contador({

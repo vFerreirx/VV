@@ -124,7 +124,7 @@ export type OcupacaoDasMaquinas = { produzindo: number; aptas: number }
 // passar a máquina parada. A coleta começa quando os operadores entram nos
 // tablets — antes disso o board é atualizado pelo gerente em paralelo com o
 // Trello, e o tempo por coluna mede quando ele lembrou de arrastar, não a
-// fábrica. Ela termina com 30 OPs com baixa E pelo menos 2 semanas
+// fábrica. Ela termina com 30 OPs com produção concluída E pelo menos 2 semanas
 // completas; os limiares saem da mediana e do p90 de permanência por coluna
 // no `eventos_kanban`.
 //
@@ -133,9 +133,9 @@ export type OcupacaoDasMaquinas = { produzindo: number; aptas: number }
 // tarde e uma de 600 por uma semana, e um limiar fixo em dias acenderia a
 // grande toda vez e nunca a pequena.
 //
-// Na coluna Produção concluída o destaque NÃO é atraso: é pendência de baixa
-// — a produção terminou e ninguém deu baixa na OP. O `title` do relógio diz
-// isso nessa coluna.
+// Na coluna Produção concluída não há pendência de OP: a de fora de remessa
+// finaliza na conclusão, e o Full pronto esperando a data de envio é normal.
+// A pendência de despacho é da REMESSA (`riscoDaRemessa`), não do card.
 const AGING_ALERTA_MS: Partial<Record<StatusKanban, number>> = {}
 
 function tempoNaEtapa(
@@ -295,9 +295,14 @@ export function KanbanBoard({
   }, [items, filtros, currentUserId])
 
   const grupos = useMemo(() => {
+    // A FINALIZADA DAS ÚLTIMAS 24 H mora na coluna "Produção concluída"
+    // (Q182): o gerente de manhã vê ali o que terminou de madrugada. Ela não
+    // é coluna própria — `enviado` não está em STATUS_KANBAN.
     return STATUS_KANBAN.map((status) => ({
       status,
-      ordens: visiveis.filter((o) => o.status === status),
+      ordens: visiveis.filter(
+        (o) => (o.status === 'enviado' ? 'pronto_envio' : o.status) === status,
+      ),
     }))
   }, [visiveis])
 
@@ -1002,17 +1007,20 @@ function KanbanCard({
   onMover: (id: string, status: (typeof statusValues)[number]) => void
   onAbrirDetalhe: (id: string) => void
 }) {
+  // A FINALIZADA NÃO ARRASTA: ela está na coluna só pra ser vista. Pra
+  // consertar, a ficha tem Corrigir quantidades e, quando cabe, Desfazer.
+  const podeMoverEsta = podeMover && ordem.status !== 'enviado'
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: ordem.id,
-    disabled: !podeMover || isPending,
+    disabled: !podeMoverEsta || isPending,
   })
 
   // Quando arrastando, escondemos o card original (DragOverlay mostra a cópia).
   return (
     <div
       ref={setNodeRef}
-      {...(podeMover ? attributes : {})}
-      {...(podeMover ? listeners : {})}
+      {...(podeMoverEsta ? attributes : {})}
+      {...(podeMoverEsta ? listeners : {})}
       onClick={() => {
         if (!isDragging) onAbrirDetalhe(ordem.id)
       }}
@@ -1031,7 +1039,7 @@ function KanbanCard({
     >
       <KanbanCardContent
         ordem={ordem}
-        podeMoverEsta={podeMover}
+        podeMoverEsta={podeMoverEsta}
         onMover={onMover}
       />
     </div>
@@ -1065,9 +1073,10 @@ function KanbanCardContent({
   const destaque =
     ordem.prioridade === 'alta' || ordem.prioridade === 'urgente'
   // Barra de progresso só faz sentido a partir de em_producao — antes disso
-  // a produção nem começou.
+  // a produção nem começou. A finalizada (fora de STATUS_KANBAN) também tem.
+  const finalizada = ordem.status === 'enviado'
   const emEtapaProdutiva =
-    indiceNoKanban(ordem.status) >= indiceNoKanban('em_producao')
+    finalizada || indiceNoKanban(ordem.status) >= indiceNoKanban('em_producao')
   const pctProduzido =
     ordem.quantidade > 0
       ? Math.min(100, Math.round((ordem.produzido / ordem.quantidade) * 100))
@@ -1122,6 +1131,23 @@ function KanbanCardContent({
         )}
       </div>
 
+      {/* A FINALIZADA DIZ QUE É, e o resultado: o que saiu e o defeito. */}
+      {finalizada && (
+        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+          <Badge className="h-4 bg-emerald-500/15 px-1 text-[9px] text-emerald-700 dark:text-emerald-400">
+            Finalizada
+          </Badge>
+          <span className="tabular-nums">
+            {ordem.produzido}/{ordem.quantidade} pç
+          </span>
+          {ordem.refugo > 0 && (
+            <span className="text-destructive tabular-nums">
+              · {ordem.refugo} com defeito
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Linha 2: dados da OP */}
       <div className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px]">
         <span className="tabular-nums">
@@ -1175,8 +1201,8 @@ function KanbanCardContent({
               tempo.aging && 'font-medium text-amber-600 dark:text-amber-400',
             )}
             title={
-              ordem.status === 'pronto_envio'
-                ? 'Tempo desde a conclusão da produção. Em destaque: falta dar baixa.'
+              ordem.status === 'pronto_envio' || finalizada
+                ? 'Tempo desde a conclusão da produção'
                 : 'Tempo nesta etapa'
             }
           >

@@ -16,6 +16,7 @@ import {
   erroDeQuantidade,
   diasDeAtrasoNaConclusao,
   erroDoAutorDoDesfazer,
+  quantidadesDaConclusao,
   resumoDaConclusao,
 } from './conclusao.ts'
 import { producaoAtrasada } from './atraso-da-op.ts'
@@ -88,7 +89,12 @@ import {
   podeSubirSituacao,
   proximoEstadoDoParceiro,
 } from './reposicao.ts'
-import { destinoDaOrdem } from './destino-da-ordem.ts'
+import {
+  concluidaNaJanela,
+  destinoDaOrdem,
+  inicioDaJanela,
+  JANELA_DAS_TERMINADAS_MS,
+} from './destino-da-ordem.ts'
 import {
   erroDaDevolucao,
   erroDaExclusao,
@@ -97,8 +103,18 @@ import {
   erroDoCancelamento,
   OP_DEVOLVIDA,
   podeConcluirProducao,
-  textoDaBaixa,
+  desfazerAlcanca,
+  entradaEsperada,
+  erroDoDespacho,
+  finalizaNaConclusao,
+  posicaoNoMesmoInstante,
+  textoDaFinalizacao,
 } from './transicoes-da-op.ts'
+import {
+  erroDaCorrecao,
+  planoDaCorrecao,
+  textoDaCorrecao,
+} from './correcao.ts'
 import { buscarVariacoes, erroDaVariacao } from './catalogo-op.ts'
 import {
   avisoDoProducaoAte,
@@ -284,24 +300,27 @@ test('aceitaNovaOp e motivoDeImpedimento nunca se contradizem', () => {
 // -----------------------------------------------------------------
 
 test('a máquina vence o status', () => {
-  assert.equal(destinoDaOrdem('em_producao', true), 'maquina')
+  assert.equal(destinoDaOrdem('em_producao', true, false), 'maquina')
 })
 
 test('em produção SEM máquina cai na fila, não some', () => {
   // O gerente pode arrastar o card pra "Em produção" sem escolher máquina.
   // Se isso não tivesse destino, a OP ficaria presa e invisível pra sempre.
-  assert.equal(destinoDaOrdem('em_producao', false), 'fila')
+  assert.equal(destinoDaOrdem('em_producao', false, false), 'fila')
 })
 
-test('as três que saíram da máquina esperam o gerente', () => {
-  assert.equal(destinoDaOrdem('acabamento', false), 'terminadas')
-  assert.equal(destinoDaOrdem('embalagem', false), 'terminadas')
-  assert.equal(destinoDaOrdem('pronto_envio', false), 'terminadas')
+test('terminadas: concluída nas últimas 24 h, pronta ou já finalizada', () => {
+  assert.equal(destinoDaOrdem('pronto_envio', false, true), 'terminadas')
+  assert.equal(destinoDaOrdem('enviado', false, true), 'terminadas')
+  // Passou das 24 h: o Full esperando despacho há dias não é assunto do operador.
+  assert.equal(destinoDaOrdem('pronto_envio', false, false), 'fora')
+  assert.equal(destinoDaOrdem('enviado', false, false), 'fora')
 })
 
-test('enviado e cancelado somem — mas por decisão escrita', () => {
-  assert.equal(destinoDaOrdem('enviado', false), 'fora')
-  assert.equal(destinoDaOrdem('cancelado', false), 'fora')
+test('cancelado e o legado somem — mas por decisão escrita', () => {
+  assert.equal(destinoDaOrdem('cancelado', false, true), 'fora')
+  assert.equal(destinoDaOrdem('acabamento', false, false), 'fora')
+  assert.equal(destinoDaOrdem('embalagem', false, false), 'fora')
 })
 
 test('todo status tem exatamente um destino', () => {
@@ -316,13 +335,25 @@ test('todo status tem exatamente um destino', () => {
     'cancelado',
   ] as const
   for (const s of todos) {
-    assert.ok(
-      ['maquina', 'fila', 'terminadas', 'fora'].includes(
-        destinoDaOrdem(s, false),
-      ),
-      `${s} ficou sem destino`,
-    )
+    for (const naJanela of [true, false]) {
+      assert.ok(
+        ['maquina', 'fila', 'terminadas', 'fora'].includes(
+          destinoDaOrdem(s, false, naJanela),
+        ),
+        `${s} ficou sem destino`,
+      )
+    }
   }
+})
+
+test('a janela é de 24 h contadas da conclusão, com a borda dentro', () => {
+  assert.equal(JANELA_DAS_TERMINADAS_MS, 24 * 60 * 60 * 1000)
+  const agora = new Date('2026-09-25T12:00:00Z')
+  assert.equal(inicioDaJanela(agora).toISOString(), '2026-09-24T12:00:00.000Z')
+  assert.equal(concluidaNaJanela(new Date('2026-09-24T12:00:00Z'), agora), true)
+  assert.equal(concluidaNaJanela(new Date('2026-09-24T11:59:59Z'), agora), false)
+  assert.equal(concluidaNaJanela(new Date('2026-09-25T03:00:00Z'), agora), true)
+  assert.equal(concluidaNaJanela(null, agora), false)
 })
 
 // -----------------------------------------------------------------
@@ -403,6 +434,22 @@ test('OP que ja passou da meta sugere zero, e zero e valido', () => {
   assert.equal(erroDeQuantidade(1, 0, c) !== null, true)
 })
 
+test('0 e 0 sem nada registrado nao conclui: a OP finalizaria vazia', () => {
+  const c = calcularConclusao(30, 0)
+  assert.notEqual(erroDeQuantidade(0, 0, c), null)
+  assert.notEqual(erroDeQuantidade(0, 0, c, { teto: false }), null)
+  // So defeito conclui: nenhuma peca boa saiu, e isso e verdade registrada.
+  assert.equal(erroDeQuantidade(0, 5, c), null)
+})
+
+test('aviso da conclusao: so as quantidades, sem repetir "Producao concluida"', () => {
+  assert.equal(
+    quantidadesDaConclusao(27, 3, calcularConclusao(30, 0)),
+    '27 de 30 peças (3 a menos) · 3 com defeito',
+  )
+  assert.equal(quantidadesDaConclusao(32, 0, calcularConclusao(30, 0)), '32 de 30 peças (2 a mais)')
+})
+
 test('abaixo da meta conclui', () => {
   const c = calcularConclusao(30, 0)
   assert.equal(erroDeQuantidade(27, 0, c), null)
@@ -412,7 +459,7 @@ test('numero quebrado ou negativo nao passa', () => {
   const c = calcularConclusao(30, 0)
   assert.equal(erroDeQuantidade(-1, 0, c), 'Quantidade inválida')
   assert.equal(erroDeQuantidade(1.5, 0, c), 'Quantidade inválida')
-  assert.equal(erroDeQuantidade(1, -2, c), 'Refugo inválido')
+  assert.equal(erroDeQuantidade(1, -2, c), 'Defeito inválido')
 })
 
 test('o resumo do historico diz o TOTAL contra a meta', () => {
@@ -422,7 +469,7 @@ test('o resumo do historico diz o TOTAL contra a meta', () => {
   )
   assert.equal(
     resumoDaConclusao(27, 2, calcularConclusao(30, 0)),
-    'Produção concluída com 27 de 30 peças (3 a menos) · 2 refugo',
+    'Produção concluída com 27 de 30 peças (3 a menos) · 2 com defeito',
   )
   // Com registro anterior o total soma os dois, senao o gerente leria "18 de
   // 30" numa OP que ficou completa.
@@ -457,7 +504,7 @@ test('o gerente conclui sem teto; o operador continua com teto', () => {
   assert.equal(erroDeQuantidade(32, 0, c, { teto: false }), null)
   // Sem teto, o resto da validacao continua valendo.
   assert.equal(erroDeQuantidade(-1, 0, c, { teto: false }), 'Quantidade inválida')
-  assert.equal(erroDeQuantidade(2, 1.5, c, { teto: false }), 'Refugo inválido')
+  assert.equal(erroDeQuantidade(2, 1.5, c, { teto: false }), 'Defeito inválido')
 })
 
 test('acima da meta o historico diz quanto a mais', () => {
@@ -475,7 +522,7 @@ test('conclusao depois do prazo registra os dias de atraso', () => {
   )
   assert.equal(
     resumoDaConclusao(27, 2, calcularConclusao(30, 0), 'teste1', { diasDeAtraso: 3 }),
-    'Produção concluída com 27 de 30 peças (3 a menos) · 2 refugo · iniciada por teste1 · concluída com 3 dias de atraso',
+    'Produção concluída com 27 de 30 peças (3 a menos) · 2 com defeito · iniciada por teste1 · concluída com 3 dias de atraso',
   )
   // No prazo, nada muda no texto.
   assert.equal(
@@ -519,7 +566,7 @@ test('atrasada e so a producao que nao foi concluida', () => {
 test('conclusao fora da maquina registra a maquina informada', () => {
   assert.equal(
     resumoDaConclusao(27, 1, calcularConclusao(30, 0), null, { maquinaInformada: 'TC-03' }),
-    'Produção concluída com 27 de 30 peças (3 a menos) · 1 refugo · máquina TC-03 informada na conclusão',
+    'Produção concluída com 27 de 30 peças (3 a menos) · 1 com defeito · máquina TC-03 informada na conclusão',
   )
 })
 
@@ -863,31 +910,62 @@ test('relogio do tablet atrasado nao vira duracao negativa na tela', () => {
 // As portas da OP
 // -----------------------------------------------------------------
 
+// Remessa: a OP de Full, que espera o despacho. Fora: o resto, que finaliza
+// na conclusão. O último argumento de `erroDaTransicaoGenerica`.
+const REMESSA = false
+const FORA = true
+
 test('em producao nunca entra pelo caminho generico', () => {
   // Nem com apontamento: a porta pede a MAQUINA, nao a quantidade.
-  assert.notEqual(erroDaTransicaoGenerica('programado', 'em_producao', false), null)
-  assert.notEqual(erroDaTransicaoGenerica('pronto_envio', 'em_producao', true), null)
+  assert.notEqual(erroDaTransicaoGenerica('programado', 'em_producao', false, FORA), null)
+  assert.notEqual(erroDaTransicaoGenerica('pronto_envio', 'em_producao', true, REMESSA), null)
 })
 
-test('producao concluida pelo generico so com apontamento', () => {
-  assert.notEqual(erroDaTransicaoGenerica('em_producao', 'pronto_envio', false), null)
-  // A volta: OP concluida que recuou uma coluna ja tem a quantidade dela.
-  assert.equal(erroDaTransicaoGenerica('programado', 'pronto_envio', true), null)
+test('producao concluida pelo generico so com apontamento, e so de remessa', () => {
+  assert.notEqual(erroDaTransicaoGenerica('em_producao', 'pronto_envio', false, REMESSA), null)
+  // A volta: OP de Full concluida que recuou uma coluna ja tem a quantidade dela.
+  assert.equal(erroDaTransicaoGenerica('programado', 'pronto_envio', true, REMESSA), null)
+  // Fora de remessa ela ficaria PARADA em Producao concluida, esperando uma
+  // baixa que ninguem mais da: vai pelo Concluir, que finaliza.
+  assert.notEqual(erroDaTransicaoGenerica('programado', 'pronto_envio', true, FORA), null)
 })
 
-test('baixa so a partir de producao concluida E com apontamento', () => {
-  // O caminho que alimentava o fallback da meta: pular direto pra enviado.
-  assert.notEqual(erroDaTransicaoGenerica('programado', 'enviado', true), null)
-  assert.notEqual(erroDaTransicaoGenerica('em_producao', 'enviado', true), null)
-  assert.notEqual(erroDaTransicaoGenerica('pronto_envio', 'enviado', false), null)
-  assert.equal(erroDaTransicaoGenerica('pronto_envio', 'enviado', true), null)
+test('ninguem finaliza pelo generico: fora de remessa na conclusao, Full no despacho', () => {
+  for (const de of ['programado', 'em_producao', 'pronto_envio'] as const) {
+    for (const fora of [FORA, REMESSA]) {
+      assert.notEqual(erroDaTransicaoGenerica(de, 'enviado', true, fora), null, de)
+    }
+  }
+  assert.match(
+    erroDaTransicaoGenerica('pronto_envio', 'enviado', true, REMESSA)!,
+    /Despachar/,
+  )
+})
+
+test('finalizada nao sai de Finalizada pelo generico nem pelo formulario', () => {
+  for (const para of ['programado', 'pronto_envio', 'aguardando_materia_prima'] as const) {
+    assert.notEqual(erroDaTransicaoGenerica('enviado', para, true, FORA), null, para)
+    assert.notEqual(erroDaTransicaoGenerica('enviado', para, true, REMESSA), null, para)
+    assert.notEqual(erroDaTransicaoPeloFormulario('enviado', para), null, para)
+  }
+  // Editar a observacao de uma OP finalizada continua valendo.
+  assert.equal(erroDaTransicaoPeloFormulario('enviado', 'enviado'), null)
 })
 
 test('as outras transicoes seguem livres, e ficar parado nunca e erro', () => {
-  assert.equal(erroDaTransicaoGenerica('em_producao', 'programado', false), null)
-  assert.equal(erroDaTransicaoGenerica('programado', 'cancelado', false), null)
-  assert.equal(erroDaTransicaoGenerica('enviado', 'pronto_envio', true), null)
-  assert.equal(erroDaTransicaoGenerica('em_producao', 'em_producao', false), null)
+  assert.equal(erroDaTransicaoGenerica('em_producao', 'programado', false, FORA), null)
+  assert.equal(erroDaTransicaoGenerica('programado', 'cancelado', false, FORA), null)
+  assert.equal(erroDaTransicaoGenerica('pronto_envio', 'programado', true, REMESSA), null)
+  assert.equal(erroDaTransicaoGenerica('em_producao', 'em_producao', false, FORA), null)
+  assert.equal(erroDaTransicaoGenerica('enviado', 'enviado', true, FORA), null)
+})
+
+test('despacho: so producao concluida e com apontamento', () => {
+  assert.equal(erroDoDespacho('pronto_envio', true), null)
+  assert.notEqual(erroDoDespacho('pronto_envio', false), null)
+  for (const s of ['programado', 'em_producao', 'enviado', 'cancelado'] as const) {
+    assert.notEqual(erroDoDespacho(s, true), null, s)
+  }
 })
 
 test('o formulario nao leva pra nenhuma das tres portas, nem com apontamento', () => {
@@ -917,33 +995,167 @@ test('gerente conclui de qualquer coluna antes; operador so de em producao', () 
 // Cancelar e excluir
 // -----------------------------------------------------------------
 
-test('OP com baixa nao cancela, nem pelo botao nem pelo status manual', () => {
+test('OP finalizada nao cancela, nem pelo botao nem pelo status manual', () => {
   assert.notEqual(erroDoCancelamento('enviado'), null)
-  assert.notEqual(erroDaTransicaoGenerica('enviado', 'cancelado', true), null)
+  assert.notEqual(erroDaTransicaoGenerica('enviado', 'cancelado', true, FORA), null)
   assert.notEqual(erroDoCancelamento('cancelado'), null)
   for (const s of ['aguardando_materia_prima', 'programado', 'em_producao', 'pronto_envio'] as const) {
     assert.equal(erroDoCancelamento(s), null, s)
-    assert.equal(erroDaTransicaoGenerica(s, 'cancelado', false), null, s)
+    assert.equal(erroDaTransicaoGenerica(s, 'cancelado', false, FORA), null, s)
   }
 })
 
-test('baixa: "estoque reposto" so pra OP de reposicao, nao pra todo canal Estoque', () => {
-  assert.deepEqual(textoDaBaixa({ canalDestino: 'estoque', deReposicao: true }), {
-    botao: 'Dar baixa · estoque reposto',
-    aviso: 'Baixa dada · estoque reposto',
-  })
+// -----------------------------------------------------------------
+// O fim da OP: finaliza na conclusao, e o que o aviso diz
+// -----------------------------------------------------------------
+
+test('termina na conclusao quem esta fora de remessa; o criterio nao e o canal', () => {
+  assert.equal(finalizaNaConclusao({ remessaFullId: null }), true)
+  assert.equal(finalizaNaConclusao({ remessaFullId: 'r1' }), false)
+})
+
+test('finalizacao: "estoque reposto" so pra OP de reposicao, nao pra todo canal Estoque', () => {
+  const base = { remessa: null, pedidoNumero: null }
+  assert.equal(
+    textoDaFinalizacao({ ...base, canalDestino: 'estoque', deReposicao: true }),
+    'Finalizada · estoque reposto',
+  )
   // A Nova OP ja abre no canal Estoque: a OP lancada a mao nao repos nada.
-  assert.deepEqual(textoDaBaixa({ canalDestino: 'estoque', deReposicao: false }), {
-    botao: 'Dar baixa · vai pro estoque',
-    aviso: 'Baixa dada · foi pro estoque',
-  })
-  for (const canal of ['full_ml', 'full_shopee', 'venda_direta']) {
-    assert.deepEqual(
-      textoDaBaixa({ canalDestino: canal, deReposicao: false }),
-      { botao: 'Dar baixa · enviada', aviso: 'Baixa dada · OP enviada' },
-      canal,
-    )
+  assert.equal(
+    textoDaFinalizacao({ ...base, canalDestino: 'estoque', deReposicao: false }),
+    'Finalizada · foi pro estoque',
+  )
+  assert.equal(
+    textoDaFinalizacao({ ...base, canalDestino: 'venda_direta', deReposicao: false, pedidoNumero: 142 }),
+    'Finalizada · Pedido #142',
+  )
+  assert.equal(
+    textoDaFinalizacao({ ...base, canalDestino: 'venda_direta', deReposicao: false }),
+    'Finalizada',
+  )
+  // Full nao finaliza na conclusao: o aviso diz pra onde ela espera ir.
+  assert.equal(
+    textoDaFinalizacao({ ...base, canalDestino: 'full_ml', deReposicao: false, remessa: 'Full ML · 24/09' }),
+    'Produção concluída · espera o despacho do Full ML · 24/09',
+  )
+})
+
+test('desfazer: pronta sempre; finalizada so pela conclusao, sem nada depois', () => {
+  const concluida = new Date('2026-09-25T03:10:00Z')
+  const base = {
+    status: 'enviado' as const,
+    remessaFullId: null,
+    conclusaoEm: concluida,
+    ultimaTransicao: { para: 'enviado' as const, em: concluida },
   }
+  assert.equal(desfazerAlcanca(base), true)
+  assert.equal(
+    desfazerAlcanca({ ...base, status: 'pronto_envio', remessaFullId: 'r1', ultimaTransicao: null }),
+    true,
+  )
+  // Finalizada em OUTRO instante (o Mudar destino de um Full pronto): corrige, nao desfaz.
+  assert.equal(
+    desfazerAlcanca({
+      ...base,
+      ultimaTransicao: { para: 'enviado', em: new Date('2026-09-25T09:00:00Z') },
+    }),
+    false,
+  )
+  // Full despachado nao volta pelo desfazer.
+  assert.equal(desfazerAlcanca({ ...base, remessaFullId: 'r1' }), false)
+  // Sem conclusao registrada (legado), ou com a ultima transicao sendo outra.
+  assert.equal(desfazerAlcanca({ ...base, conclusaoEm: null }), false)
+  assert.equal(desfazerAlcanca({ ...base, ultimaTransicao: null }), false)
+  for (const s of ['programado', 'em_producao', 'cancelado'] as const) {
+    assert.equal(desfazerAlcanca({ ...base, status: s }), false, s)
+  }
+})
+
+test('estoque: entrada = pecas boas da OP finalizada de canal Estoque, e so dela', () => {
+  const op = { status: 'enviado' as const, canalDestino: 'estoque', excluida: false }
+  assert.equal(entradaEsperada(op, 27), 27)
+  assert.equal(entradaEsperada(op, 0), 0)
+  assert.equal(entradaEsperada({ ...op, status: 'pronto_envio' }, 27), 0)
+  assert.equal(entradaEsperada({ ...op, canalDestino: 'venda_direta' }, 27), 0)
+  assert.equal(entradaEsperada({ ...op, canalDestino: 'full_ml' }, 27), 0)
+  assert.equal(entradaEsperada({ ...op, excluida: true }, 27), 0)
+})
+
+test('historico no mesmo instante: conclusao, apontamento, sem transicao, finalizacao', () => {
+  const conclusao = posicaoNoMesmoInstante({ tipo: 'status', statusAnterior: 'em_producao', statusNovo: 'pronto_envio' })
+  const apontamento = posicaoNoMesmoInstante({ tipo: 'apontamento' })
+  const destino = posicaoNoMesmoInstante({ tipo: 'status', statusAnterior: 'pronto_envio', statusNovo: 'pronto_envio' })
+  const finalizacao = posicaoNoMesmoInstante({ tipo: 'status', statusAnterior: 'pronto_envio', statusNovo: 'enviado' })
+  assert.ok(conclusao < apontamento)
+  assert.ok(apontamento < destino)
+  assert.ok(destino < finalizacao)
+})
+
+// -----------------------------------------------------------------
+// Corrigir quantidades
+// -----------------------------------------------------------------
+
+test('correcao: so OP concluida, 0 e 0 nao e correcao, e sem teto', () => {
+  const atual = { boas: 30, defeito: 0 }
+  assert.equal(erroDaCorrecao('enviado', atual, { boas: 27, defeito: 3 }), null)
+  assert.equal(erroDaCorrecao('pronto_envio', atual, { boas: 32, defeito: 0 }), null)
+  assert.notEqual(erroDaCorrecao('em_producao', atual, { boas: 27, defeito: 3 }), null)
+  assert.notEqual(erroDaCorrecao('cancelado', atual, { boas: 27, defeito: 3 }), null)
+  assert.notEqual(erroDaCorrecao('enviado', atual, { boas: 0, defeito: 0 }), null)
+  assert.notEqual(erroDaCorrecao('enviado', atual, { boas: 30, defeito: 0 }), null)
+  assert.notEqual(erroDaCorrecao('enviado', atual, { boas: -1, defeito: 0 }), null)
+  assert.notEqual(erroDaCorrecao('enviado', atual, { boas: 2.5, defeito: 0 }), null)
+  // So defeito tambem vale: nenhuma peca boa saiu.
+  assert.equal(erroDaCorrecao('enviado', atual, { boas: 0, defeito: 30 }), null)
+})
+
+test('correcao: o texto do historico diz o antes e o depois', () => {
+  assert.equal(
+    textoDaCorrecao({ boas: 30, defeito: 0 }, { boas: 27, defeito: 3 }),
+    'Quantidades corrigidas: 30 → 27 peças boas · 0 → 3 com defeito',
+  )
+})
+
+test('correcao: um apontamento so muda na propria linha (o dia nao muda)', () => {
+  assert.deepEqual(planoDaCorrecao([{ id: 'a', boas: 30, defeito: 0 }], { boas: 27, defeito: 3 }), {
+    atualizar: [{ id: 'a', boas: 27, defeito: 3 }],
+    apagar: [],
+    criar: null,
+  })
+})
+
+test('correcao: aumento vai pra linha mais recente; reducao sai da mais recente pra tras', () => {
+  const legado = [
+    { id: 'antigo', boas: 12, defeito: 1 },
+    { id: 'conclusao', boas: 18, defeito: 0 },
+  ]
+  assert.deepEqual(planoDaCorrecao(legado, { boas: 32, defeito: 1 }), {
+    atualizar: [{ id: 'conclusao', boas: 20, defeito: 0 }],
+    apagar: [],
+    criar: null,
+  })
+  // Tirar 20 de 30: a conclusao zera nas boas (fica com 0/0 e sai), o antigo cede 2.
+  assert.deepEqual(planoDaCorrecao(legado, { boas: 10, defeito: 1 }), {
+    atualizar: [{ id: 'antigo', boas: 10, defeito: 1 }],
+    apagar: ['conclusao'],
+    criar: null,
+  })
+  // Nunca negativo, e a soma bate com o que foi pedido.
+  const plano = planoDaCorrecao(legado, { boas: 5, defeito: 4 })
+  const final = legado
+    .filter((a) => !plano.apagar.includes(a.id))
+    .map((a) => plano.atualizar.find((u) => u.id === a.id) ?? a)
+  assert.equal(final.reduce((s, a) => s + a.boas, 0), 5)
+  assert.equal(final.reduce((s, a) => s + a.defeito, 0), 4)
+  assert.ok(final.every((a) => a.boas >= 0 && a.defeito >= 0))
+})
+
+test('correcao: OP sem apontamento ganha uma linha', () => {
+  assert.deepEqual(planoDaCorrecao([], { boas: 27, defeito: 3 }), {
+    atualizar: [],
+    apagar: [],
+    criar: { boas: 27, defeito: 3 },
+  })
 })
 
 test('exclui so o engano: nunca entrou em producao e sem apontamento', () => {
@@ -2838,7 +3050,7 @@ test('quantidade na lista: meta enquanto roda, resultado depois, âmbar só se f
   )
   assert.deepEqual(
     quantidadeNaLista({ status: 'pronto_envio', quantidade: 40, produzido: 38, refugo: 2 }),
-    { texto: '38/40 pç', refugo: '2 ref.', faltou: true },
+    { texto: '38/40 pç', refugo: '2 com defeito', faltou: true },
   )
   // Apontamento parcial do gerente no meio da produção: andamento, não falta.
   assert.equal(

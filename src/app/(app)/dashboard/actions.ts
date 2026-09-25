@@ -87,14 +87,14 @@ export type DashboardKPIs = {
   motivoMaisComum: string | null
   /** Prazo vencido e produção não concluída — atraso-da-op.ts. */
   producaoAtrasada: number
-  /** Produção concluída esperando baixa. */
-  faltaBaixa: number
+  // O quarto número, "Falta despachar", sai das REMESSAS abertas que a
+  // página já carrega (`riscoDaRemessa`) — ver dashboard/page.tsx.
 }
 
 export async function obterKPIs(): Promise<DashboardKPIs> {
   await exigirDashboard()
 
-  const [lista, [atrasadas], [baixa]] = await Promise.all([
+  const [lista, [atrasadas]] = await Promise.all([
     // ⚠️ A MESMA CONSULTA E A MESMA REGRA DA /fabrica (`listarMaquinas` +
     // `situacaoDaMaquina` + `contarMaquinas`). Uma conta escrita à mão aqui
     // divergiria da tela para onde o card leva.
@@ -104,15 +104,6 @@ export async function obterKPIs(): Promise<DashboardKPIs> {
       .from(ordensProducao)
       .where(
         and(isNull(ordensProducao.deletedAt), condicaoDeProducaoAtrasada()),
-      ),
-    db
-      .select({ total: sql<number>`count(*)::int` })
-      .from(ordensProducao)
-      .where(
-        and(
-          isNull(ordensProducao.deletedAt),
-          eq(ordensProducao.status, 'pronto_envio'),
-        ),
       ),
   ])
 
@@ -155,7 +146,6 @@ export async function obterKPIs(): Promise<DashboardKPIs> {
     paradasAgora: paradas.length,
     motivoMaisComum,
     producaoAtrasada: atrasadas?.total ?? 0,
-    faltaBaixa: baixa?.total ?? 0,
   }
 }
 
@@ -213,8 +203,8 @@ export async function listarOpsUrgentes(
       and(
         isNull(ordensProducao.deletedAt),
         // SÓ O QUE PEDE AÇÃO NA PRODUÇÃO: atrasada, ou urgente/alta que
-        // ainda não foi concluída. A urgente já concluída espera só a baixa,
-        // e essa tem o card âmbar "Falta dar baixa".
+        // ainda não foi concluída. A urgente já concluída espera só o
+        // despacho, e essa tem o card âmbar "Falta despachar".
         or(
           condicaoDeProducaoAtrasada(),
           and(

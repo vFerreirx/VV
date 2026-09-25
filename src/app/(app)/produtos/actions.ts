@@ -464,7 +464,7 @@ export async function atualizarProdutoAction(
         codigo: data.codigo ?? null,
         descricao: data.descricao ?? null,
         // Virar "parceiro" não mexe em OP que já existe: a guarda é de
-        // ENTRADA (nenhuma OP nova), e a OP antiga segue até a baixa.
+        // ENTRADA (nenhuma OP nova), e a OP antiga segue até ser finalizada.
         origem: data.origem,
         grupoTamanho: data.grupoTamanho,
         ativo: data.ativo,

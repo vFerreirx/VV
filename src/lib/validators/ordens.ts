@@ -148,33 +148,12 @@ export const mudarStatusOrdemSchema = z.object({
 export type MudarStatusOrdemInput = z.input<typeof mudarStatusOrdemSchema>
 
 // -----------------------------------------------------------------
-// Apontar produção (operador registra produzido/refugo)
-// -----------------------------------------------------------------
-
-const intNaoNeg = z
-  .union([z.string(), z.number()])
-  .transform((v) => (v === '' ? 0 : Number(v)))
-  .refine((v) => Number.isInteger(v) && v >= 0, 'Informe um inteiro >= 0')
-
-export const apontamentoSchema = z
-  .object({
-    produzida: intNaoNeg,
-    refugo: intNaoNeg,
-  })
-  .refine((d) => d.produzida + d.refugo > 0, {
-    message: 'Informe ao menos uma quantidade',
-    path: ['produzida'],
-  })
-
-export type ApontamentoInput = z.input<typeof apontamentoSchema>
-
-// -----------------------------------------------------------------
 // Filtros
 // -----------------------------------------------------------------
 
 export const ordensFiltrosSchema = z.object({
   q: z.string().trim().optional(),
-  // "abertas" (sem baixa e sem cancelamento) é o padrão da lista quando a
+  // "abertas" (nem finalizada nem cancelada) é o padrão da lista quando a
   // URL não traz status; "todos" é explícito. Ver `listarOrdens`.
   status: z
     .union([z.enum(statusValues), z.literal('todos'), z.literal('abertas')])
@@ -186,8 +165,7 @@ export const ordensFiltrosSchema = z.object({
   // O pedido de onde a OP produz o faltante — o rótulo "Pedido #142" da
   // lista filtra por ele, como o do Full filtra pela remessa.
   pedidoId: z.string().trim().optional(),
-  // Os contadores do topo de /ordens: "Atrasadas" e "Vencem hoje". "Falta dar
-  // baixa" não precisa de filtro próprio: é o status `pronto_envio`.
+  // Os contadores do topo de /ordens: "Atrasadas" e "Vencem hoje".
   prazo: z.enum(['atrasadas', 'hoje']).optional(),
   // Página da listagem (1-based).
   pagina: z.coerce.number().int().min(1).optional(),
@@ -223,10 +201,13 @@ export const STATUS_LABEL: Record<(typeof statusValues)[number], string> = {
   acabamento: 'Acabamento',
   embalagem: 'Embalagem',
   // "Produção concluída", nunca "Concluída" sozinha: a OP tem dois fins —
-  // sair da máquina (este) e receber baixa (`enviado`) —, e com a palavra
+  // sair da máquina (este) e ser finalizada (`enviado`) —, e com a palavra
   // solta o gerente não sabe qual aconteceu.
   pronto_envio: 'Produção concluída',
-  enviado: 'Enviado',
+  // "Finalizada", e não "Enviado", desde 25/09/2026: a OP de estoque que
+  // acabou de sair do tear termina aqui na conclusão, e "Enviado" diria que
+  // ela foi pra algum lugar. O valor no banco continua `enviado`.
+  enviado: 'Finalizada',
   cancelado: 'Cancelado',
 }
 
@@ -237,12 +218,13 @@ export const STATUS_LABEL_CURTO: Record<(typeof statusValues)[number], string> =
   acabamento: 'Acabamento',
   embalagem: 'Embalagem',
   pronto_envio: 'Prod. concluída',
-  enviado: 'Enviado',
+  enviado: 'Finalizada',
   cancelado: 'Cancelado',
 }
 
-// Ordem do fluxo do kanban. Cancelado e enviado (concluído) ficam de fora —
-// a OP enviada sai do board e vai pra "Concluídas" em Ordens.
+// Ordem do fluxo do kanban. Cancelado e enviado (finalizada) não são coluna —
+// a finalizada aparece por 24 h na coluna "Produção concluída" (destino-da-
+// ordem.ts) e depois só em Ordens, no filtro "Finalizadas".
 //
 // ⚠️ ACABAMENTO E EMBALAGEM SAÍRAM DO BOARD, mas continuam no enum do
 // Postgres e nos dois STATUS_LABEL acima. Não é descuido: o `eventos_kanban`

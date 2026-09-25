@@ -1,14 +1,15 @@
 // A OP ATRASADA — regra pura, sem banco.
 //
-// ⚠️ ATRASADA É A PRODUÇÃO, E NÃO A BAIXA. Antes a OP ficava vermelha até
-// `enviado`: uma OP concluída no prazo virava "atrasada" no dia seguinte só
-// porque ninguém tinha dado baixa ainda. Isso pintava de vermelho um trabalho
+// ⚠️ ATRASADA É A PRODUÇÃO, E NÃO A FINALIZAÇÃO. Antes a OP ficava vermelha
+// até `enviado`: uma OP concluída no prazo virava "atrasada" no dia seguinte
+// só porque ninguém tinha dado baixa ainda. Isso pintava de vermelho um trabalho
 // que a fábrica entregou no prazo, e escondia no meio dele o que de fato
 // atrasou.
 //
-// Depois da conclusão, o que fica pendente é a BAIXA — e ela já tem cor
-// própria, âmbar (coluna "Produção concluída", "Falta dar baixa" nas
-// remessas). Vermelho é só pra produção que ainda não saiu da máquina.
+// Depois da conclusão, a OP fora de remessa já está finalizada (desde
+// 25/09/2026), e o Full espera o despacho da remessa — cuja pendência, com o
+// envio vencido, tem cor própria, âmbar ("Falta despachar" nas remessas).
+// Vermelho é só pra produção que ainda não saiu da máquina.
 //
 // OS LEGADOS `acabamento` E `embalagem` CONTAM COMO NÃO CONCLUÍDOS: a lista é
 // `ANTES_DA_CONCLUSAO`, a mesma que diz de onde o gerente ainda precisa

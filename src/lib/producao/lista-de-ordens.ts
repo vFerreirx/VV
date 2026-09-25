@@ -2,7 +2,7 @@
 //
 // /ordens é o REGISTRO das OPs: a mais nova primeiro, 50 por página. A fila
 // na ordem do operador mora no kanban e no tablet; aqui o gerente vem ver o
-// que APERTA (atrasada, vence hoje, falta dar baixa) e achar uma OP. Este
+// que APERTA (atrasada, vence hoje) e achar uma OP. Este
 // módulo decide como cada pedaço da linha se lê, reaproveitando as regras
 // que o tablet já usa — `prazoEmPalavras` e `alertaDoBloco`
 // (rotulo-da-op.ts), `producaoAtrasada` (atraso-da-op.ts). Não há uma segunda
@@ -29,9 +29,9 @@ import {
 //
 // ⚠️ `prazoEmPalavras` SOZINHO MENTE AQUI. No tablet só aparece OP que ainda
 // vai ser produzida; aqui aparece tudo, e uma OP concluída no prazo viraria
-// "ATRASADA 3 dias" só porque ninguém deu baixa — o mesmo erro que
-// atraso-da-op.ts já corrigiu uma vez. Depois da conclusão o que falta é a
-// BAIXA, que tem contador próprio; o prazo da produção sai de cena.
+// "ATRASADA 3 dias" só porque o Full ainda não foi despachado — o mesmo erro
+// que atraso-da-op.ts já corrigiu uma vez. Depois da conclusão o que falta é
+// o DESPACHO, que é da remessa; o prazo da produção sai de cena.
 //
 // ⚠️ E O MESMO DIA TEM DOIS CASOS. `prazoEmPalavras` conta em dias de
 // calendário, então um prazo das 8h de hoje, às 10h, diria "vence HOJE" —
@@ -60,16 +60,17 @@ export function prazoNaLista(
 // SEM BARRA NA LINHA, pelo mesmo motivo do tablet (painel-operador.tsx): a
 // produção só é registrada na conclusão, então uma barra por OP ficaria em
 // zero o turno inteiro e pularia pra cheia no fim. "30 pç" enquanto roda;
-// "27/30 pç" e "2 ref." depois.
+// "27/30 pç" e "2 com defeito" depois — por extenso: "2 ref." era abreviação
+// que só quem escreveu entendia.
 //
-// ⚠️ "FALTOU" SÓ DEPOIS DA CONCLUSÃO. O gerente pode apontar parte no meio
-// (`apontarProducaoAction`), e "12/30" de uma OP ainda rodando não é falta —
-// é andamento. Âmbar só quando a produção fechou abaixo da meta.
+// ⚠️ "FALTOU" SÓ DEPOIS DA CONCLUSÃO. OP legada pode ter apontamento de antes
+// dela, e "12/30" de uma OP ainda rodando não é falta — é andamento. Âmbar
+// só quando a produção fechou abaixo da meta.
 
 export type QuantidadeNaLista = {
   /** "30 pç" ou "27/30 pç". */
   texto: string
-  /** "2 ref.", ou null sem refugo. */
+  /** "2 com defeito", ou null sem defeito. */
   refugo: string | null
   /** A produção terminou abaixo da meta — a tela pinta de âmbar. */
   faltou: boolean
@@ -88,7 +89,7 @@ export function quantidadeNaLista(o: {
   }
   return {
     texto: `${o.produzido}/${o.quantidade} pç`,
-    refugo: o.refugo > 0 ? `${o.refugo} ref.` : null,
+    refugo: o.refugo > 0 ? `${o.refugo} com defeito` : null,
     faltou: o.produzido < o.quantidade && !producaoNaoConcluida(o.status),
   }
 }
@@ -147,7 +148,7 @@ export function agruparPorDia<T extends { createdAt: Date | string }>(
 //
 // Com um Full (ou um pedido) filtrado, a pergunta muda de "qual OP?" pra
 // "como está esse Full?". A faixa responde com o destino INTEIRO — todas as
-// OPs dele, não só as da página nem só as abertas: uma OP com baixa também
+// OPs dele, não só as da página nem só as abertas: uma OP despachada também
 // é peça que já saiu pro Full.
 //
 // - CANCELADA NÃO CONTA em nada: não é meta, não é peça, não é status.

@@ -296,7 +296,7 @@ export async function listarOpsComPrazo(
         data: ymd,
         prioridade: r.prioridade,
         status: r.status,
-        // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
+        // Atrasada é a PRODUÇÃO não concluída, não a OP não finalizada — atraso-da-op.ts.
         atrasada: producaoAtrasada(r.status, d, now),
       }
     })

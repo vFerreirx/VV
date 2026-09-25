@@ -9,6 +9,7 @@ import {
   inArray,
   isNull,
   ne,
+  notInArray,
   or,
   sql,
 } from 'drizzle-orm'
@@ -25,6 +26,12 @@ import {
   condicaoDeVisaoDoOperador,
   estacaoDoOperador,
 } from '@/lib/db/estacao-operadores'
+import {
+  concluidaDesdeSql,
+  concluidaEmSql,
+  marcosDasOps,
+  type MarcosDaOp,
+} from '@/lib/db/conclusao-da-op'
 import {
   apontamentosProducao,
   contasMarketplace,
@@ -43,10 +50,16 @@ import {
   type EventoKanban,
 } from '@/lib/db/schema'
 import {
+  concluidaNaJanela,
   destinoDaOrdem,
+  inicioDaJanela,
   type DestinoNaEstacao,
   type StatusDaOrdem,
 } from '@/lib/producao/destino-da-ordem'
+import {
+  desfazerAlcanca,
+  posicaoNoMesmoInstante,
+} from '@/lib/producao/transicoes-da-op'
 import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import {
   rotuloDaRemessa,
@@ -172,10 +185,16 @@ export async function listarOrdensProducao(
 
   const conditions = [
     isNull(ordensProducao.deletedAt),
-    // Cancelado e enviado (com baixa) ficam fora do kanban — as com baixa
-    // aparecem em Ordens com o filtro "Com baixa".
+    // Cancelada fica fora do kanban. A FINALIZADA fica À VISTA POR 24 H,
+    // contadas da conclusão (Q182): o gerente que chega de manhã vê na coluna
+    // "Produção concluída" o que terminou de madrugada, com o resultado.
+    // Passada a janela ela sai sozinha na próxima carga, sem timer — e
+    // continua em Ordens, no filtro "Finalizadas". Filtrado AQUI, no SQL.
     ne(ordensProducao.status, 'cancelado'),
-    ne(ordensProducao.status, 'enviado'),
+    or(
+      ne(ordensProducao.status, 'enviado'),
+      concluidaDesdeSql(inicioDaJanela(new Date())),
+    )!,
   ]
 
   // O operador enxerga a fila comum + a estação dele. A regra mora em
@@ -376,7 +395,7 @@ export async function listarOrdensProducao(
       produzido: produzido ?? 0,
       refugo: refugo ?? 0,
       dataPrevistaFim: op.dataPrevistaFim,
-      // Atrasada é a PRODUÇÃO não concluída, não a OP sem baixa — atraso-da-op.ts.
+      // Atrasada é a PRODUÇÃO não concluída, não a OP não finalizada — atraso-da-op.ts.
       atrasada: producaoAtrasada(op.status, op.dataPrevistaFim, now),
       // Sem fallback de propósito — ver o comentário do tipo.
       desdeStatus: desdeStatus ? new Date(desdeStatus) : null,
@@ -873,6 +892,18 @@ type OrdemMagra = {
   numero: string
 }
 
+// Status que só podem estar à vista pela CONCLUSÃO (ou que nunca estão): a
+// consulta magra só os lê com conclusão dentro da janela. É um recorte GROSSO
+// no SQL, pra não carregar a história inteira da estação; quem decide o
+// destino continua sendo `destinoDaOrdem`.
+const SO_PELA_CONCLUSAO = [
+  'pronto_envio',
+  'enviado',
+  'acabamento',
+  'embalagem',
+  'cancelado',
+] as const satisfies readonly StatusDaOrdem[]
+
 /** As OPs que o operador enxerga, agrupadas pelo destino na tela dele. */
 async function opsPorDestino(
   userId: string,
@@ -899,6 +930,12 @@ async function opsPorDestino(
       )
     : new Set<string>()
 
+  // ⚠️ FILTRADO NO SQL. Antes esta consulta lia TODAS as OPs da estação,
+  // desde sempre, e descartava finalizadas e canceladas em memória — em
+  // poucos meses, milhares de linhas a cada recarga de tablet. Agora só vem o
+  // que ainda está no chão (fila, máquina) e o que foi concluído dentro da
+  // janela de 24 h.
+  const agora = new Date()
   const rows = await db
     .select({
       id: ordensProducao.id,
@@ -907,17 +944,22 @@ async function opsPorDestino(
       prioridade: ordensProducao.prioridade,
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
       numero: ordensProducao.numero,
+      concluidaEm: concluidaEmSql,
     })
     .from(ordensProducao)
     .where(
       and(
         isNull(ordensProducao.deletedAt),
         await condicaoDeVisaoDoOperador(userId),
+        or(
+          notInArray(ordensProducao.status, [...SO_PELA_CONCLUSAO]),
+          concluidaDesdeSql(inicioDaJanela(agora)),
+        ),
       ),
     )
 
   const porDestino = new Map<DestinoNaEstacao, OrdemMagra[]>()
-  for (const r of rows) {
+  for (const { concluidaEm, ...r } of rows) {
     // No cartão da máquina só entra a OP EM PRODUÇÃO — o mesmo recorte do
     // índice único da migration 50 e do LEFT JOIN de
     // `listarMaquinasDaEstacao`. Uma OP `pronto_envio` que ainda carrega a
@@ -926,7 +968,11 @@ async function opsPorDestino(
       r.status === 'em_producao' &&
       r.maquinaId !== null &&
       idsDeMaquinas.has(r.maquinaId)
-    const destino = destinoDaOrdem(r.status, naMaquina)
+    const destino = destinoDaOrdem(
+      r.status,
+      naMaquina,
+      concluidaNaJanela(concluidaEm ? new Date(concluidaEm) : null, agora),
+    )
     const lista = porDestino.get(destino) ?? []
     lista.push(r)
     porDestino.set(destino, lista)
@@ -987,7 +1033,8 @@ export type OpDaConsulta = OpParaIniciar & {
   produzido: number
   refugo: number
   /**
-   * A OP ainda está em `pronto_envio`, a máquina dela está livre E quem
+   * O Desfazer ainda alcança a OP (`desfazerAlcanca`: pronta, ou finalizada
+   * pela conclusão sem nada depois), a máquina dela está livre E quem
    * concluiu foi quem está logado? As três guardas de
    * `desfazerConclusaoAction`, calculadas aqui pra que o botão não apareça só
    * pra devolver erro. Quem recusa de verdade é a action.
@@ -1016,15 +1063,15 @@ export async function listarOpsDaEstacao(
   // por prioridade responderia "o que é mais urgente do que já saiu da
   // máquina", que não é pergunta de ninguém. Por hora de conclusão, a de
   // cima é a que ele acabou de fazer — que é o que ele foi conferir.
-  const conclusoes =
+  const marcos =
     destino === 'terminadas'
-      ? await conclusoesDe(todas.map((o) => o.id))
-      : new Map<string, DadosDaConclusao>()
+      ? await marcosDasOps(todas.map((o) => o.id))
+      : new Map<string, MarcosDaOp>()
 
   if (destino === 'terminadas') {
     todas.sort((a, b) => {
-      const ta = conclusoes.get(a.id)?.em?.getTime() ?? 0
-      const tb = conclusoes.get(b.id)?.em?.getTime() ?? 0
+      const ta = marcos.get(a.id)?.conclusao?.em.getTime() ?? 0
+      const tb = marcos.get(b.id)?.conclusao?.em.getTime() ?? 0
       return tb - ta
     })
   } else {
@@ -1105,7 +1152,8 @@ export async function listarOpsDaEstacao(
     ops: rows
       .sort((a, b) => ordemDoId.get(a.id)! - ordemDoId.get(b.id)!)
       .map((r) => {
-        const c = conclusoes.get(r.id)
+        const m = marcos.get(r.id)
+        const c = m?.conclusao ?? null
         return {
           id: r.id,
           numero: r.numero,
@@ -1129,18 +1177,23 @@ export async function listarOpsDaEstacao(
           dataPrevistaFim: r.dataPrevistaFim,
           maquinaCodigo: r.maquinaCodigo ?? null,
           concluidaEm: c?.em ?? null,
-          concluidaPor: c?.por ?? null,
+          concluidaPor: c?.porNome ?? null,
           resumo: c?.resumo ?? null,
           produzido: r.produzido ?? 0,
           refugo: r.refugo ?? 0,
           podeDesfazer:
             destino === 'terminadas' &&
-            r.status === 'pronto_envio' &&
+            desfazerAlcanca({
+              status: r.status,
+              remessaFullId: r.remessaFullId,
+              conclusaoEm: c?.em ?? null,
+              ultimaTransicao: m?.ultimaTransicao ?? null,
+            }) &&
             r.maquinaId !== null &&
             !maquinasOcupadas.has(r.maquinaId) &&
             (isManager(user.role) ||
               erroDoAutorDoDesfazer(
-                c ? { id: c.porId, nome: c.por } : null,
+                c ? { id: c.porId, nome: c.porNome } : null,
                 user.id,
               ) === null),
         }
@@ -1148,53 +1201,6 @@ export async function listarOpsDaEstacao(
     total: todas.length,
     temMais: inicio + daPagina.length < todas.length,
   }
-}
-
-type DadosDaConclusao = {
-  em: Date
-  por: string | null
-  porId: string | null
-  resumo: string | null
-}
-
-/** Quem concluiu cada OP, quando, e o que ficou escrito. Uma consulta só. */
-async function conclusoesDe(
-  ids: string[],
-): Promise<Map<string, DadosDaConclusao>> {
-  const mapa = new Map<string, DadosDaConclusao>()
-  if (ids.length === 0) return mapa
-
-  const rows = await db
-    .select({
-      ordemId: eventosKanban.ordemId,
-      em: eventosKanban.createdAt,
-      por: users.nome,
-      porId: eventosKanban.usuarioId,
-      resumo: eventosKanban.observacao,
-    })
-    .from(eventosKanban)
-    .leftJoin(users, eq(users.id, eventosKanban.usuarioId))
-    .where(
-      and(
-        inArray(eventosKanban.ordemId, ids),
-        eq(eventosKanban.statusNovo, 'pronto_envio'),
-      ),
-    )
-    .orderBy(desc(eventosKanban.createdAt))
-
-  // Ordenado do mais novo pro mais velho: o primeiro de cada OP é a
-  // conclusão que vale. Uma OP desfeita e concluída de novo tem duas.
-  for (const r of rows) {
-    if (!mapa.has(r.ordemId)) {
-      mapa.set(r.ordemId, {
-        em: r.em,
-        por: r.por,
-        porId: r.porId,
-        resumo: r.resumo,
-      })
-    }
-  }
-  return mapa
 }
 
 /** Máquinas com OP em produção agora — o que impede o desfazer. */
@@ -1233,10 +1239,19 @@ export async function listarEventosOrdem(
     .where(eq(eventosKanban.ordemId, ordemId))
     .orderBy(desc(eventosKanban.createdAt))
 
-  return rows.map(({ evento, usuarioNome }) => ({
-    ...evento,
-    usuarioNome: usuarioNome ?? null,
-  }))
+  // No MESMO instante (conclusão e finalização nascem na mesma transação), a
+  // finalização aparece antes — a lista é do mais novo pro mais velho.
+  return rows
+    .map(({ evento, usuarioNome }) => ({
+      ...evento,
+      usuarioNome: usuarioNome ?? null,
+    }))
+    .sort(
+      (a, b) =>
+        b.createdAt.getTime() - a.createdAt.getTime() ||
+        posicaoNoMesmoInstante({ tipo: 'status', ...b }) -
+          posicaoNoMesmoInstante({ tipo: 'status', ...a }),
+    )
 }
 
 // -----------------------------------------------------------------

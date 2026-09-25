@@ -69,7 +69,7 @@ export async function HistoricoDaOp({ ordemId }: { ordemId: string }) {
                       </span>
                       {item.refugo > 0 && (
                         <span className="text-destructive">
-                          · {item.refugo.toLocaleString('pt-BR')} de refugo
+                          · {item.refugo.toLocaleString('pt-BR')} com defeito
                         </span>
                       )}
                     </div>
