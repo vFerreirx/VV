@@ -23,6 +23,17 @@ function DialogClose({ ...props }: DialogPrimitive.Close.Props) {
   return <DialogPrimitive.Close data-slot="dialog-close" {...props} />
 }
 
+// ⚠️ O FUNDO NÃO TEM DESFOQUE (backdrop-blur), e isso é de propósito — o
+// shadcn gera com ele, e um `shadcn add dialog` o traz de volta.
+//
+// O desfoque cobre a TELA INTEIRA e é refeito a cada quadro em que algo muda
+// por trás — e sempre muda: a bolinha de tarefa urgente do menu pulsa sem
+// parar (`.pulse-urgente`), e cada tecla digitada gera um quadro novo. No
+// Chrome do escritório o card aberto fazia a letra não aparecer no campo, e
+// até outros programas travavam. Medido num Chrome sem aceleração de vídeo,
+// com a bolinha pulsando: 12 quadros/s e 200–300 ms por tecla com o
+// desfoque; 60 quadros/s e ~50 ms sem ele. O escurecimento sobe de 10% pra
+// 30% pra compensar o destaque que o desfoque dava. Mesma coisa em sheet.tsx.
 function DialogOverlay({
   className,
   ...props
@@ -31,7 +42,7 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 isolate z-50 bg-black/30 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
