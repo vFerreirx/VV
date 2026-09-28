@@ -41,6 +41,60 @@ testes puros não pegam isso — foi o que derrubou a aba Produção depois do
 PR #14. O teste de `src/lib/db/conclusao-da-op-sql.test.ts` mostra como
 conferir sem banco: `new PgDialect().sqlToQuery(fragmento).params`.
 
+## `npm run test:banco`: o fluxo da produção contra o banco, desfeito no fim
+
+Type-check, lint e os testes puros não rodam SQL. O PR #14 passou nos três e
+derrubou a aba Produção (Date cru dentro de sql``). O `test:banco` chama as
+actions DE VERDADE contra o banco e desfaz tudo no fim. Com o conserto do #15
+desaplicado, ele cai no passo 3 com o erro da consulta.
+
+**O que cobre** (`tests/banco/cenarios/fluxo-da-producao.ts`): Iniciar e
+"Peguei errado" pelo tablet, a meta do operador, "Terminei" com defeito
+(apontamento, estoque, histórico, reposição), Terminadas e contagens do
+tablet, o quadro, o Desfazer, a correção de quantidades do gerente, o Full
+(concluir, mudar destino pra Estoque, despachar) e as leituras de histórico,
+ficha e Despachadas. As guardas de área usam o nível REAL de cada cargo
+(`permissoes-db` de verdade, lendo `permissoes_acesso`).
+
+**O que NÃO cobre:** tela nenhuma (nada de React), login de verdade (o
+usuário é escolhido pelo teste), PIN e trava do tablet (mockados: nunca
+travado), realtime entre tablets e o `revalidatePath` (mockado, não faz
+nada).
+
+**Roda contra o banco de PRODUÇÃO**, e é seguro por três motivos:
+
+1. Tudo acontece numa transação só, e a única saída dela é o ROLLBACK. Os
+   `db.transaction` das actions viram SAVEPOINT dentro dela. Qualquer erro no
+   meio também desfaz. `lock_timeout` e `statement_timeout` curtos: o teste
+   nunca espera atrás da produção nem a segura mais que uns segundos.
+2. A `DATABASE_URL` é lida do `.env.local` só pro client do teste e sai do
+   `process.env`. Se um mock falhar e o `@/lib/db` real carregar, ele não
+   conecta. Não existe caminho pra um commit acidental.
+3. No fim, FORA da transação, ele confere as contagens das tabelas do fluxo,
+   o `op_numero_counter` e que nenhuma linha tem a marca do teste. Divergiu:
+   alarme e saída com erro.
+
+Os dados (operador com 3 máquinas livres, gerente, variação fora da fila de
+reposição, conta Full ML) são escolhidos na hora, nunca IDs fixos. Faltou
+algum: os passos que dependem dele são pulados, com o porquê.
+
+**Quando rodar:** antes de mesclar PR que mexe em action ou SQL do fluxo da
+produção (OP, tablet, remessa, estoque). **Cole a saída no PR.**
+
+**Action nova do fluxo ganha passo no roteiro.** Cenário novo é um arquivo em
+`tests/banco/cenarios/` mais uma linha em `CENARIOS` (`tests/banco/index.ts`).
+Os helpers reaproveitáveis ficam em `tests/banco/lib/`: `fabrica` (cria OP,
+remessa e reposição com a marca), `leitura`, `dados` (o elenco),
+`ctx.como(usuario)` e `ctx.passarUmMinuto()`. Esse último existe porque
+dentro da transação o `now()` é um só, e o desfazer e a "conclusão mais
+recente" se decidem por `created_at`.
+
+⚠️ **Os mocks dependem dos imports das actions** (`tests/banco/lib/mocks.ts`).
+Se uma action nova importar algo que só existe dentro do Next (`cookies`,
+`headers`…), o teste quebra no CARREGAMENTO. Aí é pra acrescentar o mock,
+nunca pra contornar. E nenhum arquivo de `tests/banco/` importa action no
+topo, só `import type`: em CJS o `import` carregaria a action antes do mock.
+
 ## Catálogo: peso e preço vivem no par (produto, tamanho)
 
 Não existe peso nem preço "do produto". A Peseira ACONCHEGO pesa 950 g no
