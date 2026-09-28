@@ -33,6 +33,14 @@ playground.
 Se precisar testar com dados de demonstração, **avise antes** e proponha
 inserir só linhas extras, nunca substituir.
 
+## Drizzle: Date dentro de sql`` quebra em runtime
+
+Date dentro de sql`` quebra EM RUNTIME (Drizzle + postgres-js): compare pela
+coluna (`gte`/`lt`/`eq`) ou passe `.toISOString()`. Type-check, lint e os
+testes puros não pegam isso — foi o que derrubou a aba Produção depois do
+PR #14. O teste de `src/lib/db/conclusao-da-op-sql.test.ts` mostra como
+conferir sem banco: `new PgDialect().sqlToQuery(fragmento).params`.
+
 ## Catálogo: peso e preço vivem no par (produto, tamanho)
 
 Não existe peso nem preço "do produto". A Peseira ACONCHEGO pesa 950 g no

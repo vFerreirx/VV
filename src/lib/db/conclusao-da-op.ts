@@ -3,6 +3,7 @@ import 'server-only'
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 
 import { db } from '@/lib/db'
+import { comTransicao } from '@/lib/db/conclusao-da-op-sql'
 import { eventosKanban, users } from '@/lib/db/schema'
 import type { StatusDaOrdem } from '@/lib/producao/destino-da-ordem'
 
@@ -24,6 +25,13 @@ import type { StatusDaOrdem } from '@/lib/producao/destino-da-ordem'
 // transicoes-da-op.ts); sem o desempate a "última transição" podia sair a
 // conclusão, e o desfazer acharia que a OP não está finalizada pela conclusão.
 
+// Os pedaços de SQL (a janela de 24 h do quadro e do tablet) moram em
+// conclusao-da-op-sql.ts, sem 'server-only', pra serem testáveis sem banco.
+export {
+  concluidaDesdeSql,
+  concluidaEmSql,
+} from '@/lib/db/conclusao-da-op-sql'
+
 type Executor = Pick<typeof db, 'select'>
 
 export type ConclusaoDaOp = {
@@ -40,35 +48,6 @@ export type MarcosDaOp = {
   conclusao: ConclusaoDaOp | null
   ultimaTransicao: { para: StatusDaOrdem; em: Date } | null
 }
-
-const comTransicao = sql`${eventosKanban.statusAnterior} IS DISTINCT FROM ${eventosKanban.statusNovo}`
-
-// OS DOIS PEDAÇOS DE SQL DA JANELA DE 24 H — o quadro e o tablet filtram no
-// banco, não em memória: sem isto o tablet lia toda OP da estação desde
-// sempre a cada recarga. O instante de corte vem de fora
-// (`inicioDaJanela`, destino-da-ordem.ts), então as 24 h não estão escritas
-// aqui. ⚠️ Correlacionados com "ordens_producao"."id" QUALIFICADO À MÃO —
-// sem isso o Postgres casa com o `id` do próprio eventos_kanban.
-
-/** A OP teve uma conclusão (com transição) a partir de `desde`? */
-export function concluidaDesdeSql(desde: Date) {
-  return sql<boolean>`EXISTS (
-    SELECT 1 FROM ${eventosKanban}
-    WHERE ${eventosKanban.ordemId} = "ordens_producao"."id"
-      AND ${eventosKanban.statusNovo} = 'pronto_envio'
-      AND ${comTransicao}
-      AND ${eventosKanban.createdAt} >= ${desde}
-  )`
-}
-
-/** Quando foi a conclusão mais recente da OP, ou NULL. */
-export const concluidaEmSql = sql<string | null>`(
-  SELECT MAX(${eventosKanban.createdAt})
-  FROM ${eventosKanban}
-  WHERE ${eventosKanban.ordemId} = "ordens_producao"."id"
-    AND ${eventosKanban.statusNovo} = 'pronto_envio'
-    AND ${comTransicao}
-)`
 
 /** Os marcos de várias OPs, em duas consultas. */
 export async function marcosDasOps(
