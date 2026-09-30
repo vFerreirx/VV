@@ -42,6 +42,7 @@ import {
 } from '@/app/(app)/ordens/actions'
 import { CodigoDoProduto } from '@/components/ordens/codigo-do-produto'
 import { corDoCanal } from '@/lib/producao/cor-do-canal'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { itensDaColuna } from '@/lib/producao/rotulo-da-op'
 import { NovaOpDialog } from '@/components/ordens/nova-op-dialog'
 import {
@@ -1154,13 +1155,10 @@ function KanbanCardContent({
           {ordem.quantidade.toLocaleString('pt-BR')} un
         </span>
         {variacao && <span className="truncate">{variacao}</span>}
-        {ordem.maquinaCodigo && (
-          <span
-            className="inline-flex items-center gap-0.5"
-            title={ordem.maquinaNome ?? undefined}
-          >
+        {ordem.maquinaNumero !== null && (
+          <span className="inline-flex items-center gap-0.5">
             <Cog className="size-2.5" />
-            {ordem.maquinaCodigo}
+            {nomeDaMaquina(ordem.maquinaNumero)}
           </span>
         )}
         {ordem.dataPrevistaFim && (

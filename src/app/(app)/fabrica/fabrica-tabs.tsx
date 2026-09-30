@@ -15,6 +15,7 @@ import type {
 import { EstacoesList } from '../estacoes/estacoes-list'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { nomesDasMaquinas } from '@/lib/producao/nome-da-maquina'
 
 /**
  * O que falta pra fábrica estar montada: máquina sem estação não abre na tela
@@ -28,8 +29,8 @@ export type PendenciasDaFabrica = {
    * e a faixa precisa dizer isso — senão fica vazia e parece tudo pronto.
    */
   nenhumOperadorAtivo: boolean
-  /** Códigos das máquinas sem estação. */
-  maquinasSemEstacao: string[]
+  /** Números das máquinas sem estação (a frase sai de `nomesDasMaquinas`). */
+  maquinasSemEstacao: number[]
   /** Nomes dos operadores ativos que ainda não criaram PIN. */
   operadoresSemPin: string[]
 }
@@ -223,7 +224,7 @@ function FaixaDePendencias({
             </span>
             <span className="text-muted-foreground">
               {' '}
-              ({maq.join(', ')}) — no tablet, ficam na aba “Sem estação”.
+              ({nomesDasMaquinas(maq)}) — no tablet, ficam na aba “Sem estação”.
             </span>
           </p>
         )}

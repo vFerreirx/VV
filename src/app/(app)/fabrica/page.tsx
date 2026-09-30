@@ -70,7 +70,7 @@ export default async function FabricaPage({
         nenhumOperadorAtivo: operadores.length === 0,
         maquinasSemEstacao: maquinasOpcoes
           .filter((m) => m.estacaoId === null)
-          .map((m) => m.codigo),
+          .map((m) => m.numero),
         operadoresSemPin: operadores
           .filter((o) => !o.temPin)
           .map((o) => o.nome),

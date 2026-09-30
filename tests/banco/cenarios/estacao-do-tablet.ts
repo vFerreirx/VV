@@ -24,6 +24,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 
 import { estacoes, maquinaParadas, users } from '@/lib/db/schema'
 import { avisoDeCobertura } from '@/lib/producao/cobertura'
+import { nomeDaMaquina, nomesDasMaquinas } from '@/lib/producao/nome-da-maquina'
 
 import type { Cenario, Contexto } from '../lib/contexto'
 
@@ -58,8 +59,8 @@ async function rodar(ctx: Contexto) {
   const variacao = elenco.variacao.valor!
 
   console.log(
-    `  elenco: operador ${operador.nome} · casa ${casa.maquinas.map((m) => m.codigo).join(', ')} · ` +
-      `fora ${mFora.codigo} · ${gerente.role} ${gerente.nome} · ${variacao.rotulo}`,
+    `  elenco: operador ${operador.nome} · casa ${nomesDasMaquinas(casa.maquinas.map((m) => m.numero))} · ` +
+      `fora ${nomeDaMaquina(mFora.numero)} · ${gerente.role} ${gerente.nome} · ${variacao.rotulo}`,
   )
 
   // ------------------------------------------------ a) "Este aparelho"
@@ -82,9 +83,9 @@ async function rodar(ctx: Contexto) {
   const casaNaLista = paraAparelho.find((e) => e.id === casa.id)
   const foraNaLista = paraAparelho.find((e) => e.id === fora.id)
   p.checar(
-    '  "Este aparelho" lista as estações com os códigos das máquinas',
-    casa.maquinas.every((m) => casaNaLista?.maquinas.includes(m.codigo)) &&
-      foraNaLista?.maquinas.includes(mFora.codigo) === true,
+    '  "Este aparelho" lista as estações com os números das máquinas',
+    casa.maquinas.every((m) => casaNaLista?.maquinas.includes(m.numero)) &&
+      foraNaLista?.maquinas.includes(mFora.numero) === true,
     { casa: casaNaLista, fora: foraNaLista },
   )
 
@@ -100,7 +101,7 @@ async function rodar(ctx: Contexto) {
   p.checar(
     '  só máquinas da casa na tela',
     naCasa.length > 0 && naCasa.every((m) => m.estacao?.id === casa.id),
-    naCasa.map((m) => `${m.codigo}:${m.estacao?.id ?? '—'}`),
+    naCasa.map((m) => `${m.numero}:${m.estacao?.id ?? '—'}`),
   )
 
   const op = await fabrica.opDeEstoque(variacao, 10, gerente.id)
@@ -129,7 +130,11 @@ async function rodar(ctx: Contexto) {
 
   // --------------------------------- d) Iniciar na máquina de FORA
   r = await ordens.pegarOrdemAction(op.id, mFora.id)
-  p.exigir(`d) operador inicia a OP na ${mFora.codigo}, de outra estação`, r.success, r)
+  p.exigir(
+    `d) operador inicia a OP na ${nomeDaMaquina(mFora.numero)}, de outra estação`,
+    r.success,
+    r,
+  )
   let estado = await ler.op(op.id)
   p.checar(
     '  em produção na máquina de fora, com ele de dono',

@@ -48,7 +48,7 @@ derrubou a aba Produção (Date cru dentro de sql``). O `test:banco` chama as
 actions DE VERDADE contra o banco e desfaz tudo no fim. Com o conserto do #15
 desaplicado, ele cai no passo 3 com o erro da consulta.
 
-**O que cobre**, em dois cenários, cada um na sua transação desfeita:
+**O que cobre**, em três cenários, cada um na sua transação desfeita:
 
 - `tests/banco/cenarios/fluxo-da-producao.ts` — o dia da produção, com o
   aparelho na estação "casa": Iniciar e "Peguei errado" pelo tablet, a meta
@@ -65,6 +65,11 @@ desaplicado, ele cai no passo 3 com o erro da consulta.
   cai nas Terminadas da aba da máquina; o "Quem é você?" lista todo operador
   ativo e só operador; o cartão do quadro leva a estação da MÁQUINA; e o
   aparelho sem estação abre em "todas", sem "Você está cobrindo?".
+- `tests/banco/cenarios/cadastro-de-maquina.ts` — a máquina é um número
+  (74): número repetido recusado com "Já existe a Máquina N", máquina nova
+  com o `codigo` legado = o próprio uuid, a tela recebendo `numero` sem
+  `codigo`/`nome`, mudar o número, o número da apagada livre de novo e a
+  lista em ordem numérica.
 
 As guardas de área usam o nível REAL de cada cargo (`permissoes-db` de
 verdade, lendo `permissoes_acesso`).
@@ -129,6 +134,32 @@ transação). `@/lib/supabase/server` e `/admin` LANÇAM se chamados: chamou,
 existe dentro do Next, o teste quebra no CARREGAMENTO. Aí é pra acrescentar
 o mock, nunca pra contornar. E nenhum arquivo de `tests/banco/` importa action no
 topo, só `import type`: em CJS o `import` carregaria a action antes do mock.
+
+## Máquina: o nome sai do NÚMERO — "Máquina 4", nunca "TC-04"
+
+Ninguém na fábrica fala "TC" (Q195-a, Q196-a, 30/09). A máquina aparece
+como **"Máquina 4"** em todo lugar — tablet, quadro, Ordens, avisos,
+histórico novo, Fábrica, Estações, "Este aparelho", dashboard, lixeira.
+
+- **A fonte é `maquinas.numero`** (inteiro >= 1, único ENTRE AS VIVAS;
+  `supabase/sql/74_numero_da_maquina.sql`). O cadastro pede só "Número".
+- **O nome é montado**, sempre pela mesma função:
+  `nomeDaMaquina(4)` → "Máquina 4"; numa frase com várias,
+  `nomesDasMaquinas([7, 1, 3, 2])` → "Máquinas 1, 2, 3 e 7"
+  (`src/lib/producao/nome-da-maquina.ts`). Frase já escrita com "máquina"
+  na frente vira "A Máquina 4 já está com a OP…", nunca "a máquina
+  Máquina 4".
+- **Ordem numérica em todo lugar**: `orderBy(asc(maquinas.numero))` no SQL,
+  `compararMaquinas` em memória. Ordenar pelo nome montado põe a 10 antes
+  da 2.
+- ⚠️ **Nunca mostre `maquinas.codigo` nem `maquinas.nome`.** Os dois são
+  legado: o `codigo` era o "TC-04" (máquina nova grava o próprio uuid, só
+  pro NOT NULL UNIQUE), e o `nome` é espelho do nome montado. As telas
+  recebem `MaquinaVisivel` (`src/lib/db/schema/maquinas.ts`), que não tem
+  os dois — é o tipo que impede a volta do "TC" em silêncio.
+- Mudar o número de uma máquina pode: OPs e paradas apontam pela id. O
+  histórico JÁ GRAVADO (eventos, apontamentos) continua dizendo "TC-03" ou
+  o nome de antes — é texto de quando foi escrito, e não se reescreve.
 
 ## Catálogo: peso e preço vivem no par (produto, tamanho)
 
@@ -263,7 +294,7 @@ sem ninguém perceber.** Está escrito no topo do arquivo; leia antes de mexer.
   estação nenhuma. **Por quê:** no almoço um cobre a máquina do outro do
   outro lado do galpão, eles revezam por horário, e de madrugada não há
   gerente pra refazer vínculo. Com operador preso a estação, quem cobria a
-  TC-10 nem aparecia no "Quem é você?" do tablet dela, e o registro saía no
+  Máquina 10 nem aparecia no "Quem é você?" do tablet dela, e o registro saía no
   nome de quem estava logado — o problema de autoria que o PIN existe pra
   resolver.
 - Todo operador ativo aparece em todo tablet, e o **PIN prova AUTORIA**, não

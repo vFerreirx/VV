@@ -42,6 +42,7 @@ import {
   type MotivoDeParada,
   type ParadaAbertaResumo,
 } from '@/lib/producao/parada-de-maquina'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { cn } from '@/lib/utils'
 
 export function ParadaDialog({
@@ -54,7 +55,7 @@ export function ParadaDialog({
   variante = 'padrao',
   onTabletTravado,
 }: {
-  maquina: { id: string; codigo: string }
+  maquina: { id: string; numero: number }
   modo: 'abrir' | 'fechar' | null
   onClose: () => void
   motivos?: readonly { valor: MotivoDeParada; rotulo: string }[]
@@ -119,8 +120,8 @@ export function ParadaDialog({
         <DialogHeader>
           <DialogTitle className={cn(tablet && 'text-2xl')}>
             {abrindo
-              ? `Por que a ${maquina.codigo} parou?`
-              : `Liberar a ${maquina.codigo}`}
+              ? `Por que a ${nomeDaMaquina(maquina.numero)} parou?`
+              : `Liberar a ${nomeDaMaquina(maquina.numero)}`}
           </DialogTitle>
           <DialogDescription className={cn(tablet && 'text-base')}>
             {abrindo

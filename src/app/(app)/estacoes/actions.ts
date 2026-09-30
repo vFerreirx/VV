@@ -30,8 +30,8 @@ export type ActionResult<T = undefined> =
 // Uma máquina da estação, como o cartão e o diálogo de exclusão mostram.
 export type MaquinaDaEstacaoResumo = {
   id: string
-  codigo: string
-  nome: string
+  /** O número da máquina — o nome sai de `nomeDaMaquina`. */
+  numero: number
   /** Número da OP em produção nela agora, ou null. Prende a exclusão. */
   opEmProducao: string | null
 }
@@ -53,12 +53,11 @@ export type OperadorOpcao = {
   /** Só o booleano, pro checklist da /fabrica. O hash nunca sai daqui. */
   temPin: boolean
 }
-// `estacao*` é a estação ATUAL da máquina: o diálogo mostra "TC-07 · Estação
-// 1" e avisa antes de tirá-la de lá.
+// `estacao*` é a estação ATUAL da máquina: o diálogo mostra "Máquina 7 ·
+// Estação 1" e avisa antes de tirá-la de lá.
 export type MaquinaOpcao = {
   id: string
-  codigo: string
-  nome: string
+  numero: number
   estacaoId: string | null
   estacaoNome: string | null
 }
@@ -84,8 +83,7 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
   const maqs = await db
     .select({
       id: maquinas.id,
-      codigo: maquinas.codigo,
-      nome: maquinas.nome,
+      numero: maquinas.numero,
       estacaoId: maquinas.estacaoId,
       opEmProducao: ordensProducao.numero,
     })
@@ -102,8 +100,8 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
       ),
     )
     .where(and(isNull(maquinas.deletedAt), inArray(maquinas.estacaoId, ids)))
-    // Ordena pelo código (TC-01..18) pra manter a ordem numérica das máquinas.
-    .orderBy(asc(maquinas.codigo))
+    // Pelo NÚMERO: a 2 antes da 10 (src/lib/producao/nome-da-maquina.ts).
+    .orderBy(asc(maquinas.numero))
 
   return rows.map((e) => {
     const minhas = maqs.filter((m) => m.estacaoId === e.id)
@@ -112,8 +110,7 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
       maquinaIds: minhas.map((m) => m.id),
       maquinas: minhas.map((m) => ({
         id: m.id,
-        codigo: m.codigo,
-        nome: m.nome,
+        numero: m.numero,
         opEmProducao: m.opEmProducao ?? null,
       })),
     }
@@ -155,8 +152,7 @@ export async function listarMaquinasOpcoes(): Promise<MaquinaOpcao[]> {
   return db
     .select({
       id: maquinas.id,
-      codigo: maquinas.codigo,
-      nome: maquinas.nome,
+      numero: maquinas.numero,
       // Pelo JOIN, e não por `maquinas.estacao_id`: estação excluída não
       // conta como "a estação dela".
       estacaoId: estacoes.id,
@@ -168,7 +164,7 @@ export async function listarMaquinasOpcoes(): Promise<MaquinaOpcao[]> {
       and(eq(estacoes.id, maquinas.estacaoId), isNull(estacoes.deletedAt)),
     )
     .where(isNull(maquinas.deletedAt))
-    .orderBy(asc(maquinas.codigo))
+    .orderBy(asc(maquinas.numero))
 }
 
 // -----------------------------------------------------------------
@@ -297,7 +293,7 @@ export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
   // Conferido DENTRO da transação, e a recusa desfaz tudo: nada é gravado.
   const recusa = await db.transaction(async (tx) => {
     const presas = await tx
-      .select({ codigo: maquinas.codigo, opEmProducao: ordensProducao.numero })
+      .select({ numero: maquinas.numero, opEmProducao: ordensProducao.numero })
       .from(maquinas)
       .innerJoin(
         ordensProducao,
@@ -308,7 +304,7 @@ export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
         ),
       )
       .where(and(eq(maquinas.estacaoId, id), isNull(maquinas.deletedAt)))
-      .orderBy(asc(maquinas.codigo))
+      .orderBy(asc(maquinas.numero))
     const motivo = motivoParaNaoExcluirEstacao(presas)
     if (motivo) return motivo
 

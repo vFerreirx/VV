@@ -75,6 +75,7 @@ import {
   finalizaNaConclusao,
 } from '@/lib/producao/transicoes-da-op'
 import { erroDaCorrecao } from '@/lib/producao/correcao'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { cn } from '@/lib/utils'
 import {
   CANAL_LABEL,
@@ -557,7 +558,7 @@ function DetalheBody({
             />
             <Detail
               label="Máquina"
-              value={ordem.maquina ? ordem.maquina.nome : '—'}
+              value={ordem.maquina ? nomeDaMaquina(ordem.maquina.numero) : '—'}
             />
             <Detail label="Canal" value={CANAL_LABEL[ordem.canalDestino]} />
             {ordem.remessa && (

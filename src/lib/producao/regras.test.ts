@@ -29,6 +29,12 @@ import {
 import { resolverVariacaoDoFaltante } from './faltante-para-op.ts'
 import { reacaoDaEstacao } from './recarga-da-estacao.ts'
 import { avisoDeCobertura } from './cobertura.ts'
+import { observacaoDeMaquinaAtribuida } from './inicio-da-op.ts'
+import {
+  compararMaquinas,
+  nomeDaMaquina,
+  nomesDasMaquinas,
+} from './nome-da-maquina.ts'
 import {
   abasDoTablet,
   chaveDaTela,
@@ -315,7 +321,7 @@ test('a máquina vence o status', () => {
 
 test('em produção numa máquina de OUTRA estação não cai na fila', () => {
   // O operador enxerga a fábrica inteira (a estação é do tablet). A OP rodando
-  // na TC-15 está no cartão da aba da Estação 3 — contá-la na Fila do tablet
+  // na Máquina 15 está no cartão da aba da Estação 3 — contá-la na Fila do tablet
   // da Estação 1 seria oferecer pra iniciar o que já está na máquina.
   assert.equal(destinoDaOrdem('em_producao', true, false), 'maquina')
   assert.equal(destinoDaOrdem('em_producao', true, true), 'maquina')
@@ -583,8 +589,15 @@ test('atrasada e so a producao que nao foi concluida', () => {
 
 test('conclusao fora da maquina registra a maquina informada', () => {
   assert.equal(
-    resumoDaConclusao(27, 1, calcularConclusao(30, 0), null, { maquinaInformada: 'TC-03' }),
-    'Produção concluída com 27 de 30 peças (3 a menos) · 1 com defeito · máquina TC-03 informada na conclusão',
+    resumoDaConclusao(27, 1, calcularConclusao(30, 0), null, { maquinaInformada: 3 }),
+    'Produção concluída com 27 de 30 peças (3 a menos) · 1 com defeito · Máquina 3 informada na conclusão',
+  )
+})
+
+test('OP que ganha maquina ja em producao: o historico diz a Maquina N', () => {
+  assert.equal(
+    observacaoDeMaquinaAtribuida(4),
+    'Entrou na Máquina 4 (já estava em produção)',
   )
 })
 
@@ -1559,26 +1572,57 @@ test('tablet: a chave da aba ida e volta da a mesma tela', () => {
 test('cobertura: avisa na maquina de outra estacao, nunca na de casa', () => {
   const e1 = { id: 'e1', nome: 'Estação 1' }
   const e3 = { id: 'e3', nome: 'Estação 3' }
-  assert.equal(avisoDeCobertura({ codigo: 'TC-05', estacao: e1 }, e1), null)
+  assert.equal(avisoDeCobertura({ numero: 5, estacao: e1 }, e1), null)
   assert.equal(
-    avisoDeCobertura({ codigo: 'TC-15', estacao: e3 }, e1),
-    'A TC-15 é da Estação 3. Você está cobrindo?',
+    avisoDeCobertura({ numero: 15, estacao: e3 }, e1),
+    'A Máquina 15 é da Estação 3. Você está cobrindo?',
   )
 })
 
 test('cobertura: maquina sem estacao conta como diferente, com texto proprio', () => {
   const e1 = { id: 'e1', nome: 'Estação 1' }
   assert.equal(
-    avisoDeCobertura({ codigo: 'TC-20', estacao: null }, e1),
-    'A TC-20 está sem estação. Gravar mesmo assim? Avise o gerente pra colocar ela numa estação.',
+    avisoDeCobertura({ numero: 20, estacao: null }, e1),
+    'A Máquina 20 está sem estação. Gravar mesmo assim? Avise o gerente pra colocar ela numa estação.',
   )
 })
 
 test('cobertura: tablet sem estacao nao avisa nada', () => {
   // Ele já mostra a faixa fixa "Tablet sem estação — chame o gerente".
   const e3 = { id: 'e3', nome: 'Estação 3' }
-  assert.equal(avisoDeCobertura({ codigo: 'TC-15', estacao: e3 }, null), null)
-  assert.equal(avisoDeCobertura({ codigo: 'TC-20', estacao: null }, null), null)
+  assert.equal(avisoDeCobertura({ numero: 15, estacao: e3 }, null), null)
+  assert.equal(avisoDeCobertura({ numero: 20, estacao: null }, null), null)
+})
+
+// -----------------------------------------------------------------
+// O nome da máquina: "Máquina 4", a partir do número
+// (src/lib/producao/nome-da-maquina.ts)
+// -----------------------------------------------------------------
+
+test('nome da maquina: "Maquina 4", sem zero a esquerda', () => {
+  assert.equal(nomeDaMaquina(4), 'Máquina 4')
+  assert.equal(nomeDaMaquina(12), 'Máquina 12')
+})
+
+test('varias maquinas numa frase: em ordem numerica, sem repetir', () => {
+  assert.equal(nomesDasMaquinas([7, 1, 3, 2]), 'Máquinas 1, 2, 3 e 7')
+  assert.equal(nomesDasMaquinas([10, 2]), 'Máquinas 2 e 10')
+  assert.equal(nomesDasMaquinas([4, 4]), 'Máquina 4')
+  assert.equal(nomesDasMaquinas([4]), 'Máquina 4')
+  assert.equal(nomesDasMaquinas([]), '')
+})
+
+test('ordem das maquinas e numerica: a 2 antes da 10', () => {
+  const lista = [10, 2, 24, 1, 11].map((numero) => ({ numero }))
+  assert.deepEqual(
+    [...lista].sort(compararMaquinas).map((m) => m.numero),
+    [1, 2, 10, 11, 24],
+  )
+  // O que NÃO pode: ordenar pelo nome montado põe a 10 antes da 2.
+  assert.deepEqual(
+    [...lista].map((m) => nomeDaMaquina(m.numero)).sort().slice(0, 3),
+    ['Máquina 1', 'Máquina 10', 'Máquina 11'],
+  )
 })
 
 // -----------------------------------------------------------------

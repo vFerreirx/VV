@@ -49,6 +49,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { corDoCanal } from '@/lib/producao/cor-do-canal'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import {
   agruparPorDia,
   prazoNaLista,
@@ -521,7 +522,7 @@ export function OrdensList({
                               <LinhaDaPeca op={o} />
                             </div>
                             <div className="text-muted-foreground text-xs">
-                              <Maquina nome={o.maquinaNome} />
+                              <Maquina numero={o.maquinaNumero} />
                             </div>
                           </div>
                         </div>
@@ -616,7 +617,7 @@ export function OrdensList({
                       </div>
                       <div className="text-muted-foreground flex justify-between gap-2 text-xs">
                         <span className="font-mono">{o.numero}</span>
-                        <Maquina nome={o.maquinaNome} />
+                        <Maquina numero={o.maquinaNumero} />
                       </div>
                     </div>
                   )
@@ -711,8 +712,10 @@ function SeparadorDoDia({ rotulo, n }: { rotulo: string; n: number }) {
   )
 }
 
-function Maquina({ nome }: { nome: string | null }) {
-  return <span>{nome ? `Máquina ${nome}` : 'Sem máquina'}</span>
+// Antes lia `maquinas.nome` (que já era "Máquina 4") e punha "Máquina" na
+// frente: a lista dizia "Máquina Máquina 4". O nome sai do número.
+function Maquina({ numero }: { numero: number | null }) {
+  return <span>{numero === null ? 'Sem máquina' : nomeDaMaquina(numero)}</span>
 }
 
 // "30 pç" enquanto roda; "27/30 pç" e "2 com defeito" depois — `quantidadeNaLista`.

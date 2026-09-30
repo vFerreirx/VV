@@ -41,6 +41,7 @@ import {
   erroDeQuantidade,
 } from '@/lib/producao/conclusao'
 import type { StatusDaOrdem } from '@/lib/producao/destino-da-ordem'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { cn } from '@/lib/utils'
 
 // -----------------------------------------------------------------
@@ -82,7 +83,7 @@ export function IniciarNaMaquinaDialog({
   }, [])
 
   // AGRUPADO POR ESTAÇÃO. O gerente recebe as máquinas da fábrica inteira, e
-  // uma grade corrida de 22 códigos obriga a lembrar qual TC é de qual turma.
+  // uma grade corrida de 24 máquinas obriga a lembrar qual é de qual turma.
   const grupos = useMemo(() => {
     const mapa = new Map<string, MaquinaParaPegar[]>()
     for (const m of dados?.maquinas ?? []) {
@@ -175,8 +176,8 @@ export function IniciarNaMaquinaDialog({
                           planejada && !bloqueada && 'border-primary/60',
                         )}
                       >
-                        <span className="flex items-center gap-1.5 font-medium">
-                          {m.codigo}
+                        <span className="flex items-center gap-1.5 font-medium tabular-nums">
+                          {nomeDaMaquina(m.numero)}
                           {planejada && (
                             <span className="text-primary text-[10px] font-normal">
                               planejada
@@ -188,7 +189,7 @@ export function IniciarNaMaquinaDialog({
                             ? `Ocupada — OP ${m.ocupadaPorOp}`
                             : m.impedimento
                               ? `Indisponível — ${m.impedimento}`
-                              : m.nome}
+                              : 'Livre'}
                         </span>
                       </button>
                     )
@@ -471,7 +472,7 @@ function MaquinaDaConclusao({
                       title={
                         m.ocupadaPorOp
                           ? `Agora com a OP ${m.ocupadaPorOp}`
-                          : (m.impedimento ?? m.nome)
+                          : (m.impedimento ?? 'Livre')
                       }
                       className={cn(
                         'flex flex-col items-start rounded-lg border px-2 py-1.5 text-left text-sm transition-colors',
@@ -480,7 +481,9 @@ function MaquinaDaConclusao({
                           : 'hover:border-primary hover:bg-primary/5',
                       )}
                     >
-                      <span className="font-medium tabular-nums">{m.codigo}</span>
+                      <span className="font-medium tabular-nums">
+                        {nomeDaMaquina(m.numero)}
+                      </span>
                       <span
                         className={cn(
                           'text-[11px]',

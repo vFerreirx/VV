@@ -54,6 +54,7 @@
 
 import { diaEmBrasilia, diasEntre } from '../dia-brasil.ts'
 import type { StatusDaOrdem } from './destino-da-ordem'
+import { nomeDaMaquina } from './nome-da-maquina.ts'
 
 export type Conclusao = {
   /** A quantidade da OP — o que o gerente pediu. */
@@ -142,7 +143,8 @@ export function erroDeQuantidade(
  * `maquinaInformada` marca a conclusão que o gerente faz de uma OP que não
  * estava numa máquina — a que saiu do tear enquanto o board ainda não sabia
  * dela. A máquina foi DITA na conclusão, e a frase separa isso de uma OP que
- * rodou pelo board: "máquina TC-03 informada na conclusão". A transição do
+ * rodou pelo board: "Máquina 3 informada na conclusão" (o número; o nome
+ * sai de `nomeDaMaquina`). A transição do
  * evento (`status_anterior`) continua dizendo de onde a OP veio.
  */
 export function resumoDaConclusao(
@@ -153,14 +155,14 @@ export function resumoDaConclusao(
   {
     maquinaInformada = null,
     diasDeAtraso = 0,
-  }: { maquinaInformada?: string | null; diasDeAtraso?: number } = {},
+  }: { maquinaInformada?: number | null; diasDeAtraso?: number } = {},
 ): string {
   const partes = [
     `Produção concluída com ${quantidadesDaConclusao(produzida, refugo, { meta, jaRegistrado })}`,
   ]
   if (iniciadaPor) partes.push(`· iniciada por ${iniciadaPor}`)
-  if (maquinaInformada) {
-    partes.push(`· máquina ${maquinaInformada} informada na conclusão`)
+  if (maquinaInformada !== null) {
+    partes.push(`· ${nomeDaMaquina(maquinaInformada)} informada na conclusão`)
   }
   // O ATRASO FICA NO HISTÓRICO. Depois da conclusão a OP deixa de ser
   // "atrasada" nas telas (atraso-da-op.ts) — sem esta linha, o fato de ter

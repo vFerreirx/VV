@@ -74,6 +74,7 @@ import {
   type MotivoDeParada,
 } from '@/lib/producao/parada-de-maquina'
 import { corDoCanal } from '@/lib/producao/cor-do-canal'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import {
   agruparPorDestino,
   alertaDoBloco,
@@ -105,8 +106,8 @@ import { cn } from '@/lib/utils'
 // a tela passou a ser a estação: a fila e as terminadas saíram pra trás de
 // dois botões com contador, no cabeçalho.
 //
-// POSIÇÃO ESTÁVEL: a ordem é `codigo` da máquina, sempre (a consulta já
-// devolve ordenado). O cartão da TC-01 é o primeiro esteja ela ocupada,
+// POSIÇÃO ESTÁVEL: a ordem é o NÚMERO da máquina, sempre (a consulta já
+// devolve ordenado). O cartão da Máquina 1 é o primeiro esteja ela ocupada,
 // livre ou em manutenção — quem trabalha aqui aprende a estação pela
 // posição, e uma grade que se reordena obriga a reler tudo toda vez.
 //
@@ -282,11 +283,11 @@ function Estacao({
   const [iniciando, setIniciando] = useState<MaquinaDaEstacao | null>(null)
   const [concluindo, setConcluindo] = useState<{
     op: OpNaMaquina
-    maquinaCodigo: string
+    maquinaNumero: number
   } | null>(null)
   const [devolvendo, setDevolvendo] = useState<{
     op: OpNaMaquina
-    maquinaCodigo: string
+    maquinaNumero: number
   } | null>(null)
   const [consultando, setConsultando] = useState<'fila' | 'terminadas' | null>(
     null,
@@ -572,7 +573,7 @@ function Estacao({
                       m,
                       () =>
                         m.op &&
-                        setConcluindo({ op: m.op, maquinaCodigo: m.codigo }),
+                        setConcluindo({ op: m.op, maquinaNumero: m.numero }),
                     )
                   }
                   onParou={() =>
@@ -589,7 +590,7 @@ function Estacao({
                       m,
                       () =>
                         m.op &&
-                        setDevolvendo({ op: m.op, maquinaCodigo: m.codigo }),
+                        setDevolvendo({ op: m.op, maquinaNumero: m.numero }),
                     )
                   }
                 />
@@ -602,7 +603,7 @@ function Estacao({
       {devolvendo && (
         <DevolverDialog
           op={devolvendo.op}
-          maquinaCodigo={devolvendo.maquinaCodigo}
+          maquinaNumero={devolvendo.maquinaNumero}
           onClose={() => setDevolvendo(null)}
         />
       )}
@@ -629,7 +630,7 @@ function Estacao({
       {concluindo && (
         <ConcluirDialog
           op={concluindo.op}
-          maquinaCodigo={concluindo.maquinaCodigo}
+          maquinaNumero={concluindo.maquinaNumero}
           onClose={() => setConcluindo(null)}
         />
       )}
@@ -745,14 +746,15 @@ function CartaoMaquina({
         m.op && corDoCanal(m.op.canalDestino)?.borda,
       )}
     >
-      {/* O CÓDIGO DA MÁQUINA NO TOPO, sempre — é por ele que ele acha o
-          cartão da máquina em que está de pé.
+      {/* O NOME DA MÁQUINA NO TOPO, sempre — é por ele ("Máquina 12") que
+          ele acha o cartão da máquina em que está de pé. Não quebra nem
+          encolhe: com pouco espaço, quem corta é o número da OP ao lado.
           O NÚMERO DA OP VEM PRA CÁ, na mesma linha: ele é identificação, não
           conteúdo, e ocupando uma linha própria lá embaixo custava altura em
           nove cartões pra dizer o que ninguém lê de longe. */}
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-base font-semibold tabular-nums">
-          {m.codigo}
+        <span className="shrink-0 text-base font-semibold whitespace-nowrap tabular-nums">
+          {nomeDaMaquina(m.numero)}
         </span>
         {m.op && (
           <span className="flex min-w-0 items-baseline gap-2">
@@ -1021,7 +1023,7 @@ function CorpoOcupada({
 // -----------------------------------------------------------------
 
 // A MÁQUINA VEM DO CARTÃO, e não é perguntada de novo: ele tocou no cartão da
-// TC-02, a OP vai pra TC-02. É o inverso do fluxo antigo (escolher a OP e
+// Máquina 2, a OP vai pra Máquina 2. É o inverso do fluxo antigo (escolher a OP e
 // depois a máquina), e é o que faz a tela seguir a estação física. O código
 // dela fica no título e volta no passo de confirmação — a pergunta "em qual
 // máquina mesmo?" nunca precisa ser feita.
@@ -1164,7 +1166,7 @@ function IniciarProducaoDialog({
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="text-2xl">
-            Iniciar na máquina {maquina.codigo}
+            Iniciar na {nomeDaMaquina(maquina.numero)}
           </DialogTitle>
           {/* ⚠️ A REGRA DO TOQUE, ESCRITA. "Em produção" começa quando a
               máquina tece, e o tempo de setup fica FORA dele de propósito:
@@ -1447,7 +1449,8 @@ function ConfirmarInicioDialog({
               máquina é onde a OP vai parar na máquina errada. E o destino da
               OP junto: é a última chance de ver pra quem é antes de tecer. */}
           <DialogDescription className="text-base">
-            <Destino texto={op.destino} /> · vai pra máquina {maquina.codigo}
+            <Destino texto={op.destino} /> · vai pra{' '}
+            {nomeDaMaquina(maquina.numero)}
           </DialogDescription>
         </DialogHeader>
 
@@ -1479,7 +1482,7 @@ function ConfirmarInicioDialog({
         >
           {pergunta
             ? 'Sim, o fio está aqui — iniciar'
-            : `Iniciar na ${maquina.codigo}`}
+            : `Iniciar na ${nomeDaMaquina(maquina.numero)}`}
         </Button>
         <Button
           variant="ghost"
@@ -1615,9 +1618,9 @@ function ConsultaDialog({
                 <span>{op.quantidade} peças</span>
                 {ehFila && <Prazo data={op.dataPrevistaFim} />}
                 <span className="text-muted-foreground">{op.numero}</span>
-                {op.maquinaCodigo && (
+                {op.maquinaNumero !== null && (
                   <span className="text-muted-foreground">
-                    {op.maquinaCodigo}
+                    {nomeDaMaquina(op.maquinaNumero)}
                   </span>
                 )}
               </div>
@@ -1733,11 +1736,11 @@ function lerRascunho(chave: string): Record<Campo, string> | null {
 
 function ConcluirDialog({
   op,
-  maquinaCodigo,
+  maquinaNumero,
   onClose,
 }: {
   op: OpNaMaquina
-  maquinaCodigo: string
+  maquinaNumero: number
   onClose: () => void
 }) {
   const router = useRouter()
@@ -1874,8 +1877,8 @@ function ConcluirDialog({
           {/* MÁQUINA, OP, META E DESTINO na mesma linha: é o que ele confere
               antes de gravar, e some do cartão no instante seguinte. */}
           <DialogDescription className="text-base">
-            <Destino texto={op.destino} /> · {op.numero} · máquina{' '}
-            {maquinaCodigo} · meta {op.quantidade}
+            <Destino texto={op.destino} /> · {op.numero} ·{' '}
+            {nomeDaMaquina(maquinaNumero)} · meta {op.quantidade}
           </DialogDescription>
         </DialogHeader>
 
@@ -1934,7 +1937,7 @@ function ConcluirDialog({
         {/* A MÁQUINA LIBERA AQUI, e ele precisa saber pra onde a OP vai — no
             toque seguinte ela some do cartão. */}
         <p className="text-muted-foreground text-center text-sm">
-          A máquina {maquinaCodigo} fica livre e a OP vai pra
+          A {nomeDaMaquina(maquinaNumero)} fica livre e a OP vai pra
           &ldquo;Terminadas&rdquo;, esperando o gerente.
         </p>
 
@@ -2042,11 +2045,11 @@ function numeroCurto(numero: string): string {
 // (`devolverOpParaFilaAction`): a mesma regra de quem conclui.
 function DevolverDialog({
   op,
-  maquinaCodigo,
+  maquinaNumero,
   onClose,
 }: {
   op: OpNaMaquina
-  maquinaCodigo: string
+  maquinaNumero: number
   onClose: () => void
 }) {
   const router = useRouter()
@@ -2082,7 +2085,7 @@ function DevolverDialog({
             Devolver a OP {numeroCurto(op.numero)} pra fila?
           </DialogTitle>
           <DialogDescription className="text-base">
-            A máquina {maquinaCodigo} fica livre.
+            A {nomeDaMaquina(maquinaNumero)} fica livre.
           </DialogDescription>
         </DialogHeader>
 
@@ -2161,13 +2164,12 @@ function BotaoDesfazer({
           // A OP VOLTA PRA MÁQUINA DELA — que pode ser de outra estação. A
           // pergunta vem aqui, antes da confirmação do desfazer.
           onClick={() =>
-            confirmarCobertura(
-              {
-                codigo: op.maquinaCodigo ?? 'máquina',
-                estacao: op.maquinaEstacao,
-              },
-              () => setConfirmando(true),
-            )
+            op.maquinaNumero === null
+              ? setConfirmando(true)
+              : confirmarCobertura(
+                  { numero: op.maquinaNumero, estacao: op.maquinaEstacao },
+                  () => setConfirmando(true),
+                )
           }
         >
           Desfazer conclusão
@@ -2182,7 +2184,11 @@ function BotaoDesfazer({
   return (
     <div className="border-destructive/40 bg-destructive/5 mt-2 space-y-2 rounded-lg border-2 p-3">
       <p className="text-base font-medium">
-        A OP volta pra máquina {op.maquinaCodigo} e o registro de{' '}
+        A OP volta pra{' '}
+        {op.maquinaNumero === null
+          ? 'máquina dela'
+          : nomeDaMaquina(op.maquinaNumero)}{' '}
+        e o registro de{' '}
         {op.produzido} peças é cancelado.
       </p>
       {erro && <p className="text-destructive text-base font-medium">{erro}</p>}

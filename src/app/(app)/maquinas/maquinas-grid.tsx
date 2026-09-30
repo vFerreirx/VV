@@ -68,6 +68,7 @@ import {
   oQueParou,
   rotuloDoMotivo,
 } from '@/lib/producao/parada-de-maquina'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { tituloDaOp } from '@/lib/producao/rotulo-da-op'
 import { cn } from '@/lib/utils'
 
@@ -497,16 +498,12 @@ function MaquinaCard({
             title={s.rotulo}
           />
           <div className="min-w-0">
-            {/* O CÓDIGO NA FRENTE. A tela do operador identifica a máquina
-                por ele ("TC-07") e esta aqui mostrava só o nome ("Máquina
-                7") — duas telas nomeando o mesmo objeto de jeitos
-                diferentes, com o operador tendo que traduzir. */}
-            <div className="truncate font-medium">
-              <span className="tabular-nums">{maquina.codigo}</span>
-              <span className="text-muted-foreground font-normal">
-                {' · '}
-                {maquina.nome}
-              </span>
+            {/* "Máquina 7", o MESMO nome do tablet, montado pela mesma
+                função (src/lib/producao/nome-da-maquina.ts). Antes eram
+                dois — "TC-07" num lugar e "Máquina 7" no outro —, e o
+                operador tinha que traduzir. */}
+            <div className="truncate font-medium tabular-nums">
+              {nomeDaMaquina(maquina.numero)}
             </div>
             {/* ⚠️ A MESMA MANCHETE DO TABLET, montada pela mesma função
                 (`oQueParou`): "Parada: falta de fio · há 2 h". O gerente e o
@@ -557,7 +554,7 @@ function MaquinaCard({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={`Ações da ${maquina.codigo}`}
+                  aria-label={`Ações da ${nomeDaMaquina(maquina.numero)}`}
                 />
               }
             >
@@ -773,12 +770,8 @@ function HistoricoConteudo({ maquina }: { maquina: MaquinaListItem }) {
   return (
     <>
       <SheetHeader>
-        <SheetTitle>
-          <span className="tabular-nums">{maquina.codigo}</span>
-          <span className="text-muted-foreground font-normal">
-            {' · '}
-            {maquina.nome}
-          </span>
+        <SheetTitle className="tabular-nums">
+          {nomeDaMaquina(maquina.numero)}
         </SheetTitle>
         <SheetDescription>
           Cada vez que a máquina parou: por quê, quanto tempo e quem registrou.
@@ -906,7 +899,7 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir máquina?</DialogTitle>
           <DialogDescription>
-            {maquina?.nome} será marcada como excluída. As OPs vinculadas
+            {maquina && `A ${nomeDaMaquina(maquina.numero)}`} será marcada como excluída. As OPs vinculadas
             mantêm a referência histórica.
           </DialogDescription>
         </DialogHeader>

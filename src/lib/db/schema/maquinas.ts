@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm'
-import { index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 import { maquinaStatusEnum } from './enums'
 import { users } from './users'
@@ -10,6 +10,14 @@ export const maquinas = pgTable(
   'maquinas',
   {
     id: uuid().primaryKey().defaultRandom(),
+    // O NÚMERO É A MÁQUINA: a tela mostra "Máquina 4", montado por
+    // `nomeDaMaquina` (src/lib/producao/nome-da-maquina.ts), e ordena por
+    // ele. Único só entre as vivas — índice parcial e CHECK >= 1 na
+    // supabase/sql/74_numero_da_maquina.sql.
+    numero: integer().notNull(),
+    // ⚠️ LEGADO, nenhuma tela lê. `codigo` era o "TC-04" (máquina nova
+    // grava o próprio uuid, só pra satisfazer o NOT NULL UNIQUE); `nome` é
+    // espelho do nome montado. Ver a 74.
     codigo: text().notNull().unique(),
     nome: text().notNull(),
 
@@ -31,6 +39,22 @@ export const maquinas = pgTable(
 )
 
 export type Maquina = typeof maquinas.$inferSelect
+
+/**
+ * A máquina como as telas a recebem: SEM `codigo` e `nome`, que são legado
+ * (supabase/sql/74_numero_da_maquina.sql). O nome sai de `nomeDaMaquina`, a
+ * partir de `numero` — tirar os dois do tipo é o que impede uma tela de
+ * voltar a mostrar "TC-04" sem ninguém perceber.
+ */
+export type MaquinaVisivel = Omit<Maquina, 'codigo' | 'nome'>
+
+/** Tira o legado da linha antes de ela sair pra tela — ver `MaquinaVisivel`. */
+export function semLegadoDaMaquina(m: Maquina): MaquinaVisivel {
+  const visivel: Partial<Maquina> = { ...m }
+  delete visivel.codigo
+  delete visivel.nome
+  return visivel as MaquinaVisivel
+}
 export type NewMaquina = typeof maquinas.$inferInsert
 
 // ─────────────────────────────────────────────────────────────────────────

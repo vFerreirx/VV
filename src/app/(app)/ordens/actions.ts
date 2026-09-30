@@ -73,6 +73,8 @@ import {
   users,
   variacoesProduto,
   type Maquina,
+  type MaquinaVisivel,
+  semLegadoDaMaquina,
   type OrdemProducao,
   type Produto,
   type User,
@@ -81,6 +83,7 @@ import {
 import { erroDaVariacao } from '@/lib/producao/catalogo-op'
 import { resolverVariacaoDoFaltante } from '@/lib/producao/faltante-para-op'
 import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { producaoAtrasada } from '@/lib/producao/atraso-da-op'
 import {
   calcularConclusao,
@@ -150,7 +153,8 @@ export type OrdemListItem = OrdemProducao & {
   corHex2: string | null
   /** Produto de um tamanho só: a linha do Trello não escreve o tamanho. */
   tamanhoUnico: boolean
-  maquinaNome: string | null
+  /** O número da máquina — o nome sai de `nomeDaMaquina`. */
+  maquinaNumero: number | null
   responsavelNome: string | null
   /**
    * "Full ML · Conta 1 · 15/07" quando a OP pertence a uma remessa Full —
@@ -321,7 +325,7 @@ export async function listarOrdens(
         corHex: cores.codigoHex,
         corHex2: cores.codigoHex2,
         tamanhoUnico: tamanhoUnicoSql,
-        maquinaNome: maquinas.nome,
+        maquinaNumero: maquinas.numero,
         responsavelNome: users.nome,
         remessaCanal: remessasFull.canal,
         remessaDataEnvio: remessasFull.dataEnvio,
@@ -374,7 +378,7 @@ export async function listarOrdens(
       corHex: r.corHex ?? null,
       corHex2: r.corHex2 ?? null,
       tamanhoUnico: Boolean(r.tamanhoUnico),
-      maquinaNome: r.maquinaNome ?? null,
+      maquinaNumero: r.maquinaNumero ?? null,
       responsavelNome: r.responsavelNome ?? null,
       remessaRotulo: remessa
         ? rotuloDaRemessa(remessa.canal, remessa.dataEnvio, remessa.contaNome)
@@ -478,7 +482,8 @@ async function destinoFiltrado(
 export type OrdemDetalhe = OrdemProducao & {
   produto: Produto
   variacao: VariacaoProduto | null
-  maquina: Maquina | null
+  /** Sem `codigo`/`nome` (legado): o nome sai de `nomeDaMaquina(numero)`. */
+  maquina: MaquinaVisivel | null
   /**
    * A remessa Full da OP, com o prazo da produção JÁ efetivo (o escolhido ou
    * o padrão). É o que o painel mostra e o que o "Mudar destino" precisa pra
@@ -563,7 +568,7 @@ export async function obterOrdem(id: string): Promise<OrdemDetalhe | null> {
     ...row.op,
     produto: row.produto,
     variacao: row.variacao ?? null,
-    maquina: row.maquina ?? null,
+    maquina: row.maquina ? semLegadoDaMaquina(row.maquina) : null,
     remessa:
       row.op.remessaFullId && row.remessaCanal && row.remessaDataEnvio
         ? {
@@ -616,9 +621,9 @@ async function desfazerOferecido(op: {
 // A OP em produção na máquina agora, ou null se ela está livre.
 async function ocupanteDaMaquina(
   maquinaId: string,
-): Promise<{ numero: string; codigo: string } | null> {
+): Promise<{ numero: string; maquina: number } | null> {
   const [ocupada] = await db
-    .select({ numero: ordensProducao.numero, codigo: maquinas.codigo })
+    .select({ numero: ordensProducao.numero, maquina: maquinas.numero })
     .from(ordensProducao)
     .innerJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
     .where(
@@ -746,19 +751,18 @@ export async function listarProdutosParaOrdem(
 }
 
 export async function listarMaquinasParaOrdem(): Promise<
-  Array<Pick<Maquina, 'id' | 'codigo' | 'nome' | 'status'>>
+  Array<Pick<Maquina, 'id' | 'numero' | 'status'>>
 > {
   await requireAuth()
   return db
     .select({
       id: maquinas.id,
-      codigo: maquinas.codigo,
-      nome: maquinas.nome,
+      numero: maquinas.numero,
       status: maquinas.status,
     })
     .from(maquinas)
     .where(and(isNull(maquinas.deletedAt), sql`${maquinas.status} <> 'desativada'`))
-    .orderBy(asc(maquinas.codigo))
+    .orderBy(asc(maquinas.numero))
 }
 
 export async function listarResponsaveis(): Promise<
@@ -1387,8 +1391,8 @@ const uuidRe =
 // Máquina de uma estação, com quem está nela agora.
 export type MaquinaParaPegar = {
   id: string
-  codigo: string
-  nome: string
+  /** O número da máquina — o nome sai de `nomeDaMaquina`. */
+  numero: number
   // Pra o diálogo do gerente agrupar por estação.
   estacaoNome: string | null
   // Número da OP que está EM PRODUÇÃO nesta máquina, ou null se está livre.
@@ -1432,8 +1436,7 @@ export async function listarMaquinasParaPegar(): Promise<
   const rows = await db
     .select({
       id: maquinas.id,
-      codigo: maquinas.codigo,
-      nome: maquinas.nome,
+      numero: maquinas.numero,
       status: maquinas.status,
       ocupadaPorOp: ordensProducao.numero,
       estacaoNome: estacoes.nome,
@@ -1454,15 +1457,14 @@ export async function listarMaquinasParaPegar(): Promise<
       ),
     )
     .where(isNull(maquinas.deletedAt))
-    .orderBy(asc(maquinas.codigo))
+    .orderBy(asc(maquinas.numero))
 
   return {
     success: true,
     data: {
       maquinas: rows.map((r) => ({
         id: r.id,
-        codigo: r.codigo,
-        nome: r.nome,
+        numero: r.numero,
         estacaoNome: r.estacaoNome ?? null,
         ocupadaPorOp: r.ocupadaPorOp ?? null,
         impedimento: motivoDeImpedimento(r.status),
@@ -1475,7 +1477,7 @@ export async function listarMaquinasParaPegar(): Promise<
  * Revalida a máquina no SERVIDOR. O diálogo do cliente é conveniência: quem
  * decide é isto aqui. Devolve a mensagem de erro, ou null se está tudo certo.
  */
-type MaquinaValidada = { erro: string } | { erro: null; codigo: string }
+type MaquinaValidada = { erro: string } | { erro: null; numero: number }
 
 async function validarMaquinaParaOrdem(
   maquinaId: string,
@@ -1486,7 +1488,7 @@ async function validarMaquinaParaOrdem(
   const [maquina] = await db
     .select({
       id: maquinas.id,
-      codigo: maquinas.codigo,
+      numero: maquinas.numero,
       status: maquinas.status,
     })
     .from(maquinas)
@@ -1514,7 +1516,7 @@ async function validarMaquinaParaOrdem(
   const impedimento = motivoDeImpedimento(maquina.status)
   if (impedimento) {
     return {
-      erro: `A máquina ${maquina.codigo} ${impedimento} e não pode receber OP`,
+      erro: `A ${nomeDaMaquina(maquina.numero)} ${impedimento} e não pode receber OP`,
     }
   }
 
@@ -1532,10 +1534,10 @@ async function validarMaquinaParaOrdem(
     .limit(1)
   if (ocupada) {
     return {
-      erro: `A máquina ${maquina.codigo} já está com a OP ${ocupada.numero}`,
+      erro: `A ${nomeDaMaquina(maquina.numero)} já está com a OP ${ocupada.numero}`,
     }
   }
-  return { erro: null, codigo: maquina.codigo }
+  return { erro: null, numero: maquina.numero }
 }
 
 // DUAS OPs NA MESMA MÁQUINA: a checagem acima tem janela entre o SELECT e o
@@ -1552,8 +1554,8 @@ function ehConflitoDeMaquina(erro: unknown): boolean {
 
 // A MESMA OP EM DUAS MÁQUINAS — o outro lado, que o índice único NÃO pega.
 //
-// teste1 toca em Iniciar na TC-01 e escolhe a OP-2026-0042; teste2, no mesmo
-// segundo, toca na TC-02 e escolhe a MESMA OP. Os dois SELECT leem
+// teste1 toca em Iniciar na Máquina 1 e escolhe a OP-2026-0042; teste2, no mesmo
+// segundo, toca na Máquina 2 e escolhe a MESMA OP. Os dois SELECT leem
 // `responsavel_id = null`; as duas máquinas são diferentes e estão livres,
 // então as duas validações passam; os dois UPDATE gravam. Uma linha só, o
 // último vence — e OS DOIS RECEBEM "sucesso". Um dos operadores anda até a
@@ -1663,7 +1665,7 @@ export async function pegarOrdemAction(
     ? opcoes.materiaPrimaConfirmada && precisaConfirmar
       ? OBSERVACAO_DE_MATERIA_PRIMA
       : 'Entrou em produção ao ser pega pelo operador'
-    : observacaoDeMaquinaAtribuida(maquinaValidada.codigo)
+    : observacaoDeMaquinaAtribuida(maquinaValidada.numero)
 
   try {
     await db.transaction(async (tx) => {
@@ -1731,7 +1733,7 @@ export async function pegarOrdemAction(
     success: true,
     message: entraEmProducao
       ? 'OP é sua e entrou em produção'
-      : `OP é sua, na máquina ${maquinaValidada.codigo}`,
+      : `OP é sua, na ${nomeDaMaquina(maquinaValidada.numero)}`,
   }
 }
 
@@ -1838,8 +1840,8 @@ export async function iniciarProducaoAction(
         statusNovo: 'em_producao',
         usuarioId: user.id,
         observacao: entraEmProducao
-          ? `Iniciada na máquina ${maquinaValidada.codigo}`
-          : observacaoDeMaquinaAtribuida(maquinaValidada.codigo),
+          ? `Iniciada na ${nomeDaMaquina(maquinaValidada.numero)}`
+          : observacaoDeMaquinaAtribuida(maquinaValidada.numero),
       })
     })
   } catch (erro) {
@@ -1852,7 +1854,7 @@ export async function iniciarProducaoAction(
     if (ehConflitoDeMaquina(erro)) {
       return {
         success: false,
-        error: `A máquina ${maquinaValidada.codigo} foi ocupada agora mesmo. Escolha outra.`,
+        error: `A ${nomeDaMaquina(maquinaValidada.numero)} foi ocupada agora mesmo. Escolha outra.`,
       }
     }
     throw erro
@@ -1864,7 +1866,7 @@ export async function iniciarProducaoAction(
   revalidatePath('/fabrica')
   return {
     success: true,
-    message: `OP em produção na ${maquinaValidada.codigo}`,
+    message: `OP em produção na ${nomeDaMaquina(maquinaValidada.numero)}`,
   }
 }
 
@@ -2407,13 +2409,13 @@ export async function concluirProducaoAction(
   // máquina vai pra OP e pro apontamento. Não precisa estar livre nem apta:
   // a produção já aconteceu. Quem está numa máquina usa a dela.
   const semMaquina = conclusaoPedeMaquina(op.status, op.maquinaId)
-  let maquinaDaConclusao: { id: string; codigo: string } | null = null
+  let maquinaDaConclusao: { id: string; numero: number } | null = null
   if (semMaquina) {
     if (!input.maquinaId || !uuidRe.test(input.maquinaId)) {
       return { success: false, error: 'Escolha em qual máquina a OP foi feita' }
     }
     const [m] = await db
-      .select({ id: maquinas.id, codigo: maquinas.codigo })
+      .select({ id: maquinas.id, numero: maquinas.numero })
       .from(maquinas)
       .where(and(eq(maquinas.id, input.maquinaId), isNull(maquinas.deletedAt)))
       .limit(1)
@@ -2529,7 +2531,7 @@ export async function concluirProducaoAction(
         conclusao,
         iniciadaPor,
         {
-          maquinaInformada: maquinaDaConclusao?.codigo ?? null,
+          maquinaInformada: maquinaDaConclusao?.numero ?? null,
           // Depois da conclusão a OP deixa de aparecer como atrasada; o
           // atraso fica registrado aqui, em dias de calendário de Brasília.
           diasDeAtraso: diasDeAtrasoNaConclusao(op.dataPrevistaFim, new Date()),
@@ -2618,7 +2620,7 @@ export async function concluirProducaoAction(
 //      deixaria de existir pra ela. Full despachado, ou OP que alguém já
 //      mexeu, não volta por aqui.
 //   2. A máquina tem que estar LIVRE. Se alguém já iniciou outra OP na
-//      TC-02, o mundo físico andou: tem peça na máquina agora.
+//      Máquina 2, o mundo físico andou: tem peça na máquina agora.
 //   3. No tablet, SÓ QUEM CONCLUIU desfaz (`erroDoAutorDoDesfazer`). O erro
 //      que isto corrige é pessoal — "eu toquei errado" —, e um colega
 //      desfazendo a conclusão do outro apagava o apontamento de
@@ -2745,8 +2747,8 @@ export async function desfazerConclusaoAction(
       return {
         success: false,
         error: operador
-          ? `A máquina ${ocupada.codigo} já está com a OP ${ocupada.numero}. Fale com o gerente.`
-          : `A máquina ${ocupada.codigo} já está com a OP ${ocupada.numero}`,
+          ? `A ${nomeDaMaquina(ocupada.maquina)} já está com a OP ${ocupada.numero}. Fale com o gerente.`
+          : `A ${nomeDaMaquina(ocupada.maquina)} já está com a OP ${ocupada.numero}`,
       }
     }
   } else if (!isManagerRole(user.role)) {

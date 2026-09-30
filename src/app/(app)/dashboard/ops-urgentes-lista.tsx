@@ -9,6 +9,7 @@ import type { OpUrgenteItem } from './actions'
 import { OpDetailSheet } from '@/app/(app)/producao/op-detail-sheet'
 import { Badge } from '@/components/ui/badge'
 import { PRIORIDADE_BADGE } from '@/lib/prioridade'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { cn } from '@/lib/utils'
 import { PRIORIDADE_LABEL, STATUS_LABEL_CURTO } from '@/lib/validators/ordens'
 
@@ -55,7 +56,7 @@ export function OpsUrgentesLista({
                   {[op.variacaoCor, op.variacaoTamanho]
                     .filter(Boolean)
                     .join(' / ') || op.produtoSku}
-                  {op.maquinaNome && ` · ${op.maquinaNome}`}
+                  {op.maquinaNumero !== null && ` · ${nomeDaMaquina(op.maquinaNumero)}`}
                 </div>
               </div>
               <Badge

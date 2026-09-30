@@ -4,6 +4,7 @@
 import { asc, isNull, sql } from 'drizzle-orm'
 
 import { maquinas } from '@/lib/db/schema'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 
 import type { Banco } from './conexao'
 
@@ -21,7 +22,7 @@ export type Retrato = {
    * de verdade: se o "Voltou" não fosse desfeito, ela ficaria em manutenção
    * na fábrica.
    */
-  maquinas: Record<string, { codigo: string; status: string }>
+  maquinas: Record<string, { numero: number; status: string }>
 }
 
 export async function tirarRetrato(db: Banco): Promise<Retrato> {
@@ -45,14 +46,14 @@ export async function tirarRetrato(db: Banco): Promise<Retrato> {
       )::int                                              AS linhas_com_a_marca
   `)
   const vivas = await db
-    .select({ id: maquinas.id, codigo: maquinas.codigo, status: maquinas.status })
+    .select({ id: maquinas.id, numero: maquinas.numero, status: maquinas.status })
     .from(maquinas)
     .where(isNull(maquinas.deletedAt))
-    .orderBy(asc(maquinas.codigo))
+    .orderBy(asc(maquinas.numero))
   return {
     contagens: { ...linha },
     maquinas: Object.fromEntries(
-      vivas.map((m) => [m.id, { codigo: m.codigo, status: m.status }]),
+      vivas.map((m) => [m.id, { numero: m.numero, status: m.status }]),
     ),
   }
 }
@@ -90,7 +91,7 @@ export function divergencias(antes: Retrato, depois: Retrato): string[] {
     const d = depois.maquinas[id]
     if (a?.status !== d?.status) {
       erros.push(
-        `máquina ${(a ?? d).codigo}: ${a?.status ?? 'não existia'} antes, ` +
+        `${nomeDaMaquina((a ?? d).numero)}: ${a?.status ?? 'não existia'} antes, ` +
           `${d?.status ?? 'sumiu'} depois`,
       )
     }

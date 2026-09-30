@@ -130,7 +130,7 @@ export function disponibilidadeDe(status: MaquinaStatus): Disponibilidade {
 
 /**
  * Por que esta máquina não pode receber OP, ou null se pode. A frase é
- * complemento de "A máquina TC-03 ___" — o servidor recusa com ela e a tela
+ * complemento de "A Máquina 3 ___" — o servidor recusa com ela e a tela
  * explica com ela, sem que as duas possam divergir.
  */
 export function motivoDeImpedimento(status: MaquinaStatus): string | null {

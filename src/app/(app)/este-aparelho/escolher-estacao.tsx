@@ -10,6 +10,7 @@ import {
   type EstacaoParaAparelho,
 } from './actions'
 import { Button } from '@/components/ui/button'
+import { nomesDasMaquinas } from '@/lib/producao/nome-da-maquina'
 import { cn } from '@/lib/utils'
 
 // Botões grandes: isto é feito NO TABLET, de pé, com o dedo — uma vez por
@@ -83,7 +84,7 @@ export function EscolherEstacao({
                 <span className="text-muted-foreground text-sm tabular-nums">
                   {e.maquinas.length === 0
                     ? 'Sem máquinas'
-                    : e.maquinas.join(' · ')}
+                    : nomesDasMaquinas(e.maquinas)}
                 </span>
               </button>
             )
