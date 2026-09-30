@@ -1,8 +1,9 @@
 'use server'
 
-import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm'
+import { and, asc, eq, inArray, isNotNull, isNull, ne } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
+import { algumHashAceita, erroDePin, gerarHashDePin } from '@/lib/auth/pin'
 import {
   isManager,
   requireArea,
@@ -387,4 +388,87 @@ export async function limparPinAction(
     success: true,
     message: `PIN de ${alvo.nome} limpo — ele cria um novo no próximo toque`,
   }
+}
+
+/**
+ * O admin ou o gerente DEFINE o PIN de um operador (Q197). É o que libera os
+ * tablets sem esperar cada operador criar o seu: o gerente cadastra, entrega,
+ * e o operador troca depois se quiser (`definirMeuPinAction`).
+ *
+ * As guardas são as do `limparPinAction`, logo acima: `isManager`, fixo e
+ * fora de /permissoes; uuid; alvo vivo, ATIVO e com role 'operador'.
+ *
+ * ⚠️ PIN QUE OUTRO OPERADOR JÁ USA É RECUSADO (Q198), e SÓ AQUI. Quem define
+ * pelos outros é quem distribui os PINs, e dois iguais saídos da mão do
+ * gerente seriam um descuido dele. No autoatendimento a mesma recusa diria ao
+ * operador o PIN de um colega — ver o topo de src/lib/auth/pin.ts.
+ *
+ * ⚠️ O PIN NÃO VOLTA: nem na resposta, nem em log. A tela só sabe que deu
+ * certo. Grava o hash e zera tentativas e bloqueio juntos, como o limpar.
+ */
+export async function definirPinDoOperadorAction(
+  operadorId: string,
+  pin: string,
+): Promise<ActionResult> {
+  const user = await requireAuth()
+  if (!isManager(user.role)) {
+    return { success: false, error: 'Sem permissão pra definir o PIN' }
+  }
+  const uuidRe =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (!uuidRe.test(operadorId)) {
+    return { success: false, error: 'ID inválido' }
+  }
+  if (typeof pin !== 'string') return { success: false, error: 'PIN inválido' }
+  const erro = erroDePin(pin)
+  if (erro) return { success: false, error: erro }
+
+  const [alvo] = await db
+    .select({ id: users.id, nome: users.nome, role: users.role })
+    .from(users)
+    .where(
+      and(
+        eq(users.id, operadorId),
+        isNull(users.deletedAt),
+        eq(users.ativo, true),
+      ),
+    )
+    .limit(1)
+  if (!alvo) return { success: false, error: 'Operador não encontrado' }
+  if (alvo.role !== 'operador') {
+    return { success: false, error: 'Só o PIN de operador é definido por aqui' }
+  }
+
+  // Os OUTROS operadores vivos que têm PIN — o próprio alvo fica de fora:
+  // redefinir o PIN dele pro mesmo valor não é "de outro operador".
+  const outros = await db
+    .select({ pinHash: users.pinHash })
+    .from(users)
+    .where(
+      and(
+        eq(users.role, 'operador'),
+        isNull(users.deletedAt),
+        isNotNull(users.pinHash),
+        ne(users.id, alvo.id),
+      ),
+    )
+  if (algumHashAceita(pin, outros.map((o) => o.pinHash))) {
+    return {
+      success: false,
+      error: 'Esse PIN já é de outro operador. Escolha outro.',
+    }
+  }
+
+  await db
+    .update(users)
+    .set({
+      pinHash: gerarHashDePin(pin),
+      pinTentativas: 0,
+      pinBloqueadoAte: null,
+    })
+    .where(eq(users.id, alvo.id))
+
+  revalidatePath('/fabrica')
+  revalidatePath('/producao')
+  return { success: true, message: `PIN de ${alvo.nome} definido` }
 }

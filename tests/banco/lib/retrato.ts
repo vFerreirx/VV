@@ -37,6 +37,14 @@ export async function tirarRetrato(db: Banco): Promise<Retrato> {
       (SELECT count(*) FROM maquina_paradas)::int         AS maquina_paradas,
       -- LEGADO desde o PR #16: ninguém lê nem grava. Tem que ficar intocado.
       (SELECT count(*) FROM estacao_operadores)::int      AS estacao_operadores,
+      -- O PIN: quantos têm, e uma ASSINATURA dos hashes. Só a contagem não
+      -- pegaria um PIN sobrescrito, que é justamente o que o teste faz.
+      (SELECT count(*) FROM users WHERE pin_hash IS NOT NULL)::int
+                                                          AS users_com_pin,
+      (SELECT COALESCE(hashtext(string_agg(
+                COALESCE(pin_hash, '-') || ':' || pin_tentativas, ','
+                ORDER BY id)), 0) FROM users)::int
+                                                          AS pins_assinatura,
       (SELECT COALESCE(sum(ultimo_numero), 0) FROM op_numero_counter)::int
                                                           AS op_numero_counter,
       (

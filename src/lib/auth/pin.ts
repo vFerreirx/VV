@@ -16,6 +16,24 @@ import 'server-only'
 //
 // Formato guardado: `scrypt$<salt-hex>$<hash-hex>`. O prefixo existe pra que
 // trocar de algoritmo um dia não exija adivinhar o que está no banco.
+//
+// QUEM DEFINE, QUEM LIMPA, QUEM TROCA (Q197–Q199):
+//   - o OPERADOR cria o próprio PIN no tablet ("Crie seu PIN") e o TROCA
+//     quando quiser, digitando o atual antes (`definirMeuPinAction`);
+//   - ADMIN e GERENTE definem o PIN de qualquer operador
+//     (`definirPinDoOperadorAction`) e limpam (`limparPinAction`), no
+//     quadro de operadores. Fixo por cargo (`isManager`), fora de /permissoes.
+//
+// ⚠️ QUEM DEFINE O PIN PELOS OUTROS FICA SABENDO DELE. Tudo bem: o PIN prova
+// AUTORIA, não dá privilégio (ver abaixo), e o gerente já pode fazer tudo que
+// o operador faz com a própria conta dele. E ninguém fica preso a um PIN que
+// o gerente conhece: a troca pelo próprio operador devolve a autoria a quem
+// se importa com ela. Ninguém é obrigado a trocar.
+//
+// ⚠️ "ESSE PIN JÁ É DE OUTRO OPERADOR" SÓ NO CAMINHO DO GERENTE
+// (`algumHashAceita`). No autoatendimento a mesma recusa diria ao operador o
+// PIN de um colega. Dois operadores com o mesmo PIN não quebram nada — a
+// troca é pelo NOME escolhido, e o PIN confere só contra aquele nome.
 
 import {
   randomBytes,
@@ -92,4 +110,24 @@ export function conferirPin(pin: string, guardado: string | null): boolean {
 
   const calculado = scryptSync(pin, Buffer.from(saltHex, 'hex'), TAMANHO_HASH)
   return timingSafeEqual(calculado, esperado)
+}
+
+/**
+ * Algum destes hashes aceita este PIN? É a conferência do "Esse PIN já é de
+ * outro operador", SÓ pro admin e o gerente definindo pelos outros (ver o
+ * topo do arquivo). Um scrypt por hash: com a fábrica toda são poucos, e o
+ * custo cai em quem define, uma vez.
+ *
+ * Passa por TODOS, mesmo depois de achar: parar no primeiro que aceita faria
+ * o tempo da resposta dizer em que posição da lista estava o dono.
+ */
+export function algumHashAceita(
+  pin: string,
+  hashes: readonly (string | null)[],
+): boolean {
+  let aceitou = false
+  for (const h of hashes) {
+    if (conferirPin(pin, h)) aceitou = true
+  }
+  return aceitou
 }

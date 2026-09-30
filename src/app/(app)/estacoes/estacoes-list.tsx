@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import {
   atualizarEstacaoAction,
   criarEstacaoAction,
+  definirPinDoOperadorAction,
   type EstacaoComDetalhes,
   excluirEstacaoAction,
   limparPinAction,
@@ -37,7 +38,7 @@ type Props = {
   estacoes: EstacaoComDetalhes[]
   operadores: OperadorOpcao[]
   maquinas: MaquinaOpcao[]
-  /** Admin ou gerente: mostra o "limpar PIN" ao lado do operador. */
+  /** Admin ou gerente: mostra o "definir PIN" e o "limpar PIN" do operador. */
   podeLimparPin?: boolean
 }
 
@@ -45,7 +46,8 @@ type Props = {
 // pertence a ela — todo operador aparece em todo tablet e mexe em qualquer
 // máquina (src/lib/db/acao-do-operador.ts). Por isso os operadores saíram do
 // cartão e do diálogo da estação e viraram um quadro só, acima das estações,
-// com o que ainda é da gerência: quem está sem PIN, e o "limpar PIN".
+// com o que ainda é da gerência: quem está sem PIN, o "definir PIN" e o
+// "limpar PIN".
 
 export function EstacoesList({
   estacoes,
@@ -195,7 +197,7 @@ function QuadroDeOperadores({
                 {o.nome}
                 {/* Sem PIN, o operador não troca de turno no tablet — tem que
                     digitar a senha inteira. O PIN é criado por ele mesmo, no
-                    tablet. */}
+                    tablet, ou definido aqui pelo admin ou o gerente. */}
                 {!o.temPin && (
                   <span className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-400">
                     sem PIN
@@ -204,6 +206,10 @@ function QuadroDeOperadores({
                 {/* ESQUECEU O PIN? Até aqui, a única saída era SQL no banco
                     — e quem trava é quem está no meio do turno. Só aparece
                     pra quem TEM PIN: no resto não há o que limpar. */}
+                {/* DEFINIR PIN, pra todos — com ou sem PIN. É o que libera
+                    os tablets sem esperar cada operador criar o seu (Q197).
+                    O operador troca depois, se quiser. */}
+                {podeLimparPin && <DefinirPinBotao id={o.id} nome={o.nome} />}
                 {podeLimparPin && o.temPin && (
                   <LimparPinBotao id={o.id} nome={o.nome} />
                 )}
@@ -550,6 +556,128 @@ function ExcluirDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// -----------------------------------------------------------------
+// Definir PIN (admin e gerente)
+// -----------------------------------------------------------------
+
+// O PIN DIGITADO DUAS VEZES, mascarado. Um PIN errado aqui só aparece na
+// troca de turno, com o operador na frente do tablet e o gerente longe.
+//
+// ⚠️ O PIN NÃO FICA NA TELA: o campo é `password`, some quando o diálogo
+// fecha, e a action não o devolve. O que volta é "PIN de BRUNO definido".
+function DefinirPinBotao({ id, nome }: { id: string; nome: string }) {
+  const router = useRouter()
+  const [aberto, setAberto] = useState(false)
+  const [pin, setPin] = useState('')
+  const [confirmacao, setConfirmacao] = useState('')
+  const [erro, setErro] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  function fechar() {
+    setAberto(false)
+    setPin('')
+    setConfirmacao('')
+    setErro(null)
+  }
+
+  function salvar(e: React.FormEvent) {
+    e.preventDefault()
+    if (!/^d{4}$/.test(pin)) {
+      setErro('O PIN precisa ter 4 números')
+      return
+    }
+    if (pin !== confirmacao) {
+      setErro('Os dois PINs não bateram')
+      return
+    }
+    startTransition(async () => {
+      const r = await definirPinDoOperadorAction(id, pin)
+      if (!r.success) {
+        setErro(r.error)
+        return
+      }
+      toast.success(r.message ?? 'PIN definido')
+      fechar()
+      router.refresh()
+    })
+  }
+
+  // Só números, e no máximo 4 — o teclado numérico do celular ajuda, mas
+  // no computador o campo aceitaria qualquer coisa.
+  const soNumeros = (v: string) => v.replace(/D/g, '').slice(0, 4)
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAberto(true)}
+        className="text-muted-foreground hover:text-foreground ml-1 text-xs underline underline-offset-2"
+      >
+        definir PIN
+      </button>
+      <Dialog open={aberto} onOpenChange={(o) => !o && fechar()}>
+        <DialogContent className="sm:max-w-sm">
+          <form onSubmit={salvar} className="space-y-4" noValidate>
+            <DialogHeader>
+              <DialogTitle>PIN de {nome}</DialogTitle>
+              <DialogDescription>
+                4 números. Entregue a {nome}: ele troca depois no tablet, se
+                quiser.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5">
+              <Label htmlFor={`pin-${id}`}>PIN</Label>
+              <Input
+                id={`pin-${id}`}
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={pin}
+                onChange={(e) => {
+                  setErro(null)
+                  setPin(soNumeros(e.target.value))
+                }}
+                disabled={isPending}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`pin2-${id}`}>Digite de novo</Label>
+              <Input
+                id={`pin2-${id}`}
+                type="password"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={4}
+                value={confirmacao}
+                onChange={(e) => {
+                  setErro(null)
+                  setConfirmacao(soNumeros(e.target.value))
+                }}
+                disabled={isPending}
+              />
+            </div>
+            {erro && (
+              <p role="alert" className="text-destructive text-sm font-medium">
+                {erro}
+              </p>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={fechar} disabled={isPending}>
+                Cancelar
+              </Button>
+              <Button type="submit" loading={isPending} disabled={isPending}>
+                Definir PIN
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

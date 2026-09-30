@@ -12,6 +12,7 @@
 import { cadastroDeMaquina } from './cenarios/cadastro-de-maquina'
 import { estacaoDoTablet } from './cenarios/estacao-do-tablet'
 import { fluxoDaProducao } from './cenarios/fluxo-da-producao'
+import { pinDoOperador } from './cenarios/pin-do-operador'
 import { carregarActions } from './lib/carregar'
 import { PassoFalhou, Placar } from './lib/checagem'
 import { abrirConexao } from './lib/conexao'
@@ -22,7 +23,12 @@ import { instalarMocks } from './lib/mocks'
 import { medirRelogio } from './lib/relogio'
 import { divergencias, resumoDoRetrato, tirarRetrato } from './lib/retrato'
 
-const CENARIOS: Cenario[] = [fluxoDaProducao, estacaoDoTablet, cadastroDeMaquina]
+const CENARIOS: Cenario[] = [
+  fluxoDaProducao,
+  estacaoDoTablet,
+  cadastroDeMaquina,
+  pinDoOperador,
+]
 
 async function main(): Promise<number> {
   const filtro = process.argv.slice(2)
