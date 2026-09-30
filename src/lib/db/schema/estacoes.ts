@@ -9,9 +9,11 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core'
 
-// Estação = grupo de máquinas cuidado por ATÉ TRÊS operadores, sem turno
-// (ver `estacaoOperadores` no fim do arquivo). Tem uma cor própria usada pra
-// colorir os cards do kanban. As FKs pra users são adicionadas via SQL
+// Estação = o grupo de máquinas perto de um tablet — o LUGAR do tablet na
+// fábrica. Não tem operador: ele não pertence a estação nenhuma e age em
+// qualquer máquina (src/lib/db/acao-do-operador.ts); a estação do tablet fica
+// gravada no próprio aparelho (src/lib/auth/estacao-do-aparelho.ts). Tem uma
+// cor própria usada pra colorir os cards do kanban. As FKs pra users são adicionadas via SQL
 // (evita import circular).
 export const estacoes = pgTable(
   'estacoes',
@@ -19,8 +21,8 @@ export const estacoes = pgTable(
     id: uuid().primaryKey().defaultRandom(),
     nome: text().notNull(),
     cor: text(), // hex #rrggbb
-    // ⚠️ LEGADO — não leia nem escreva. O conceito de dia/noite acabou;
-    // quem manda é `estacaoOperadores`. As colunas ficaram no banco só como
+    // ⚠️ LEGADO — não leia nem escreva. O conceito de dia/noite acabou. As
+    // colunas ficaram no banco só como
     // registro de quem formava as turmas antigas (as 3 estações que existem
     // estão soft-deleted). Mesmo caso de `produtos.peso_gramas`.
     operadorDiaId: uuid(),
@@ -44,13 +46,14 @@ export const estacoes = pgTable(
 export type Estacao = typeof estacoes.$inferSelect
 export type NewEstacao = typeof estacoes.$inferInsert
 
-// Operadores da estação. Até 3, e o limite vive no Zod/action — é regra de
-// negócio, não verdade do banco (virar 4 é trocar um número).
-//
-// O UNIQUE em operador_id é que diz "um operador pertence a UMA estação". É
-// ele que garante no máximo uma linha ao juntar OP -> responsável -> estação
-// no kanban; sem ele o card duplicaria. Criado via SQL (migration 50), igual
-// às FKs pra users.
+// ⚠️ LEGADO — NINGUÉM LÊ NEM GRAVA MAIS AQUI. Era "quem é de qual estação"
+// (até 3 por estação, UNIQUE em operador_id, migration 50). Saiu de uso
+// quando a estação passou a ser do TABLET e não do operador: prender operador
+// a estação não funcionava no almoço nem no revezamento da madrugada. A
+// tabela ficou com os vínculos antigos, sem DROP e sem DELETE — a limpeza,
+// se um dia acontecer, é combinada à parte. As policies RLS das migrations 56
+// e 57 ainda a citam; o app grava pela conexão direta e não passa por elas.
+// Declarada aqui só pra o schema continuar descrevendo o banco.
 export const estacaoOperadores = pgTable(
   'estacao_operadores',
   {

@@ -10,8 +10,9 @@ import {
   TriangleAlert,
   WifiOff,
 } from 'lucide-react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -60,6 +61,13 @@ import {
 import { situacaoDaMaquina } from '@/lib/producao/estado-maquina'
 import { confirmacaoAntesDeIniciar } from '@/lib/producao/inicio-da-op'
 import { reacaoDaEstacao } from '@/lib/producao/recarga-da-estacao'
+import type { EstacaoRef } from '@/lib/producao/cobertura'
+import {
+  chaveDaTela,
+  telaDaChave,
+  type AbaDoTablet,
+  type TelaDoTablet,
+} from '@/lib/producao/tela-do-tablet'
 import {
   MOTIVOS_DE_PARADA,
   oQueParou,
@@ -77,6 +85,7 @@ import {
   TrocarOperadorBotao,
   useTravaDoTablet,
 } from './troca-operador'
+import { CoberturaDoTablet, useCobertura } from './cobertura-do-tablet'
 import { cn } from '@/lib/utils'
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -149,10 +158,24 @@ import { cn } from '@/lib/utils'
 // leitura; diálogo é digitação.
 //
 // ⚠️ ISTO É SÓ UI. Nenhuma regra vive aqui: quem decide o que o operador
-// pode é `operadorPodeAgirNaOrdem` / `condicaoDeVisaoDoOperador`
-// (src/lib/db/estacao-operadores.ts) e as guardas das actions. A tela só
-// evita oferecer o clique que já seria recusado, e mostra a mensagem que a
-// action devolveu quando erra.
+// pode é `operadorPodeAgirNaOrdem` (src/lib/db/acao-do-operador.ts) e as
+// guardas das actions. A tela só evita oferecer o clique que já seria
+// recusado, e mostra a mensagem que a action devolveu quando erra.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// A ESTAÇÃO É DO TABLET, NÃO DO OPERADOR
+// ─────────────────────────────────────────────────────────────────────────
+//
+// O gerente grava em cada aparelho a estação do tablet ("Este aparelho"), e a
+// tela abre nas máquinas dela, com o nome GRANDE no topo pra conferir de
+// longe. As outras estações ficam a um toque, nas abas — no almoço e no
+// revezamento, o operador cobre máquina de outro grupo. Numa aba de fora,
+// uma faixa diz isso, e cada ação numa máquina de outra estação pergunta
+// "Você está cobrindo?" (src/lib/producao/cobertura.ts). Quando o tablet
+// trava por inatividade, a tela volta pra casa.
+//
+// Tablet SEM estação definida mostra todas as máquinas, em seções por
+// estação, com a faixa fixa "chame o gerente" — e não pergunta nada.
 
 // OS MOTIVOS QUE O OPERADOR VÊ — cinco dos sete. "Manutenção preventiva" e
 // "sem operador" são decisões do gerente, e continuam só na /fabrica.
@@ -187,10 +210,13 @@ type Props = {
   /** Pra "Quem é você?" saber se o nome escolhido é quem já está logado. */
   operadorId: string
   nomeOperador: string
-  /** Pra saber se um evento do Realtime é desta estação. */
-  estacaoId: string | null
-  estacaoNome: string | null
-  /** As máquinas da estação, já ordenadas por código. A tela é esta lista. */
+  /** A estação DESTE APARELHO (o gerente define em "Este aparelho"), ou null. */
+  aparelho: EstacaoRef | null
+  /** A aba aberta — src/lib/producao/tela-do-tablet.ts. */
+  tela: TelaDoTablet
+  /** As abas, com a do aparelho primeiro. Vazia no tablet sem estação. */
+  abas: AbaDoTablet[]
+  /** As máquinas da tela, já ordenadas por código. A tela é esta lista. */
   maquinas: MaquinaDaEstacao[]
   /**
    * Quantas na fila e quantas terminadas — DOIS NÚMEROS, não duas listas.
@@ -226,7 +252,9 @@ export function PainelOperador({
       travadoNoServidor={travadoNoServidor}
       operadorAtualId={operadorId}
     >
-      <Estacao {...resto} />
+      <CoberturaDoTablet estacaoDoAparelho={resto.aparelho}>
+        <Estacao {...resto} />
+      </CoberturaDoTablet>
     </TravaDoTablet>
   )
 }
@@ -235,8 +263,9 @@ const TABELAS_DO_TABLET = ['ordens_producao', 'maquinas'] as const
 
 function Estacao({
   nomeOperador,
-  estacaoId,
-  estacaoNome,
+  aparelho,
+  tela,
+  abas,
   maquinas,
   contagens,
   podeAgir,
@@ -244,6 +273,7 @@ function Estacao({
 }: Omit<Props, 'operadorId' | 'horaDoServidor' | 'travadoNoServidor'>) {
   const router = useRouter()
   const { travado, exigirIdentidade } = useTravaDoTablet()
+  const { confirmarCobertura } = useCobertura()
   const [parada, setParada] = useState<{
     maquina: MaquinaDaEstacao
     modo: 'abrir' | 'fechar'
@@ -267,7 +297,7 @@ function Estacao({
   // ter evitado. Escuta as DUAS tabelas que desenham o cartão — a OP diz se
   // está ocupada, a máquina diz se está indisponível.
   //
-  // ⚠️ MAS SÓ PELO QUE É DESTA ESTAÇÃO. O tablet fica ligado o dia inteiro, e
+  // ⚠️ MAS SÓ PELO QUE ESTÁ NA TELA — a aba aberta. O tablet fica ligado o dia inteiro, e
   // recarregar a tela a cada OP da fábrica inteira era cada tablet segurando
   // conexão do banco por mudança que não aparece nele. Quem decide é
   // `reacaoDaEstacao` (src/lib/producao/recarga-da-estacao.ts): recarrega a
@@ -298,7 +328,7 @@ function Estacao({
     reacaoNaVolta: 'tela',
     decidir: (evento) =>
       reacaoDaEstacao(evento, {
-        estacaoId,
+        tela,
         maquinaIds: new Set(maquinas.map((m) => m.id)),
         opIdsNosCartoes: new Set(
           maquinas.flatMap((m) => (m.op ? [m.op.id] : [])),
@@ -311,33 +341,46 @@ function Estacao({
         router.refresh()
         return
       }
-      contarOpsDaEstacao()
+      contarOpsDaEstacao(tela)
         .then(setContagensVivas)
         .catch(() => {})
     },
   })
 
-  // SEM ESTAÇÃO A TELA INTEIRA VIRA O AVISO, e não um toast que some.
+  // CASA É A ESTAÇÃO DO APARELHO. Fora dela — outra estação ou "Sem
+  // estação" —, a faixa avisa e dá o caminho de volta.
+  const chaveAberta = chaveDaTela(tela)
+  const foraDeCasa = aparelho !== null && chaveAberta !== aparelho.id
+  const nomeDaAba = abas.find((a) => a.chave === chaveAberta)?.nome ?? null
+
+  // A TRAVA DEVOLVE O TABLET PRA CASA. Travar é o sinal de que quem estava
+  // aqui foi embora; o próximo a chegar tem que achar a estação deste
+  // tablet, e não a aba que o colega abriu pra cobrir alguém. Voltar é tirar
+  // o `?estacao=` da URL.
   //
-  // Sem estação ele não tem máquina nenhuma pra mostrar, não consegue pegar
-  // OP (`pegarOrdemAction` recusa) nem agir em OP alguma
-  // (`operadorPodeAgirNaOrdem` recusa). Mostrar uma grade vazia seria deixar
-  // ele procurar o que não existe.
-  if (!estacaoNome) {
-    return (
-      <div className="mx-auto max-w-2xl">
-        <div className="rounded-xl border-2 border-amber-500/50 bg-amber-500/10 p-8 text-center">
-          <TriangleAlert className="mx-auto size-12 text-amber-600 dark:text-amber-400" />
-          <h1 className="mt-4 text-2xl font-semibold">
-            Você ainda não está em nenhuma estação.
-          </h1>
-          <p className="mt-2 text-lg text-amber-800 dark:text-amber-200">
-            Chame o Willian.
-          </p>
-        </div>
-      </div>
-    )
+  // ⚠️ SÓ NO MOMENTO EM QUE TRAVA, e não enquanto está travado: travado, a
+  // LEITURA continua livre (src/lib/auth/inatividade.ts), e quem chega pode
+  // abrir outra aba pra olhar antes de dizer quem é.
+  const travadoAntes = useRef(travado)
+  useEffect(() => {
+    const acabouDeTravar = travado && !travadoAntes.current
+    travadoAntes.current = travado
+    if (acabouDeTravar && foraDeCasa) {
+      router.replace('/producao', { scroll: false })
+    }
+  }, [travado, foraDeCasa, router])
+
+  // TODA AÇÃO QUE GRAVA NUMA MÁQUINA passa pelo "Você está cobrindo?" e
+  // depois pela trava — nessa ordem: quem vai cancelar porque tocou na
+  // máquina errada não digita o PIN antes.
+  function naMaquina(m: MaquinaDaEstacao, continuar: () => void) {
+    confirmarCobertura(m, () => exigirIdentidade(continuar))
   }
+
+  // No tablet sem estação, as máquinas vêm em seções por estação — a mesma
+  // ordem das abas (pelo nome, número como número), "Sem estação" por último.
+  const secoes =
+    tela.tipo === 'todas' ? secoesPorEstacao(maquinas) : [{ nome: null, maquinas }]
 
   const ocupadas = maquinas.filter((m) => m.op !== null).length
 
@@ -352,6 +395,16 @@ function Estacao({
           no nome certo — e ela não serve pra nada se só aparece quando a
           grade está rolada até o topo. */}
       <div className="bg-background sticky top-0 z-30 flex flex-wrap items-center gap-x-4 gap-y-2 border-b py-3">
+        {/* A ESTAÇÃO DO APARELHO, GRANDE: é pra conferir de longe que este
+            tablet está no lugar certo. Sem estação, a faixa fixa. */}
+        {aparelho ? (
+          <p className="text-3xl font-bold tracking-tight">{aparelho.nome}</p>
+        ) : (
+          <p className="flex w-full items-center gap-2 rounded-lg border-2 border-amber-500/60 bg-amber-500/10 px-3 py-2 text-xl font-semibold text-amber-800 dark:text-amber-200">
+            <TriangleAlert className="size-6 shrink-0" />
+            Tablet sem estação — chame o gerente
+          </p>
+        )}
         <h1 className="text-xl font-semibold">
           {nomeOperador}
           {/* TRAVADO, O NOME DEIXA DE SER "QUEM ESTÁ TRABALHANDO" e passa a
@@ -361,10 +414,6 @@ function Estacao({
           {travado && (
             <span className="text-muted-foreground font-normal"> (travado)</span>
           )}
-          <span className="text-muted-foreground font-normal"> · </span>
-          <span className="text-muted-foreground font-normal">
-            {estacaoNome}
-          </span>
         </h1>
         <p className="text-muted-foreground text-base tabular-nums">
           {ocupadas}/{maquinas.length} produzindo
@@ -424,52 +473,130 @@ function Estacao({
             Terminadas ({contagensVivas.terminadas})
           </Button>
         </div>
+
+        {/* AS ABAS — a do aparelho primeiro e destacada. Link, e não estado:
+            a tela é montada no servidor, e a aba vive na URL pra que a recarga
+            do Realtime remonte a MESMA aba. `replace` pra que o voltar do
+            navegador não percorra cada aba tocada. */}
+        {abas.length > 0 && (
+          <nav className="flex w-full flex-wrap gap-2" aria-label="Estações">
+            {abas.map((aba) => {
+              const aberta = aba.chave === chaveAberta
+              return (
+                <Link
+                  key={aba.chave}
+                  href={
+                    aba.doAparelho
+                      ? '/producao'
+                      : `/producao?estacao=${encodeURIComponent(aba.chave)}`
+                  }
+                  replace
+                  scroll={false}
+                  aria-current={aberta ? 'page' : undefined}
+                  className={cn(
+                    'flex h-11 items-center rounded-lg border-2 px-4 text-base',
+                    aba.doAparelho && 'font-semibold',
+                    aberta
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : aba.doAparelho
+                        ? 'border-primary'
+                        : 'hover:bg-accent',
+                  )}
+                >
+                  {aba.nome}
+                  {aba.doAparelho && (
+                    <span className={cn('ml-1.5 text-sm font-normal', !aberta && 'text-muted-foreground')}>
+                      · este tablet
+                    </span>
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
+        )}
+
+        {/* FORA DE CASA: a faixa não deixa esquecer. Quem abriu a aba da
+            Estação 3 pra cobrir o almoço e se distraiu toca na TC errada
+            achando que está na dele. */}
+        {foraDeCasa && (
+          <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border-2 border-sky-500/60 bg-sky-500/10 px-3 py-2 text-base">
+            <span>
+              Você está vendo{' '}
+              <span className="font-semibold">
+                {tela.tipo === 'sem-estacao'
+                  ? 'as máquinas sem estação'
+                  : (nomeDaAba ?? 'outra estação')}
+              </span>
+              . Este tablet é da{' '}
+              <span className="font-semibold">{aparelho.nome}</span>.
+            </span>
+            <Button
+              variant="outline"
+              className="h-10 text-base"
+              render={<Link href="/producao" replace scroll={false} />}
+            >
+              Voltar pra {aparelho.nome}
+            </Button>
+          </div>
+        )}
       </div>
 
       {maquinas.length === 0 ? (
         <p className="text-muted-foreground rounded-xl border border-dashed p-6 text-center text-base">
-          Nenhuma máquina vinculada à sua estação. Fale com o admin.
+          {tela.tipo === 'todas'
+            ? 'Nenhuma máquina cadastrada.'
+            : 'Nenhuma máquina nesta estação.'}
         </p>
       ) : (
-        // TRÊS COLUNAS NO TABLET, quatro no monitor do gerente. Nove
-        // máquinas em três colunas são TRÊS LINHAS — a estação inteira numa
-        // tela só, que é a única coisa que esta grade existe pra dar.
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 2xl:grid-cols-4">
-          {maquinas.map((m) => (
-            // ⚠️ TODA AÇÃO QUE GRAVA PASSA POR `exigirIdentidade`. Travado,
-            // ela pergunta "Quem é você?" e segue sozinha depois do PIN;
-            // destravado, é o toque de sempre.
-            <CartaoMaquina
-              key={m.id}
-              maquina={m}
-              podeAgir={podeAgir}
-              onIniciar={() => exigirIdentidade(() => setIniciando(m))}
-              onConcluir={() =>
-                exigirIdentidade(
-                  () =>
-                    m.op &&
-                    setConcluindo({ op: m.op, maquinaCodigo: m.codigo }),
-                )
-              }
-              onParou={() =>
-                exigirIdentidade(() => setParada({ maquina: m, modo: 'abrir' }))
-              }
-              onVoltou={() =>
-                exigirIdentidade(() =>
-                  setParada({ maquina: m, modo: 'fechar' }),
-                )
-              }
-              onObservacao={() => m.op && setObservacao(m.op)}
-              onDevolver={() =>
-                exigirIdentidade(
-                  () =>
-                    m.op &&
-                    setDevolvendo({ op: m.op, maquinaCodigo: m.codigo }),
-                )
-              }
-            />
-          ))}
-        </div>
+        secoes.map((secao) => (
+          <section key={secao.nome ?? ''} className="space-y-2">
+            {secao.nome !== null && (
+              <h2 className="text-lg font-semibold">{secao.nome}</h2>
+            )}
+            {/* TRÊS COLUNAS NO TABLET, quatro no monitor do gerente. Nove
+                máquinas em três colunas são TRÊS LINHAS — a estação inteira
+                numa tela só, que é a única coisa que esta grade existe pra
+                dar. */}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 2xl:grid-cols-4">
+              {secao.maquinas.map((m) => (
+                // ⚠️ TODA AÇÃO QUE GRAVA PASSA POR `naMaquina`: o "Você está
+                // cobrindo?" quando a máquina é de outra estação, e depois a
+                // trava ("Quem é você?" + PIN) quando o tablet travou.
+                <CartaoMaquina
+                  key={m.id}
+                  maquina={m}
+                  podeAgir={podeAgir}
+                  onIniciar={() => naMaquina(m, () => setIniciando(m))}
+                  onConcluir={() =>
+                    naMaquina(
+                      m,
+                      () =>
+                        m.op &&
+                        setConcluindo({ op: m.op, maquinaCodigo: m.codigo }),
+                    )
+                  }
+                  onParou={() =>
+                    naMaquina(m, () => setParada({ maquina: m, modo: 'abrir' }))
+                  }
+                  onVoltou={() =>
+                    naMaquina(m, () =>
+                      setParada({ maquina: m, modo: 'fechar' }),
+                    )
+                  }
+                  onObservacao={() => m.op && setObservacao(m.op)}
+                  onDevolver={() =>
+                    naMaquina(
+                      m,
+                      () =>
+                        m.op &&
+                        setDevolvendo({ op: m.op, maquinaCodigo: m.codigo }),
+                    )
+                  }
+                />
+              ))}
+            </div>
+          </section>
+        ))
       )}
 
       {devolvendo && (
@@ -509,6 +636,7 @@ function Estacao({
       {consultando && (
         <ConsultaDialog
           destino={consultando}
+          chaveDaTela={chaveAberta}
           total={
             consultando === 'fila'
                 ? contagensVivas.fila
@@ -519,6 +647,32 @@ function Estacao({
       )}
     </div>
   )
+}
+
+// As máquinas do tablet sem estação, em seções por estação. Mesma ordem das
+// abas: pelo nome, com o número comparado como número, "Sem estação" por
+// último. Dentro da seção, a ordem que veio (código).
+function secoesPorEstacao(
+  maquinas: MaquinaDaEstacao[],
+): { nome: string | null; maquinas: MaquinaDaEstacao[] }[] {
+  const porNome = new Map<string, MaquinaDaEstacao[]>()
+  const sem: MaquinaDaEstacao[] = []
+  for (const m of maquinas) {
+    if (m.estacao === null) {
+      sem.push(m)
+      continue
+    }
+    const lista = porNome.get(m.estacao.nome) ?? []
+    lista.push(m)
+    porNome.set(m.estacao.nome, lista)
+  }
+  const secoes: { nome: string | null; maquinas: MaquinaDaEstacao[] }[] = [
+    ...porNome.entries(),
+  ]
+    .sort(([a], [b]) => a.localeCompare(b, 'pt-BR', { numeric: true }))
+    .map(([nome, lista]) => ({ nome, maquinas: lista }))
+  if (sem.length > 0) secoes.push({ nome: 'Sem estação', maquinas: sem })
+  return secoes
 }
 
 // -----------------------------------------------------------------
@@ -1370,10 +1524,16 @@ function Prazo({ data }: { data: Date | null }) {
 // no custo de cada render.
 function ConsultaDialog({
   destino,
+  chaveDaTela,
   total,
   onClose,
 }: {
   destino: 'fila' | 'terminadas'
+  /**
+   * A aba aberta, como TEXTO (`chaveDaTela`): as Terminadas seguem a
+   * estação na tela, e o objeto da tela é novo a cada recarga do Realtime.
+   */
+  chaveDaTela: string | null
   total: number
   onClose: () => void
 }) {
@@ -1386,7 +1546,7 @@ function ConsultaDialog({
 
   useEffect(() => {
     let vivo = true
-    listarOpsDaEstacao(destino, 1)
+    listarOpsDaEstacao(destino, telaDaChave(chaveDaTela), 1)
       .then((r) => {
         if (!vivo) return
         setPagina(r)
@@ -1397,7 +1557,7 @@ function ConsultaDialog({
     return () => {
       vivo = false
     }
-  }, [destino, recarga])
+  }, [destino, chaveDaTela, recarga])
 
   // Depois de desfazer, a lista tem que deixar de mostrar a OP como
   // terminada — e a grade atrás precisa mostrar a máquina ocupada de novo.
@@ -1410,7 +1570,7 @@ function ConsultaDialog({
   function carregarMais() {
     const proxima = paginaAtual + 1
     setCarregando(true)
-    listarOpsDaEstacao(destino, proxima)
+    listarOpsDaEstacao(destino, telaDaChave(chaveDaTela), proxima)
       .then((r) => {
         setPagina(r)
         setOps((atuais) => [...atuais, ...r.ops])
@@ -1965,6 +2125,7 @@ function BotaoDesfazer({
   const [isPending, startTransition] = useTransition()
   const [erro, setErro] = useState<string | null>(null)
   const { exigirIdentidade, travarEPerguntar } = useTravaDoTablet()
+  const { confirmarCobertura } = useCobertura()
 
   function desfazer() {
     setErro(null)
@@ -1997,7 +2158,17 @@ function BotaoDesfazer({
         <Button
           variant="outline"
           className="mt-2 h-11 w-full text-base"
-          onClick={() => setConfirmando(true)}
+          // A OP VOLTA PRA MÁQUINA DELA — que pode ser de outra estação. A
+          // pergunta vem aqui, antes da confirmação do desfazer.
+          onClick={() =>
+            confirmarCobertura(
+              {
+                codigo: op.maquinaCodigo ?? 'máquina',
+                estacao: op.maquinaEstacao,
+              },
+              () => setConfirmando(true),
+            )
+          }
         >
           Desfazer conclusão
         </Button>

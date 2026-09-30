@@ -161,8 +161,38 @@ sem ninguém perceber.** Está escrito no topo do arquivo; leia antes de mexer.
 - **Gerente de produção** tem controle total de tudo que é produção
   (OPs/kanban, estações, máquinas, mover qualquer status, etc.).
   O helper `isManager` (admin + gerente_producao) deve liberar essas ações.
-- **Operador** age sobre o que é dele: pode mover/apontar a OP cujo
-  `responsavelId` é ele (no fluxo puxado ele "pega" a OP pra virar dono).
+- **Operador** age em **qualquer OP que está numa máquina** — de qualquer
+  estação, de qualquer tablet —, e não só na que pegou; ao agir, vira o
+  `responsavelId`. OP sem máquina ele não move (é a porta dos fundos pra
+  entrar em produção sem máquina): pra ela, "pega" escolhendo a máquina.
+  Regra em `operadorPodeAgirNaOrdem` (`src/lib/db/acao-do-operador.ts`).
+
+### A estação é do TABLET, não do operador
+
+- A fábrica tem tablets fixos, e cada um fica perto de um grupo de
+  máquinas: esse grupo é a **estação**. O operador **não pertence** a
+  estação nenhuma. **Por quê:** no almoço um cobre a máquina do outro do
+  outro lado do galpão, eles revezam por horário, e de madrugada não há
+  gerente pra refazer vínculo. Com operador preso a estação, quem cobria a
+  TC-10 nem aparecia no "Quem é você?" do tablet dela, e o registro saía no
+  nome de quem estava logado — o problema de autoria que o PIN existe pra
+  resolver.
+- Todo operador ativo aparece em todo tablet, e o **PIN prova AUTORIA**, não
+  dá privilégio (`src/lib/auth/pin.ts`). A troca por PIN continua exigindo
+  sessão de operador já aberta e só vai pra conta `operador`.
+- A estação do tablet fica **no aparelho**: cookie
+  (`src/lib/auth/estacao-do-aparelho.ts`), que só admin/gerente grava, em
+  "Este aparelho" (menu do usuário → `/este-aparelho`). Ela só ORGANIZA a
+  tela (abre nas máquinas dela; as outras ficam nas abas) — **nunca
+  trava**. O servidor não recusa nada por estação.
+- Máquina de outra estação (ou sem estação), a partir de um tablet que TEM
+  estação, pede "Você está cobrindo?" antes de gravar — regra pura em
+  `src/lib/producao/cobertura.ts`. É confirmação de tela, não permissão.
+- ⚠️ `estacao_operadores` é **legado**: ficou no banco com os vínculos
+  antigos, e ninguém lê nem grava. Não volte a consultá-la pra decidir onde
+  o operador age. As policies RLS de `maquinas`/`maquina_paradas` (56/57)
+  ainda a citam; o app grava pela conexão direta do Drizzle e não passa por
+  elas — alinhá-las é migration combinada à parte.
 - Ao criar qualquer ação/guarda nova, verifique que admin e gerente não
   ficam bloqueados.
 
@@ -176,8 +206,8 @@ sem ninguém perceber.** Está escrito no topo do arquivo; leia antes de mexer.
 - Enforcement: `requireArea('<area>')` bloqueia a página quando `nenhum`;
   as páginas calculam `podeEditar`/`podeMover` via
   `podeEscrever(await nivelDaAreaPara(role, area))` (= nível `total`/`proprio`)
-  pra esconder a edição quando `ver`. O **operador** continua limitado à
-  OP que é dele mesmo com "controle total" no kanban.
+  pra esconder a edição quando `ver`. No kanban, o nível `proprio` do
+  **operador** quer dizer "qualquer OP que está numa máquina" (ver acima).
 - O nível padrão de cada (cargo, área) vive em `AREAS[].nivelPadrao`
   (`src/lib/auth/permissoes.ts`); as overrides ficam em `permissoes_acesso`.
 - Fonte da verdade dos padrões + lógica pura:
@@ -193,5 +223,7 @@ sem ninguém perceber.** Está escrito no topo do arquivo; leia antes de mexer.
   `requireRole(['admin'])`: `usuarios`, `permissoes` e `tarefas` (áreas
   com `editavel: false`, que ninguém pode afrouxar em /permissoes). O kanban valida o
   nível dentro das próprias actions (regra do "próprio" do operador).
+  `/este-aparelho` também é fixo em admin/gerente, por cargo e fora de
+  `AREAS`: é configuração do aparelho na mão, como `/configuracoes`.
 - Ao adicionar uma área/tela nova, registre-a em `AREAS` e ponha um item
   no nav com `area`.

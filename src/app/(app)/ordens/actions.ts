@@ -56,11 +56,7 @@ import {
 } from '@/lib/producao/prazo-da-remessa'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { db } from '@/lib/db'
-import {
-  condicaoDeVisaoDoOperador,
-  estacaoDoOperador,
-  operadorPodeAgirNaOrdem,
-} from '@/lib/db/estacao-operadores'
+import { operadorPodeAgirNaOrdem } from '@/lib/db/acao-do-operador'
 import {
   apontamentosProducao,
   contasMarketplace,
@@ -217,20 +213,13 @@ export type OrdensPagina = {
 // OS FILTROS DA LISTA, em duas metades. A de BASE vale pra tudo — página,
 // total e contadores. A de SITUAÇÃO (status e prazo) só vale pra página e
 // total: os contadores são justamente o menu dela (ver `ContagensDaLista`).
-async function condicoesDaLista(
-  f: OrdensFiltros,
-  user: { id: string; role: string },
-  fimDeHoje: Date,
-) {
+async function condicoesDaLista(f: OrdensFiltros, fimDeHoje: Date) {
   const base = [isNull(ordensProducao.deletedAt)]
 
-  // O operador enxerga a fila comum + a estação dele. A regra mora em
-  // src/lib/db/estacao-operadores.ts porque ela vale IGUAL aqui e na lista
-  // de /ordens — eram duas cópias da versão antiga, e divergir faria a OP
-  // aparecer no board e sumir da lista. Os demais cargos veem tudo.
-  if (user.role === 'operador') {
-    base.push(await condicaoDeVisaoDoOperador(user.id))
-  }
+  // SEM FILTRO POR CARGO: o operador enxerga a fábrica inteira, como os
+  // demais. Ele age em qualquer máquina (a estação é do tablet, não dele —
+  // src/lib/db/acao-do-operador.ts), então esconder a OP de uma máquina que
+  // ele pode estar cobrindo só atrapalharia.
   if (f.q && f.q.length > 0) {
     base.push(
       or(
@@ -294,14 +283,14 @@ const refugoSql = sql<number>`(
 export async function listarOrdens(
   filtros: OrdensFiltros = {},
 ): Promise<OrdensPagina> {
-  const user = await requireAuth()
+  await requireAuth()
   const parsed = ordensFiltrosSchema.safeParse(filtros)
   const f = parsed.success ? parsed.data : {}
 
   // "Vence hoje" termina quando AMANHÃ começa em Brasília — o instante vem de
   // src/lib/dia-brasil.ts, a fonte única do fuso.
   const fimDeHoje = inicioDoDiaEmBrasilia(somarDias(hojeEmBrasilia(), 1))
-  const { base, situacao } = await condicoesDaLista(f, user, fimDeHoje)
+  const { base, situacao } = await condicoesDaLista(f, fimDeHoje)
 
   // TOTAL E CONTADORES NUMA CONSULTA SÓ, com `count(*) FILTER`: os dois
   // contadores ignoram a situação (ver `ContagensDaLista`), o total não.
@@ -362,7 +351,7 @@ export async function listarOrdens(
       .orderBy(desc(ordensProducao.createdAt))
       .limit(ORDENS_POR_PAGINA)
       .offset((pagina - 1) * ORDENS_POR_PAGINA),
-    destinoFiltrado(f, user),
+    destinoFiltrado(f),
   ])
 
   const now = Date.now()
@@ -421,11 +410,9 @@ export async function listarOrdens(
 //
 // ⚠️ O DESTINO INTEIRO, sem os filtros de status, busca e prioridade: a faixa
 // responde "como está esse Full?", e tirar dela as OPs despachadas esconderia
-// as peças que já saíram. A visão do OPERADOR vale aqui também: o que ele não
-// vê na lista não entra na conta dele.
+// as peças que já saíram.
 async function destinoFiltrado(
   f: OrdensFiltros,
-  user: { id: string; role: string },
 ): Promise<DestinoFiltrado | null> {
   const remessaId = f.remessaId?.trim() || null
   const pedidoId = remessaId ? null : f.pedidoId?.trim() || null
@@ -467,9 +454,6 @@ async function destinoFiltrado(
       ? eq(ordensProducao.remessaFullId, remessaId)
       : eq(ordensProducao.orcamentoId, pedidoId!),
   ]
-  if (user.role === 'operador') {
-    condicoes.push(await condicaoDeVisaoDoOperador(user.id))
-  }
   const ops = await db
     .select({
       status: ordensProducao.status,
@@ -1188,11 +1172,11 @@ export async function mudarStatusOrdemAction(
   if (!podeEscrever(nivelKanban)) {
     return { success: false, error: 'Sem permissão pra mover OPs no kanban' }
   }
-  // O operador age em qualquer OP da estação dele, não só na que pegou —
-  // e ao agir ele VIRA o responsável (ver `assumiu` abaixo).
+  // O operador age em qualquer OP que está numa máquina, não só na que pegou
+  // — e ao agir ele VIRA o responsável (ver `assumiu` abaixo).
   let assumiu = false
   if (user.role === 'operador') {
-    const permissao = await operadorPodeAgirNaOrdem(user.id, atual.maquinaId)
+    const permissao = await operadorPodeAgirNaOrdem(atual.maquinaId)
     if (!permissao.pode) {
       return { success: false, error: permissao.erro }
     }
@@ -1257,7 +1241,7 @@ export async function mudarStatusOrdemAction(
         //
         // ADMIN E GERENTE NÃO TOMAM A OP: `assumiu` só fica true pra
         // role === 'operador'. Eles interagem, a interação vai pro
-        // eventos_kanban, mas a posse continua do chão da estação — é o que
+        // eventos_kanban, mas a posse continua de quem está no chão — é o que
         // mantém o relatório dizendo quem estava na máquina.
         ...(assumiu ? { responsavelId: user.id } : {}),
         dataRealInicio:
@@ -1405,8 +1389,7 @@ export type MaquinaParaPegar = {
   id: string
   codigo: string
   nome: string
-  // Pra o diálogo do gerente agrupar por estação. O operador já recebe só as
-  // da estação dele, então pra ele o valor se repete e o diálogo não agrupa.
+  // Pra o diálogo do gerente agrupar por estação.
   estacaoNome: string | null
   // Número da OP que está EM PRODUÇÃO nesta máquina, ou null se está livre.
   ocupadaPorOp: string | null
@@ -1424,16 +1407,15 @@ export type MaquinaParaPegar = {
 }
 
 export type MaquinasParaPegar = {
-  estacaoNome: string | null
   maquinas: MaquinaParaPegar[]
 }
 
 /**
  * As máquinas que o usuário pode escolher ao pegar uma OP.
  *
- * Operador: só as da estação dele. Admin/gerente não têm estação, então
- * recebem todas as vivas — é a lista do "Em qual máquina?" do board, que
- * agrupa por `estacaoNome`.
+ * Todas as vivas, pra qualquer cargo — é a lista do "Em qual máquina?" do
+ * board, que agrupa por `estacaoNome`. O operador não é mais preso a uma
+ * estação (a estação é do tablet), então não há recorte por quem pergunta.
  *
  * O left join não pode duplicar linha de máquina: o índice único
  * `ordens_producao_maquina_em_producao_uidx` (migration 50) garante no máximo
@@ -1445,20 +1427,6 @@ export async function listarMaquinasParaPegar(): Promise<
   const user = await requireAuth()
   if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
     return { success: false, error: 'Sem permissão no kanban' }
-  }
-
-  let estacaoNome: string | null = null
-  let filtroDeEstacao
-  if (user.role === 'operador') {
-    const estacao = await estacaoDoOperador(user.id)
-    if (!estacao) {
-      return {
-        success: false,
-        error: 'Você não está em nenhuma estação — fale com o admin',
-      }
-    }
-    estacaoNome = estacao.nome
-    filtroDeEstacao = eq(maquinas.estacaoId, estacao.id)
   }
 
   const rows = await db
@@ -1485,13 +1453,12 @@ export async function listarMaquinasParaPegar(): Promise<
         isNull(ordensProducao.deletedAt),
       ),
     )
-    .where(and(isNull(maquinas.deletedAt), filtroDeEstacao))
+    .where(isNull(maquinas.deletedAt))
     .orderBy(asc(maquinas.codigo))
 
   return {
     success: true,
     data: {
-      estacaoNome,
       maquinas: rows.map((r) => ({
         id: r.id,
         codigo: r.codigo,
@@ -1512,7 +1479,6 @@ type MaquinaValidada = { erro: string } | { erro: null; codigo: string }
 
 async function validarMaquinaParaOrdem(
   maquinaId: string,
-  estacaoId: string | null,
   ordemId: string,
 ): Promise<MaquinaValidada> {
   if (!uuidRe.test(maquinaId)) return { erro: 'Máquina inválida' }
@@ -1528,17 +1494,10 @@ async function validarMaquinaParaOrdem(
       and(
         eq(maquinas.id, maquinaId),
         isNull(maquinas.deletedAt),
-        estacaoId ? eq(maquinas.estacaoId, estacaoId) : undefined,
       ),
     )
     .limit(1)
-  if (!maquina) {
-    return {
-      erro: estacaoId
-        ? 'Essa máquina não é da sua estação'
-        : 'Máquina não encontrada',
-    }
-  }
+  if (!maquina) return { erro: 'Máquina não encontrada' }
 
   // MÁQUINA EM MANUTENÇÃO OU DESATIVADA NÃO RECEBE OP, e a regra é a mesma
   // que apaga o cartão do operador — `motivoDeImpedimento`, em
@@ -1610,8 +1569,8 @@ class ConflitoDeOrdem extends Error {}
  * "Pegar pra mim" — fluxo puxado. Só pra OP SEM responsável.
  *
  * ESCOLHER MÁQUINA É OBRIGATÓRIO quando a OP ainda não tem uma: é isso que
- * torna verdadeira a premissa do item C (OP em produção sempre tem máquina,
- * logo sempre tem estação). Se a OP já tem máquina, não pergunta de novo —
+ * torna verdadeira a premissa do item C (OP em produção sempre tem máquina).
+ * Se a OP já tem máquina, não pergunta de novo —
  * a máquina dela é a resposta.
  *
  * `materiaPrimaConfirmada` é a resposta do operador à pergunta de
@@ -1677,29 +1636,16 @@ export async function pegarOrdemAction(
     }
   }
 
-  // Só o OPERADOR é preso à estação. Admin e gerente não têm estação e
-  // continuam podendo interagir — o botão é que some pra eles na tela.
-  let estacaoId: string | null = null
-  if (user.role === 'operador') {
-    const estacao = await estacaoDoOperador(user.id)
-    if (!estacao) {
-      return {
-        success: false,
-        error: 'Você não está em nenhuma estação — fale com o admin',
-      }
-    }
-    estacaoId = estacao.id
-  }
-
+  // QUALQUER MÁQUINA, pra qualquer cargo. O operador não é preso a estação
+  // (src/lib/db/acao-do-operador.ts): iniciar numa máquina de outra estação
+  // é cobrir o colega, e o tablet já perguntou "Você está cobrindo?" antes de
+  // chegar aqui (src/lib/producao/cobertura.ts). Aquilo é confirmação de
+  // tela; o servidor não recusa por estação.
   const maquinaEscolhida = atual.maquinaId ?? maquinaId ?? null
   if (!maquinaEscolhida) {
     return { success: false, error: 'Escolha uma máquina pra pegar a OP' }
   }
-  const maquinaValidada = await validarMaquinaParaOrdem(
-    maquinaEscolhida,
-    estacaoId,
-    id,
-  )
+  const maquinaValidada = await validarMaquinaParaOrdem(maquinaEscolhida, id)
   if (maquinaValidada.erro !== null) {
     return { success: false, error: maquinaValidada.erro }
   }
@@ -1798,8 +1744,8 @@ export async function pegarOrdemAction(
 // difere em quatro pontos que virariam quatro `if` de papel lá dentro, com
 // os comentários de lá passando a mentir:
 //
-//   - O GERENTE NÃO VIRA RESPONSÁVEL. Ele planeja; a posse é do chão da
-//     estação, e o relatório de quem estava na máquina depende disso.
+//   - O GERENTE NÃO VIRA RESPONSÁVEL. Ele planeja; a posse é de quem está no
+//     chão, e o relatório de quem estava na máquina depende disso.
 //   - "Já foi pega por outro operador" não se aplica: ele move a OP de
 //     qualquer um, que é o que o kanban sempre permitiu a ele.
 //   - A MÁQUINA ESCOLHIDA VENCE a planejada. No `pegar`, a máquina que a OP já
@@ -1819,8 +1765,9 @@ export async function iniciarProducaoAction(
   if (!podeEscrever(await nivelDaAreaPara(user.role, 'kanban'))) {
     return { success: false, error: 'Sem permissão no kanban' }
   }
-  // O operador tem a porta dele (`pegarOrdemAction`), que o torna dono e o
-  // prende à estação. Deixá-lo passar por aqui pularia as duas coisas.
+  // O operador tem a porta dele (`pegarOrdemAction`), que o torna dono e
+  // exige a confirmação da matéria-prima. Deixá-lo passar por aqui pularia
+  // as duas coisas.
   if (!isManagerRole(user.role)) {
     return { success: false, error: 'Só gerente ou admin inicia OP pelo board' }
   }
@@ -1852,7 +1799,7 @@ export async function iniciarProducaoAction(
     return { success: false, error: 'Essa OP já está em produção numa máquina' }
   }
 
-  const maquinaValidada = await validarMaquinaParaOrdem(maquinaId, null, id)
+  const maquinaValidada = await validarMaquinaParaOrdem(maquinaId, id)
   if (maquinaValidada.erro !== null) {
     return { success: false, error: maquinaValidada.erro }
   }
@@ -2155,10 +2102,10 @@ export async function soltarOrdemAction(id: string): Promise<ActionResult> {
     .limit(1)
   if (!atual) return { success: false, error: 'OP não encontrada' }
 
-  // O operador solta qualquer OP da estação dele — inclusive a que o colega
-  // pegou. Gerente e admin soltam qualquer uma.
+  // O operador solta qualquer OP que está numa máquina — inclusive a que o
+  // colega pegou. Gerente e admin soltam qualquer uma.
   if (user.role === 'operador') {
-    const permissao = await operadorPodeAgirNaOrdem(user.id, atual.maquinaId)
+    const permissao = await operadorPodeAgirNaOrdem(atual.maquinaId)
     if (!permissao.pode) {
       return { success: false, error: permissao.erro }
     }
@@ -2292,9 +2239,10 @@ export type ConclusaoInput = {
 /**
  * QUEM PODE AGIR NA OP QUE ESTÁ NUMA MÁQUINA — concluir e devolver à fila.
  *
- * - O OPERADOR: qualquer um DA ESTAÇÃO da máquina, e não só quem pegou. É a
- *   troca de turno: o operador 1 inicia, o 2 conclui (ou percebe que era a
- *   OP errada). `assumiu` diz se ele está tomando a OP de outro.
+ * - O OPERADOR: qualquer um, e não só quem pegou — de qualquer estação. É a
+ *   troca de turno, o almoço e o revezamento da madrugada: o operador 1
+ *   inicia, o 2 conclui (ou percebe que era a OP errada), esteja ele no
+ *   tablet que estiver. `assumiu` diz se ele está tomando a OP de outro.
  * - O GERENTE (e o admin): qualquer OP.
  * - Os demais cargos com escrita no kanban: só a OP que é deles.
  *
@@ -2308,7 +2256,7 @@ async function quemAgeNaOpDaMaquina(
   verbo: string,
 ): Promise<{ erro: string | null; assumiu: boolean }> {
   if (user.role === 'operador') {
-    const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
+    const permissao = await operadorPodeAgirNaOrdem(op.maquinaId)
     if (!permissao.pode) return { erro: permissao.erro, assumiu: false }
     return { erro: null, assumiu: op.responsavelId !== user.id }
   }
@@ -2327,8 +2275,8 @@ async function quemAgeNaOpDaMaquina(
 // a gravação em src/lib/db/devolucao-da-op.ts — a mesma que o arrastar do
 // gerente de "Em produção" pra "Programado" usa.
 //
-// Quem pode é quem pode CONCLUIR (`quemAgeNaOpDaMaquina`): qualquer operador
-// da estação, por causa da troca de turno, e o gerente.
+// Quem pode é quem pode CONCLUIR (`quemAgeNaOpDaMaquina`): qualquer operador,
+// por causa da troca de turno e da cobertura, e o gerente.
 export async function devolverOpParaFilaAction(
   ordemId: string,
 ): Promise<ActionResult> {
@@ -2475,8 +2423,8 @@ export async function concluirProducaoAction(
     maquinaDaConclusao = m
   }
 
-  // Mesma regra do mover e do apontar: é da estação dele, e concluir TOMA a
-  // OP — a virada de turno fica registrada sozinha.
+  // Mesma regra do mover e do apontar: qualquer operador, e concluir TOMA a
+  // OP — a virada de turno e a cobertura ficam registradas sozinhas.
   const quem = await quemAgeNaOpDaMaquina(user, op, 'concluir')
   if (quem.erro) return { success: false, error: quem.erro }
   const assumiu = quem.assumiu
@@ -2672,8 +2620,8 @@ export async function concluirProducaoAction(
 //   2. A máquina tem que estar LIVRE. Se alguém já iniciou outra OP na
 //      TC-02, o mundo físico andou: tem peça na máquina agora.
 //   3. No tablet, SÓ QUEM CONCLUIU desfaz (`erroDoAutorDoDesfazer`). O erro
-//      que isto corrige é pessoal — "eu toquei errado" —, e um colega de
-//      estação desfazendo a conclusão do outro apagava o apontamento de
+//      que isto corrige é pessoal — "eu toquei errado" —, e um colega
+//      desfazendo a conclusão do outro apagava o apontamento de
 //      alguém horas depois. Gerente e admin desfazem qualquer uma.
 //
 // ⚠️ E NÃO HÁ JANELA DE TEMPO, de propósito. Um "só nos primeiros 15
@@ -2786,7 +2734,7 @@ export async function desfazerConclusaoAction(
     }
 
     if (operador) {
-      const permissao = await operadorPodeAgirNaOrdem(user.id, op.maquinaId)
+      const permissao = await operadorPodeAgirNaOrdem(op.maquinaId)
       if (!permissao.pode) return { success: false, error: permissao.erro }
     }
 

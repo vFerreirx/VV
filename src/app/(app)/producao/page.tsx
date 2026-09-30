@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 
 import {
   contarOpsDaEstacao,
+  listarEstacoesDoTablet,
   listarMaquinasDaEstacao,
   listarOrdensProducao,
   type KanbanFiltros,
@@ -10,6 +11,7 @@ import { KanbanBoard } from './kanban-board'
 import { situacoesDasMaquinas } from '../maquinas/actions'
 import { PainelOperador } from './painel-operador'
 import { ProducaoFiltros } from './producao-filtros'
+import { estacaoDoAparelho } from '@/lib/auth/estacao-do-aparelho'
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { contarMaquinas, situacaoDaMaquina } from '@/lib/producao/estado-maquina'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
@@ -18,6 +20,7 @@ import {
   horaDoServidorAgora,
   sessaoDeOperadorTravada,
 } from '@/lib/auth/tablet-travado'
+import { abasDoTablet, telaDoTablet } from '@/lib/producao/tela-do-tablet'
 import { canalValues } from '@/lib/validators/ordens'
 
 export const metadata: Metadata = { title: 'Produção — Vanvest' }
@@ -66,20 +69,45 @@ export default async function ProducaoPage({
   //
   // A OP em produção vem pendurada na máquina, então ela nem passa por
   // aqui — o cartão da máquina já é o lugar dela.
+  //
+  // ⚠️ A ESTAÇÃO É DO APARELHO, NÃO DO OPERADOR. O tablet abre na estação que
+  // o gerente gravou nele ("Este aparelho"), e `?estacao=` troca de aba. Quem
+  // está logado não muda nada disso — o operador não pertence a estação
+  // nenhuma (src/lib/producao/tela-do-tablet.ts).
   if (user.role === 'operador') {
-    const [visao, contagens, travado] = await Promise.all([
-      listarMaquinasDaEstacao(),
-      contarOpsDaEstacao(),
+    const params = await searchParams
+    const param = typeof params.estacao === 'string' ? params.estacao : undefined
+    const [aparelho, doTablet, travado] = await Promise.all([
+      estacaoDoAparelho(),
+      listarEstacoesDoTablet(),
       sessaoDeOperadorTravada(),
+    ])
+    const tela = telaDoTablet(
+      param,
+      aparelho?.id ?? null,
+      new Set(doTablet.estacoes.map((e) => e.id)),
+    )
+    const [maquinas, contagens] = await Promise.all([
+      listarMaquinasDaEstacao(tela),
+      contarOpsDaEstacao(tela),
     ])
 
     return (
       <PainelOperador
         operadorId={user.id}
         nomeOperador={user.nome}
-        estacaoId={visao.estacao?.id ?? null}
-        estacaoNome={visao.estacao?.nome ?? null}
-        maquinas={visao.maquinas}
+        aparelho={aparelho && { id: aparelho.id, nome: aparelho.nome }}
+        tela={tela}
+        abas={
+          aparelho
+            ? abasDoTablet(
+                doTablet.estacoes,
+                aparelho.id,
+                doTablet.haMaquinaSemEstacao,
+              )
+            : []
+        }
+        maquinas={maquinas}
         contagens={contagens}
         podeAgir={podeMover}
         // Booleano, nunca o hash — o painel é componente de cliente.

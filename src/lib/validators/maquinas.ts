@@ -65,9 +65,9 @@ export const maquinaSchema = z.object({
   status: z.enum(maquinaStatusValues),
 
   // ⚠️ `operadorAtualId` SAIU DAQUI. A coluna continua no banco (histórico),
-  // mas o app não escreve mais nela: quem responde "este operador manda
-  // nesta máquina" é `estacao_operadores`, e a policy RLS passou a seguir a
-  // estação (56_maquinas_rls_estacao.sql). Enquanto o campo era editável,
+  // mas o app não escreve mais nela: nenhum operador "manda" numa máquina —
+  // qualquer um age em qualquer uma (src/lib/db/acao-do-operador.ts).
+  // Enquanto o campo era editável,
   // preencher um cadastro concedia permissão sem ninguém perceber — e em
   // produção ele apontava, em três máquinas, pra um usuário APAGADO.
   observacoes: stringOpt(500, 'Observações'),

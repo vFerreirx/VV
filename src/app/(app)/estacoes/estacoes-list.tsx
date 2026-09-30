@@ -2,7 +2,7 @@
 
 import { Ban, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState, useTransition } from 'react'
+import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -26,17 +26,9 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import {
   ESTACAO_CORES,
-  MAX_OPERADORES_POR_ESTACAO,
   motivoParaNaoExcluirEstacao,
 } from '@/lib/validators/estacoes'
 
@@ -47,6 +39,12 @@ type Props = {
   /** Admin ou gerente: mostra o "limpar PIN" ao lado do operador. */
   podeLimparPin?: boolean
 }
+
+// A ESTAÇÃO É O LUGAR DE UM TABLET: nome, cor e máquinas. O operador não
+// pertence a ela — todo operador aparece em todo tablet e mexe em qualquer
+// máquina (src/lib/db/acao-do-operador.ts). Por isso os operadores saíram do
+// cartão e do diálogo da estação e viraram um quadro só, acima das estações,
+// com o que ainda é da gerência: quem está sem PIN, e o "limpar PIN".
 
 export function EstacoesList({
   estacoes,
@@ -60,6 +58,8 @@ export function EstacoesList({
 
   return (
     <div className="space-y-4">
+      <QuadroDeOperadores operadores={operadores} podeLimparPin={podeLimparPin} />
+
       <div className="flex justify-end">
         <Button size="sm" onClick={() => setCriando(true)}>
           <Plus />
@@ -114,37 +114,6 @@ export function EstacoesList({
                 </div>
               </div>
 
-              <div className="flex items-start gap-2 text-sm">
-                <Users className="text-muted-foreground mt-0.5 size-4 shrink-0" />
-                {e.operadores.length === 0 ? (
-                  <span className="text-muted-foreground">Sem operadores</span>
-                ) : (
-                  <span>
-                    {e.operadores.map((o, i) => (
-                      <span key={o.id}>
-                        {i > 0 && ' · '}
-                        {o.nome}
-                        {/* Sem PIN, o operador não troca de turno no tablet
-                            — tem que digitar a senha inteira. O PIN é criado
-                            por ele mesmo, no tablet. */}
-                        {!o.temPin && (
-                          <span className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-                            sem PIN
-                          </span>
-                        )}
-                        {/* ESQUECEU O PIN? Até aqui, a única saída era SQL no
-                            banco — e quem trava é quem está no meio do turno.
-                            Só aparece pra quem TEM PIN: no resto não há o que
-                            limpar. */}
-                        {podeLimparPin && o.temPin && (
-                          <LimparPinBotao id={o.id} nome={o.nome} />
-                        )}
-                      </span>
-                    ))}
-                  </span>
-                )}
-              </div>
-
               <div className="flex flex-wrap gap-1">
                 {e.maquinas.length === 0 ? (
                   <span className="text-muted-foreground text-xs">
@@ -173,18 +142,77 @@ export function EstacoesList({
       <EstacaoDialog
         open={criando}
         onClose={() => setCriando(false)}
-        operadores={operadores}
         maquinas={maquinas}
       />
       <EstacaoDialog
         open={editando !== null}
         estacao={editando ?? undefined}
         onClose={() => setEditando(null)}
-        operadores={operadores}
         maquinas={maquinas}
       />
       <ExcluirDialog estacao={excluindo} onClose={() => setExcluindo(null)} />
     </div>
+  )
+}
+
+// -----------------------------------------------------------------
+// Operadores — de todos os tablets
+// -----------------------------------------------------------------
+
+function QuadroDeOperadores({
+  operadores,
+  podeLimparPin,
+}: {
+  operadores: OperadorOpcao[]
+  podeLimparPin: boolean
+}) {
+  return (
+    <section className="bg-card flex items-start gap-2 rounded-xl border p-4 text-sm">
+      <Users className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+      <div className="min-w-0 space-y-1">
+        <p className="font-medium">
+          Operadores{' '}
+          <span className="text-muted-foreground font-normal">
+            · aparecem em todos os tablets
+          </span>
+        </p>
+        {operadores.length === 0 ? (
+          // Estado vazio explícito: hoje pode não existir operador nenhum, e
+          // um quadro em branco pareceria bug.
+          <p className="text-muted-foreground">
+            Nenhum operador cadastrado. Os operadores saem dos usuários com
+            cargo “Operador”, em{' '}
+            <a href="/usuarios" className="underline underline-offset-2">
+              Usuários
+            </a>
+            .
+          </p>
+        ) : (
+          <p>
+            {operadores.map((o, i) => (
+              <span key={o.id}>
+                {i > 0 && ' · '}
+                {o.nome}
+                {/* Sem PIN, o operador não troca de turno no tablet — tem que
+                    digitar a senha inteira. O PIN é criado por ele mesmo, no
+                    tablet. */}
+                {!o.temPin && (
+                  <span className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                    sem PIN
+                  </span>
+                )}
+                {/* ESQUECEU O PIN? Até aqui, a única saída era SQL no banco
+                    — e quem trava é quem está no meio do turno. Só aparece
+                    pra quem TEM PIN: no resto não há o que limpar. */}
+                {podeLimparPin && o.temPin && (
+                  <LimparPinBotao id={o.id} nome={o.nome} />
+                )}
+              </span>
+            ))}
+          </p>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -196,13 +224,11 @@ function EstacaoDialog({
   open,
   estacao,
   onClose,
-  operadores,
   maquinas,
 }: {
   open: boolean
   estacao?: EstacaoComDetalhes
   onClose: () => void
-  operadores: OperadorOpcao[]
   maquinas: MaquinaOpcao[]
 }) {
   return (
@@ -213,7 +239,6 @@ function EstacaoDialog({
             key={estacao?.id ?? 'novo'}
             estacao={estacao}
             onClose={onClose}
-            operadores={operadores}
             maquinas={maquinas}
           />
         )}
@@ -225,12 +250,10 @@ function EstacaoDialog({
 function EstacaoBody({
   estacao,
   onClose,
-  operadores,
   maquinas,
 }: {
   estacao?: EstacaoComDetalhes
   onClose: () => void
-  operadores: OperadorOpcao[]
   maquinas: MaquinaOpcao[]
 }) {
   const router = useRouter()
@@ -239,14 +262,6 @@ function EstacaoBody({
 
   const [nome, setNome] = useState(estacao?.nome ?? '')
   const [cor, setCor] = useState<string | undefined>(estacao?.cor ?? undefined)
-  // Três slots, sem turno. 'nenhum' = slot vazio — o Select do design system
-  // não aceita value vazio, então é o mesmo sentinela que o Zod já descarta.
-  const [operadorSlots, setOperadorSlots] = useState<string[]>(() =>
-    Array.from(
-      { length: MAX_OPERADORES_POR_ESTACAO },
-      (_, i) => estacao?.operadorIds[i] ?? 'nenhum',
-    ),
-  )
   const [maquinaIds, setMaquinaIds] = useState<string[]>(
     estacao?.maquinaIds ?? [],
   )
@@ -264,32 +279,6 @@ function EstacaoBody({
       m.estacaoId !== estacao?.id,
   )
 
-  const operadoresItems = useMemo(
-    () => ({
-      nenhum: 'Nenhum',
-      ...Object.fromEntries(operadores.map((o) => [o.id, o.nome])),
-    }),
-    [operadores],
-  )
-
-  function definirSlot(indice: number, valor: string) {
-    setOperadorSlots((prev) =>
-      prev.map((atual, i) => (i === indice ? valor : atual)),
-    )
-  }
-
-  // Um operador só pode ocupar um slot. Desabilitar é melhor que deixar
-  // escolher e recusar depois no Zod.
-  function jaEmOutroSlot(operadorId: string, indice: number) {
-    return operadorSlots.some((v, i) => i !== indice && v === operadorId)
-  }
-
-  // E só pode estar numa estação — o UNIQUE do banco garante isso. Aqui é só
-  // pra tela não oferecer o que a action vai recusar.
-  function deOutraEstacao(o: OperadorOpcao) {
-    return o.estacaoAtualId !== null && o.estacaoAtualId !== estacao?.id
-  }
-
   function toggleMaquina(id: string) {
     setConfirmandoSaida(false)
     setMaquinaIds((prev) =>
@@ -303,13 +292,7 @@ function EstacaoBody({
       return
     }
     startTransition(async () => {
-      const input = {
-        nome,
-        cor,
-        // Slots vazios somem; a ordem dos escolhidos não significa nada.
-        operadorIds: operadorSlots.filter((v) => v !== 'nenhum'),
-        maquinaIds,
-      }
+      const input = { nome, cor, maquinaIds }
       const result = estacao
         ? await atualizarEstacaoAction(estacao.id, input)
         : await criarEstacaoAction(input)
@@ -328,7 +311,8 @@ function EstacaoBody({
       <DialogHeader>
         <DialogTitle>{isEdit ? 'Editar estação' : 'Nova estação'}</DialogTitle>
         <DialogDescription>
-          Defina a cor, quem opera a estação e as máquinas do grupo.
+          A estação é o lugar de um tablet: o grupo de máquinas perto dele.
+          Qualquer operador mexe em qualquer máquina.
         </DialogDescription>
       </DialogHeader>
 
@@ -377,71 +361,6 @@ function EstacaoBody({
               />
             ))}
           </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label className="flex items-center gap-1.5">
-            <Users className="text-muted-foreground size-4" /> Operadores da
-            estação
-          </Label>
-
-          {operadores.length === 0 ? (
-            // Estado vazio explícito. Sem isto o admin abre, vê três selects
-            // com só "Nenhum" dentro e conclui que a tela quebrou — hoje não
-            // existe NENHUM usuário com cargo operador cadastrado.
-            <div className="rounded-lg border border-dashed p-3 text-sm">
-              <p className="font-medium">Nenhum operador cadastrado ainda.</p>
-              <p className="text-muted-foreground mt-1">
-                Os operadores da estação saem dos usuários com cargo
-                “Operador”. Crie um em{' '}
-                <a href="/usuarios" className="underline underline-offset-2">
-                  Usuários
-                </a>{' '}
-                e volte aqui. Dá pra salvar a estação sem operador e vincular
-                depois.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {operadorSlots.map((valor, i) => (
-                <div key={i} className="space-y-1.5">
-                  <Label
-                    htmlFor={`est-op-${i}`}
-                    className="text-muted-foreground text-xs font-normal"
-                  >
-                    {i === MAX_OPERADORES_POR_ESTACAO - 1
-                      ? `Operador ${i + 1} (opcional)`
-                      : `Operador ${i + 1}`}
-                  </Label>
-                  <Select
-                    items={operadoresItems}
-                    value={valor}
-                    onValueChange={(v) => v && definirSlot(i, v)}
-                    disabled={isPending}
-                  >
-                    <SelectTrigger id={`est-op-${i}`} className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nenhum">Nenhum</SelectItem>
-                      {operadores.map((o) => (
-                        <SelectItem
-                          key={o.id}
-                          value={o.id}
-                          disabled={jaEmOutroSlot(o.id, i) || deOutraEstacao(o)}
-                        >
-                          {o.nome}
-                          {deOutraEstacao(o)
-                            ? ` — já está na ${o.estacaoAtualNome}`
-                            : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="space-y-1.5">
@@ -573,19 +492,20 @@ function ExcluirDialog({
         <DialogHeader>
           <DialogTitle>Excluir {estacao?.nome}?</DialogTitle>
           <DialogDescription>
-            A estação some. Máquinas e operadores não são apagados, mas ficam
-            sem estação.
+            A estação some. As máquinas não são apagadas, mas ficam sem
+            estação.
           </DialogDescription>
         </DialogHeader>
 
         {/* O QUE ACONTECE, COM NOME. "As máquinas voltam a ficar sem estação"
-            não dizia que elas somem dos tablets, nem que os operadores
-            perdem o tablet junto — é isso que quem exclui precisa pesar. */}
+            não dizia onde elas vão parar no tablet — é isso que quem exclui
+            precisa pesar. Operador não entra aqui: ele não pertence a
+            estação, e continua em todos os tablets. */}
         {estacao && (
           <div className="max-h-[50vh] space-y-3 overflow-y-auto text-sm">
             <div className="space-y-1">
               <p className="font-medium">
-                Ficam sem estação e somem dos tablets
+                Ficam sem estação — no tablet, vão pra aba “Sem estação”
               </p>
               {estacao.maquinas.length === 0 ? (
                 <p className="text-muted-foreground">
@@ -607,20 +527,6 @@ function ExcluirDialog({
                     </li>
                   ))}
                 </ul>
-              )}
-            </div>
-            <div className="space-y-1">
-              <p className="font-medium">
-                Ficam sem estação e não conseguem mais usar o tablet
-              </p>
-              {estacao.operadores.length === 0 ? (
-                <p className="text-muted-foreground">
-                  Nenhum operador vinculado.
-                </p>
-              ) : (
-                <p className="text-muted-foreground">
-                  {estacao.operadores.map((o) => o.nome).join(', ')}
-                </p>
               )}
             </div>
           </div>

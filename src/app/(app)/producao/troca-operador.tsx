@@ -321,8 +321,9 @@ export function TrocarOperadorBotao({ temPin }: { temPin: boolean }) {
 //                 PIN" some: com o tablet travado, quem está tocando não é
 //                 necessariamente o dono da conta.
 //
-// ⚠️ A LISTA É A MESMA, e as condições também: só operadores da estação de
-// quem está logado, e só com sessão de operador ativa
+// ⚠️ A LISTA É A MESMA, e as condições também: TODOS os operadores ativos
+// — o operador não pertence a estação, e quem cobre a máquina no almoço é de
+// outro grupo —, e só com sessão de operador ativa
 // (src/app/(auth)/login/actions.ts). O modo muda a pergunta, não a porta.
 function TrocaDialog(
   props:
@@ -380,7 +381,7 @@ function TrocaDialog(
           <DialogDescription className="text-base">
             {identidade
               ? 'O tablet travou depois de 30 minutos parado. Toque no seu nome e digite o PIN.'
-              : 'Operadores desta estação. O registro sai no nome de quem está logado — por isso a troca.'}
+              : 'O registro sai no nome de quem está logado — por isso a troca.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -412,14 +413,14 @@ function TrocaDialog(
             ))}
             {operadores.length === 0 && (
               <p className="text-muted-foreground py-8 text-center text-lg">
-                Nenhum operador nesta estação.
+                Nenhum operador cadastrado.
               </p>
             )}
           </div>
         )}
 
-        {/* O CAMINHO DE SAÍDA COMPLETO continua aqui. Se quem assume não é
-            desta estação, esqueceu o PIN ou ainda não tem um, sair e entrar
+        {/* O CAMINHO DE SAÍDA COMPLETO continua aqui. Se quem assume é
+            gerente, esqueceu o PIN ou ainda não tem um, sair e entrar
             pela senha é sempre possível — o PIN encurta um caminho, não
             substitui. */}
         <Button

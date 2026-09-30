@@ -1,6 +1,6 @@
 'use client'
 
-import { Cog, LogOut } from 'lucide-react'
+import { Cog, LogOut, TabletSmartphone } from 'lucide-react'
 import Link from 'next/link'
 import { useTransition } from 'react'
 
@@ -74,6 +74,15 @@ export function UserMenu({
           <Cog className="size-4" />
           Configurações
         </DropdownMenuItem>
+        {/* A ESTAÇÃO DO TABLET, que é do APARELHO e não de quem está logado.
+            Só pra admin e gerente — é quem define, uma vez em cada tablet.
+            Ver src/app/(app)/este-aparelho/page.tsx. */}
+        {(user.role === 'admin' || user.role === 'gerente_producao') && (
+          <DropdownMenuItem render={<Link href="/este-aparelho" />}>
+            <TabletSmartphone className="size-4" />
+            Este aparelho
+          </DropdownMenuItem>
+        )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout} disabled={isPending}>
           <LogOut className="size-4" />

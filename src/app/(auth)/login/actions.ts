@@ -13,6 +13,7 @@ import {
   COOKIE_TRAVADO,
 } from '@/lib/auth/inatividade'
 import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
+import { renovarEstacaoDoAparelho } from '@/lib/auth/estacao-do-aparelho'
 import {
   conferirPin,
   erroDePin,
@@ -21,8 +22,7 @@ import {
   TENTATIVAS_ATE_BLOQUEIO,
 } from '@/lib/auth/pin'
 import { db } from '@/lib/db'
-import { estacaoDoOperador } from '@/lib/db/estacao-operadores'
-import { estacaoOperadores, users } from '@/lib/db/schema'
+import { users } from '@/lib/db/schema'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   loginSchema,
@@ -89,7 +89,12 @@ export async function loginAction(
 // prova quem está no tablet passa por aqui — login por senha, troca de
 // operador por PIN, confirmação do próprio PIN —, e só esses destravam. Ver
 // src/lib/auth/inatividade.ts.
+//
+// Aproveita a passagem pra renovar o prazo do cookie da ESTAÇÃO DO APARELHO,
+// que é outro cookie e nunca é apagado aqui — ele é do tablet, e sobrevive à
+// troca de quem está logado. Ver src/lib/auth/estacao-do-aparelho.ts.
 async function marcarSessaoDeOperador(ehOperador: boolean) {
+  await renovarEstacaoDoAparelho()
   const cookieStore = await cookies()
   cookieStore.delete(COOKIE_TRAVADO)
   if (!ehOperador) {
@@ -121,7 +126,7 @@ export async function logoutAction() {
 }
 
 // -----------------------------------------------------------------
-// TROCA DE OPERADOR NO TABLET DA ESTAÇÃO
+// TROCA DE OPERADOR NO TABLET
 // -----------------------------------------------------------------
 //
 // O tablet é compartilhado, e trocar de conta custava: abrir a sidebar,
@@ -137,10 +142,25 @@ export async function logoutAction() {
 // pra agir como outra pessoa. A senha completa continua valendo e nunca é
 // bloqueada pelo contador de tentativas do PIN.
 //
-// ⚠️ E NÃO É UMA PORTA NOVA NO /LOGIN. As duas actions exigem uma sessão de
-// OPERADOR já ativa, e só oferecem/aceitam operadores DA MESMA ESTAÇÃO. Sem
-// isso, um endpoint 'use server' que troca de identidade mediante 4 dígitos
-// seria alcançável por qualquer um, pra qualquer conta da fábrica.
+// ⚠️ TODO OPERADOR ATIVO APARECE EM TODO TABLET. O operador não pertence a
+// estação nenhuma — a estação é do tablet (src/lib/auth/estacao-do-aparelho.ts)
+// —, e no almoço e no revezamento da madrugada quem cobre a máquina é de
+// outro grupo. Antes a lista era só da "mesma estação", e o Bruno cobrindo a
+// TC-10 não aparecia no tablet dela: o registro saía no nome de quem estava
+// logado, que é o problema que esta tela existe pra resolver.
+//
+// Abrir pra todos não abre privilégio: todo operador faz as mesmas coisas em
+// todas as máquinas (src/lib/db/acao-do-operador.ts). O PIN prova AUTORIA, e
+// adivinhar o do colega só escreve o nome errado num registro — ver
+// src/lib/auth/pin.ts.
+//
+// ⚠️ E NÃO É UMA PORTA NOVA NO /LOGIN. O que continua fechado:
+//   - as duas actions exigem uma sessão de OPERADOR já ativa no aparelho;
+//   - só trocam pra conta com role 'operador' — nunca admin nem gerente, que
+//     continuam entrando pela senha;
+//   - 5 PINs errados travam aquela conta por 30 s (`conferirPinComContador`).
+// Sem isso, um endpoint 'use server' que troca de identidade mediante 4
+// dígitos seria alcançável por qualquer um, pra qualquer conta da fábrica.
 
 export type OperadorParaTroca = {
   id: string
@@ -155,16 +175,14 @@ export async function listarOperadoresParaTroca(): Promise<
   const atual = await getCurrentUser()
   if (!atual || atual.role !== 'operador') return []
 
-  const estacao = await estacaoDoOperador(atual.id)
-  if (!estacao) return []
-
+  // O filtro de cargo é o MESMO da troca lá embaixo: a lista não oferece
+  // ninguém que a troca recusaria.
   const rows = await db
     .select({ id: users.id, nome: users.nome, pinHash: users.pinHash })
-    .from(estacaoOperadores)
-    .innerJoin(users, eq(users.id, estacaoOperadores.operadorId))
+    .from(users)
     .where(
       and(
-        eq(estacaoOperadores.estacaoId, estacao.id),
+        eq(users.role, 'operador'),
         isNull(users.deletedAt),
         eq(users.ativo, true),
       ),
@@ -320,13 +338,8 @@ export async function trocarOperadorAction(
     return { success: false, error: 'Sessão expirada — entre de novo' }
   }
 
-  const estacao = await estacaoDoOperador(atual.id)
-  if (!estacao) {
-    return { success: false, error: 'Você não está em nenhuma estação' }
-  }
-
-  // O ALVO PRECISA SER DA MESMA ESTAÇÃO, e a consulta é que garante — não um
-  // `if` sobre uma lista que veio do cliente.
+  // O ALVO PRECISA SER OPERADOR ATIVO, e a consulta é que garante — não um
+  // `if` sobre uma lista que veio do cliente. Nunca admin nem gerente.
   const [alvo] = await db
     .select({
       id: users.id,
@@ -337,11 +350,9 @@ export async function trocarOperadorAction(
       pinTentativas: users.pinTentativas,
       pinBloqueadoAte: users.pinBloqueadoAte,
     })
-    .from(estacaoOperadores)
-    .innerJoin(users, eq(users.id, estacaoOperadores.operadorId))
+    .from(users)
     .where(
       and(
-        eq(estacaoOperadores.estacaoId, estacao.id),
         eq(users.id, operadorId),
         isNull(users.deletedAt),
         eq(users.ativo, true),
@@ -349,7 +360,7 @@ export async function trocarOperadorAction(
       ),
     )
     .limit(1)
-  if (!alvo) return { success: false, error: 'Operador não é desta estação' }
+  if (!alvo) return { success: false, error: 'Operador não encontrado' }
 
   const erroDoPin = await conferirPinComContador(alvo, pin)
   if (erroDoPin) return { success: false, error: erroDoPin }
