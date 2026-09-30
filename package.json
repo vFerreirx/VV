@@ -19,6 +19,7 @@
     "db:restore": "tsx scripts/restore-db.ts",
     "db:reset": "supabase db reset --no-seed && tsx scripts/setup-db.ts",
     "db:seed": "tsx scripts/seed.ts",
+    "test:banco": "tsx tests/banco/index.ts",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "supabase:status": "supabase status",

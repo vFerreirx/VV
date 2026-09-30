@@ -111,6 +111,7 @@ Supabase Studio em <http://127.0.0.1:54323>.
 | `npm run db:reset` | `supabase db reset` + `db:setup` (banco zerado) |
 | `npm run db:studio` | Abre Drizzle Studio no browser |
 | `npm run db:seed` | Popula seeds (Fase 4 em diante) |
+| `npm run test:banco` | Roda o fluxo da produção contra o banco numa transação DESFEITA no fim (ver AGENTS.md) |
 | `npm run test:e2e` | Roda os testes Playwright |
 
 ### Restaurar um backup
