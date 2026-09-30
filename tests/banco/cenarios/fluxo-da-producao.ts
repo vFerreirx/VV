@@ -14,6 +14,7 @@
 
 import type { ItemDoHistorico } from '@/app/(app)/ordens/actions'
 import { textoDaCorrecao } from '@/lib/producao/correcao'
+import { nomesDasMaquinas } from '@/lib/producao/nome-da-maquina'
 
 import type { Cenario, Contexto } from '../lib/contexto'
 
@@ -50,7 +51,7 @@ async function rodar(ctx: Contexto) {
   const conta = elenco.contaFullMl.valor
 
   console.log(
-    `  elenco: operador ${operador.nome} (${m1.codigo}, ${m2.codigo}, ${m3.codigo}) · ` +
+    `  elenco: operador ${operador.nome} (${nomesDasMaquinas([m1.numero, m2.numero, m3.numero])}) · ` +
       `${gerente.role} ${gerente.nome} · ${variacao.rotulo} · ` +
       `conta ${conta?.nome ?? '—'}`,
   )
@@ -167,7 +168,7 @@ async function rodar(ctx: Contexto) {
     '  as 3 máquinas do roteiro estão na tela, e só máquinas da casa',
     [m1, m2, m3].every((m) => naTela.some((n) => n.id === m.id)) &&
       naTela.every((n) => n.estacao?.id === casa.id),
-    naTela.map((n) => n.codigo),
+    naTela.map((n) => n.numero),
   )
   const contagens = await producao.contarOpsDaEstacao(tela)
   const terminadas = await producao.listarOpsDaEstacao('terminadas', tela)

@@ -55,13 +55,14 @@ export const STATUS_ESCOLHIVEIS = [
 ] as const satisfies readonly (typeof maquinaStatusValues)[number][]
 
 export const maquinaSchema = z.object({
-  codigo: z
-    .string()
-    .trim()
-    .min(2, 'Código obrigatório')
-    .max(20, 'Código muito longo')
-    .regex(/^[A-Z0-9-]+$/i, 'Use apenas letras, números e hífen'),
-  nome: z.string().trim().min(2, 'Nome obrigatório').max(120, 'Nome muito longo'),
+  // UM CAMPO SÓ: o número. O nome ("Máquina 4") é montado a partir dele
+  // (src/lib/producao/nome-da-maquina.ts) e não se digita. Único entre as
+  // vivas — quem confere é a action, e o índice parcial da 74 no banco.
+  numero: z
+    .number({ error: 'Informe o número da máquina' })
+    .int('Use um número inteiro')
+    .min(1, 'O número começa em 1')
+    .max(9999, 'Número muito grande'),
   status: z.enum(maquinaStatusValues),
 
   // ⚠️ `operadorAtualId` SAIU DAQUI. A coluna continua no banco (histórico),

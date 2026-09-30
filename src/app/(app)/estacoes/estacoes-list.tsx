@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { cn } from '@/lib/utils'
 import {
   ESTACAO_CORES,
@@ -120,16 +121,15 @@ export function EstacoesList({
                     Sem máquinas vinculadas
                   </span>
                 ) : (
-                  // O CÓDIGO, que é como o tablet, a aba Máquinas e o diálogo
-                  // chamam a máquina. O nome fica no title.
+                  // "Máquina 4", como o tablet, a aba Máquinas e o diálogo
+                  // chamam a máquina (src/lib/producao/nome-da-maquina.ts).
                   e.maquinas.map((m) => (
                     <Badge
                       key={m.id}
                       variant="secondary"
                       className="tabular-nums"
-                      title={m.nome}
                     >
-                      {m.codigo}
+                      {nomeDaMaquina(m.numero)}
                     </Badge>
                   ))
                 )}
@@ -386,7 +386,6 @@ function EstacaoBody({
                     type="button"
                     onClick={() => toggleMaquina(m.id)}
                     disabled={isPending}
-                    title={m.nome}
                     className={cn(
                       'rounded-full border px-2.5 py-1 text-xs tabular-nums transition-colors',
                       ativo
@@ -394,11 +393,11 @@ function EstacaoBody({
                         : 'hover:bg-accent',
                     )}
                   >
-                    {/* O CÓDIGO, que é como o tablet e o cartão chamam a
+                    {/* "Máquina 4", como o tablet e o cartão chamam a
                         máquina. A estação só aparece quando é OUTRA — na
                         própria, "· Estação 1" repetido em cada chip é
                         ruído. */}
-                    {m.codigo}
+                    {nomeDaMaquina(m.numero)}
                     {m.estacaoNome && m.estacaoId !== estacao?.id && (
                       <span className={cn(!ativo && 'text-muted-foreground')}>
                         {' · '}
@@ -418,7 +417,7 @@ function EstacaoBody({
           <ul className="space-y-0.5">
             {saindoDeOutra.map((m) => (
               <li key={m.id} className="tabular-nums">
-                <span className="font-medium">{m.codigo}</span> sai da{' '}
+                <span className="font-medium">{nomeDaMaquina(m.numero)}</span> sai da{' '}
                 {m.estacaoNome}
               </li>
             ))}
@@ -515,9 +514,9 @@ function ExcluirDialog({
                 <ul className="text-muted-foreground space-y-0.5">
                   {estacao.maquinas.map((m) => (
                     <li key={m.id} className="tabular-nums">
-                      <span className="text-foreground">{m.codigo}</span>
-                      {' · '}
-                      {m.nome}
+                      <span className="text-foreground">
+                        {nomeDaMaquina(m.numero)}
+                      </span>
                       {m.opEmProducao && (
                         <span className="text-destructive font-medium">
                           {' '}

@@ -8,7 +8,7 @@
 // esse grupo é a estação. O operador não pertence a estação nenhuma: no
 // almoço ele cobre a máquina do colega do outro lado do galpão, e de
 // madrugada, sem gerente, reveza por horário. Prender operador a estação
-// fazia o Bruno, cobrindo a TC-10, não aparecer no "Quem é você?" do tablet
+// fazia o Bruno, cobrindo a Máquina 10, não aparecer no "Quem é você?" do tablet
 // dela — e o registro saía no nome de quem estava logado, que é o problema de
 // autoria que o PIN existe pra resolver.
 //
@@ -28,10 +28,12 @@
 // A frase volta pronta daqui pra que as seis ações do tablet (Iniciar,
 // Terminei, Parada, Voltou, Peguei errado, Desfazer) digam a mesma coisa.
 
+import { nomeDaMaquina } from './nome-da-maquina.ts'
+
 export type EstacaoRef = { id: string; nome: string }
 
 export type MaquinaParaCobertura = {
-  codigo: string
+  numero: number
   /** A estação da máquina, ou null se ela não está em nenhuma. */
   estacao: EstacaoRef | null
 }
@@ -46,8 +48,8 @@ export function avisoDeCobertura(
 ): string | null {
   if (estacaoDoAparelho === null) return null
   if (maquina.estacao === null) {
-    return `A ${maquina.codigo} está sem estação. Gravar mesmo assim? Avise o gerente pra colocar ela numa estação.`
+    return `A ${nomeDaMaquina(maquina.numero)} está sem estação. Gravar mesmo assim? Avise o gerente pra colocar ela numa estação.`
   }
   if (maquina.estacao.id === estacaoDoAparelho.id) return null
-  return `A ${maquina.codigo} é da ${maquina.estacao.nome}. Você está cobrindo?`
+  return `A ${nomeDaMaquina(maquina.numero)} é da ${maquina.estacao.nome}. Você está cobrindo?`
 }

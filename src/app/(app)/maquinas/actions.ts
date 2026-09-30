@@ -2,6 +2,8 @@
 
 import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
+import { randomUUID } from 'node:crypto'
+
 import { revalidatePath } from 'next/cache'
 
 import { podeEscrever } from '@/lib/auth/permissoes'
@@ -18,10 +20,12 @@ import {
   produtos,
   users,
   variacoesProduto,
-  type Maquina,
+  type MaquinaVisivel,
+  semLegadoDaMaquina,
   type User,
 } from '@/lib/db/schema'
 import type { MaquinaStatus } from '@/lib/producao/estado-maquina'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { abreParada, type MotivoDeParada } from '@/lib/producao/parada-de-maquina'
 import {
   maquinaSchema,
@@ -157,7 +161,7 @@ export type OpDaMaquina = {
   responsavelNome: string | null
 }
 
-export type MaquinaListItem = Maquina & {
+export type MaquinaListItem = MaquinaVisivel & {
   estacaoNome: string | null
   /**
    * A parada ABERTA, quando existe — é dela que sai o "há 2 h" no cartão.
@@ -248,10 +252,11 @@ export async function listarMaquinas(
       ),
     )
     .where(and(...conditions))
-    .orderBy(asc(maquinas.codigo))
+    // Pelo NÚMERO: a 2 antes da 10 (src/lib/producao/nome-da-maquina.ts).
+    .orderBy(asc(maquinas.numero))
 
   return rows.map((r) => ({
-    ...r.m,
+    ...semLegadoDaMaquina(r.m),
     estacaoNome: r.estacaoNome ?? null,
     op:
       r.opId === null
@@ -387,14 +392,31 @@ export async function listarOperadores(): Promise<
     .orderBy(asc(users.nome))
 }
 
-export async function obterMaquina(id: string): Promise<Maquina | null> {
+export async function obterMaquina(id: string): Promise<MaquinaVisivel | null> {
   await requireAuth()
   const [m] = await db
     .select()
     .from(maquinas)
     .where(and(eq(maquinas.id, id), isNull(maquinas.deletedAt)))
     .limit(1)
-  return m ?? null
+  return m ? semLegadoDaMaquina(m) : null
+}
+
+/**
+ * A recusa do número repetido, ou null. Só entre as VIVAS: o número de uma
+ * máquina na lixeira está livre (índice parcial da 74).
+ */
+async function numeroOcupado(
+  numero: number,
+  aMesma: string | null,
+): Promise<{ success: false; error: string } | null> {
+  const [outra] = await db
+    .select({ id: maquinas.id })
+    .from(maquinas)
+    .where(and(eq(maquinas.numero, numero), isNull(maquinas.deletedAt)))
+    .limit(1)
+  if (!outra || outra.id === aMesma) return null
+  return { success: false, error: `Já existe a ${nomeDaMaquina(numero)}` }
 }
 
 // -----------------------------------------------------------------
@@ -433,28 +455,32 @@ export async function criarMaquinaAction(
   const recusa = recusaManutencaoPeloCadastro(null, data.status)
   if (recusa) return recusa
 
-  const codigoUpper = data.codigo.toUpperCase()
-  const existing = await db
-    .select({ id: maquinas.id })
-    .from(maquinas)
-    .where(and(eq(maquinas.codigo, codigoUpper), isNull(maquinas.deletedAt)))
-    .limit(1)
-  if (existing.length > 0) {
-    return { success: false, error: `Já existe uma máquina com código "${codigoUpper}"` }
-  }
+  const ocupado = await numeroOcupado(data.numero, null)
+  if (ocupado) return ocupado
 
-  const [inserted] = await db
-    .insert(maquinas)
-    .values({
-      codigo: codigoUpper,
-      nome: data.nome,
+  // O `codigo` (legado, NOT NULL UNIQUE global) recebe o PRÓPRIO uuid: o
+  // gerente não digita mais código, e o uuid nunca colide — nem com o
+  // "TC-04" de uma máquina apagada. O `nome` é espelho do nome montado.
+  // Ninguém lê nenhum dos dois (supabase/sql/74_numero_da_maquina.sql).
+  const id = randomUUID()
+  try {
+    await db.insert(maquinas).values({
+      id,
+      numero: data.numero,
+      codigo: id,
+      nome: nomeDaMaquina(data.numero),
       status: data.status,
       observacoes: data.observacoes ?? null,
     })
-    .returning({ id: maquinas.id })
+  } catch (err) {
+    // Dois cadastros com o mesmo número ao mesmo tempo: o índice da 74 barra
+    // o segundo, e a frase é a mesma da checagem acima.
+    if (!isUniqueViolation(err)) throw err
+    return { success: false, error: `Já existe a ${nomeDaMaquina(data.numero)}` }
+  }
 
   revalidatePath('/maquinas')
-  return { success: true, data: { id: inserted!.id }, message: 'Máquina criada' }
+  return { success: true, data: { id }, message: 'Máquina criada' }
 }
 
 // -----------------------------------------------------------------
@@ -491,44 +517,43 @@ export async function atualizarMaquinaAction(
   const recusa = recusaManutencaoPeloCadastro(atual.status, data.status)
   if (recusa) return recusa
 
-  // Código único entre OUTRAS máquinas.
-  const codigoUpper = data.codigo.toUpperCase()
-  const conflicting = await db
-    .select({ id: maquinas.id })
-    .from(maquinas)
-    .where(and(eq(maquinas.codigo, codigoUpper), isNull(maquinas.deletedAt)))
-    .limit(1)
-  if (conflicting.length > 0 && conflicting[0]!.id !== id) {
-    return {
-      success: false,
-      error: `Já existe outra máquina com código "${codigoUpper}"`,
-    }
-  }
+  // MUDAR O NÚMERO PODE: OPs e paradas apontam pela id, então nada quebra.
+  // O histórico já gravado continua citando o nome de antes (é texto de
+  // quando foi escrito). Trocar duas de número passa por um número livre —
+  // a recusa abaixo basta, sem fluxo próprio. O `codigo` legado não muda.
+  const ocupado = await numeroOcupado(data.numero, id)
+  if (ocupado) return ocupado
 
   // `operadorAtualId` NÃO entra no `set`, e isso PRESERVA o que está lá.
   // Omitir a coluna é diferente de gravar null: as três máquinas que têm o
   // campo preenchido continuam tendo depois de qualquer edição.
-  await db.transaction(async (tx) => {
-    await tx
-      .update(maquinas)
-      .set({
-        codigo: codigoUpper,
-        nome: data.nome,
-        status: data.status,
-        observacoes: data.observacoes ?? null,
-      })
-      .where(eq(maquinas.id, id))
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(maquinas)
+        .set({
+          numero: data.numero,
+          nome: nomeDaMaquina(data.numero),
+          status: data.status,
+          observacoes: data.observacoes ?? null,
+        })
+        .where(eq(maquinas.id, id))
 
-    // Sem motivo: o formulário de cadastro não tem diálogo de motivo, e é
-    // por isso que `maquina_paradas.motivo` é nulável. Inventar um aqui
-    // ("preventiva"?) seria pôr no histórico uma escolha que ninguém fez.
-    await sincronizarParada(tx, {
-      maquinaId: id,
-      statusAnterior: atual.status,
-      statusNovo: data.status,
-      usuarioId: user.id,
+      // Sem motivo: o formulário de cadastro não tem diálogo de motivo, e é
+      // por isso que `maquina_paradas.motivo` é nulável. Inventar um aqui
+      // ("preventiva"?) seria pôr no histórico uma escolha que ninguém fez.
+      await sincronizarParada(tx, {
+        maquinaId: id,
+        statusAnterior: atual.status,
+        statusNovo: data.status,
+        usuarioId: user.id,
+      })
     })
-  })
+  } catch (err) {
+    // Mesma corrida do criar: o índice da 74 barrou o número.
+    if (!isUniqueViolation(err)) throw err
+    return { success: false, error: `Já existe a ${nomeDaMaquina(data.numero)}` }
+  }
 
   revalidatePath('/fabrica')
   revalidatePath('/maquinas')
@@ -632,7 +657,7 @@ export async function excluirMaquinaAction(id: string): Promise<ActionResult> {
   const user = await requireAreaEscrita('maquinas')
 
   const [atual] = await db
-    .select({ id: maquinas.id, codigo: maquinas.codigo, status: maquinas.status })
+    .select({ id: maquinas.id, numero: maquinas.numero, status: maquinas.status })
     .from(maquinas)
     .where(and(eq(maquinas.id, id), isNull(maquinas.deletedAt)))
     .limit(1)
@@ -660,7 +685,7 @@ export async function excluirMaquinaAction(id: string): Promise<ActionResult> {
   if (emProducao) {
     return {
       success: false,
-      error: `A ${atual.codigo} está com a OP ${emProducao.numero} em produção. Conclua ou mova a OP antes de excluir.`,
+      error: `A ${nomeDaMaquina(atual.numero)} está com a OP ${emProducao.numero} em produção. Conclua ou mova a OP antes de excluir.`,
     }
   }
 

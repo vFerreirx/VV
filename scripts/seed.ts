@@ -223,7 +223,7 @@ async function seedUsuarios() {
 }
 
 // -----------------------------------------------------------------
-// Máquinas (TC-01..TC-18)
+// Máquinas 1 a 18
 // -----------------------------------------------------------------
 
 const STATUSES_INICIAIS = ['operando', 'parada', 'manutencao', 'setup'] as const
@@ -235,8 +235,10 @@ async function seedMaquinas(operadorId: string) {
     const codigo = `M-${String(i).padStart(2, '0')}`
 
     rows.push({
+      // O número é a máquina (74); `codigo` e `nome` são legado.
+      numero: i,
       codigo,
-      nome: `Máquina ${codigo}`,
+      nome: `Máquina ${i}`,
       // Distribui status iniciais; 1ª máquina sempre 'operando' pra ter algo no dashboard
       status: i === 1 ? 'operando' : STATUSES_INICIAIS[i % STATUSES_INICIAIS.length]!,
       // Atribui operador às 3 primeiras pra ter dados de RLS / kanban

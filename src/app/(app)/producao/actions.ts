@@ -138,8 +138,8 @@ export type KanbanCardData = {
   variacaoTamanho: string | null
   quantidade: number
   maquinaId: string | null
-  maquinaCodigo: string | null
-  maquinaNome: string | null
+  /** O número da máquina — o nome sai de `nomeDaMaquina`. */
+  maquinaNumero: number | null
   // Remessa Full a que a OP pertence (vira "pasta" na coluna do kanban).
   remessaFullId: string | null
   remessaLabel: string | null
@@ -237,8 +237,7 @@ export async function listarOrdensProducao(
       variacaoModelo: variacoesProduto.modelo,
       variacaoTamanho: variacoesProduto.tamanho,
       responsavelNome: users.nome,
-      maquinaCodigo: maquinas.codigo,
-      maquinaNome: maquinas.nome,
+      maquinaNumero: maquinas.numero,
       remessaCanal: remessasFull.canal,
       remessaContaNome: contasMarketplace.nome,
       remessaDataEnvio: remessasFull.dataEnvio,
@@ -326,8 +325,7 @@ export async function listarOrdensProducao(
       variacaoModelo,
       variacaoTamanho,
       responsavelNome,
-      maquinaCodigo,
-      maquinaNome,
+      maquinaNumero,
       remessaCanal,
       remessaDataEnvio,
       remessaContaNome,
@@ -350,8 +348,7 @@ export async function listarOrdensProducao(
       variacaoTamanho: variacaoTamanho ?? null,
       quantidade: op.quantidade,
       maquinaId: op.maquinaId,
-      maquinaCodigo: maquinaCodigo ?? null,
-      maquinaNome: maquinaNome ?? null,
+      maquinaNumero: maquinaNumero ?? null,
       remessaFullId: op.remessaFullId,
       // O rótulo da pasta sai da fonte única (`rotuloDaRemessa`), a mesma
       // que o destino do tablet usa — era uma cópia montada à mão aqui, e a
@@ -435,8 +432,8 @@ export type OpNaMaquina = {
 
 export type MaquinaDaEstacao = {
   id: string
-  codigo: string
-  nome: string
+  /** O número da máquina — o nome sai de `nomeDaMaquina`. */
+  numero: number
   /**
    * A estação VIVA da máquina, ou null. Pro "Você está cobrindo?"
    * (src/lib/producao/cobertura.ts) e pras seções do tablet sem estação.
@@ -537,8 +534,7 @@ export async function listarMaquinasDaEstacao(
   const rows = await db
     .select({
       id: maquinas.id,
-      codigo: maquinas.codigo,
-      nome: maquinas.nome,
+      numero: maquinas.numero,
       estacaoId: estacoes.id,
       estacaoNome: estacoes.nome,
       status: maquinas.status,
@@ -616,15 +612,15 @@ export async function listarMaquinasDaEstacao(
       ),
     )
     .where(and(filtroDaTela(tela), isNull(maquinas.deletedAt)))
-    // POSIÇÃO ESTÁVEL. O cartão da TC-01 é sempre o primeiro, ocupada ou
+    // POSIÇÃO ESTÁVEL. O cartão da Máquina 1 é sempre o primeiro, ocupada ou
     // livre: quem trabalha aqui aprende a estação pela posição, e uma grade
     // que se reordena quando uma OP começa obriga a reler tudo toda vez.
-    .orderBy(asc(maquinas.codigo))
+    // Pelo NÚMERO: a 2 antes da 10 (src/lib/producao/nome-da-maquina.ts).
+    .orderBy(asc(maquinas.numero))
 
   return rows.map((r) => ({
       id: r.id,
-      codigo: r.codigo,
-      nome: r.nome,
+      numero: r.numero,
       estacao:
         r.estacaoId !== null && r.estacaoNome !== null
           ? { id: r.estacaoId, nome: r.estacaoNome }
@@ -775,8 +771,8 @@ export async function listarOpsParaIniciar(
     // `pegarOrdemAction` recusaria, então oferecê-la seria um toque que só
     // devolve erro. Ela continua visível na consulta "Fila".
     isNull(ordensProducao.responsavelId),
-    // SEM MÁQUINA, ou já apontada PRA ESTA. Uma OP destinada à TC-05
-    // iniciaria na TC-05 mesmo tocada aqui, porque `pegarOrdemAction` usa
+    // SEM MÁQUINA, ou já apontada PRA ESTA. Uma OP destinada à Máquina 5
+    // iniciaria na Máquina 5 mesmo tocada aqui, porque `pegarOrdemAction` usa
     // `atual.maquinaId ?? maquinaId` — e o operador veria este cartão
     // continuar livre sem entender por quê.
     or(
@@ -1067,7 +1063,7 @@ export async function contarOpsDaEstacao(
 // dizer QUANDO, QUANTO e QUEM, que é a mesma informação que responde "será
 // que salvou mesmo?" depois que o toast sumiu. Duas perguntas, uma lista.
 export type OpDaConsulta = OpParaIniciar & {
-  maquinaCodigo: string | null
+  maquinaNumero: number | null
   /**
    * A estação viva da máquina da OP, pro "Você está cobrindo?" do Desfazer
    * (src/lib/producao/cobertura.ts). Null quando a máquina está sem estação.
@@ -1167,7 +1163,7 @@ export async function listarOpsDaEstacao(
       corHex2: cores.codigoHex2,
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
       maquinaId: ordensProducao.maquinaId,
-      maquinaCodigo: maquinas.codigo,
+      maquinaNumero: maquinas.numero,
       maquinaEstacaoId: estacoes.id,
       maquinaEstacaoNome: estacoes.nome,
       produzido: sql<number>`(
@@ -1231,7 +1227,7 @@ export async function listarOpsDaEstacao(
           corHex: r.corHex ?? null,
           corHex2: r.corHex2 ?? null,
           dataPrevistaFim: r.dataPrevistaFim,
-          maquinaCodigo: r.maquinaCodigo ?? null,
+          maquinaNumero: r.maquinaNumero ?? null,
           maquinaEstacao:
             r.maquinaEstacaoId !== null && r.maquinaEstacaoNome !== null
               ? { id: r.maquinaEstacaoId, nome: r.maquinaEstacaoNome }

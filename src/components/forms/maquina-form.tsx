@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter } from 'next/navigation'
 import { useTransition } from 'react'
-import { Controller, useForm, type Resolver } from 'react-hook-form'
+import { Controller, useForm, useWatch, type Resolver } from 'react-hook-form'
 import { toast } from 'sonner'
 
 import {
@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import {
   maquinaSchema,
   STATUS_ESCOLHIVEIS,
@@ -37,8 +38,8 @@ import {
 // ninguém perceber.
 export type MaquinaFormDefaults = {
   id?: string
-  codigo: string
-  nome: string
+  /** Null só na máquina nova, antes de digitar. */
+  numero: number | null
   status: (typeof maquinaStatusValues)[number]
   observacoes: string | null
 }
@@ -46,16 +47,16 @@ export type MaquinaFormDefaults = {
 // Máquina nova nasce APTA ('operando', que significa só "pode produzir").
 // Declarar produção é coisa da OP, nunca do formulário.
 const VAZIO: MaquinaFormDefaults = {
-  codigo: '',
-  nome: '',
+  numero: null,
   status: 'operando',
   observacoes: null,
 }
 
 function toFormValues(d: MaquinaFormDefaults): MaquinaInput {
   return {
-    codigo: d.codigo ?? '',
-    nome: d.nome ?? '',
+    // Campo vazio vira NaN no `valueAsNumber`, e o schema responde "Informe
+    // o número da máquina". O `as number` é só pro estado inicial vazio.
+    numero: d.numero ?? (undefined as unknown as number),
     // 'parada' é o apto histórico: o campo mostra "Apta" e salva 'operando',
     // que tem o mesmo sentido — nenhuma parada abre nem fecha por isso.
     status: d.status === 'parada' ? 'operando' : d.status,
@@ -102,6 +103,16 @@ export function MaquinaForm({
   // do formulário da OP.
   const statusHistorico = defaults.status === 'manutencao'
 
+  // O NOME NÃO SE DIGITA: sai do número, sempre no mesmo formato
+  // (src/lib/producao/nome-da-maquina.ts). Aparece montado embaixo do campo.
+  const numeroDigitado = useWatch({ control: form.control, name: 'numero' })
+  const nomeMontado =
+    Number.isInteger(numeroDigitado) && numeroDigitado >= 1
+      ? nomeDaMaquina(numeroDigitado)
+      : null
+  const mudouONumero =
+    isEdit && defaults.numero !== null && numeroDigitado !== defaults.numero
+
   // Operadores válidos pra atribuir = role 'operador' (RLS deixa esses
   // usuários atualizarem a própria máquina).
 
@@ -112,22 +123,29 @@ export function MaquinaForm({
           <CardTitle>Identificação</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
-          <Field label="Código" id="codigo" error={errs.codigo?.message} required>
+          <Field
+            label="Número"
+            id="numero"
+            error={errs.numero?.message}
+            hint={
+              nomeMontado === null
+                ? 'A máquina aparece como "Máquina" e este número.'
+                : mudouONumero
+                  ? `Vai aparecer como ${nomeMontado}. O histórico antigo continua citando o nome de antes.`
+                  : `Aparece como ${nomeMontado}.`
+            }
+            required
+          >
             <Input
-              id="codigo"
-              placeholder="M-01"
+              id="numero"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              placeholder="4"
               autoComplete="off"
               disabled={isPending}
-              {...form.register('codigo')}
-            />
-          </Field>
-
-          <Field label="Nome" id="nome" error={errs.nome?.message} required>
-            <Input
-              id="nome"
-              placeholder="Overlock M-01"
-              disabled={isPending}
-              {...form.register('nome')}
+              {...form.register('numero', { valueAsNumber: true })}
             />
           </Field>
 

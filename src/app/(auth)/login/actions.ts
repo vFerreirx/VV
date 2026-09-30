@@ -146,7 +146,7 @@ export async function logoutAction() {
 // estação nenhuma — a estação é do tablet (src/lib/auth/estacao-do-aparelho.ts)
 // —, e no almoço e no revezamento da madrugada quem cobre a máquina é de
 // outro grupo. Antes a lista era só da "mesma estação", e o Bruno cobrindo a
-// TC-10 não aparecia no tablet dela: o registro saía no nome de quem estava
+// Máquina 10 não aparecia no tablet dela: o registro saía no nome de quem estava
 // logado, que é o problema que esta tela existe pra resolver.
 //
 // Abrir pra todos não abre privilégio: todo operador faz as mesmas coisas em

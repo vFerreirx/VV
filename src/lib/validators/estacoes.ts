@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
+
 // Cor opcional em hex. À prova de chave ausente (Server Action descarta
 // undefined → chave some no servidor; sem .optional() o Zod 4 falha).
 const corOpt = z
@@ -58,17 +60,20 @@ export const ESTACAO_CORES = [
  * o botão antes): mora aqui pra as duas não divergirem.
  */
 export function motivoParaNaoExcluirEstacao(
-  maquinas: readonly { codigo: string; opEmProducao: string | null }[],
+  maquinas: readonly { numero: number; opEmProducao: string | null }[],
 ): string | null {
   const presas = maquinas.filter(
-    (m): m is { codigo: string; opEmProducao: string } =>
+    (m): m is { numero: number; opEmProducao: string } =>
       m.opEmProducao !== null,
   )
   if (presas.length === 0) return null
   if (presas.length === 1) {
     const m = presas[0]!
-    return `A ${m.codigo} está com a OP ${m.opEmProducao} em produção. Conclua ou tire a OP da máquina antes de excluir a estação.`
+    return `A ${nomeDaMaquina(m.numero)} está com a OP ${m.opEmProducao} em produção. Conclua ou tire a OP da máquina antes de excluir a estação.`
   }
-  const lista = presas.map((m) => `${m.codigo} (${m.opEmProducao})`).join(', ')
+  const lista = [...presas]
+    .sort((a, b) => a.numero - b.numero)
+    .map((m) => `${nomeDaMaquina(m.numero)} (${m.opEmProducao})`)
+    .join(', ')
   return `Estão com OP em produção: ${lista}. Conclua ou tire as OPs das máquinas antes de excluir a estação.`
 }

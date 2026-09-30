@@ -15,11 +15,14 @@ export type EstacaoParaAparelho = {
   id: string
   nome: string
   cor: string | null
-  /** Os códigos, pro gerente conferir que é o grupo perto deste tablet. */
-  maquinas: string[]
+  /**
+   * Os NÚMEROS das máquinas, em ordem, pro gerente conferir que é o grupo
+   * perto deste tablet. A tela diz "Máquinas 1, 2, 3 e 7" (`nomesDasMaquinas`).
+   */
+  maquinas: number[]
 }
 
-/** As estações vivas, com os códigos das máquinas. Só admin e gerente. */
+/** As estações vivas, com os números das máquinas. Só admin e gerente. */
 export async function listarEstacoesParaAparelho(): Promise<
   EstacaoParaAparelho[]
 > {
@@ -32,16 +35,16 @@ export async function listarEstacoesParaAparelho(): Promise<
       .from(estacoes)
       .where(isNull(estacoes.deletedAt)),
     db
-      .select({ codigo: maquinas.codigo, estacaoId: maquinas.estacaoId })
+      .select({ numero: maquinas.numero, estacaoId: maquinas.estacaoId })
       .from(maquinas)
       .where(isNull(maquinas.deletedAt))
-      .orderBy(asc(maquinas.codigo)),
+      .orderBy(asc(maquinas.numero)),
   ])
   return rows
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }))
     .map((e) => ({
       ...e,
-      maquinas: maqs.filter((m) => m.estacaoId === e.id).map((m) => m.codigo),
+      maquinas: maqs.filter((m) => m.estacaoId === e.id).map((m) => m.numero),
     }))
 }
 

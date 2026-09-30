@@ -26,7 +26,7 @@ import type { Tx } from './conexao'
 
 export type Escolha<T> = { valor: T; porque: null } | { valor: null; porque: string }
 
-export type MaquinaDoTeste = { id: string; codigo: string }
+export type MaquinaDoTeste = { id: string; numero: number }
 
 /**
  * As duas estações do teste. A CASA é a estação do aparelho: o roteiro de
@@ -98,7 +98,7 @@ async function escolherEstacoes(
     await tx
       .select({
         id: maquinas.id,
-        codigo: maquinas.codigo,
+        numero: maquinas.numero,
         status: maquinas.status,
         estacaoId: estacoes.id,
       })
@@ -124,14 +124,14 @@ async function escolherEstacoes(
           ),
         ),
       )
-      .orderBy(asc(maquinas.codigo))
+      .orderBy(asc(maquinas.numero))
   ).filter((m) => motivoDeImpedimento(m.status) === null)
 
   const porEstacao = new Map<string, typeof livres>()
   for (const m of livres) {
     porEstacao.set(m.estacaoId, [...(porEstacao.get(m.estacaoId) ?? []), m])
   }
-  const so = (m: (typeof livres)[number]) => ({ id: m.id, codigo: m.codigo })
+  const so = (m: (typeof livres)[number]) => ({ id: m.id, numero: m.numero })
 
   // A casa precisa de `quantas` livres; a de fora, de UMA livre e
   // 'operando' — é nela que a parada abre ("manutencao") e fecha.

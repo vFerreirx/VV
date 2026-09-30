@@ -9,6 +9,7 @@
 // topo, tudo dentro de main(). E nenhum import de action aqui em cima — elas
 // só carregam por `carregarActions()`, depois dos mocks (mocks.ts).
 
+import { cadastroDeMaquina } from './cenarios/cadastro-de-maquina'
 import { estacaoDoTablet } from './cenarios/estacao-do-tablet'
 import { fluxoDaProducao } from './cenarios/fluxo-da-producao'
 import { carregarActions } from './lib/carregar'
@@ -21,7 +22,7 @@ import { instalarMocks } from './lib/mocks'
 import { medirRelogio } from './lib/relogio'
 import { divergencias, resumoDoRetrato, tirarRetrato } from './lib/retrato'
 
-const CENARIOS: Cenario[] = [fluxoDaProducao, estacaoDoTablet]
+const CENARIOS: Cenario[] = [fluxoDaProducao, estacaoDoTablet, cadastroDeMaquina]
 
 async function main(): Promise<number> {
   const filtro = process.argv.slice(2)

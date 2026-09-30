@@ -1,6 +1,6 @@
 'use server'
 
-import { and, desc, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, ne, sql, type SQL } from 'drizzle-orm'
 import { revalidatePath } from 'next/cache'
 
 import { requireRole } from '@/lib/auth/require-auth'
@@ -32,6 +32,7 @@ import {
   hojeEmBrasilia,
   resumoDeDias,
 } from '@/lib/dia-brasil'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { CANAL_LABEL_CURTO, STATUS_LABEL_CURTO } from '@/lib/validators/ordens'
 
 // Lixeira: tudo no sistema é soft-delete (deleted_at). Aqui o admin vê o
@@ -172,7 +173,7 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
         .orderBy(desc(tamanhos.deletedAt))
         .limit(LIMITE_POR_TIPO),
       () => db
-        .select({ id: maquinas.id, nome: maquinas.nome, codigo: maquinas.codigo, em: maquinas.deletedAt })
+        .select({ id: maquinas.id, numero: maquinas.numero, em: maquinas.deletedAt })
         .from(maquinas)
         .where(isNotNull(maquinas.deletedAt))
         .orderBy(desc(maquinas.deletedAt))
@@ -214,7 +215,7 @@ export async function listarExcluidos(): Promise<ItemLixeira[]> {
     ...coresRows.map((c): ItemBruto => ({ tipo: 'cor', id: c.id, titulo: c.nome, subtitulo: 'Cor', excluidoEm: c.em! })),
     ...modelosRows.map((m): ItemBruto => ({ tipo: 'modelo', id: m.id, titulo: m.nome, subtitulo: 'Modelo', excluidoEm: m.em! })),
     ...tamanhosRows.map((t): ItemBruto => ({ tipo: 'tamanho', id: t.id, titulo: t.nome, subtitulo: 'Tamanho', excluidoEm: t.em! })),
-    ...maqs.map((m): ItemBruto => ({ tipo: 'maquina', id: m.id, titulo: m.nome, subtitulo: m.codigo, excluidoEm: m.em! })),
+    ...maqs.map((m): ItemBruto => ({ tipo: 'maquina', id: m.id, titulo: nomeDaMaquina(m.numero), subtitulo: 'Máquina', excluidoEm: m.em! })),
     ...ests.map((e): ItemBruto => ({ tipo: 'estacao', id: e.id, titulo: e.nome, subtitulo: 'máquinas precisam ser revinculadas', excluidoEm: e.em! })),
     ...remessas.map((r): ItemBruto => ({
       tipo: 'remessa',
@@ -361,12 +362,41 @@ export async function restaurarAction(
           .set({ deletedAt: null, ativo: true })
           .where(eq(tamanhos.id, id))
         break
-      case 'maquina':
+      case 'maquina': {
+        // O NÚMERO SÓ É ÚNICO ENTRE AS VIVAS (74): enquanto esta estava na
+        // lixeira, o gerente pode ter cadastrado outra com o mesmo número.
+        // Aí a restauração é recusada com o nome — trocar o número de uma
+        // das duas é decisão dele.
+        const [volta] = await db
+          .select({ numero: maquinas.numero })
+          .from(maquinas)
+          .where(eq(maquinas.id, id))
+          .limit(1)
+        if (volta) {
+          const [outra] = await db
+            .select({ id: maquinas.id })
+            .from(maquinas)
+            .where(
+              and(
+                eq(maquinas.numero, volta.numero),
+                isNull(maquinas.deletedAt),
+                ne(maquinas.id, id),
+              ),
+            )
+            .limit(1)
+          if (outra) {
+            return {
+              success: false,
+              error: `Não dá pra restaurar: já existe a ${nomeDaMaquina(volta.numero)}.`,
+            }
+          }
+        }
         await db
           .update(maquinas)
           .set({ deletedAt: null })
           .where(eq(maquinas.id, id))
         break
+      }
       case 'estacao':
         await db
           .update(estacoes)

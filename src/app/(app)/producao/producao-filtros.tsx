@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { Maquina, User } from '@/lib/db/schema'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import {
   CANAL_LABEL_CURTO,
   canalValues,
@@ -41,7 +42,7 @@ export function ProducaoFiltros({ filtrosIniciais }: Props) {
   // cada mudança de OP da fábrica, e máquinas e responsáveis quase nunca
   // mudam. Enquanto não chegam, os dois seletores têm só o "Todas/Todos".
   const [maquinas, setMaquinas] = useState<
-    Array<Pick<Maquina, 'id' | 'codigo' | 'nome'>>
+    Array<Pick<Maquina, 'id' | 'numero'>>
   >([])
   const [responsaveis, setResponsaveis] = useState<
     Array<Pick<User, 'id' | 'nome' | 'role'>>
@@ -123,7 +124,7 @@ export function ProducaoFiltros({ filtrosIniciais }: Props) {
           <SelectItem value="todas">Todas máquinas</SelectItem>
           {maquinas.map((m) => (
             <SelectItem key={m.id} value={m.id}>
-              {m.nome}
+              {nomeDaMaquina(m.numero)}
             </SelectItem>
           ))}
         </SelectContent>

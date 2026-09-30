@@ -43,6 +43,7 @@
 // de quem planeja pra resolver um problema de quem produz.
 
 import type { StatusDaOrdem } from './destino-da-ordem'
+import { nomeDaMaquina } from './nome-da-maquina.ts'
 
 // Os únicos status que aceitam entrar numa máquina, cada um com o motivo de
 // estar aqui. Mapa, e não lista, pelo mesmo motivo do `MOTIVO_DE_IMPEDIMENTO`
@@ -93,6 +94,6 @@ export const OBSERVACAO_DE_MATERIA_PRIMA =
   'Matéria-prima confirmada pelo operador ao iniciar'
 
 /** O evento de quando a OP já estava em produção e só ganhou máquina. */
-export function observacaoDeMaquinaAtribuida(codigo: string): string {
-  return `Entrou na máquina ${codigo} (já estava em produção)`
+export function observacaoDeMaquinaAtribuida(numero: number): string {
+  return `Entrou na ${nomeDaMaquina(numero)} (já estava em produção)`
 }

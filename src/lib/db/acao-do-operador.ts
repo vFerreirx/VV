@@ -14,7 +14,7 @@ import { maquinas } from '@/lib/db/schema'
 // organiza a tela. Prender operador a estação não funcionava no chão: no
 // almoço um cobre a máquina do outro do outro lado do galpão, de madrugada
 // eles revezam por horário, e não há gerente acordado pra refazer vínculo. O
-// Bruno cobrindo a TC-10 nem aparecia no "Quem é você?" do tablet dela, e o
+// Bruno cobrindo a Máquina 10 nem aparecia no "Quem é você?" do tablet dela, e o
 // registro saía no nome de quem estava logado.
 //
 // Então ele age em QUALQUER OP que está numa máquina, de qualquer estação e

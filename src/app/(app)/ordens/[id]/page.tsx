@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { requireRole } from '@/lib/auth/require-auth'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 
 export const metadata: Metadata = { title: 'Editar OP — Vanvest' }
 
@@ -106,7 +107,7 @@ export default async function EditarOrdemPage({
           <Info label="Criada por" value={ordem.criador?.nome ?? '—'} />
           <Info
             label="Máquina"
-            value={ordem.maquina ? ordem.maquina.nome : '—'}
+            value={ordem.maquina ? nomeDaMaquina(ordem.maquina.numero) : '—'}
           />
         </CardContent>
       </Card>

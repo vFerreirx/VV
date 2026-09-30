@@ -163,7 +163,8 @@ export type OpUrgenteItem = {
   status: (typeof statusValues)[number]
   prioridade: 'baixa' | 'normal' | 'alta' | 'urgente'
   dataPrevistaFim: Date | null
-  maquinaNome: string | null
+  /** O número da máquina — o nome sai de `nomeDaMaquina`. */
+  maquinaNumero: number | null
   responsavelNome: string | null
   atrasada: boolean
 }
@@ -188,7 +189,7 @@ export async function listarOpsUrgentes(
       status: ordensProducao.status,
       prioridade: ordensProducao.prioridade,
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
-      maquinaNome: maquinas.nome,
+      maquinaNumero: maquinas.numero,
       responsavelNome: users.nome,
     })
     .from(ordensProducao)
@@ -237,7 +238,7 @@ export async function listarOpsUrgentes(
     status: r.status,
     prioridade: r.prioridade,
     dataPrevistaFim: r.dataPrevistaFim,
-    maquinaNome: r.maquinaNome ?? null,
+    maquinaNumero: r.maquinaNumero ?? null,
     responsavelNome: r.responsavelNome ?? null,
     atrasada: producaoAtrasada(r.status, r.dataPrevistaFim, now),
   }))

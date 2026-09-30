@@ -10,6 +10,7 @@ import {
 } from '@/components/forms/maquina-form'
 import { Button } from '@/components/ui/button'
 import { requireAreaEscrita } from '@/lib/auth/require-auth'
+import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 
 export const metadata: Metadata = { title: 'Editar máquina — Vanvest' }
 
@@ -26,8 +27,7 @@ export default async function EditarMaquinaPage({
 
   const defaults: MaquinaFormDefaults = {
     id: maquina.id,
-    codigo: maquina.codigo,
-    nome: maquina.nome,
+    numero: maquina.numero,
     status: maquina.status,
     observacoes: maquina.observacoes,
   }
@@ -44,7 +44,7 @@ export default async function EditarMaquinaPage({
           <ArrowLeft />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-2xl font-semibold">{maquina.nome}</h1>
+          <h1 className="truncate text-2xl font-semibold">{nomeDaMaquina(maquina.numero)}</h1>
         </div>
       </div>
 
