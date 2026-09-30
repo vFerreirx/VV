@@ -14,13 +14,8 @@ import {
 } from '@/lib/auth/inatividade'
 import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
 import { renovarEstacaoDoAparelho } from '@/lib/auth/estacao-do-aparelho'
-import {
-  conferirPin,
-  erroDePin,
-  gerarHashDePin,
-  SEGUNDOS_DE_BLOQUEIO,
-  TENTATIVAS_ATE_BLOQUEIO,
-} from '@/lib/auth/pin'
+import { erroDePin, gerarHashDePin } from '@/lib/auth/pin'
+import { conferirPinComContador } from '@/lib/auth/pin-conferencia'
 import { db } from '@/lib/db'
 import { users } from '@/lib/db/schema'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -199,10 +194,26 @@ export async function listarOperadoresParaTroca(): Promise<
   }))
 }
 
-/** O operador define o PRÓPRIO PIN. Não dá privilégio nenhum: ele já está
- *  autenticado como ele mesmo, e o PIN só encurta um caminho que ele já tem.
- *  Trocar o PIN de OUTRA pessoa não é possível por aqui, de propósito. */
-export async function definirMeuPinAction(pin: string): Promise<ActionResult> {
+/**
+ * O operador cria ou TROCA o PRÓPRIO PIN. Não dá privilégio nenhum: ele já
+ * está autenticado como ele mesmo, e o PIN só encurta um caminho que ele já
+ * tem. O PIN de OUTRA pessoa não se define por aqui — isso é do admin e do
+ * gerente (`definirPinDoOperadorAction`, estacoes/actions.ts).
+ *
+ * ⚠️ QUEM JÁ TEM PIN PRECISA DIGITAR O ATUAL. Sem isto, quem pegasse o tablet
+ * ainda logado como um colega (antes da trava dos 30 minutos) trocava o PIN
+ * dele e passava a entrar no nome dele quando quisesse. O atual passa pelo
+ * MESMO contador da troca de operador: 5 erros travam por 30 s, e errar aqui
+ * gasta as mesmas tentativas que errar lá.
+ *
+ * ⚠️ E AQUI NÃO SE CONFERE SE O PIN NOVO É DE OUTRO OPERADOR. A recusa "Esse
+ * PIN já é de outro operador" diria ao operador o PIN de um colega. Ela só
+ * existe no caminho do gerente, que já é quem define PIN pelos outros.
+ */
+export async function definirMeuPinAction(
+  pin: string,
+  pinAtual?: string | null,
+): Promise<ActionResult> {
   const atual = await getCurrentUser()
   if (!atual) return { success: false, error: 'Sessão expirada' }
   if (atual.role !== 'operador') {
@@ -217,6 +228,40 @@ export async function definirMeuPinAction(pin: string): Promise<ActionResult> {
   const erro = erroDePin(pin)
   if (erro) return { success: false, error: erro }
 
+  const [eu] = await db
+    .select({
+      id: users.id,
+      nome: users.nome,
+      pinHash: users.pinHash,
+      pinTentativas: users.pinTentativas,
+      pinBloqueadoAte: users.pinBloqueadoAte,
+    })
+    .from(users)
+    .where(
+      and(
+        eq(users.id, atual.id),
+        isNull(users.deletedAt),
+        eq(users.ativo, true),
+      ),
+    )
+    .limit(1)
+  if (!eu) return { success: false, error: 'Sessão expirada — entre de novo' }
+
+  // Sem PIN, é o "Crie seu PIN" de sempre. Com PIN, é TROCA: o atual primeiro.
+  if (eu.pinHash !== null) {
+    if (!pinAtual) {
+      return { success: false, error: 'Digite seu PIN atual' }
+    }
+    const erroDoAtual = await conferirPinComContador(eu, pinAtual)
+    if (erroDoAtual) {
+      return {
+        success: false,
+        error:
+          erroDoAtual === 'PIN incorreto' ? 'PIN atual incorreto' : erroDoAtual,
+      }
+    }
+  }
+
   await db
     .update(users)
     .set({
@@ -228,55 +273,6 @@ export async function definirMeuPinAction(pin: string): Promise<ActionResult> {
 
   revalidatePath('/producao')
   return { success: true }
-}
-
-// A CONFERÊNCIA DO PIN, com o contador de tentativas. Compartilhada entre a
-// troca de operador e a confirmação do próprio PIN no tablet travado: são a
-// mesma porta vista de dois lados, e um contador em cada uma dobraria as
-// tentativas que alguém tem antes do bloqueio.
-//
-// Devolve a frase de recusa, ou null quando o PIN confere (e aí o contador já
-// foi zerado).
-async function conferirPinComContador(alvo: {
-  id: string
-  nome: string
-  pinHash: string | null
-  pinTentativas: number
-  pinBloqueadoAte: Date | null
-}, pin: string): Promise<string | null> {
-  if (alvo.pinBloqueadoAte && alvo.pinBloqueadoAte > new Date()) {
-    return 'Muitas tentativas erradas. Espere alguns segundos e tente de novo.'
-  }
-  if (!alvo.pinHash) {
-    return `${alvo.nome} ainda não criou um PIN. Entre pela senha.`
-  }
-
-  if (!conferirPin(pin, alvo.pinHash)) {
-    // O CONTADOR SOBE ANTES DE RESPONDER. Com dez teclas e quatro casas, o
-    // que segura a porta é isto, não o hash.
-    const tentativas = alvo.pinTentativas + 1
-    const bloquear = tentativas >= TENTATIVAS_ATE_BLOQUEIO
-    await db
-      .update(users)
-      .set({
-        pinTentativas: bloquear ? 0 : tentativas,
-        pinBloqueadoAte: bloquear
-          ? new Date(Date.now() + SEGUNDOS_DE_BLOQUEIO * 1000)
-          : alvo.pinBloqueadoAte,
-      })
-      .where(eq(users.id, alvo.id))
-
-    return bloquear
-      ? `Muitas tentativas. Espere ${SEGUNDOS_DE_BLOQUEIO} segundos e tente de novo.`
-      : 'PIN incorreto'
-  }
-
-  // Acertou: zera o contador.
-  await db
-    .update(users)
-    .set({ pinTentativas: 0, pinBloqueadoAte: null })
-    .where(eq(users.id, alvo.id))
-  return null
 }
 
 /**

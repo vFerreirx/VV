@@ -299,14 +299,16 @@ export function TrocarOperadorBotao({ temPin }: { temPin: boolean }) {
         <TrocaDialog
           modo="troca"
           onClose={() => setAberto(false)}
-          onCriarPin={() => {
+          onMeuPin={() => {
             setAberto(false)
             setCriandoPin(true)
           }}
           euTenhoPin={temPin}
         />
       )}
-      {criandoPin && <CriarPinDialog onClose={() => setCriandoPin(false)} />}
+      {criandoPin && (
+        <MeuPinDialog temPin={temPin} onClose={() => setCriandoPin(false)} />
+      )}
     </>
   )
 }
@@ -318,8 +320,8 @@ export function TrocarOperadorBotao({ temPin }: { temPin: boolean }) {
 //   identidade  — "Quem é você?", com o tablet travado. Escolher o PRÓPRIO nome
 //                 só confirma o PIN e destrava; escolher outra pessoa troca a
 //                 sessão SEM recarregar, pra ação tocada seguir. "Criar meu
-//                 PIN" some: com o tablet travado, quem está tocando não é
-//                 necessariamente o dono da conta.
+//                 PIN" / "Trocar meu PIN" some: com o tablet travado, quem
+//                 está tocando não é necessariamente o dono da conta.
 //
 // ⚠️ A LISTA É A MESMA, e as condições também: TODOS os operadores ativos
 // — o operador não pertence a estação, e quem cobre a máquina no almoço é de
@@ -330,7 +332,8 @@ function TrocaDialog(
     | {
         modo: 'troca'
         onClose: () => void
-        onCriarPin: () => void
+        /** Abre o "Crie seu PIN" ou, pra quem já tem, o "Trocar meu PIN". */
+        onMeuPin: () => void
         euTenhoPin: boolean
       }
     | {
@@ -403,10 +406,10 @@ function TrocaDialog(
                 <span className="text-xl font-semibold">{o.nome}</span>
                 {/* SEM PIN NÃO É ERRO, É UM ESTADO. Ele entra pela senha,
                     como sempre entrou — e a tarja explica por que o caminho
-                    curto não vale pra ele ainda. */}
+                    curto não vale pra ele ainda, e que o gerente resolve. */}
                 {!o.temPin && (
                   <span className="text-muted-foreground bg-muted rounded px-2 py-0.5 text-sm">
-                    sem PIN — entra por senha
+                    sem PIN — entra por senha ou peça ao gerente
                   </span>
                 )}
               </button>
@@ -431,13 +434,17 @@ function TrocaDialog(
           Sair e entrar com senha
         </Button>
 
-        {props.modo === 'troca' && !props.euTenhoPin && (
+        {/* O PRÓPRIO PIN, no mesmo lugar: quem não tem cria; quem tem
+            troca, digitando o atual antes (Q199). Um botão só, aqui dentro,
+            e não no cabeçalho — a altura dele é calibrada pra caber as
+            máquinas. */}
+        {props.modo === 'troca' && (
           <Button
             variant="secondary"
             className="h-14 text-lg"
-            onClick={props.onCriarPin}
+            onClick={props.onMeuPin}
           >
-            Criar meu PIN
+            {props.euTenhoPin ? 'Trocar meu PIN' : 'Criar meu PIN'}
           </Button>
         )}
 
@@ -568,7 +575,7 @@ function PinDialog({
           <DialogDescription className="text-base">
             {operador.temPin
               ? 'Digite o PIN de 4 números.'
-              : 'Este operador ainda não criou um PIN — use "Sair e entrar com senha".'}
+              : 'Este operador ainda não tem PIN — use "Sair e entrar com senha", ou peça ao gerente pra definir um.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -612,81 +619,116 @@ function PinDialog({
 }
 
 // -----------------------------------------------------------------
-// Criar o próprio PIN
+// Criar ou trocar o próprio PIN
 // -----------------------------------------------------------------
 
 // ⚠️ SÓ O PRÓPRIO. A action não aceita id de outra pessoa, e isso não é
 // descuido de escopo: quem já está autenticado como ele mesmo não ganha
-// privilégio nenhum criando um atalho pra própria conta. Criar o PIN de
-// OUTRO seria criar uma chave pra porta alheia — e é por isso que, com o
-// tablet travado, este diálogo nem é oferecido, e a action recusa.
-function CriarPinDialog({ onClose }: { onClose: () => void }) {
+// privilégio nenhum criando um atalho pra própria conta. O PIN de OUTRO quem
+// define é o admin ou o gerente, no quadro de operadores. Com o tablet
+// travado este diálogo nem é oferecido, e a action recusa.
+//
+// TRÊS PASSOS PRA QUEM JÁ TEM PIN: o atual, o novo, o novo de novo. O atual é
+// o que impede quem pegou o tablet ainda logado como um colega de trocar o
+// PIN dele (`definirMeuPinAction`). Quem não tem, pula o primeiro.
+type PassoDoPin = 'atual' | 'novo' | 'confirma'
+
+function MeuPinDialog({
+  temPin,
+  onClose,
+}: {
+  temPin: boolean
+  onClose: () => void
+}) {
   const [isPending, startTransition] = useTransition()
+  const inicio: PassoDoPin = temPin ? 'atual' : 'novo'
+  const [passo, setPasso] = useState<PassoDoPin>(inicio)
+  const [pinAtual, setPinAtual] = useState('')
   const [pin, setPin] = useState('')
-  const [confirmacao, setConfirmacao] = useState<string | null>(null)
+  const [confirmacao, setConfirmacao] = useState('')
   const [erro, setErro] = useState<string | null>(null)
 
-  const emConfirmacao = confirmacao !== null
-  const atual = emConfirmacao ? confirmacao : pin
+  const valor =
+    passo === 'atual' ? pinAtual : passo === 'novo' ? pin : confirmacao
+  const mudar =
+    passo === 'atual' ? setPinAtual : passo === 'novo' ? setPin : setConfirmacao
 
-  function digitar(d: string) {
-    if (atual.length >= 4 || isPending) return
-    const novo = atual + d
-    setErro(null)
-    if (emConfirmacao) {
-      setConfirmacao(novo)
-      if (novo.length === 4) {
-        // DIGITA DUAS VEZES. Um PIN errado no cadastro só aparece na próxima
-        // troca de turno, quando quem precisa entrar não é quem cadastrou.
-        if (novo !== pin) {
-          setErro('Os dois PINs não bateram. Comece de novo.')
-          setPin('')
-          setConfirmacao(null)
-          return
-        }
-        salvar(novo)
-      }
-      return
-    }
-    setPin(novo)
-    if (novo.length === 4) setConfirmacao('')
+  function recomecar(mensagem: string) {
+    setErro(mensagem)
+    setPinAtual('')
+    setPin('')
+    setConfirmacao('')
+    setPasso(inicio)
   }
 
-  function salvar(valor: string) {
+  function digitar(d: string) {
+    if (valor.length >= 4 || isPending) return
+    const novo = valor + d
+    setErro(null)
+    mudar(novo)
+    if (novo.length < 4) return
+    if (passo === 'atual') {
+      setPasso('novo')
+      return
+    }
+    if (passo === 'novo') {
+      setPasso('confirma')
+      return
+    }
+    // DIGITA DUAS VEZES. Um PIN errado no cadastro só aparece na próxima
+    // troca de turno, quando quem precisa entrar não é quem cadastrou.
+    if (novo !== pin) {
+      recomecar('Os dois PINs não bateram. Comece de novo.')
+      return
+    }
+    salvar(novo)
+  }
+
+  function salvar(novo: string) {
     startTransition(async () => {
-      const r = await definirMeuPinAction(valor)
+      const r = await definirMeuPinAction(novo, temPin ? pinAtual : null)
       if (!r.success) {
-        setErro(r.error)
-        setPin('')
-        setConfirmacao(null)
+        recomecar(r.error)
         return
       }
-      toast.success('PIN criado. Use ele pra assumir o tablet.')
+      toast.success(
+        temPin
+          ? 'PIN trocado. Use o novo pra assumir o tablet.'
+          : 'PIN criado. Use ele pra assumir o tablet.',
+      )
       onClose()
     })
   }
+
+  const titulo =
+    passo === 'atual'
+      ? 'Seu PIN atual'
+      : passo === 'confirma'
+        ? 'Digite de novo'
+        : temPin
+          ? 'Novo PIN'
+          : 'Crie seu PIN'
+  const descricao =
+    passo === 'atual'
+      ? 'Pra trocar, primeiro o PIN que você usa hoje.'
+      : passo === 'confirma'
+        ? 'Só pra confirmar que não errou.'
+        : '4 números, só seus. É o que você vai digitar pra assumir o tablet.'
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-2xl">
-            {emConfirmacao ? 'Digite de novo' : 'Crie seu PIN'}
-          </DialogTitle>
-          <DialogDescription className="text-base">
-            {emConfirmacao
-              ? 'Só pra confirmar que não errou.'
-              : '4 números, só seus. É o que você vai digitar pra assumir o tablet.'}
-          </DialogDescription>
+          <DialogTitle className="text-2xl">{titulo}</DialogTitle>
+          <DialogDescription className="text-base">{descricao}</DialogDescription>
         </DialogHeader>
 
         <TecladoDePin
-          valor={atual}
+          valor={valor}
           onDigitar={digitar}
           onApagar={() => {
             setErro(null)
-            if (emConfirmacao) setConfirmacao((c) => (c ?? '').slice(0, -1))
-            else setPin((p) => p.slice(0, -1))
+            mudar((v) => v.slice(0, -1))
           }}
           desabilitado={isPending}
         />

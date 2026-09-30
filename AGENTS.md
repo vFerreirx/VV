@@ -48,7 +48,7 @@ derrubou a aba Produção (Date cru dentro de sql``). O `test:banco` chama as
 actions DE VERDADE contra o banco e desfaz tudo no fim. Com o conserto do #15
 desaplicado, ele cai no passo 3 com o erro da consulta.
 
-**O que cobre**, em três cenários, cada um na sua transação desfeita:
+**O que cobre**, em quatro cenários, cada um na sua transação desfeita:
 
 - `tests/banco/cenarios/fluxo-da-producao.ts` — o dia da produção, com o
   aparelho na estação "casa": Iniciar e "Peguei errado" pelo tablet, a meta
@@ -70,6 +70,12 @@ desaplicado, ele cai no passo 3 com o erro da consulta.
   com o `codigo` legado = o próprio uuid, a tela recebendo `numero` sem
   `codigo`/`nome`, mudar o número, o número da apagada livre de novo e a
   lista em ordem numérica.
+- `tests/banco/cenarios/pin-do-operador.ts` — o PIN (Q197–Q199): gerente e
+  admin definem, o repetido é recusado só pra eles, o operador não usa a
+  action de definir, troca o próprio só com o atual certo (o errado conta
+  tentativa), a conferência da troca de operador aceita o PIN novo, e o
+  autoatendimento não recusa o PIN de um colega. O retrato do fim confere
+  uma assinatura dos `pin_hash`, pra pegar PIN sobrescrito.
 
 As guardas de área usam o nível REAL de cada cargo (`permissoes-db` de
 verdade, lendo `permissoes_acesso`).
@@ -300,6 +306,23 @@ sem ninguém perceber.** Está escrito no topo do arquivo; leia antes de mexer.
 - Todo operador ativo aparece em todo tablet, e o **PIN prova AUTORIA**, não
   dá privilégio (`src/lib/auth/pin.ts`). A troca por PIN continua exigindo
   sessão de operador já aberta e só vai pra conta `operador`.
+- **Quem mexe no PIN** (Q197–Q199):
+  - o **operador** cria o próprio no tablet e **troca quando quiser**,
+    digitando o ATUAL antes (`definirMeuPinAction`). O atual passa pelo
+    mesmo contador da troca de operador (5 erros, 30 s). Sem isso, quem pega
+    o tablet ainda logado como um colega trocava o PIN dele;
+  - **admin e gerente** definem o PIN de qualquer operador
+    (`definirPinDoOperadorAction`) e limpam (`limparPinAction`), no quadro
+    de operadores. Fixo por cargo (`isManager`), fora de /permissoes.
+  - Quem define pelos outros fica sabendo do PIN; o operador troca depois se
+    quiser, e ninguém é obrigado.
+  - ⚠️ **"Esse PIN já é de outro operador" só vale pra quem define pelos
+    outros.** No autoatendimento a mesma recusa diria ao operador o PIN de
+    um colega. Dois iguais não quebram nada: a troca é pelo nome escolhido.
+  - ⚠️ `conferirPinComContador` mora em `src/lib/auth/pin-conferencia.ts`,
+    FORA de arquivo `'use server'`: ela recebe o alvo com o hash, e
+    exportada de uma action viraria endpoint pra zerar o bloqueio de
+    qualquer conta.
 - A estação do tablet fica **no aparelho**: cookie
   (`src/lib/auth/estacao-do-aparelho.ts`), que só admin/gerente grava, em
   "Este aparelho" (menu do usuário → `/este-aparelho`). Ela só ORGANIZA a

@@ -15,7 +15,21 @@ export function carregarActions() {
   // Não é action, mas importa `next/headers` e o `@/lib/db`: entra pelo
   // mesmo caminho. É daqui que sai o nome do cookie (`ctx.noAparelho`).
   const aparelho: typeof import('@/lib/auth/estacao-do-aparelho') = require('@/lib/auth/estacao-do-aparelho')
-  return { ordens, producao, remessas, maquinas, estacoes, esteAparelho, login, aparelho }
+  // O PIN também: os dois importam 'server-only', que só resolve com o mock.
+  const pin: typeof import('@/lib/auth/pin') = require('@/lib/auth/pin')
+  const pinConferencia: typeof import('@/lib/auth/pin-conferencia') = require('@/lib/auth/pin-conferencia')
+  return {
+    ordens,
+    producao,
+    remessas,
+    maquinas,
+    estacoes,
+    esteAparelho,
+    login,
+    aparelho,
+    pin,
+    pinConferencia,
+  }
 }
 
 export type Actions = ReturnType<typeof carregarActions>
