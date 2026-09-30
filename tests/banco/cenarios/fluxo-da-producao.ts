@@ -3,7 +3,11 @@
 // Uma OP de estoque (30 peças, máquina 1, ligada a um item de reposição) e
 // uma remessa Full ML com duas OPs (20 e 15 peças, máquinas 2 e 3). O
 // operador inicia, devolve, conclui, desfaz; o gerente corrige, muda destino
-// e despacha. Entre cada ação o relógio anda 1 minuto (relogio.ts).
+// e despacha. Entre cada ação o relógio anda (relogio.ts).
+//
+// O tablet está na estação "casa" (`ctx.noAparelho`), e as 3 máquinas são
+// dela. O operador não é "da" casa: é um operador ativo qualquer. O que muda
+// quando ele cobre OUTRA estação é o cenário estacao-do-tablet.ts.
 //
 // ⚠️ ACTION NOVA DO FLUXO DA PRODUÇÃO GANHA PASSO AQUI (AGENTS.md, seção
 // test:banco). É a única coisa que roda a consulta dela antes do merge.
@@ -28,7 +32,8 @@ async function rodar(ctx: Contexto) {
   const { ordens, producao, remessas } = ctx.acoes
 
   for (const [nome, escolha] of [
-    ['operador com 3 máquinas livres', elenco.operador],
+    ['operador ativo', elenco.operador],
+    ['estação com 3 máquinas livres (e outra pra cobrir)', elenco.estacoes],
     ['gerente', elenco.gerente],
     ['variação de produto', elenco.variacao],
   ] as const) {
@@ -37,8 +42,9 @@ async function rodar(ctx: Contexto) {
       return
     }
   }
-  const { usuario: operador, maquinas } = elenco.operador.valor!
-  const [m1, m2, m3] = maquinas
+  const operador = elenco.operador.valor!
+  const { casa } = elenco.estacoes.valor!
+  const [m1, m2, m3] = casa.maquinas
   const gerente = elenco.gerente.valor!
   const variacao = elenco.variacao.valor!
   const conta = elenco.contaFullMl.valor
@@ -50,6 +56,8 @@ async function rodar(ctx: Contexto) {
   )
 
   // ---------------------------------------------------------------- preparo
+  // O tablet da casa, como o gerente deixou em "Este aparelho".
+  ctx.noAparelho(casa.id)
   const est = await fabrica.opDeEstoque(variacao, 30, gerente.id)
   const reposicaoId = await fabrica.reposicaoEmProducao(variacao, est.id, gerente.id)
   p.checar(
@@ -69,7 +77,7 @@ async function rodar(ctx: Contexto) {
     )
     full = { remessaId, a: a.id, b: b.id }
   }
-  await ctx.passarUmMinuto()
+  await ctx.passarTempo()
 
   // ------------------------------------------- Iniciar e "Peguei errado"
   ctx.como(operador)
@@ -81,7 +89,7 @@ async function rodar(ctx: Contexto) {
     op.status === 'em_producao' && op.maquinaId === m1.id && op.responsavelId === operador.id,
     op,
   )
-  await ctx.passarUmMinuto()
+  await ctx.passarTempo()
 
   r = await ordens.devolverOpParaFilaAction(est.id)
   p.exigir('Peguei errado: a OP volta pra fila', r.success, r)
@@ -94,11 +102,11 @@ async function rodar(ctx: Contexto) {
       (await ler.reposicao(reposicaoId)).estado === 'em_producao',
     op,
   )
-  await ctx.passarUmMinuto()
+  await ctx.passarTempo()
 
   r = await ordens.pegarOrdemAction(est.id, m1.id)
   p.exigir('Iniciar de novo na máquina 1', r.success, r)
-  await ctx.passarUmMinuto()
+  await ctx.passarTempo()
 
   // ---------------------------------------------- 1. não passa da meta
   r = await ordens.concluirProducaoAction(est.id, { produzida: 31, refugo: 0 })
@@ -110,7 +118,7 @@ async function rodar(ctx: Contexto) {
       (await ler.apontamentos(est.id)).length === 0,
     r,
   )
-  await ctx.passarUmMinuto()
+  await ctx.passarTempo()
 
   // --------------------------------------------------- 2. "Terminei"
   r = await ordens.concluirProducaoAction(est.id, { produzida: 28, refugo: 2 })
@@ -144,14 +152,28 @@ async function rodar(ctx: Contexto) {
     repo.estado === 'reposto' && repo.repostoEm !== null,
     repo,
   )
-  await ctx.passarUmMinuto()
+  await ctx.passarTempo()
 
   // ------------------------------------------------------- 3. tablet
-  const contagens = await producao.contarOpsDaEstacao()
-  const terminadas = await producao.listarOpsDaEstacao('terminadas')
+  // A tela montada como a /producao monta: estação do aparelho + abas.
+  const tela = await ctx.telaDoTablet()
+  p.checar(
+    '3. tablet: abre na estação do aparelho',
+    tela.tipo === 'estacao' && tela.id === casa.id,
+    tela,
+  )
+  const naTela = await producao.listarMaquinasDaEstacao(tela)
+  p.checar(
+    '  as 3 máquinas do roteiro estão na tela, e só máquinas da casa',
+    [m1, m2, m3].every((m) => naTela.some((n) => n.id === m.id)) &&
+      naTela.every((n) => n.estacao?.id === casa.id),
+    naTela.map((n) => n.codigo),
+  )
+  const contagens = await producao.contarOpsDaEstacao(tela)
+  const terminadas = await producao.listarOpsDaEstacao('terminadas', tela)
   const noTablet = terminadas.ops.find((o) => o.id === est.id)
   p.checar(
-    '3. tablet: contagens e Terminadas carregam, com a OP e o Desfazer',
+    '  contagens e Terminadas carregam, com a OP e o Desfazer',
     contagens.ids.includes(est.id) && noTablet?.podeDesfazer === true,
     noTablet ?? contagens,
   )
@@ -184,7 +206,7 @@ async function rodar(ctx: Contexto) {
     repoDesfeita.estado === 'em_producao' && repoDesfeita.repostoEm === null,
     repoDesfeita,
   )
-  await ctx.passarUmMinuto()
+  await ctx.passarTempo()
 
   // ------------------------------------------------ 6. conclui de novo
   r = await ordens.concluirProducaoAction(est.id, { produzida: 30, refugo: 0 })
@@ -195,7 +217,7 @@ async function rodar(ctx: Contexto) {
     r,
   )
   const conclusao = (await ler.eventos(est.id)).find((e) => e.para === 'pronto_envio')
-  await ctx.passarUmMinuto()
+  await ctx.passarTempo()
 
   // ---------------------------------------------- 7. corrigir quantidades
   ctx.como(gerente)
@@ -222,7 +244,7 @@ async function rodar(ctx: Contexto) {
     ultimo,
   )
   ctx.como(operador)
-  const depoisDaCorrecao = (await producao.listarOpsDaEstacao('terminadas')).ops.find(
+  const depoisDaCorrecao = (await producao.listarOpsDaEstacao('terminadas', tela)).ops.find(
     (o) => o.id === est.id,
   )
   p.checar(
@@ -231,7 +253,7 @@ async function rodar(ctx: Contexto) {
       depoisDaCorrecao.resumo === conclusao?.observacao,
     { tablet: depoisDaCorrecao?.resumo, conclusao: conclusao?.observacao },
   )
-  await ctx.passarUmMinuto()
+  await ctx.passarTempo()
 
   // ------------------------------------------------------- Full ML
   if (!full) {
@@ -245,7 +267,7 @@ async function rodar(ctx: Contexto) {
       r.success && op.status === 'pronto_envio' && (await ler.estoque(full.a)) === 0,
       r,
     )
-    await ctx.passarUmMinuto()
+    await ctx.passarTempo()
 
     // 9. mudar destino pra Estoque
     ctx.como(gerente)
@@ -260,7 +282,7 @@ async function rodar(ctx: Contexto) {
         (await ler.estoque(full.a)) === 20,
       { r, op },
     )
-    await ctx.passarUmMinuto()
+    await ctx.passarTempo()
 
     // 10. a outra Full, concluída, espera o despacho
     ctx.como(operador)
@@ -273,7 +295,7 @@ async function rodar(ctx: Contexto) {
         (r.message ?? '').includes('espera o despacho'),
       r,
     )
-    await ctx.passarUmMinuto()
+    await ctx.passarTempo()
 
     // 11. despachar
     ctx.como(gerente)
@@ -284,7 +306,7 @@ async function rodar(ctx: Contexto) {
       r.success && op.status === 'enviado' && (await ler.estoque(full.b)) === 0,
       { r, op },
     )
-    await ctx.passarUmMinuto()
+    await ctx.passarTempo()
   }
 
   // ------------------------------------------ 12. leituras depois de tudo

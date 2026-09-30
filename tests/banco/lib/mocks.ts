@@ -32,8 +32,16 @@ type Resolver = (
 ) => string
 const Mod = Module as unknown as { _resolveFilename: Resolver }
 
-/** Quem está "logado" e qual é a transação — trocados pelo cenário. */
-export type Estado = { usuario: AuthUser | null; tx: Tx | null }
+/**
+ * Quem está "logado", qual é a transação e os cookies DO APARELHO — trocados
+ * pelo cenário. O pote de cookies é o do tablet: sobrevive à troca de
+ * usuário (`ctx.como`), igual ao cookie da estação no aparelho de verdade.
+ */
+export type Estado = {
+  usuario: AuthUser | null
+  tx: Tx | null
+  cookies: Map<string, string>
+}
 
 /** Lançado onde o Next faria `redirect()`: a action não passou da guarda. */
 export class Redirecionou extends Error {}
@@ -42,7 +50,7 @@ let instalado: Estado | null = null
 
 export function instalarMocks(): Estado {
   if (instalado) return instalado
-  const estado: Estado = { usuario: null, tx: null }
+  const estado: Estado = { usuario: null, tx: null, cookies: new Map() }
 
   const resolverOriginal = Mod._resolveFilename
   const porPedido: Record<string, string> = {}
@@ -90,7 +98,68 @@ export function instalarMocks(): Estado {
     return real.carregarOverrides()
   }
 
+  // O POTE DE COOKIES, em memória. `set` aceita as duas formas do Next:
+  // (nome, valor, opções) e ({ name, value, ... }). As opções (prazo,
+  // httpOnly) não têm o que fazer aqui.
+  const pote = {
+    get: (nome: string) => {
+      const value = estado.cookies.get(nome)
+      return value === undefined ? undefined : { name: nome, value }
+    },
+    getAll: () =>
+      [...estado.cookies].map(([name, value]) => ({ name, value })),
+    has: (nome: string) => estado.cookies.has(nome),
+    delete: (nome: string | { name: string }) => {
+      estado.cookies.delete(typeof nome === 'string' ? nome : nome.name)
+      return pote
+    },
+    set: (
+      nomeOuCookie: string | { name: string; value: string },
+      valor?: string,
+    ) => {
+      if (typeof nomeOuCookie === 'string') {
+        estado.cookies.set(nomeOuCookie, valor ?? '')
+      } else {
+        estado.cookies.set(nomeOuCookie.name, nomeOuCookie.value)
+      }
+      return pote
+    },
+  }
+
+  /** O que o teste não alcança. Chamou: é dependência nova pra olhar. */
+  function proibido(o: string) {
+    return () => {
+      throw new Error(
+        `${o} chamado dentro do test:banco. O teste não troca sessão de ` +
+          'verdade: veja qual action passou a depender disso (mocks.ts).',
+      )
+    }
+  }
+
   mock('server-only', {})
+  mock('next/headers', {
+    cookies: async () => pote,
+    headers: async () => new Headers(),
+  })
+  mock('next/navigation', {
+    redirect: (para: string) => {
+      throw new Redirecionou(`redirect(${para})`)
+    },
+    notFound: () => {
+      throw new Error('notFound() chamado')
+    },
+  })
+  // O "Este aparelho" e o login leem o usuário por aqui, e não pelo
+  // require-auth. Mesmo usuário da vez; null quando ninguém está "logado".
+  mock('@/lib/auth/get-user', {
+    getCurrentUser: async () => estado.usuario,
+  })
+  mock('@/lib/supabase/server', {
+    createClient: proibido('createClient (supabase/server)'),
+  })
+  mock('@/lib/supabase/admin', {
+    createAdminClient: proibido('createAdminClient (supabase/admin)'),
+  })
   mock('next/cache', {
     revalidatePath: () => {},
     revalidateTag: () => {},

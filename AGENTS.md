@@ -48,18 +48,32 @@ derrubou a aba Produção (Date cru dentro de sql``). O `test:banco` chama as
 actions DE VERDADE contra o banco e desfaz tudo no fim. Com o conserto do #15
 desaplicado, ele cai no passo 3 com o erro da consulta.
 
-**O que cobre** (`tests/banco/cenarios/fluxo-da-producao.ts`): Iniciar e
-"Peguei errado" pelo tablet, a meta do operador, "Terminei" com defeito
-(apontamento, estoque, histórico, reposição), Terminadas e contagens do
-tablet, o quadro, o Desfazer, a correção de quantidades do gerente, o Full
-(concluir, mudar destino pra Estoque, despachar) e as leituras de histórico,
-ficha e Despachadas. As guardas de área usam o nível REAL de cada cargo
-(`permissoes-db` de verdade, lendo `permissoes_acesso`).
+**O que cobre**, em dois cenários, cada um na sua transação desfeita:
 
-**O que NÃO cobre:** tela nenhuma (nada de React), login de verdade (o
-usuário é escolhido pelo teste), PIN e trava do tablet (mockados: nunca
-travado), realtime entre tablets e o `revalidatePath` (mockado, não faz
-nada).
+- `tests/banco/cenarios/fluxo-da-producao.ts` — o dia da produção, com o
+  aparelho na estação "casa": Iniciar e "Peguei errado" pelo tablet, a meta
+  do operador, "Terminei" com defeito (apontamento, estoque, histórico,
+  reposição), a tela do tablet montada como a `/producao` monta (estação do
+  aparelho → `telaDoTablet` → máquinas, contagens e Terminadas), o quadro, o
+  Desfazer, a correção de quantidades do gerente, o Full (concluir, mudar
+  destino pra Estoque, despachar) e as leituras de histórico, ficha e
+  Despachadas.
+- `tests/banco/cenarios/estacao-do-tablet.ts` — a estação é do TABLET (PR
+  #16): só gerente grava "Este aparelho"; a tela abre na estação do aparelho
+  e a Fila é comum; o operador inicia, para, volta e termina numa máquina de
+  OUTRA estação sem recusa (com `maquina_paradas` abrindo e fechando); a OP
+  cai nas Terminadas da aba da máquina; o "Quem é você?" lista todo operador
+  ativo e só operador; o cartão do quadro leva a estação da MÁQUINA; e o
+  aparelho sem estação abre em "todas", sem "Você está cobrindo?".
+
+As guardas de área usam o nível REAL de cada cargo (`permissoes-db` de
+verdade, lendo `permissoes_acesso`).
+
+**O que NÃO cobre:** tela nenhuma (nada de React, então o "Você está
+cobrindo?" só é conferido pela regra pura), login e troca de sessão de
+verdade (o usuário é escolhido pelo teste; o Supabase está mockado pra
+LANÇAR se alguém o chamar), PIN e trava do tablet (mockados: nunca travado),
+realtime entre tablets e o `revalidatePath` (mockado, não faz nada).
 
 **Roda contra o banco de PRODUÇÃO**, e é seguro por três motivos:
 
@@ -70,13 +84,26 @@ nada).
 2. A `DATABASE_URL` é lida do `.env.local` só pro client do teste e sai do
    `process.env`. Se um mock falhar e o `@/lib/db` real carregar, ele não
    conecta. Não existe caminho pra um commit acidental.
-3. No fim, FORA da transação, ele confere as contagens das tabelas do fluxo,
-   o `op_numero_counter` e que nenhuma linha tem a marca do teste. Divergiu:
-   alarme e saída com erro.
+3. No fim, FORA da transação, ele confere as contagens das tabelas do fluxo
+   (incluindo `maquina_paradas`), o `op_numero_counter`, o status de cada
+   máquina viva, que `estacao_operadores` (legado) ficou intocada e que
+   nenhuma linha tem a marca do teste. Divergiu: alarme e saída com erro.
 
-Os dados (operador com 3 máquinas livres, gerente, variação fora da fila de
-reposição, conta Full ML) são escolhidos na hora, nunca IDs fixos. Faltou
+Os dados são escolhidos na hora, nunca IDs fixos: um operador ativo
+QUALQUER (o operador não pertence a estação, e o teste não lê
+`estacao_operadores`), duas estações vivas — a "casa", que vira a estação
+do aparelho, com 3 máquinas livres e aptas, e uma "fora" com 1 máquina livre
+e `operando` —, gerente, variação fora da fila de reposição e conta Full ML.
+Estação é comparada por ID, nunca por nome (o gerente renomeia). Faltou
 algum: os passos que dependem dele são pulados, com o porquê.
+
+⚠️ **O relógio do computador.** O app grava parte dos horários com
+`new Date()` (relógio local) e parte com `now()` (relógio do banco). Em
+30/09 o computador onde o teste roda estava 80 s ATRASADO, e a parada
+fechava antes de abrir (`maquina_paradas_intervalo_ck`). Por isso o teste
+mede a diferença no começo e imprime; acima de 60 s mostra como sincronizar
+o relógio do Windows. E o `ctx.passarTempo()` recua max(5 min, 2 × a
+diferença), inclusive o início das paradas que o teste abriu.
 
 **Quando rodar:** antes de mesclar PR que mexe em action ou SQL do fluxo da
 produção (OP, tablet, remessa, estoque). **Cole a saída no PR.**
@@ -85,14 +112,22 @@ produção (OP, tablet, remessa, estoque). **Cole a saída no PR.**
 `tests/banco/cenarios/` mais uma linha em `CENARIOS` (`tests/banco/index.ts`).
 Os helpers reaproveitáveis ficam em `tests/banco/lib/`: `fabrica` (cria OP,
 remessa e reposição com a marca), `leitura`, `dados` (o elenco),
-`ctx.como(usuario)` e `ctx.passarUmMinuto()`. Esse último existe porque
-dentro da transação o `now()` é um só, e o desfazer e a "conclusão mais
-recente" se decidem por `created_at`.
+`ctx.como(usuario)`, `ctx.noAparelho(estacaoId | null)` (grava a estação
+do aparelho no pote de cookies, pela constante `COOKIE_ESTACAO_DO_APARELHO`),
+`ctx.telaDoTablet(param?)` (a tela como a `/producao` monta) e
+`ctx.passarTempo()`. Esse último existe porque dentro da transação o
+`now()` é um só, e o desfazer e a "conclusão mais recente" se decidem por
+`created_at` — e pelo relógio, acima.
 
 ⚠️ **Os mocks dependem dos imports das actions** (`tests/banco/lib/mocks.ts`).
-Se uma action nova importar algo que só existe dentro do Next (`cookies`,
-`headers`…), o teste quebra no CARREGAMENTO. Aí é pra acrescentar o mock,
-nunca pra contornar. E nenhum arquivo de `tests/banco/` importa action no
+Hoje estão mockados `next/headers` (um pote de cookies em memória, que
+sobrevive ao `ctx.como` como o cookie do tablet), `next/navigation`
+(`redirect` lança `Redirecionou`), `next/cache`, `getCurrentUser` e o
+`require-auth` (o usuário da vez), a trava do tablet e o `@/lib/db` (a
+transação). `@/lib/supabase/server` e `/admin` LANÇAM se chamados: chamou,
+é dependência nova pra olhar. Se uma action nova importar algo que só
+existe dentro do Next, o teste quebra no CARREGAMENTO. Aí é pra acrescentar
+o mock, nunca pra contornar. E nenhum arquivo de `tests/banco/` importa action no
 topo, só `import type`: em CJS o `import` carregaria a action antes do mock.
 
 ## Catálogo: peso e preço vivem no par (produto, tamanho)

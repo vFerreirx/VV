@@ -9,6 +9,7 @@
 // topo, tudo dentro de main(). E nenhum import de action aqui em cima — elas
 // só carregam por `carregarActions()`, depois dos mocks (mocks.ts).
 
+import { estacaoDoTablet } from './cenarios/estacao-do-tablet'
 import { fluxoDaProducao } from './cenarios/fluxo-da-producao'
 import { carregarActions } from './lib/carregar'
 import { PassoFalhou, Placar } from './lib/checagem'
@@ -17,9 +18,10 @@ import type { Cenario } from './lib/contexto'
 import { montarContexto } from './lib/contexto'
 import { rodarDesfeito } from './lib/desfeito'
 import { instalarMocks } from './lib/mocks'
-import { divergencias, tirarRetrato } from './lib/retrato'
+import { medirRelogio } from './lib/relogio'
+import { divergencias, resumoDoRetrato, tirarRetrato } from './lib/retrato'
 
-const CENARIOS: Cenario[] = [fluxoDaProducao]
+const CENARIOS: Cenario[] = [fluxoDaProducao, estacaoDoTablet]
 
 async function main(): Promise<number> {
   const filtro = process.argv.slice(2)
@@ -39,6 +41,7 @@ async function main(): Promise<number> {
   const placar = new Placar()
 
   try {
+    const diferencaDoRelogio = await medirRelogio(conexao.db)
     const antes = await tirarRetrato(conexao.db)
 
     for (const cenario of escolhidos) {
@@ -47,10 +50,14 @@ async function main(): Promise<number> {
         await rodarDesfeito(conexao.db, async (tx) => {
           estado.tx = tx
           try {
-            await cenario.rodar(await montarContexto(tx, estado, acoes, placar))
+            await cenario.rodar(
+              await montarContexto(tx, estado, acoes, placar, diferencaDoRelogio),
+            )
           } finally {
             estado.tx = null
             estado.usuario = null
+            // Cada cenário começa num aparelho sem estação gravada.
+            estado.cookies.clear()
           }
         })
       } catch (erro) {
@@ -66,9 +73,7 @@ async function main(): Promise<number> {
     const depois = await tirarRetrato(conexao.db)
     const erros = divergencias(antes, depois)
     placar.checar(
-      `contagens e contador de OP iguais aos de antes (${Object.entries(depois)
-        .map(([k, v]) => `${k}=${v}`)
-        .join(', ')})`,
+      `contagens, contador de OP e status das máquinas iguais aos de antes (${resumoDoRetrato(depois)})`,
       erros.length === 0,
     )
     if (erros.length > 0) {
