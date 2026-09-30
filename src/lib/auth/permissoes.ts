@@ -33,7 +33,7 @@ export const ROLE_INFO: Record<Role, { label: string; resumo: string }> = {
   },
   operador: {
     label: 'Operador',
-    resumo: 'Pega a OP pra si e movimenta/aponta a produção que é dele.',
+    resumo: 'Inicia, conclui e registra parada em qualquer máquina, pelo tablet.',
   },
   estoquista: {
     label: 'Estoquista',
@@ -51,8 +51,8 @@ export const NIVEL_INFO: Record<Nivel, { label: string; descricao: string }> = {
   total: { label: 'Total', descricao: 'Ver, criar, editar e excluir' },
   ver: { label: 'Só ver', descricao: 'Apenas leitura, sem alterar' },
   proprio: {
-    label: 'O que é da estação dele',
-    descricao: 'Age nas OPs das máquinas da estação dele',
+    label: 'Qualquer OP numa máquina',
+    descricao: 'Age em qualquer OP que está numa máquina, de qualquer estação',
   },
   nenhum: { label: 'Sem acesso', descricao: 'Não aparece no menu' },
 }
@@ -172,15 +172,15 @@ export const AREAS: Area[] = [
     descricao: 'Cadastro e status das máquinas.',
     href: '/maquinas',
     editavel: true,
-    // Operador `nenhum`: a tela dele é o tablet da estação (/producao), onde
-    // também registra parada. A /fabrica é da gerência.
+    // Operador `nenhum`: a tela dele é o tablet (/producao), onde também
+    // registra parada, em qualquer máquina. A /fabrica é da gerência.
     nivelPadrao: padrao({ [G]: 'total', [O]: 'nenhum', [E]: 'ver', [V]: 'ver' }),
   },
   {
     key: 'estacoes',
     secao: 'Fábrica',
     label: 'Estações',
-    descricao: 'Grupos de máquinas com até três operadores.',
+    descricao: 'Grupos de máquinas — o lugar de cada tablet na fábrica.',
     href: '/estacoes',
     editavel: false,
     nivelPadrao: padrao({ [G]: 'total' }),

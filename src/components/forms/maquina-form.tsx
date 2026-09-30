@@ -31,10 +31,10 @@ import {
 } from '@/lib/validators/maquinas'
 
 // ⚠️ SEM `operadorAtualId`. A coluna continua no banco por histórico, mas
-// saiu do formulário e do schema de escrita: quem responde "este operador
-// manda nesta máquina" é `estacao_operadores`, e a policy RLS passou a
-// seguir a estação (56_maquinas_rls_estacao.sql). Enquanto o campo era
-// editável, preencher um cadastro concedia permissão sem ninguém perceber.
+// saiu do formulário e do schema de escrita: nenhum operador "manda" numa
+// máquina — qualquer um age em qualquer uma (src/lib/db/acao-do-operador.ts).
+// Enquanto o campo era editável, preencher um cadastro concedia permissão sem
+// ninguém perceber.
 export type MaquinaFormDefaults = {
   id?: string
   codigo: string

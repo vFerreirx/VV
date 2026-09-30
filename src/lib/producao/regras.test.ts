@@ -28,6 +28,16 @@ import {
 } from '../dia-brasil.ts'
 import { resolverVariacaoDoFaltante } from './faltante-para-op.ts'
 import { reacaoDaEstacao } from './recarga-da-estacao.ts'
+import { avisoDeCobertura } from './cobertura.ts'
+import {
+  abasDoTablet,
+  chaveDaTela,
+  maquinaNaTela,
+  PARAM_SEM_ESTACAO,
+  telaDaChave,
+  telaDoTablet,
+  terminadaNaTela,
+} from './tela-do-tablet.ts'
 import {
   ordenarParaGrade,
   planoDeRetirada,
@@ -301,6 +311,14 @@ test('aceitaNovaOp e motivoDeImpedimento nunca se contradizem', () => {
 
 test('a máquina vence o status', () => {
   assert.equal(destinoDaOrdem('em_producao', true, false), 'maquina')
+})
+
+test('em produção numa máquina de OUTRA estação não cai na fila', () => {
+  // O operador enxerga a fábrica inteira (a estação é do tablet). A OP rodando
+  // na TC-15 está no cartão da aba da Estação 3 — contá-la na Fila do tablet
+  // da Estação 1 seria oferecer pra iniciar o que já está na máquina.
+  assert.equal(destinoDaOrdem('em_producao', true, false), 'maquina')
+  assert.equal(destinoDaOrdem('em_producao', true, true), 'maquina')
 })
 
 test('em produção SEM máquina cai na fila, não some', () => {
@@ -1405,7 +1423,7 @@ test('faltante do pedido: resolve so quando a peca e inequivoca', () => {
 
 test('tablet: so recarrega pelo que e da estacao', () => {
   const ctx = {
-    estacaoId: 'e1',
+    tela: { tipo: 'estacao', id: 'e1' } as const,
     maquinaIds: new Set(['m1', 'm2']),
     opIdsNosCartoes: new Set(['op-card']),
     opIdsContados: new Set(['op-fila', 'op-terminada']),
@@ -1435,6 +1453,132 @@ test('tablet: so recarrega pelo que e da estacao', () => {
   assert.equal(maq({ id: 'm1', estacao_id: 'e2' }), 'tela')
   assert.equal(maq({ id: 'm7', estacao_id: 'e1' }), 'tela')
   assert.equal(maq({ id: 'm9', estacao_id: 'e2' }), null)
+})
+
+test('tablet: a aba de outra estacao e a de sem estacao tambem se mantem vivas', () => {
+  const vazio = new Set<string>()
+  // Aba "Sem estação": a máquina que PERDEU a estação entra nela.
+  const sem = {
+    tela: { tipo: 'sem-estacao' } as const,
+    maquinaIds: new Set(['m5']),
+    opIdsNosCartoes: vazio,
+    opIdsContados: vazio,
+  }
+  assert.equal(
+    reacaoDaEstacao({ tabela: 'maquinas', novo: { id: 'm7', estacao_id: null }, antigo: null }, sem),
+    'tela',
+  )
+  assert.equal(
+    reacaoDaEstacao({ tabela: 'maquinas', novo: { id: 'm8', estacao_id: 'e2' }, antigo: null }, sem),
+    null,
+  )
+  // Exclusão definitiva não traz a linha nova: "sem estacao_id" não é "sem estação".
+  assert.equal(
+    reacaoDaEstacao({ tabela: 'maquinas', novo: {}, antigo: { id: 'm8' } }, sem),
+    null,
+  )
+  // Tablet sem estação ('todas'): toda máquina é da tela.
+  const todas = { ...sem, tela: { tipo: 'todas' } as const }
+  assert.equal(
+    reacaoDaEstacao({ tabela: 'maquinas', novo: { id: 'm8', estacao_id: 'e2' }, antigo: null }, todas),
+    'tela',
+  )
+})
+
+// -----------------------------------------------------------------
+// A estação é do TABLET: qual tela abrir, e o "Você está cobrindo?"
+// (src/lib/producao/tela-do-tablet.ts e cobertura.ts)
+// -----------------------------------------------------------------
+
+test('tablet: abre na estacao do aparelho, e as outras ficam a um toque', () => {
+  const vivas = new Set(['e1', 'e2', 'e3'])
+  assert.deepEqual(telaDoTablet(undefined, 'e2', vivas), { tipo: 'estacao', id: 'e2' })
+  assert.deepEqual(telaDoTablet('e3', 'e2', vivas), { tipo: 'estacao', id: 'e3' })
+  assert.deepEqual(telaDoTablet(PARAM_SEM_ESTACAO, 'e2', vivas), { tipo: 'sem-estacao' })
+  // Estação apagada ou lixo na URL: volta pra casa, e não uma grade vazia.
+  assert.deepEqual(telaDoTablet('e9', 'e2', vivas), { tipo: 'estacao', id: 'e2' })
+  assert.deepEqual(telaDoTablet('lixo', 'e2', vivas), { tipo: 'estacao', id: 'e2' })
+})
+
+test('tablet sem estacao: mostra todas, e a URL nao escolhe aba', () => {
+  const vivas = new Set(['e1'])
+  assert.deepEqual(telaDoTablet(undefined, null, vivas), { tipo: 'todas' })
+  assert.deepEqual(telaDoTablet('e1', null, vivas), { tipo: 'todas' })
+  assert.deepEqual(telaDoTablet(PARAM_SEM_ESTACAO, null, vivas), { tipo: 'todas' })
+})
+
+test('tablet: que maquina e que terminada aparece em cada tela', () => {
+  const e1 = { tipo: 'estacao', id: 'e1' } as const
+  const sem = { tipo: 'sem-estacao' } as const
+  const todas = { tipo: 'todas' } as const
+  assert.equal(maquinaNaTela('e1', e1), true)
+  assert.equal(maquinaNaTela('e2', e1), false)
+  assert.equal(maquinaNaTela(null, e1), false)
+  assert.equal(maquinaNaTela(null, sem), true)
+  assert.equal(maquinaNaTela('e1', sem), false)
+  assert.equal(maquinaNaTela('e2', todas), true)
+  assert.equal(maquinaNaTela(null, todas), true)
+  // Terminada segue a máquina em que foi feita...
+  assert.equal(terminadaNaTela({ estacaoId: 'e1' }, e1), true)
+  assert.equal(terminadaNaTela({ estacaoId: 'e2' }, e1), false)
+  assert.equal(terminadaNaTela({ estacaoId: null }, sem), true)
+  // ...e a que não tem máquina aparece em todas, como a fila.
+  assert.equal(terminadaNaTela(null, e1), true)
+  assert.equal(terminadaNaTela(null, sem), true)
+})
+
+test('tablet: a aba do aparelho vem primeiro, e "Sem estacao" so se houver', () => {
+  const estacoes = [
+    { id: 'e10', nome: 'Estação 10' },
+    { id: 'e3', nome: 'Estação 3' },
+    { id: 'e1', nome: 'Estação 1' },
+    { id: 'e2', nome: 'Estação 2' },
+  ]
+  assert.deepEqual(
+    abasDoTablet(estacoes, 'e2', false).map((a) => [a.chave, a.doAparelho]),
+    [['e2', true], ['e1', false], ['e3', false], ['e10', false]],
+  )
+  const comSem = abasDoTablet(estacoes, 'e1', true)
+  assert.deepEqual(comSem.at(-1), {
+    chave: PARAM_SEM_ESTACAO,
+    nome: 'Sem estação',
+    doAparelho: false,
+  })
+})
+
+test('tablet: a chave da aba ida e volta da a mesma tela', () => {
+  for (const tela of [
+    { tipo: 'estacao', id: 'e1' },
+    { tipo: 'sem-estacao' },
+    { tipo: 'todas' },
+  ] as const) {
+    assert.deepEqual(telaDaChave(chaveDaTela(tela)), tela)
+  }
+})
+
+test('cobertura: avisa na maquina de outra estacao, nunca na de casa', () => {
+  const e1 = { id: 'e1', nome: 'Estação 1' }
+  const e3 = { id: 'e3', nome: 'Estação 3' }
+  assert.equal(avisoDeCobertura({ codigo: 'TC-05', estacao: e1 }, e1), null)
+  assert.equal(
+    avisoDeCobertura({ codigo: 'TC-15', estacao: e3 }, e1),
+    'A TC-15 é da Estação 3. Você está cobrindo?',
+  )
+})
+
+test('cobertura: maquina sem estacao conta como diferente, com texto proprio', () => {
+  const e1 = { id: 'e1', nome: 'Estação 1' }
+  assert.equal(
+    avisoDeCobertura({ codigo: 'TC-20', estacao: null }, e1),
+    'A TC-20 está sem estação. Gravar mesmo assim? Avise o gerente pra colocar ela numa estação.',
+  )
+})
+
+test('cobertura: tablet sem estacao nao avisa nada', () => {
+  // Ele já mostra a faixa fixa "Tablet sem estação — chame o gerente".
+  const e3 = { id: 'e3', nome: 'Estação 3' }
+  assert.equal(avisoDeCobertura({ codigo: 'TC-15', estacao: e3 }, null), null)
+  assert.equal(avisoDeCobertura({ codigo: 'TC-20', estacao: null }, null), null)
 })
 
 // -----------------------------------------------------------------

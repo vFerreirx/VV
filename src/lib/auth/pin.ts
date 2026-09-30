@@ -35,12 +35,18 @@ const TAMANHO_HASH = 64
 // hora, então varrer as 10.000 combinações levaria uma jornada inteira
 // tocando o teclado na frente da fábrica toda.
 //
-// O que sustenta esse número é o que o PIN protege: ATRIBUIÇÃO, não
-// privilégio. Quem adivinha o PIN do colega da mesma estação chega onde já
-// podia chegar — `operadorPodeAgirNaOrdem` deixa qualquer operador agir em
-// qualquer OP da estação dele, de propósito, por causa da virada de turno.
-// O que ele ganha é escrever o nome errado num registro, que o
-// `eventos_kanban` continua desmentindo.
+// O que sustenta esse número é o que o PIN protege: AUTORIA, não
+// privilégio. Todo operador faz as mesmas coisas em todas as máquinas —
+// `operadorPodeAgirNaOrdem` (src/lib/db/acao-do-operador.ts) deixa qualquer
+// um agir em qualquer OP que está numa máquina, de propósito, por causa da
+// virada de turno, do almoço e do revezamento da madrugada. Então quem
+// adivinha o PIN de um colega, de qualquer estação, chega exatamente onde já
+// podia chegar com o próprio. O que ele ganha é escrever o nome errado num
+// registro, que o `eventos_kanban` continua desmentindo.
+//
+// E a troca por PIN só alcança conta de OPERADOR (nunca admin nem gerente) e
+// só a partir de uma sessão de operador já aberta no aparelho — ver
+// `trocarOperadorAction` em src/app/(auth)/login/actions.ts.
 export const TENTATIVAS_ATE_BLOQUEIO = 5
 export const SEGUNDOS_DE_BLOQUEIO = 30
 

@@ -6,6 +6,11 @@
 // recarga segura conexão do banco (em 17/09/2026 o sistema travou por
 // conexão presa; o banco aceita 15).
 //
+// "Esta estação" é a que está NA TELA — a aba aberta —, e não a do aparelho
+// nem a de quem está logado. O operador não pertence a estação nenhuma
+// (src/lib/producao/cobertura.ts), e a aba de outra estação precisa se manter
+// viva igual à de casa.
+//
 // A resposta tem TRÊS níveis:
 //   'tela'       → o evento mexe num cartão desta estação: recarrega a tela.
 //   'contadores' → só pode mudar os números de Fila e Terminadas: recalcula
@@ -23,9 +28,12 @@
 // ⚠️ OS NOMES DAS COLUNAS SÃO OS DO BANCO (snake_case): o payload do Realtime
 // não passa pelo Drizzle.
 
+import { maquinaNaTela, type TelaDoTablet } from './tela-do-tablet.ts'
+
 export type ContextoDaEstacao = {
-  estacaoId: string | null
-  /** Máquinas desta estação. */
+  /** A tela aberta. Na 'todas' (tablet sem estação) toda máquina é daqui. */
+  tela: TelaDoTablet
+  /** Máquinas na tela. */
   maquinaIds: ReadonlySet<string>
   /** OPs que estão agora nos cartões (em produção nas máquinas daqui). */
   opIdsNosCartoes: ReadonlySet<string>
@@ -53,8 +61,10 @@ export function reacaoDaEstacao(
 
   if (evento.tabela === 'maquinas') {
     if (id !== null && ctx.maquinaIds.has(id)) return 'tela'
-    // Máquina que ENTROU nesta estação (a que saiu já estava na lista).
-    if (ctx.estacaoId !== null && texto(novo?.estacao_id) === ctx.estacaoId) {
+    // Máquina que ENTROU nesta tela (a que saiu já estava na lista). Só com
+    // a linha nova de verdade: sem ela, `estacao_id` ausente leria como "sem
+    // estação".
+    if (novo !== null && maquinaNaTela(texto(novo.estacao_id), ctx.tela)) {
       return 'tela'
     }
     return null
@@ -65,8 +75,8 @@ export function reacaoDaEstacao(
     const maquinaNova = texto(novo?.maquina_id)
     if (maquinaNova !== null && ctx.maquinaIds.has(maquinaNova)) return 'tela'
     if (id !== null && ctx.opIdsContados.has(id)) return 'contadores'
-    // OP SEM MÁQUINA é da fila de TODAS as estações (`condicaoDeVisaoDoOperador`):
-    // uma OP nova, ou mexida na fila, muda o contador daqui também.
+    // OP SEM MÁQUINA é da fila de TODAS as estações — a fila é comum: uma OP
+    // nova, ou mexida na fila, muda o contador daqui também.
     if (novo !== null && maquinaNova === null) return 'contadores'
     return null
   }

@@ -17,8 +17,10 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 /**
- * O que falta pra fábrica estar montada: máquina sem estação não aparece em
- * tablet nenhum, e operador sem PIN não consegue trocar de turno no tablet.
+ * O que falta pra fábrica estar montada: máquina sem estação não abre na tela
+ * de nenhum tablet (fica na aba "Sem estação", e cada toque nela pergunta
+ * "Gravar mesmo assim?"), e operador sem PIN não consegue trocar de turno no
+ * tablet.
  */
 export type PendenciasDaFabrica = {
   /**
@@ -26,11 +28,9 @@ export type PendenciasDaFabrica = {
    * e a faixa precisa dizer isso — senão fica vazia e parece tudo pronto.
    */
   nenhumOperadorAtivo: boolean
-  /** Nomes das estações vivas sem nenhum operador ATIVO. */
-  estacoesSemOperador: string[]
   /** Códigos das máquinas sem estação. */
   maquinasSemEstacao: string[]
-  /** Nomes dos operadores ativos, com estação, que ainda não criaram PIN. */
+  /** Nomes dos operadores ativos que ainda não criaram PIN. */
   operadoresSemPin: string[]
 }
 
@@ -82,8 +82,8 @@ export function FabricaTabs({
       <div>
         <h1 className="text-2xl font-semibold">Fábrica</h1>
         <p className="text-muted-foreground mt-1 text-sm">
-          Máquinas da fábrica e as estações (grupos de máquinas com até três
-          operadores).
+          Máquinas da fábrica e as estações (o grupo de máquinas perto de
+          cada tablet).
         </p>
       </div>
 
@@ -179,11 +179,10 @@ function FaixaDePendencias({
 }) {
   const {
     nenhumOperadorAtivo: semNinguem,
-    estacoesSemOperador: est,
     maquinasSemEstacao: maq,
     operadoresSemPin: ops,
   } = pendencias
-  if (!semNinguem && est.length === 0 && maq.length === 0 && ops.length === 0) {
+  if (!semNinguem && maq.length === 0 && ops.length === 0) {
     return null
   }
 
@@ -191,16 +190,14 @@ function FaixaDePendencias({
     <div className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
       <ListChecks className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
       <div className="min-w-0 flex-1 space-y-1">
-        {/* ⚠️ SEM OPERADOR NENHUM, A FRASE É ESSA — e não "N estações sem
-            operador", que seriam todas e esconderiam a causa. É o bloqueio
-            de tudo o que vem embaixo: sem operador não há estação atendida
-            nem PIN pra criar. */}
-        {semNinguem ? (
+        {/* ⚠️ SEM OPERADOR NENHUM, A FRASE É ESSA. É o bloqueio de tudo:
+            sem operador ninguém entra nos tablets, e não há PIN pra criar. */}
+        {semNinguem && (
           <p>
             <span className="font-medium">Nenhum operador cadastrado.</span>
             <span className="text-muted-foreground">
               {' '}
-              As estações não têm quem opere.{' '}
+              Ninguém entra nos tablets.{' '}
               {podeCriarUsuario ? (
                 <>
                   Crie um usuário com cargo Operador em{' '}
@@ -217,20 +214,6 @@ function FaixaDePendencias({
               )}
             </span>
           </p>
-        ) : (
-          est.length > 0 && (
-            <p>
-              <span className="font-medium">
-                {est.length} {est.length === 1 ? 'estação' : 'estações'} sem
-                operador
-              </span>
-              <span className="text-muted-foreground">
-                {' '}
-                ({est.join(', ')}) — ninguém entra no tablet{' '}
-                {est.length === 1 ? 'dela' : 'delas'}.
-              </span>
-            </p>
-          )
         )}
         {maq.length > 0 && (
           <p>
@@ -240,7 +223,7 @@ function FaixaDePendencias({
             </span>
             <span className="text-muted-foreground">
               {' '}
-              ({maq.join(', ')}) — não aparecem em nenhum tablet.
+              ({maq.join(', ')}) — no tablet, ficam na aba “Sem estação”.
             </span>
           </p>
         )}
@@ -252,14 +235,13 @@ function FaixaDePendencias({
             </span>
             <span className="text-muted-foreground">
               {' '}
-              ({ops.join(', ')}) — o PIN é criado pelo próprio operador, no
-              tablet da estação.
+              ({ops.join(', ')}) — o PIN é criado pelo próprio operador, em
+              qualquer tablet.
             </span>
           </p>
         )}
       </div>
-      {(maq.length > 0 || (!semNinguem && est.length > 0)) &&
-        irParaEstacoes && (
+      {maq.length > 0 && irParaEstacoes && (
         <Button size="sm" variant="outline" onClick={irParaEstacoes}>
           Ver estações
         </Button>

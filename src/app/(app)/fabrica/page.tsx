@@ -36,12 +36,12 @@ export default async function FabricaPage({
   const verEstacoes = nEst !== 'nenhum'
   if (!verMaquinas && !verEstacoes) redirect('/dashboard')
 
-  // ⚠️ O OPERADOR NÃO É PÚBLICO DESTA TELA. Ele registra parada no tablet da
-  // estação (/producao), com a trava de PIN dizendo quem tocou; aqui, parar e
-  // liberar máquina é da gerência, pela escrita na área `maquinas`. O padrão
-  // do operador nessa área é `nenhum` (src/lib/auth/permissoes.ts) — e
-  // `trocarStatusAction` continua aceitando o operador da estação, porque é
-  // a mesma action que o tablet chama.
+  // ⚠️ O OPERADOR NÃO É PÚBLICO DESTA TELA. Ele registra parada no tablet
+  // (/producao), com a trava de PIN dizendo quem tocou; aqui, parar e liberar
+  // máquina é da gerência, pela escrita na área `maquinas`. O padrão do
+  // operador nessa área é `nenhum` (src/lib/auth/permissoes.ts) — e
+  // `trocarStatusAction` continua aceitando o operador, em qualquer máquina,
+  // porque é a mesma action que o tablet chama.
   //
   // TUDO EM PARALELO: a tela recarrega a cada mudança de OP ou de máquina, e
   // as máquinas em série antes das estações seguravam a conexão pela soma.
@@ -61,21 +61,18 @@ export default async function FabricaPage({
   // O PASSO 2, só pra quem monta as estações. As listas já vieram acima; o
   // PIN chega como booleano (`temPin`), nunca o hash.
   //
-  // ⚠️ "SEM OPERADOR" CONTA OPERADOR ATIVO, e por isso sai de `operadores` e
-  // não de `estacoes[].operadores`. Aquela lista só descarta usuário
-  // EXCLUÍDO: um operador desativado ainda vinculado faria a estação parecer
-  // atendida sem ninguém conseguir entrar no tablet dela.
+  // ⚠️ NÃO EXISTE MAIS "ESTAÇÃO SEM OPERADOR". O operador não pertence a
+  // estação — todo operador ativo aparece em todo tablet —, então o que falta
+  // é máquina sem estação e operador sem PIN, e o PIN conta TODO operador
+  // ativo (antes só contava quem estava numa estação).
   const pendencias: PendenciasDaFabrica | null = podeEscrever(nEst)
     ? {
         nenhumOperadorAtivo: operadores.length === 0,
-        estacoesSemOperador: estacoes
-          .filter((e) => !operadores.some((o) => o.estacaoAtualId === e.id))
-          .map((e) => e.nome),
         maquinasSemEstacao: maquinasOpcoes
           .filter((m) => m.estacaoId === null)
           .map((m) => m.codigo),
         operadoresSemPin: operadores
-          .filter((o) => o.estacaoAtualId !== null && !o.temPin)
+          .filter((o) => !o.temPin)
           .map((o) => o.nome),
       }
     : null

@@ -9,7 +9,6 @@ import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
 import { nivelDaAreaPara } from '@/lib/auth/permissoes-db'
 import { requireAuth, requireAreaEscrita } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
-import { estacaoDoOperador } from '@/lib/db/estacao-operadores'
 import { isUniqueViolation } from '@/lib/db/is-unique-violation'
 import {
   estacoes,
@@ -554,9 +553,10 @@ export async function atualizarMaquinaAction(
 //
 // O `operador_atual_id` some da conta de propósito: no banco ele aponta, em
 // três máquinas, pra um usuário APAGADO — e os três operadores reais não são
-// `operador_atual` de nada. Quem responde "este operador manda nesta
-// máquina?" é a ESTAÇÃO (`estacao_operadores`), que é o que a tela do
-// operador já usa. A coluna continua no banco; ver a nota em `listarMaquinas`.
+// `operador_atual` de nada. E o operador não pertence a máquina nem a
+// estação nenhuma: ele registra Parada e Voltou em QUALQUER máquina, como age
+// em qualquer OP (src/lib/db/acao-do-operador.ts). A coluna continua no
+// banco; ver a nota em `listarMaquinas`.
 export async function trocarStatusAction(
   id: string,
   input: TrocarStatusMaquinaInput,
@@ -584,21 +584,14 @@ export async function trocarStatusAction(
     return { success: false, error: 'Máquina não encontrada' }
   }
 
-  // Admin e gerente pelo nível da área; o operador, só nas máquinas da
-  // estação DELE — a mesma regra que já governa o que ele enxerga e move na
-  // produção (src/lib/db/estacao-operadores.ts).
+  // Admin e gerente pelo nível da área; o operador, em QUALQUER máquina —
+  // a estação é do tablet, não dele, e cobrir a máquina do colega inclui
+  // dizer que ela parou. O tablet pergunta "Você está cobrindo?" antes
+  // (src/lib/producao/cobertura.ts), mas isso é tela: aqui não se recusa por
+  // estação. Quem registrou a parada fica em `maquina_paradas`.
   const podeAlterar = podeEscrever(await nivelDaAreaPara(user.role, 'maquinas'))
-  if (!podeAlterar) {
-    if (user.role !== 'operador') {
-      return { success: false, error: 'Sem permissão pra alterar máquinas' }
-    }
-    const estacao = await estacaoDoOperador(user.id)
-    if (!estacao || estacao.id !== atual.estacaoId) {
-      return {
-        success: false,
-        error: 'Essa máquina não é da sua estação',
-      }
-    }
+  if (!podeAlterar && user.role !== 'operador') {
+    return { success: false, error: 'Sem permissão pra alterar máquinas' }
   }
 
   // O status e a parada mudam JUNTOS ou não mudam — ver `sincronizarParada`.

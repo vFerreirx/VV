@@ -23,10 +23,6 @@ import { isManager, requireArea, requireAuth } from '@/lib/auth/require-auth'
 import { PRIORIDADE_NIVEIS, type PrioridadeNivel } from '@/lib/prioridade'
 import { db } from '@/lib/db'
 import {
-  condicaoDeVisaoDoOperador,
-  estacaoDoOperador,
-} from '@/lib/db/estacao-operadores'
-import {
   concluidaDesdeSql,
   concluidaEmSql,
   marcosDasOps,
@@ -37,7 +33,6 @@ import {
   contasMarketplace,
   cores,
   maquinaParadas,
-  estacaoOperadores,
   estacoes,
   eventosKanban,
   maquinas,
@@ -70,6 +65,10 @@ import { erroDoAutorDoDesfazer } from '@/lib/producao/conclusao'
 import type { MaquinaStatus } from '@/lib/producao/estado-maquina'
 import { tamanhoUnicoSql } from '@/lib/db/tamanho-unico'
 import { STATUS_QUE_INICIAM } from '@/lib/producao/inicio-da-op'
+import {
+  terminadaNaTela,
+  type TelaDoTablet,
+} from '@/lib/producao/tela-do-tablet'
 import { canalValues, statusValues } from '@/lib/validators/ordens'
 
 // -----------------------------------------------------------------
@@ -181,7 +180,7 @@ export type KanbanFiltros = {
 export async function listarOrdensProducao(
   filtros: KanbanFiltros = {},
 ): Promise<KanbanCardData[]> {
-  const user = await requireAuth()
+  await requireAuth()
 
   const conditions = [
     isNull(ordensProducao.deletedAt),
@@ -197,13 +196,9 @@ export async function listarOrdensProducao(
     )!,
   ]
 
-  // O operador enxerga a fila comum + a estação dele. A regra mora em
-  // src/lib/db/estacao-operadores.ts porque ela vale IGUAL aqui e na lista
-  // de /ordens — eram duas cópias da versão antiga, e divergir faria a OP
-  // aparecer no board e sumir da lista. Os demais cargos veem tudo.
-  if (user.role === 'operador') {
-    conditions.push(await condicaoDeVisaoDoOperador(user.id))
-  }
+  // SEM FILTRO POR CARGO, igual à lista de /ordens: o operador enxerga a
+  // fábrica inteira, porque age em qualquer máquina (a estação é do tablet,
+  // não dele — src/lib/db/acao-do-operador.ts).
 
   if (filtros.q && filtros.q.trim().length > 0) {
     const term = `%${filtros.q.trim()}%`
@@ -226,9 +221,11 @@ export async function listarOrdensProducao(
     conditions.push(eq(ordensProducao.responsavelId, filtros.responsavelId))
   }
 
-  // Estação via máquina (rota principal) e via responsável (fallback).
+  // A cor do card é a da estação da MÁQUINA, e só dela. Havia um fallback
+  // pela estação do RESPONSÁVEL (via `estacao_operadores`), que saiu quando o
+  // operador deixou de pertencer a estação: a OP sem máquina não é de estação
+  // nenhuma, e pintá-la com a cor de quem pegou diria o contrário.
   const estMaq = alias(estacoes, 'est_maq')
-  const estResp = alias(estacoes, 'est_resp')
 
   const rows = await db
     .select({
@@ -247,8 +244,6 @@ export async function listarOrdensProducao(
       remessaDataEnvio: remessasFull.dataEnvio,
       estacaoCorMaq: estMaq.cor,
       estacaoNomeMaq: estMaq.nome,
-      estacaoCorResp: estResp.cor,
-      estacaoNomeResp: estResp.nome,
       // Qualifica "ordens_producao"."id" nas duas subqueries abaixo — sem
       // isso o Postgres correlaciona com o `id` da própria subquery
       // (apontamentos_producao / eventos_kanban) e o valor nunca bate
@@ -306,25 +301,6 @@ export async function listarOrdensProducao(
       estMaq,
       and(eq(estMaq.id, maquinas.estacaoId), isNull(estMaq.deletedAt)),
     )
-    // Estacao pelo RESPONSAVEL, via estacao_operadores. Antes isto casava
-    // com operador_dia_id/operador_noite_id, que viraram legado no item B e
-    // nunca mais recebem escrita — o fallback tinha parado de funcionar em
-    // silencio pra toda estacao cadastrada na tela nova.
-    //
-    // Duas leftJoin encadeadas, e nao uma com OR: e o
-    // `UNIQUE (operador_id)` que garante no maximo UMA linha aqui. Sem ele o
-    // card duplicaria na coluna.
-    .leftJoin(
-      estacaoOperadores,
-      eq(estacaoOperadores.operadorId, ordensProducao.responsavelId),
-    )
-    .leftJoin(
-      estResp,
-      and(
-        eq(estResp.id, estacaoOperadores.estacaoId),
-        isNull(estResp.deletedAt),
-      ),
-    )
     .where(and(...conditions))
     .orderBy(
       // Enum ordem_prioridade é declarado ['baixa','normal','alta','urgente']
@@ -357,8 +333,6 @@ export async function listarOrdensProducao(
       remessaContaNome,
       estacaoCorMaq,
       estacaoNomeMaq,
-      estacaoCorResp,
-      estacaoNomeResp,
       produzido,
       refugo,
       desdeStatus,
@@ -390,8 +364,8 @@ export async function listarOrdensProducao(
           : null,
       responsavelId: op.responsavelId,
       responsavelNome: responsavelNome ?? null,
-      estacaoCor: estacaoCorMaq ?? estacaoCorResp ?? null,
-      estacaoNome: estacaoNomeMaq ?? estacaoNomeResp ?? null,
+      estacaoCor: estacaoCorMaq ?? null,
+      estacaoNome: estacaoNomeMaq ?? null,
       produzido: produzido ?? 0,
       refugo: refugo ?? 0,
       dataPrevistaFim: op.dataPrevistaFim,
@@ -463,6 +437,11 @@ export type MaquinaDaEstacao = {
   id: string
   codigo: string
   nome: string
+  /**
+   * A estação VIVA da máquina, ou null. Pro "Você está cobrindo?"
+   * (src/lib/producao/cobertura.ts) e pras seções do tablet sem estação.
+   */
+  estacao: { id: string; nome: string } | null
   status: MaquinaStatus
   /** A OP em produção nesta máquina, ou null. No máximo uma — ver acima. */
   op: OpNaMaquina | null
@@ -480,30 +459,88 @@ export type MaquinaDaEstacao = {
   } | null
 }
 
-export type VisaoDaEstacao = {
-  estacao: { id: string; nome: string } | null
-  maquinas: MaquinaDaEstacao[]
+const uuidRe =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * A tela veio do cliente (as actions são endpoints), então é conferida antes
+ * de virar filtro. Não é permissão — é só não mandar lixo pro SQL.
+ */
+function telaValida(tela: TelaDoTablet): boolean {
+  return tela.tipo !== 'estacao' || uuidRe.test(tela.id)
 }
 
-export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
+/**
+ * O recorte de máquinas da tela, sobre o LEFT JOIN com a estação VIVA
+ * (`estacoes` com `deleted_at IS NULL`). "Sem estação" é a estação viva ser
+ * nula — pega também a máquina que ficou apontando pra uma estação apagada,
+ * que é o mesmo que `maquinaNaTela` enxerga pela `estacao` devolvida.
+ */
+function filtroDaTela(tela: TelaDoTablet) {
+  switch (tela.tipo) {
+    case 'todas':
+      return undefined
+    case 'sem-estacao':
+      return isNull(estacoes.id)
+    case 'estacao':
+      return eq(estacoes.id, tela.id)
+  }
+}
+
+export type EstacoesDoTablet = {
+  estacoes: { id: string; nome: string }[]
+  /** Há máquina viva sem estação viva — a aba "Sem estação" existe. */
+  haMaquinaSemEstacao: boolean
+}
+
+/** O que monta as abas do tablet (src/lib/producao/tela-do-tablet.ts). */
+export async function listarEstacoesDoTablet(): Promise<EstacoesDoTablet> {
+  await requireArea('kanban')
+  const [vivas, [semEstacao]] = await Promise.all([
+    db
+      .select({ id: estacoes.id, nome: estacoes.nome })
+      .from(estacoes)
+      .where(isNull(estacoes.deletedAt)),
+    db
+      .select({ id: maquinas.id })
+      .from(maquinas)
+      .leftJoin(
+        estacoes,
+        and(eq(estacoes.id, maquinas.estacaoId), isNull(estacoes.deletedAt)),
+      )
+      .where(and(isNull(maquinas.deletedAt), isNull(estacoes.id)))
+      .limit(1),
+  ])
+  return { estacoes: vivas, haMaquinaSemEstacao: semEstacao !== undefined }
+}
+
+/**
+ * As máquinas da tela do tablet — a aba aberta, ou todas no tablet sem
+ * estação (src/lib/producao/tela-do-tablet.ts).
+ *
+ * A tela vem da URL, e não do usuário: o operador não pertence a estação
+ * nenhuma, e a estação do APARELHO só decide qual aba abre primeiro. Ver
+ * outra estação não dá nada que ele já não tenha — ele age em qualquer
+ * máquina (src/lib/db/acao-do-operador.ts).
+ */
+export async function listarMaquinasDaEstacao(
+  tela: TelaDoTablet,
+): Promise<MaquinaDaEstacao[]> {
   // `requireArea`, e não `requireAuth`: o arquivo é 'use server', então esta
   // função é um endpoint mesmo só sendo chamada pela página — e a página já
   // exige a área. Sem isto, quem tem 'kanban' em `nenhum` teria a tela
   // fechada e a leitura aberta, que é a porta dos fundos exata que
   // /permissoes promete não existir.
-  const user = await requireArea('kanban')
-
-  const estacao = await estacaoDoOperador(user.id)
-  // Sem estação não há máquinas pra mostrar — e a tela vira o aviso, não uma
-  // grade vazia. Admin e gerente também caem aqui (não têm estação), mas
-  // nenhum dos dois usa esta visão: eles vão pro kanban.
-  if (!estacao) return { estacao: null, maquinas: [] }
+  await requireArea('kanban')
+  if (!telaValida(tela)) return []
 
   const rows = await db
     .select({
       id: maquinas.id,
       codigo: maquinas.codigo,
       nome: maquinas.nome,
+      estacaoId: estacoes.id,
+      estacaoNome: estacoes.nome,
       status: maquinas.status,
       opId: ordensProducao.id,
       opNumero: ordensProducao.numero,
@@ -543,6 +580,10 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
     })
     .from(maquinas)
     .leftJoin(
+      estacoes,
+      and(eq(estacoes.id, maquinas.estacaoId), isNull(estacoes.deletedAt)),
+    )
+    .leftJoin(
       ordensProducao,
       and(
         eq(ordensProducao.maquinaId, maquinas.id),
@@ -574,18 +615,20 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
         isNull(maquinaParadas.encerradaEm),
       ),
     )
-    .where(and(eq(maquinas.estacaoId, estacao.id), isNull(maquinas.deletedAt)))
+    .where(and(filtroDaTela(tela), isNull(maquinas.deletedAt)))
     // POSIÇÃO ESTÁVEL. O cartão da TC-01 é sempre o primeiro, ocupada ou
     // livre: quem trabalha aqui aprende a estação pela posição, e uma grade
     // que se reordena quando uma OP começa obriga a reler tudo toda vez.
     .orderBy(asc(maquinas.codigo))
 
-  return {
-    estacao: { id: estacao.id, nome: estacao.nome },
-    maquinas: rows.map((r) => ({
+  return rows.map((r) => ({
       id: r.id,
       codigo: r.codigo,
       nome: r.nome,
+      estacao:
+        r.estacaoId !== null && r.estacaoNome !== null
+          ? { id: r.estacaoId, nome: r.estacaoNome }
+          : null,
       status: r.status,
       op:
         r.opId === null
@@ -624,8 +667,7 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
               motivo: r.paradaMotivo,
               observacaoAbertura: r.paradaObservacao,
             },
-    })),
-  }
+    }))
 }
 
 // -----------------------------------------------------------------
@@ -646,10 +688,9 @@ export async function listarMaquinasDaEstacao(): Promise<VisaoDaEstacao> {
 // urgentes e a tela AVISA ("mostrando 300 de 412") — em vez de travar o
 // tablet, ou de esconder OP sem dizer.
 //
-// ⚠️ A MÁQUINA VEM POR PARÂMETRO E É VALIDADA CONTRA A ESTAÇÃO DELE. A
-// estação, nunca — sai do usuário autenticado. Sem a validação, mandar um
-// `maquinaId` de fora viraria um jeito de ler a fila da estação alheia por
-// chamada direta à action (o arquivo é 'use server': ela é endpoint).
+// A MÁQUINA VEM POR PARÂMETRO, e pode ser de QUALQUER estação: o operador
+// inicia em qualquer máquina (a estação é do tablet, não dele), e a fila é
+// comum. Ela só é conferida como máquina viva.
 //
 // O filtro de status vem de `STATUS_QUE_INICIAM`, a MESMA lista que
 // `pegarOrdemAction` aceita. Divergir aqui produz um de dois estragos: a
@@ -715,23 +756,13 @@ export async function listarOpsParaIniciar(
   maquinaId: string,
   filtros: { q?: string } = {},
 ): Promise<ListaDoIniciar> {
-  const user = await requireArea('kanban')
+  await requireArea('kanban')
+  if (!uuidRe.test(maquinaId)) return { ops: [], total: 0, cortada: false }
 
-  const estacao = await estacaoDoOperador(user.id)
-  if (!estacao) return { ops: [], total: 0, cortada: false }
-
-  // A máquina precisa ser DESTA estação. `listarMaquinasDaEstacao` só
-  // desenha cartões daqui, mas esta função não pode confiar na tela.
   const [maquina] = await db
     .select({ id: maquinas.id })
     .from(maquinas)
-    .where(
-      and(
-        eq(maquinas.id, maquinaId),
-        eq(maquinas.estacaoId, estacao.id),
-        isNull(maquinas.deletedAt),
-      ),
-    )
+    .where(and(eq(maquinas.id, maquinaId), isNull(maquinas.deletedAt)))
     .limit(1)
   if (!maquina) return { ops: [], total: 0, cortada: false }
 
@@ -904,37 +935,25 @@ const SO_PELA_CONCLUSAO = [
   'cancelado',
 ] as const satisfies readonly StatusDaOrdem[]
 
-/** As OPs que o operador enxerga, agrupadas pelo destino na tela dele. */
+/**
+ * As OPs da tela do tablet, agrupadas pelo destino.
+ *
+ * A FILA É COMUM: toda OP esperando aparece em toda aba, porque qualquer
+ * operador inicia em qualquer máquina. As TERMINADAS seguem a estação que
+ * está na tela, pela máquina em que a OP foi feita (`terminadaNaTela`).
+ */
 async function opsPorDestino(
-  userId: string,
+  tela: TelaDoTablet,
 ): Promise<Map<DestinoNaEstacao, OrdemMagra[]>> {
-  const estacao = await estacaoDoOperador(userId)
-
-  // As máquinas da estação. É o que decide `estaNumaMaquinaDaEstacao` sem
-  // adivinhação: sem esta lista, "está no cartão?" viraria a inferência
-  // "em_producao e tem máquina", que só é verdade por causa de um filtro
-  // que mora noutro arquivo.
-  const idsDeMaquinas = estacao
-    ? new Set(
-        (
-          await db
-            .select({ id: maquinas.id })
-            .from(maquinas)
-            .where(
-              and(
-                eq(maquinas.estacaoId, estacao.id),
-                isNull(maquinas.deletedAt),
-              ),
-            )
-        ).map((m) => m.id),
-      )
-    : new Set<string>()
-
   // ⚠️ FILTRADO NO SQL. Antes esta consulta lia TODAS as OPs da estação,
   // desde sempre, e descartava finalizadas e canceladas em memória — em
   // poucos meses, milhares de linhas a cada recarga de tablet. Agora só vem o
   // que ainda está no chão (fila, máquina) e o que foi concluído dentro da
   // janela de 24 h.
+  //
+  // A máquina e a estação vêm VIVAS (LEFT JOIN com `deleted_at IS NULL`):
+  // "está numa máquina?" e "de que estação?" sem adivinhação. Os dois joins
+  // são por chave primária, então não duplicam a linha da OP.
   const agora = new Date()
   const rows = await db
     .select({
@@ -945,12 +964,24 @@ async function opsPorDestino(
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
       numero: ordensProducao.numero,
       concluidaEm: concluidaEmSql,
+      maquinaViva: maquinas.id,
+      estacaoDaMaquina: estacoes.id,
     })
     .from(ordensProducao)
+    .leftJoin(
+      maquinas,
+      and(
+        eq(maquinas.id, ordensProducao.maquinaId),
+        isNull(maquinas.deletedAt),
+      ),
+    )
+    .leftJoin(
+      estacoes,
+      and(eq(estacoes.id, maquinas.estacaoId), isNull(estacoes.deletedAt)),
+    )
     .where(
       and(
         isNull(ordensProducao.deletedAt),
-        await condicaoDeVisaoDoOperador(userId),
         or(
           notInArray(ordensProducao.status, [...SO_PELA_CONCLUSAO]),
           concluidaDesdeSql(inicioDaJanela(agora)),
@@ -959,20 +990,29 @@ async function opsPorDestino(
     )
 
   const porDestino = new Map<DestinoNaEstacao, OrdemMagra[]>()
-  for (const { concluidaEm, ...r } of rows) {
-    // No cartão da máquina só entra a OP EM PRODUÇÃO — o mesmo recorte do
-    // índice único da migration 50 e do LEFT JOIN de
-    // `listarMaquinasDaEstacao`. Uma OP `pronto_envio` que ainda carrega a
-    // máquina antiga não está mais lá.
-    const naMaquina =
-      r.status === 'em_producao' &&
-      r.maquinaId !== null &&
-      idsDeMaquinas.has(r.maquinaId)
+  for (const { concluidaEm, maquinaViva, estacaoDaMaquina, ...r } of rows) {
+    // Na máquina só está a OP EM PRODUÇÃO — o mesmo recorte do índice único
+    // da migration 50 e do LEFT JOIN de `listarMaquinasDaEstacao`. Uma OP
+    // `pronto_envio` que ainda carrega a máquina antiga não está mais lá.
+    //
+    // ⚠️ Em QUALQUER máquina viva, e não só nas da tela: a OP rodando na
+    // Estação 3 está no cartão da aba dela, e não pode cair na Fila da
+    // Estação 1 (ver `destinoDaOrdem`).
+    const naMaquina = r.status === 'em_producao' && maquinaViva !== null
     const destino = destinoDaOrdem(
       r.status,
       naMaquina,
       concluidaNaJanela(concluidaEm ? new Date(concluidaEm) : null, agora),
     )
+    if (
+      destino === 'terminadas' &&
+      !terminadaNaTela(
+        maquinaViva !== null ? { estacaoId: estacaoDaMaquina } : null,
+        tela,
+      )
+    ) {
+      continue
+    }
     const lista = porDestino.get(destino) ?? []
     lista.push(r)
     porDestino.set(destino, lista)
@@ -1007,9 +1047,12 @@ export type ContagensDaEstacao = {
   ids: string[]
 }
 
-export async function contarOpsDaEstacao(): Promise<ContagensDaEstacao> {
-  const user = await requireArea('kanban')
-  const porDestino = await opsPorDestino(user.id)
+export async function contarOpsDaEstacao(
+  tela: TelaDoTablet,
+): Promise<ContagensDaEstacao> {
+  await requireArea('kanban')
+  if (!telaValida(tela)) return { fila: 0, terminadas: 0, ids: [] }
+  const porDestino = await opsPorDestino(tela)
   const fila = porDestino.get('fila') ?? []
   const terminadas = porDestino.get('terminadas') ?? []
   return {
@@ -1025,6 +1068,11 @@ export async function contarOpsDaEstacao(): Promise<ContagensDaEstacao> {
 // que salvou mesmo?" depois que o toast sumiu. Duas perguntas, uma lista.
 export type OpDaConsulta = OpParaIniciar & {
   maquinaCodigo: string | null
+  /**
+   * A estação viva da máquina da OP, pro "Você está cobrindo?" do Desfazer
+   * (src/lib/producao/cobertura.ts). Null quando a máquina está sem estação.
+   */
+  maquinaEstacao: { id: string; nome: string } | null
   /** Só preenchido em 'terminadas'. */
   concluidaEm: Date | null
   concluidaPor: string | null
@@ -1053,11 +1101,13 @@ export type PaginaDaConsulta = {
 /** Uma página da fila ou das terminadas — só leitura, fora da área principal. */
 export async function listarOpsDaEstacao(
   destino: 'fila' | 'terminadas',
+  tela: TelaDoTablet,
   pagina = 1,
 ): Promise<PaginaDaConsulta> {
   const user = await requireArea('kanban')
+  if (!telaValida(tela)) return { ops: [], total: 0, temMais: false }
 
-  const todas = (await opsPorDestino(user.id)).get(destino) ?? []
+  const todas = (await opsPorDestino(tela)).get(destino) ?? []
 
   // AS CONCLUSÕES VÊM DO HISTÓRICO, e ordenam a lista. "Terminadas" ordenada
   // por prioridade responderia "o que é mais urgente do que já saiu da
@@ -1118,6 +1168,8 @@ export async function listarOpsDaEstacao(
       dataPrevistaFim: ordensProducao.dataPrevistaFim,
       maquinaId: ordensProducao.maquinaId,
       maquinaCodigo: maquinas.codigo,
+      maquinaEstacaoId: estacoes.id,
+      maquinaEstacaoNome: estacoes.nome,
       produzido: sql<number>`(
         SELECT COALESCE(SUM(${apontamentosProducao.quantidadeProduzida}), 0)::int
         FROM ${apontamentosProducao}
@@ -1136,6 +1188,10 @@ export async function listarOpsDaEstacao(
       eq(variacoesProduto.id, ordensProducao.variacaoId),
     )
     .leftJoin(maquinas, eq(maquinas.id, ordensProducao.maquinaId))
+    .leftJoin(
+      estacoes,
+      and(eq(estacoes.id, maquinas.estacaoId), isNull(estacoes.deletedAt)),
+    )
     .leftJoin(cores, eq(cores.nome, variacoesProduto.cor))
     .leftJoin(remessasFull, eq(remessasFull.id, ordensProducao.remessaFullId))
     // A conta da remessa, pro rótulo "Full Shopee · Conta 5 · 30/09". 1:1.
@@ -1176,6 +1232,10 @@ export async function listarOpsDaEstacao(
           corHex2: r.corHex2 ?? null,
           dataPrevistaFim: r.dataPrevistaFim,
           maquinaCodigo: r.maquinaCodigo ?? null,
+          maquinaEstacao:
+            r.maquinaEstacaoId !== null && r.maquinaEstacaoNome !== null
+              ? { id: r.maquinaEstacaoId, nome: r.maquinaEstacaoNome }
+              : null,
           concluidaEm: c?.em ?? null,
           concluidaPor: c?.porNome ?? null,
           resumo: c?.resumo ?? null,

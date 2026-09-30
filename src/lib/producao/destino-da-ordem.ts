@@ -30,8 +30,11 @@
 // OS QUATRO DESTINOS
 // ─────────────────────────────────────────────────────────────────────────
 //
-//   maquina     — está no cartão da máquina. É a ÚNICA que ocupa a área
-//                 principal, e é por isso que a tela não cresce com a fila.
+//   maquina     — está em produção numa máquina — desta estação ou de
+//                 OUTRA. A de uma máquina daqui está no cartão, que é a ÚNICA
+//                 coisa que ocupa a área principal (por isso a tela não cresce
+//                 com a fila); a de outra estação está no cartão da aba dela.
+//                 Nenhuma das duas é fila.
 //   fila        — esperando pra começar. Atrás do botão "Fila (N)".
 //   terminadas  — a produção foi concluída nas últimas 24 h
 //                 (`JANELA_DAS_TERMINADAS_MS`), qualquer que seja o status
@@ -77,7 +80,18 @@ export function concluidaNaJanela(concluidaEm: Date | null, agora: Date): boolea
 
 export function destinoDaOrdem(
   status: StatusDaOrdem,
-  estaNumaMaquinaDaEstacao: boolean,
+  /**
+   * Está EM PRODUÇÃO numa máquina viva — de QUALQUER estação, e não só da
+   * que está na tela.
+   *
+   * ⚠️ Era "numa máquina DESTA estação", e bastava enquanto o operador só
+   * enxergava a estação dele. Quando a visão abriu pra fábrica inteira (a
+   * estação passou a ser do tablet), aquele recorte mandaria pra Fila toda OP
+   * rodando nas OUTRAS estações: estão em produção, e não estariam "numa
+   * máquina daqui". Quem decide em qual ABA o cartão aparece é a consulta das
+   * máquinas, não este destino.
+   */
+  estaNumaMaquina: boolean,
   /** `concluidaNaJanela` da conclusão mais recente. */
   naJanela: boolean,
 ): DestinoNaEstacao {
@@ -85,7 +99,7 @@ export function destinoDaOrdem(
   // é a máquina ter a OP em produção — o mesmo recorte do índice único
   // `ordens_producao_maquina_em_producao_uidx` (migration 50). Perguntar ao
   // status abriria a chance de a mesma OP contar duas vezes.
-  if (estaNumaMaquinaDaEstacao) return 'maquina'
+  if (estaNumaMaquina) return 'maquina'
 
   switch (status) {
     case 'aguardando_materia_prima':

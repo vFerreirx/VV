@@ -11,12 +11,6 @@ import {
 } from '@/lib/auth/require-auth'
 import { db } from '@/lib/db'
 import {
-  operadoresPorEstacao,
-  vinculosDeOperadores,
-  type OperadorDaEstacao,
-} from '@/lib/db/estacao-operadores'
-import {
-  estacaoOperadores,
   estacoes,
   maquinas,
   ordensProducao,
@@ -42,22 +36,20 @@ export type MaquinaDaEstacaoResumo = {
   opEmProducao: string | null
 }
 
-// Estação com nomes resolvidos + máquinas vinculadas (pra lista/edição).
+// A estação é NOME, COR E MÁQUINAS — o lugar de um tablet na fábrica. Não tem
+// operador: ele não pertence a estação nenhuma e age em qualquer máquina
+// (src/lib/db/acao-do-operador.ts). A tabela `estacao_operadores` continua no
+// banco com os vínculos antigos, e ninguém lê nem grava mais nela.
 export type EstacaoComDetalhes = Estacao & {
-  operadores: OperadorDaEstacao[]
-  operadorIds: string[]
   maquinaIds: string[]
   maquinas: MaquinaDaEstacaoResumo[]
 }
 
-// `estacaoAtual*` preenchido = o operador JÁ está em outra estação. A tela
-// usa isso pra desabilitar a opção em vez de deixar o usuário escolher e só
-// então tomar erro do UNIQUE do banco.
+// Um operador ativo, pro quadro de operadores e pra faixa de pendências da
+// /fabrica. Sem estação, de propósito — ver acima.
 export type OperadorOpcao = {
   id: string
   nome: string
-  estacaoAtualId: string | null
-  estacaoAtualNome: string | null
   /** Só o booleano, pro checklist da /fabrica. O hash nunca sai daqui. */
   temPin: boolean
 }
@@ -86,10 +78,8 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
 
   if (rows.length === 0) return []
 
-  // Operadores de todas as estações numa consulta só (nada de N+1).
   // NÃO lê operadorDiaId/operadorNoiteId: são legado.
   const ids = rows.map((e) => e.id)
-  const porEstacao = await operadoresPorEstacao(ids)
 
   const maqs = await db
     .select({
@@ -117,11 +107,8 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
 
   return rows.map((e) => {
     const minhas = maqs.filter((m) => m.estacaoId === e.id)
-    const operadores = porEstacao.get(e.id) ?? []
     return {
       ...e,
-      operadores,
-      operadorIds: operadores.map((o) => o.id),
       maquinaIds: minhas.map((m) => m.id),
       maquinas: minhas.map((m) => ({
         id: m.id,
@@ -133,31 +120,21 @@ export async function listarEstacoes(): Promise<EstacaoComDetalhes[]> {
   })
 }
 
-// Operadores ativos, já com a estação em que cada um está (se estiver).
+// Operadores ativos — todos aparecem em todo tablet.
 //
 // ⚠️ Pode voltar VAZIO: em 02/09 não existia nenhum usuário com cargo
 // `operador`. Quem trata esse caso é a tela — ela precisa dizer isso com todas
-// as letras e apontar pra /usuarios, senão o admin abre, vê select vazio e
-// acha que quebrou. São dois lugares: o diálogo da estação e a faixa de
-// pendências da /fabrica (`nenhumOperadorAtivo`, em fabrica/page.tsx).
+// as letras e apontar pra /usuarios. É a faixa de pendências da /fabrica
+// (`nenhumOperadorAtivo`, em fabrica/page.tsx) e o quadro de operadores.
 export async function listarOperadores(): Promise<OperadorOpcao[]> {
   await requireArea('estacoes')
   const rows = await db
     .select({
       id: users.id,
       nome: users.nome,
-      estacaoAtualId: estacoes.id,
-      estacaoAtualNome: estacoes.nome,
       pinHash: users.pinHash,
     })
     .from(users)
-    .leftJoin(estacaoOperadores, eq(estacaoOperadores.operadorId, users.id))
-    // A estação entra pelo join e só conta se estiver viva: vínculo com
-    // estação soft-deleted não pode "ocupar" o operador na tela.
-    .leftJoin(
-      estacoes,
-      and(eq(estacoes.id, estacaoOperadores.estacaoId), isNull(estacoes.deletedAt)),
-    )
     .where(
       and(eq(users.role, 'operador'), eq(users.ativo, true), isNull(users.deletedAt)),
     )
@@ -166,8 +143,6 @@ export async function listarOperadores(): Promise<OperadorOpcao[]> {
   return rows.map((r) => ({
     id: r.id,
     nome: r.nome,
-    estacaoAtualId: r.estacaoAtualId ?? null,
-    estacaoAtualNome: r.estacaoAtualNome ?? null,
     // O map descarta o hash ANTES de sair da função: isto é 'use server' e
     // o retorno viaja pro cliente.
     temPin: r.pinHash !== null,
@@ -199,48 +174,6 @@ export async function listarMaquinasOpcoes(): Promise<MaquinaOpcao[]> {
 // -----------------------------------------------------------------
 // Criar / atualizar (com atribuição de máquinas)
 // -----------------------------------------------------------------
-
-// Grava os operadores da estação: apaga os vínculos atuais e insere os
-// escolhidos. Apagar antes é o que torna a operação idempotente — e o
-// vínculo não é histórico, quem guarda histórico é `eventos_kanban`.
-async function aplicarOperadores(
-  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-  estacaoId: string,
-  operadorIds: string[],
-) {
-  await tx
-    .delete(estacaoOperadores)
-    .where(eq(estacaoOperadores.estacaoId, estacaoId))
-  if (operadorIds.length > 0) {
-    await tx
-      .insert(estacaoOperadores)
-      .values(operadorIds.map((operadorId) => ({ estacaoId, operadorId })))
-  }
-}
-
-/**
- * Recusa antes de tentar gravar quando algum operador escolhido já pertence
- * a OUTRA estação viva. O `UNIQUE (operador_id)` do banco continua sendo a
- * garantia real; isto existe só pra devolver "Fulano já está na estação X"
- * em vez de um erro de constraint cru.
- */
-async function conflitoDeOperador(
-  operadorIds: string[],
-  estacaoIdAtual: string | null,
-): Promise<string | null> {
-  const vinculos = await vinculosDeOperadores(operadorIds)
-  const deOutra = vinculos.filter((v) => v.estacaoId !== estacaoIdAtual)
-  if (deOutra.length === 0) return null
-
-  const nomes = await db
-    .select({ id: users.id, nome: users.nome })
-    .from(users)
-    .where(inArray(users.id, deOutra.map((v) => v.operadorId)))
-  const nome = new Map(nomes.map((n) => [n.id, n.nome]))
-
-  const primeiro = deOutra[0]!
-  return `${nome.get(primeiro.operadorId) ?? 'Esse operador'} já está na estação ${primeiro.estacaoNome}`
-}
 
 async function aplicarMaquinas(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
@@ -284,16 +217,11 @@ export async function criarEstacaoAction(
     return { success: false, error: `Já existe uma estação "${data.nome}"` }
   }
 
-  const operadorIds = data.operadorIds ?? []
-  const conflitoOperador = await conflitoDeOperador(operadorIds, null)
-  if (conflitoOperador) return { success: false, error: conflitoOperador }
-
   const novoId = await db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(estacoes)
       .values({ nome: data.nome, cor: data.cor ?? null })
       .returning({ id: estacoes.id })
-    await aplicarOperadores(tx, inserted!.id, operadorIds)
     await aplicarMaquinas(tx, inserted!.id, data.maquinaIds ?? [])
     return inserted!.id
   })
@@ -341,16 +269,11 @@ export async function atualizarEstacaoAction(
     return { success: false, error: `Já existe outra estação "${data.nome}"` }
   }
 
-  const operadorIds = data.operadorIds ?? []
-  const conflitoOperador = await conflitoDeOperador(operadorIds, id)
-  if (conflitoOperador) return { success: false, error: conflitoOperador }
-
   await db.transaction(async (tx) => {
     await tx
       .update(estacoes)
       .set({ nome: data.nome, cor: data.cor ?? null })
       .where(eq(estacoes.id, id))
-    await aplicarOperadores(tx, id, operadorIds)
     await aplicarMaquinas(tx, id, data.maquinaIds ?? [])
   })
 
@@ -360,7 +283,7 @@ export async function atualizarEstacaoAction(
 }
 
 // -----------------------------------------------------------------
-// Excluir (soft delete + solta as máquinas + APAGA os vínculos)
+// Excluir (soft delete + solta as máquinas)
 // -----------------------------------------------------------------
 
 export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
@@ -397,13 +320,12 @@ export async function excluirEstacaoAction(id: string): Promise<ActionResult> {
       .update(maquinas)
       .set({ estacaoId: null })
       .where(eq(maquinas.estacaoId, id))
-    // Vínculo de operador é apagado DE VERDADE, não soft-deleted. A estação
-    // some por UPDATE, então o ON DELETE CASCADE não dispara — e como o
-    // UNIQUE em operador_id é global, deixar a linha aqui prenderia o
-    // operador a uma estação fantasma pra sempre.
-    await tx
-      .delete(estacaoOperadores)
-      .where(eq(estacaoOperadores.estacaoId, id))
+    // Os vínculos antigos de `estacao_operadores` ficam como estão: ninguém
+    // lê nem grava mais nela, e apagar dado é combinado à parte.
+    //
+    // O tablet desta estação passa a ter no cookie uma estação apagada, e
+    // `estacaoDoAparelho` lê isso como "sem estação": ele mostra a faixa
+    // "chame o gerente" até alguém definir outra em "Este aparelho".
     return null
   })
   if (recusa) return { success: false, error: recusa }

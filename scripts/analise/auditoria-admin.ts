@@ -102,16 +102,12 @@ async function main() {
       : alerta(duplicados.map((d) => `${d.campo} "${d.valor}" ×${d.n}`).join(', ')),
   )
 
-  // PIN: é o que destrava o tablet da estação. Operador sem PIN não consegue
-  // assumir OP — ver src/lib/auth/inatividade.ts.
-  // O vínculo operador↔estação é a tabela `estacao_operadores` (N:N), e não
-  // uma coluna em users — as colunas antigas ficaram no banco só como
-  // histórico. Ver src/lib/db/schema/estacoes.ts.
-  const semPin = await sql<{ nome: string; estacao: string | null }[]>`
-    select u.nome,
-           (select e.nome from estacao_operadores eo
-             join estacoes e on e.id = eo.estacao_id and e.deleted_at is null
-             where eo.operador_id = u.id limit 1) estacao
+  // PIN: é o que destrava o tablet. Operador sem PIN não consegue assumir
+  // OP — ver src/lib/auth/inatividade.ts. Conta TODO operador ativo: ele não
+  // pertence a estação nenhuma e aparece em todos os tablets (a antiga
+  // `estacao_operadores` ficou no banco, e ninguém lê mais).
+  const semPin = await sql<{ nome: string }[]>`
+    select u.nome
     from users u
     where u.deleted_at is null and u.ativo and u.role = 'operador' and u.pin_hash is null
     order by u.nome`
@@ -120,26 +116,9 @@ async function main() {
       ? ok('todo operador ativo tem PIN')
       : alerta(
           `${semPin.length} operador(es) sem PIN: ` +
-            semPin.map((u) => `${u.nome}${u.estacao ? ` (${u.estacao})` : ' (sem estação)'}`).join(', '),
+            semPin.map((u) => u.nome).join(', '),
         ),
   )
-
-  const semEstacao = await sql<{ nome: string }[]>`
-    select u.nome from users u
-    where u.deleted_at is null and u.ativo and u.role = 'operador'
-      and not exists (
-        select 1 from estacao_operadores eo
-        join estacoes e on e.id = eo.estacao_id and e.deleted_at is null
-        where eo.operador_id = u.id)
-    order by u.nome`
-  if (semEstacao.length > 0) {
-    console.log(
-      alerta(
-        `${semEstacao.length} operador(es) sem estação (o tablet vira aviso): ` +
-          semEstacao.map((u) => u.nome).join(', '),
-      ),
-    )
-  }
 
   // ───────────────────────────── PERMISSÕES ─────────────────────────────
   console.log(t('PERMISSÕES'))
@@ -334,20 +313,14 @@ async function main() {
 
   // Usuário apagado que ainda é dono de coisa viva: a tela mostra o vazio no
   // lugar do nome.
-  const [orfaos] = await sql<{ ops: number; estacoes: number }[]>`
+  const [orfaos] = await sql<{ ops: number }[]>`
     select
       (select count(*)::int from ordens_producao o
         join users u on u.id = o.responsavel_id
-        where o.deleted_at is null and u.deleted_at is not null) ops,
-      (select count(*)::int from estacao_operadores eo
-        join users u on u.id = eo.operador_id
-        where u.deleted_at is not null) estacoes`
-  if (orfaos!.ops > 0 || orfaos!.estacoes > 0) {
+        where o.deleted_at is null and u.deleted_at is not null) ops`
+  if (orfaos!.ops > 0) {
     console.log(
-      alerta(
-        `usuário apagado ainda vinculado: ${orfaos!.ops} OP(s) e ` +
-          `${orfaos!.estacoes} vínculo(s) de estação`,
-      ),
+      alerta(`usuário apagado ainda vinculado: ${orfaos!.ops} OP(s)`),
     )
   } else {
     console.log(ok('nenhum vínculo vivo apontando pra usuário apagado'))

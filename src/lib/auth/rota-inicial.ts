@@ -11,7 +11,7 @@ import {
 // (src/app/(auth)/login/actions.ts), a raiz do site (src/app/page.tsx) e o
 // /dashboard, que devolve pra casa quem não é da gestão.
 //
-//   operador   → /producao  (o tablet da estação)
+//   operador   → /producao  (o tablet)
 //   vendas     → /remessas  (quem cuida do marketplace — as remessas Full)
 //   estoquista → /estoque
 //   admin, gerente_producao → /dashboard
