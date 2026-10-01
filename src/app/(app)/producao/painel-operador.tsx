@@ -1180,7 +1180,10 @@ function IniciarProducaoDialog({
         </DialogHeader>
 
         {/* Busca por número da OP ou produto. Alvo de 48px como o do cartão:
-            aqui ele digita pouco, e o teclado do tablet cobre o resto. */}
+            aqui ele digita pouco, e o teclado do tablet cobre o resto.
+            Por isso ela NÃO ganha foco ao abrir pelo toque — quem decide
+            isso é o DialogContent (foco-no-toque.ts), não um `autoFocus`
+            aqui: era o diálogo que focava a busca, e o teclado subia. */}
         <div className="relative">
           <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-5 -translate-y-1/2" />
           <Input
@@ -1188,7 +1191,6 @@ function IniciarProducaoDialog({
             onChange={(e) => setTermo(e.target.value)}
             placeholder="Buscar por OP ou produto"
             className="h-12 pl-10 text-base"
-            autoFocus={false}
           />
         </div>
 

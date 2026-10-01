@@ -33,6 +33,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { gestoDeToque } from '@/components/ui/foco-no-toque'
 import { Textarea } from '@/components/ui/textarea'
 import { ERRO_TABLET_TRAVADO } from '@/lib/auth/inatividade'
 import {
@@ -77,11 +78,15 @@ export function ParadaDialog({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [motivoOutro, setMotivoOutro] = useState(false)
+  // "Outro" escolhido com o dedo: o campo NÃO ganha foco (subiria o teclado
+  // do tablet por cima do diálogo) e ganha borda, pra ele saber onde tocar.
+  const [outroPeloToque, setOutroPeloToque] = useState(false)
   const [texto, setTexto] = useState('')
   const tablet = variante === 'tablet'
 
   function fechar() {
     setMotivoOutro(false)
+    setOutroPeloToque(false)
     setTexto('')
     onClose()
   }
@@ -157,11 +162,11 @@ export function ParadaDialog({
                   tablet ? 'min-h-16 text-lg' : 'min-h-14',
                 )}
                 disabled={isPending}
-                onClick={() =>
-                  exigeObservacao(m.valor)
-                    ? setMotivoOutro(true)
-                    : registrar(m.valor)
-                }
+                onClick={() => {
+                  if (!exigeObservacao(m.valor)) return registrar(m.valor)
+                  setOutroPeloToque(gestoDeToque())
+                  setMotivoOutro(true)
+                }}
               >
                 {m.rotulo}
               </Button>
@@ -174,9 +179,17 @@ export function ParadaDialog({
             // Foco só quando o texto é OBRIGATÓRIO ("Outro"). No fechamento a
             // observação é opcional, e abrir o teclado do tablet por cima do
             // botão "Voltar a produzir" atrapalha quem só queria liberar.
-            autoFocus={motivoOutro}
+            // E nem no "Outro" quando foi o DEDO que escolheu: o teclado só
+            // sobe quando ele toca no campo (regra em foco-no-toque.ts). No
+            // lugar do foco, a borda mostra onde tocar, até ele escrever.
+            autoFocus={motivoOutro && !outroPeloToque}
             rows={3}
-            className={cn(tablet && 'text-lg')}
+            className={cn(
+              tablet && 'text-lg',
+              outroPeloToque &&
+                texto === '' &&
+                'border-primary ring-3 ring-primary/30',
+            )}
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
             placeholder={
