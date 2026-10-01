@@ -30,6 +30,7 @@ import { resolverVariacaoDoFaltante } from './faltante-para-op.ts'
 import { reacaoDaEstacao } from './recarga-da-estacao.ts'
 import { avisoDeCobertura } from './cobertura.ts'
 import { erroDePin, soDigitosDoPin } from '../auth/regra-do-pin.ts'
+import { focoLongeDosCampos } from '../foco-no-toque.ts'
 import { observacaoDeMaquinaAtribuida } from './inicio-da-op.ts'
 import {
   compararMaquinas,
@@ -3436,4 +3437,28 @@ test('PIN: o campo guarda só dígitos, no máximo 4', () => {
   assert.equal(soDigitosDoPin('583'), '583')
   assert.equal(soDigitosDoPin('dddd'), '')
   assert.equal(soDigitosDoPin(''), '')
+})
+
+// O TECLADO DO TABLET (src/lib/foco-no-toque.ts). Existe por causa do
+// "Iniciar na Máquina N" de 01/10/2026: o diálogo abre por `open=` controlado,
+// a Base UI recebe '' em vez de 'touch' e focava a busca — o teclado subia e
+// cobria metade da lista. O segundo teste é exatamente esse caso.
+
+test('foco: aberto pelo toque, nenhum campo ganha foco', () => {
+  assert.equal(focoLongeDosCampos('touch', ''), true)
+  assert.equal(focoLongeDosCampos('pen', ''), true)
+  assert.equal(focoLongeDosCampos('mouse', ''), false)
+  assert.equal(focoLongeDosCampos('keyboard', ''), false)
+})
+
+test('foco: a Base UI não sabe quem abriu, vale o último gesto da página', () => {
+  assert.equal(focoLongeDosCampos('', 'touch'), true)
+  assert.equal(focoLongeDosCampos('', 'pen'), true)
+  assert.equal(focoLongeDosCampos('', 'mouse'), false)
+  assert.equal(focoLongeDosCampos('', 'keyboard'), false)
+  // Sem gesto nenhum ainda: o padrão de sempre, foca o campo.
+  assert.equal(focoLongeDosCampos('', ''), false)
+  // Quando a Base UI sabe, ela vence o gesto guardado.
+  assert.equal(focoLongeDosCampos('mouse', 'touch'), false)
+  assert.equal(focoLongeDosCampos('touch', 'keyboard'), true)
 })
