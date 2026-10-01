@@ -316,6 +316,12 @@ sem ninguém perceber.** Está escrito no topo do arquivo; leia antes de mexer.
     de operadores. Fixo por cargo (`isManager`), fora de /permissoes.
   - Quem define pelos outros fica sabendo do PIN; o operador troca depois se
     quiser, e ninguém é obrigado.
+  - ⚠️ **A regra do PIN é UMA, pra tela e servidor**: `erroDePin` e
+    `soDigitosDoPin` em `src/lib/auth/regra-do-pin.ts` (pura, sem
+    'server-only'). Nunca escreva o regex de novo numa tela: a cópia do
+    "Definir PIN" saiu `/^d{4}$/` (sem a barra invertida), recusou todo PIN
+    de números, e nem o type-check nem o `test:banco` (que chama a action
+    direto) viram. O teste está em `regras.test.ts`.
   - ⚠️ **"Esse PIN já é de outro operador" só vale pra quem define pelos
     outros.** No autoatendimento a mesma recusa diria ao operador o PIN de
     um colega. Dois iguais não quebram nada: a troca é pelo nome escolhido.

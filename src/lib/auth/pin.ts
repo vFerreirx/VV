@@ -68,23 +68,11 @@ const TAMANHO_HASH = 64
 export const TENTATIVAS_ATE_BLOQUEIO = 5
 export const SEGUNDOS_DE_BLOQUEIO = 30
 
-// PINs que não protegem ninguém. Não é uma lista de senhas fracas — é o
-// mínimo pra que a troca rápida não vire "todo mundo usa 1234", que
-// devolveria exatamente o problema de autoria que o PIN existe pra resolver.
-const PROIBIDOS = new Set([
-  '0000', '1111', '2222', '3333', '4444',
-  '5555', '6666', '7777', '8888', '9999',
-  '1234', '4321', '0123', '3210', '1212', '2121',
-])
-
-/** Por que este PIN não serve, ou null se serve. */
-export function erroDePin(pin: string): string | null {
-  if (!/^\d{4}$/.test(pin)) return 'O PIN precisa ter 4 números'
-  if (PROIBIDOS.has(pin)) {
-    return 'Esse PIN é fácil demais de adivinhar. Escolha outro.'
-  }
-  return null
-}
+// A REGRA DO PIN (4 números, fora da lista dos fáceis) mora em
+// src/lib/auth/regra-do-pin.ts, sem 'server-only', porque a TELA também
+// precisa dela — e uma cópia na tela já quebrou o "Definir PIN" uma vez. Daqui
+// ela só é reexportada, pra que os imports do servidor continuem os mesmos.
+export { erroDePin } from '@/lib/auth/regra-do-pin'
 
 export function gerarHashDePin(pin: string): string {
   const salt = randomBytes(16)
