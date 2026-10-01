@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { erroDePin, soDigitosDoPin } from '@/lib/auth/regra-do-pin'
 import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
 import { cn } from '@/lib/utils'
 import {
@@ -585,8 +586,12 @@ function DefinirPinBotao({ id, nome }: { id: string; nome: string }) {
 
   function salvar(e: React.FormEvent) {
     e.preventDefault()
-    if (!/^d{4}$/.test(pin)) {
-      setErro('O PIN precisa ter 4 números')
+    // A MESMA REGRA DO SERVIDOR (src/lib/auth/regra-do-pin.ts), e não uma
+    // cópia: a cópia que morava aqui perdeu as barras invertidas e recusava
+    // todo PIN de números. Assim a tela e a action dizem a mesma frase.
+    const erroDoPin = erroDePin(pin)
+    if (erroDoPin) {
+      setErro(erroDoPin)
       return
     }
     if (pin !== confirmacao) {
@@ -604,10 +609,6 @@ function DefinirPinBotao({ id, nome }: { id: string; nome: string }) {
       router.refresh()
     })
   }
-
-  // Só números, e no máximo 4 — o teclado numérico do celular ajuda, mas
-  // no computador o campo aceitaria qualquer coisa.
-  const soNumeros = (v: string) => v.replace(/D/g, '').slice(0, 4)
 
   return (
     <>
@@ -639,7 +640,7 @@ function DefinirPinBotao({ id, nome }: { id: string; nome: string }) {
                 value={pin}
                 onChange={(e) => {
                   setErro(null)
-                  setPin(soNumeros(e.target.value))
+                  setPin(soDigitosDoPin(e.target.value))
                 }}
                 disabled={isPending}
                 autoFocus
@@ -656,7 +657,7 @@ function DefinirPinBotao({ id, nome }: { id: string; nome: string }) {
                 value={confirmacao}
                 onChange={(e) => {
                   setErro(null)
-                  setConfirmacao(soNumeros(e.target.value))
+                  setConfirmacao(soDigitosDoPin(e.target.value))
                 }}
                 disabled={isPending}
               />

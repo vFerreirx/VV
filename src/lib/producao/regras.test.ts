@@ -29,6 +29,7 @@ import {
 import { resolverVariacaoDoFaltante } from './faltante-para-op.ts'
 import { reacaoDaEstacao } from './recarga-da-estacao.ts'
 import { avisoDeCobertura } from './cobertura.ts'
+import { erroDePin, soDigitosDoPin } from '../auth/regra-do-pin.ts'
 import { observacaoDeMaquinaAtribuida } from './inicio-da-op.ts'
 import {
   compararMaquinas,
@@ -3411,4 +3412,28 @@ test('prazo 30/09 na linha: "vence HOJE" o dia 30 inteiro, "ATRASADA 1 dia" no d
       urgente: true,
     })
   })
+})
+
+// O PIN — a regra que a tela e o servidor usam (src/lib/auth/regra-do-pin.ts).
+// Existe por causa do "Definir PIN" de 01/10/2026: a tela tinha uma cópia da
+// regra sem as barras invertidas (`/^d{4}$/`) e recusava todo PIN de números.
+// O primeiro teste é exatamente o que aquela cópia reprovaria.
+
+test('PIN: 4 números passam, o resto recusa com a frase do servidor', () => {
+  assert.equal(erroDePin('5831'), null)
+  assert.equal(erroDePin('0907'), null)
+  for (const ruim of ['', '583', '58312', 'dddd', '12a4', ' 583', '5 31']) {
+    assert.equal(erroDePin(ruim), 'O PIN precisa ter 4 números', JSON.stringify(ruim))
+  }
+  assert.equal(erroDePin('1234'), 'Esse PIN é fácil demais de adivinhar. Escolha outro.')
+  assert.equal(erroDePin('0000'), 'Esse PIN é fácil demais de adivinhar. Escolha outro.')
+})
+
+test('PIN: o campo guarda só dígitos, no máximo 4', () => {
+  assert.equal(soDigitosDoPin('5831'), '5831')
+  assert.equal(soDigitosDoPin('a1b2c3d4e5'), '1234')
+  assert.equal(soDigitosDoPin('58 31'), '5831')
+  assert.equal(soDigitosDoPin('583'), '583')
+  assert.equal(soDigitosDoPin('dddd'), '')
+  assert.equal(soDigitosDoPin(''), '')
 })
