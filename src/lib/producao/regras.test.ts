@@ -101,11 +101,18 @@ import {
 import { chaveDaPeca, chaveDeTextoLivre } from '../separacao.ts'
 import {
   acaoDaReposicao,
+  destinoDaMarcacao,
   ESTADOS_ATIVOS_DE_REPOSICAO,
   estadoDaReposicaoPelaOp,
+  faixaDeNumeros,
   ordenarFila,
+  pedeQuantidade,
   podeSubirSituacao,
+  prioridadeDaSituacao,
   proximoEstadoDoParceiro,
+  rotuloDoBotaoDeMarcar,
+  situacaoDepoisDaMarcacao,
+  viraOp,
 } from './reposicao.ts'
 import {
   concluidaNaJanela,
@@ -1397,6 +1404,75 @@ test('reposicao: o estado do item segue a OP ligada', () => {
   assert.equal(estadoDaReposicaoPelaOp({ ...op, variacaoId: 'v2' }, 'v1'), 'aberto')
   assert.equal(estadoDaReposicaoPelaOp({ ...op, canalDestino: 'full_ml' }, 'v1'), 'aberto')
   assert.equal(estadoDaReposicaoPelaOp(null, 'v1'), 'aberto')
+})
+
+test('reposicao com quantidade: o que acontece com cada peca marcada (Q201)', () => {
+  const aberto = { estado: 'aberto' as const }
+  const emProducao = { estado: 'em_producao' as const }
+  const pedido = { estado: 'pedido_parceiro' as const }
+
+  // 1) sem item ativo, gerente: cria o item e a OP.
+  assert.equal(destinoDaMarcacao(null, 'producao', true), 'criar_item_e_op')
+  // 2) item ABERTO sem OP (marcado antes): atualiza e cria a OP ligada a ele.
+  assert.equal(destinoDaMarcacao(aberto, 'producao', true), 'ligar_op_ao_item')
+  // 3) item EM PRODUCAO: nada novo, pra ninguem.
+  assert.equal(destinoDaMarcacao(emProducao, 'producao', true), 'ja_em_producao')
+  assert.equal(destinoDaMarcacao(emProducao, 'producao', false), 'ja_em_producao')
+  // 4) PEDIDO AO PARCEIRO: nada novo.
+  assert.equal(destinoDaMarcacao(pedido, 'parceiro', true), 'ja_pedido_parceiro')
+  assert.equal(destinoDaMarcacao(pedido, 'parceiro', false), 'ja_pedido_parceiro')
+  // 5) produto de PARCEIRO: o item com a quantidade, SEM OP — mesmo pro gerente.
+  assert.equal(destinoDaMarcacao(null, 'parceiro', true), 'so_item')
+  assert.equal(destinoDaMarcacao(aberto, 'parceiro', true), 'so_item')
+  // Quem nao cria OP (a estoquista): so o item, novo ou o aberto.
+  assert.equal(destinoDaMarcacao(null, 'producao', false), 'so_item')
+  assert.equal(destinoDaMarcacao(aberto, 'producao', false), 'so_item')
+
+  // Viram OP so os dois primeiros; ganham campo de quantidade todos menos
+  // os que ja andaram.
+  assert.equal(viraOp('criar_item_e_op'), true)
+  assert.equal(viraOp('ligar_op_ao_item'), true)
+  assert.equal(viraOp('so_item'), false)
+  assert.equal(viraOp('ja_em_producao'), false)
+  assert.equal(pedeQuantidade('so_item'), true)
+  assert.equal(pedeQuantidade('ja_em_producao'), false)
+  assert.equal(pedeQuantidade('ja_pedido_parceiro'), false)
+})
+
+test('reposicao com quantidade: prioridade pela situacao, e a situacao so sobe (Q202)', () => {
+  assert.equal(prioridadeDaSituacao('acabou'), 'alta')
+  assert.equal(prioridadeDaSituacao('acabando'), 'normal')
+  // Item novo: a marcada. Ja na fila: so sobe — "Acabando" num "Acabou" fica "Acabou".
+  assert.equal(situacaoDepoisDaMarcacao(null, 'acabando'), 'acabando')
+  assert.equal(situacaoDepoisDaMarcacao('acabando', 'acabou'), 'acabou')
+  assert.equal(situacaoDepoisDaMarcacao('acabou', 'acabando'), 'acabou')
+  // A OP do item que era "Acabou" sai alta, mesmo tocado como "Acabando".
+  assert.equal(prioridadeDaSituacao(situacaoDepoisDaMarcacao('acabou', 'acabando')), 'alta')
+})
+
+test('reposicao com quantidade: o botao conta so o que vira OP', () => {
+  assert.equal(rotuloDoBotaoDeMarcar({ ops: 6, parceiro: 0, itens: 0 }), 'Criar 6 OPs')
+  assert.equal(rotuloDoBotaoDeMarcar({ ops: 1, parceiro: 0, itens: 0 }), 'Criar 1 OP')
+  assert.equal(rotuloDoBotaoDeMarcar({ ops: 0, parceiro: 2, itens: 0 }), 'Marcar 2 peças pro parceiro')
+  assert.equal(rotuloDoBotaoDeMarcar({ ops: 0, parceiro: 0, itens: 3 }), 'Marcar 3 peças')
+  assert.equal(
+    rotuloDoBotaoDeMarcar({ ops: 4, parceiro: 2, itens: 0 }),
+    'Criar 4 OPs e marcar 2 peças pro parceiro',
+  )
+  assert.equal(rotuloDoBotaoDeMarcar({ ops: 0, parceiro: 0, itens: 0 }), 'Toque nas peças')
+})
+
+test('reposicao com quantidade: os numeros das OPs numa faixa', () => {
+  assert.equal(
+    faixaDeNumeros(['OP-2026-0190', 'OP-2026-0191', 'OP-2026-0192', 'OP-2026-0193', 'OP-2026-0194', 'OP-2026-0195']),
+    'OP-2026-0190 a 0195',
+  )
+  // Fora de ordem, ainda seguidos.
+  assert.equal(faixaDeNumeros(['OP-2026-0191', 'OP-2026-0190']), 'OP-2026-0190 a 0191')
+  assert.equal(faixaDeNumeros(['OP-2026-0190']), 'OP-2026-0190')
+  assert.equal(faixaDeNumeros([]), '')
+  // Buraco no meio (outra OP criada por outra pessoa): lista um por um.
+  assert.equal(faixaDeNumeros(['OP-2026-0190', 'OP-2026-0192']), 'OP-2026-0190, OP-2026-0192')
 })
 
 test('faltante do pedido: resolve so quando a peca e inequivoca', () => {

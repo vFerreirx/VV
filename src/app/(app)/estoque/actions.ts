@@ -21,11 +21,21 @@ import {
   variacoesProduto,
 } from '@/lib/db/schema'
 import {
+  ReposicaoIndisponivel,
+  erroDaPecaDaOp,
+  gravarOp,
+} from '@/lib/db/criacao-da-op'
+import {
   DIAS_DE_ATENDIDOS,
   ESTADOS_ATIVOS_DE_REPOSICAO,
+  acaoDaReposicao,
+  destinoDaMarcacao,
+  faixaDeNumeros,
   ordenarFila,
-  podeSubirSituacao,
+  prioridadeDaSituacao,
   proximoEstadoDoParceiro,
+  situacaoDepoisDaMarcacao,
+  viraOp,
   type EstadoDeReposicao,
   type SituacaoDeReposicao,
 } from '@/lib/producao/reposicao'
@@ -67,6 +77,8 @@ export type ItemDeReposicao = {
   /** A variação saiu do catálogo depois da marcação: não dá pra produzir. */
   foraDoCatalogo: boolean
   situacao: SituacaoDeReposicao
+  /** Quantas produzir (75). Null nos itens de antes da quantidade existir. */
+  quantidade: number | null
   observacao: string | null
   marcadoPorNome: string | null
   marcadoEm: Date
@@ -74,6 +86,8 @@ export type ItemDeReposicao = {
   opId: string | null
   opNumero: string | null
   opStatus: (typeof statusValues)[number] | null
+  /** A quantidade da OP ligada — é o que a fila mostra em produção. */
+  opQuantidade: number | null
   repostoEm: Date | null
   pedidoParceiroEm: Date | null
   pedidoParceiroPorNome: string | null
@@ -99,6 +113,7 @@ function consultaDeItens() {
       corHex: cores.codigoHex,
       corHex2: cores.codigoHex2,
       situacao: reposicoesEstoque.situacao,
+      quantidade: reposicoesEstoque.quantidade,
       observacao: reposicoesEstoque.observacao,
       marcadoPorNome: marcou.nome,
       marcadoEm: reposicoesEstoque.marcadoEm,
@@ -106,6 +121,7 @@ function consultaDeItens() {
       opId: ordensProducao.id,
       opNumero: ordensProducao.numero,
       opStatus: ordensProducao.status,
+      opQuantidade: ordensProducao.quantidade,
       repostoEm: reposicoesEstoque.repostoEm,
       pedidoParceiroEm: reposicoesEstoque.pedidoParceiroEm,
       pedidoParceiroPorNome: pediu.nome,
@@ -146,6 +162,7 @@ function paraItem(r: LinhaDeItem): ItemDeReposicao {
       r.produtoExcluido !== null ||
       !r.produtoAtivo,
     situacao: r.situacao as SituacaoDeReposicao,
+    quantidade: r.quantidade,
     observacao: r.observacao,
     marcadoPorNome: r.marcadoPorNome ?? null,
     marcadoEm: r.marcadoEm,
@@ -153,6 +170,7 @@ function paraItem(r: LinhaDeItem): ItemDeReposicao {
     opId: r.opId ?? null,
     opNumero: r.opNumero ?? null,
     opStatus: r.opStatus ?? null,
+    opQuantidade: r.opQuantidade ?? null,
     repostoEm: r.repostoEm,
     pedidoParceiroEm: r.pedidoParceiroEm,
     pedidoParceiroPorNome: r.pedidoParceiroPorNome ?? null,
@@ -201,13 +219,26 @@ export async function listarReposicoesAtendidas(): Promise<ItemDeReposicao[]> {
 }
 
 // -----------------------------------------------------------------
-// Marcar peças acabando
+// Marcar peças acabando — com a quantidade, e as OPs no mesmo gesto
 // -----------------------------------------------------------------
+//
+// Cada peça marcada leva a quantidade (Q200). Com `criarOps` — quem pode
+// criar OP, o gerente —, cada peça que ainda não tem OP vira uma, NUMA
+// TRANSAÇÃO SÓ com os itens (Q201): canal Estoque, a quantidade digitada, a
+// prioridade pela situação (Q202), ligada ao item, que fica "Em produção".
+// Tudo ou nada: se uma OP falha, nenhuma fica, e nenhum item muda.
+//
+// O que acontece com CADA peça é `destinoDaMarcacao` (reposicao.ts), a mesma
+// regra que o diálogo usa pra contar o botão. A OP sai pelo mesmo núcleo da
+// Nova OP (`gravarOp`, src/lib/db/criacao-da-op.ts) — um caminho só.
 
 export type ResultadoDaMarcacao = {
   criados: number
-  subiram: number
-  jaNaFila: number
+  atualizados: number
+  jaEmProducao: number
+  jaPedidos: number
+  /** Os números das OPs criadas agora. */
+  ops: string[]
 }
 
 export async function marcarReposicaoAction(
@@ -223,12 +254,15 @@ export async function marcarReposicaoAction(
     }
   }
   const data = parsed.data
+  // Criar OP é decisão de quem decide o que se produz: escrita em Ordens,
+  // como o "Produzir" e o "Descartar". A estoquista marca sem OP.
+  if (data.criarOps) await requireAreaEscrita('ordens')
 
   // A VARIAÇÃO TEM QUE SER DO PRODUTO E ESTAR NO CATÁLOGO. A FK sozinha aceita
   // variação de outro produto — o mesmo cuidado de `criarOrdemAction`.
   const ids = data.marcacoes.map((m) => m.variacaoId)
   const validas = await db
-    .select({ id: variacoesProduto.id })
+    .select({ id: variacoesProduto.id, origem: produtos.origem })
     .from(variacoesProduto)
     .innerJoin(produtos, eq(produtos.id, variacoesProduto.produtoId))
     .where(
@@ -246,92 +280,196 @@ export async function marcarReposicaoAction(
       error: 'Alguma peça não está mais no catálogo. Atualize a tela.',
     }
   }
+  const origem = validas[0]!.origem
+  // A peça que vai virar OP passa pela MESMA conferência da Nova OP. Produto
+  // de parceiro não passa: `destinoDaMarcacao` nunca o manda pra OP.
+  if (data.criarOps && acaoDaReposicao(origem) === 'produzir') {
+    const erroDaPeca = await erroDaPecaDaOp(data.produtoId, ids)
+    if (erroDaPeca) return { success: false, error: erroDaPeca }
+  }
 
-  const resultado: ResultadoDaMarcacao = { criados: 0, subiram: 0, jaNaFila: 0 }
+  const resultado: ResultadoDaMarcacao = {
+    criados: 0,
+    atualizados: 0,
+    jaEmProducao: 0,
+    jaPedidos: 0,
+    ops: [],
+  }
 
-  await db.transaction(async (tx) => {
-    for (const m of data.marcacoes) {
-      // ⚠️ ON CONFLICT DO NOTHING, e não conferir antes: duas pessoas
-      // marcando a mesma peça ao mesmo tempo passam por qualquer SELECT
-      // prévio. O índice único parcial é quem decide; quem perdeu a corrida
-      // cai no ramo de baixo, como "já estava na fila".
-      const inseridos = await tx
-        .insert(reposicoesEstoque)
-        .values({
-          produtoId: data.produtoId,
-          variacaoId: m.variacaoId,
-          situacao: m.situacao,
-          observacao: data.observacao ?? null,
-          marcadoPor: user.id,
-        })
-        .onConflictDoNothing()
-        .returning({ id: reposicoesEstoque.id })
-      if (inseridos.length > 0) {
-        resultado.criados++
-        continue
-      }
+  const gravou = await db
+    .transaction(async (tx) => {
+      for (const m of data.marcacoes) {
+        // ⚠️ ON CONFLICT DO NOTHING, e não conferir antes: duas pessoas
+        // marcando a mesma peça ao mesmo tempo passam por qualquer SELECT
+        // prévio. O índice único parcial é quem decide; quem perdeu a
+        // corrida cai no ramo do item que já existe.
+        const [inserido] = await tx
+          .insert(reposicoesEstoque)
+          .values({
+            produtoId: data.produtoId,
+            variacaoId: m.variacaoId,
+            situacao: m.situacao,
+            quantidade: m.quantidade,
+            observacao: data.observacao ?? null,
+            marcadoPor: user.id,
+          })
+          .onConflictDoNothing()
+          .returning({ id: reposicoesEstoque.id })
 
-      const [ativo] = await tx
-        .select({
-          id: reposicoesEstoque.id,
-          situacao: reposicoesEstoque.situacao,
-        })
-        .from(reposicoesEstoque)
-        .where(
-          and(
-            eq(reposicoesEstoque.variacaoId, m.variacaoId),
-            inArray(reposicoesEstoque.estado, [...ESTADOS_ATIVOS_DE_REPOSICAO]),
-          ),
+        // O item ativo que já existia, TRAVADO até o fim da transação: entre
+        // ler o estado e ligar a OP, ninguém muda.
+        const ativo = inserido
+          ? null
+          : ((
+              await tx
+                .select({
+                  id: reposicoesEstoque.id,
+                  estado: reposicoesEstoque.estado,
+                  situacao: reposicoesEstoque.situacao,
+                })
+                .from(reposicoesEstoque)
+                .where(
+                  and(
+                    eq(reposicoesEstoque.variacaoId, m.variacaoId),
+                    inArray(reposicoesEstoque.estado, [
+                      ...ESTADOS_ATIVOS_DE_REPOSICAO,
+                    ]),
+                  ),
+                )
+                .limit(1)
+                .for('update')
+            )[0] ?? null)
+        const itemId = inserido?.id ?? ativo?.id
+        // Nem inseriu nem achou: o item ativo saiu da fila no meio (reposto
+        // ou apagado por outra pessoa). Não adivinha: desfaz e pede pra
+        // atualizar.
+        if (!itemId) throw new ReposicaoIndisponivel()
+
+        const destino = destinoDaMarcacao(
+          ativo
+            ? { estado: ativo.estado as (typeof ESTADOS_ATIVOS_DE_REPOSICAO)[number] }
+            : null,
+          origem,
+          data.criarOps,
         )
-        .limit(1)
-      // Só SOBE: "acabando" vira "acabou". A observação da primeira marcação
-      // fica — quem marcou de novo só está dizendo que piorou.
-      if (
-        ativo &&
-        podeSubirSituacao(ativo.situacao as SituacaoDeReposicao, m.situacao)
-      ) {
-        await tx
-          .update(reposicoesEstoque)
-          .set({ situacao: 'acabou' })
-          .where(
-            and(
-              eq(reposicoesEstoque.id, ativo.id),
-              eq(reposicoesEstoque.situacao, 'acabando'),
-            ),
+        if (destino === 'ja_em_producao') {
+          resultado.jaEmProducao++
+          continue
+        }
+        if (destino === 'ja_pedido_parceiro') {
+          resultado.jaPedidos++
+          continue
+        }
+
+        // Item aberto que já existia: a situação só SOBE, a quantidade é a
+        // de agora. A observação da primeira marcação fica.
+        const situacao = situacaoDepoisDaMarcacao(
+          (ativo?.situacao as SituacaoDeReposicao | undefined) ?? null,
+          m.situacao,
+        )
+        if (ativo) {
+          const atualizados = await tx
+            .update(reposicoesEstoque)
+            .set({ situacao, quantidade: m.quantidade })
+            .where(
+              and(
+                eq(reposicoesEstoque.id, ativo.id),
+                eq(reposicoesEstoque.estado, 'aberto'),
+              ),
+            )
+            .returning({ id: reposicoesEstoque.id })
+          if (atualizados.length === 0) throw new ReposicaoIndisponivel()
+          resultado.atualizados++
+        } else {
+          resultado.criados++
+        }
+
+        if (viraOp(destino)) {
+          const op = await gravarOp(
+            tx,
+            {
+              produtoId: data.produtoId,
+              variacaoId: m.variacaoId,
+              quantidade: m.quantidade,
+              // REPOR ESTOQUE É CANAL ESTOQUE: a finalização só dá entrada
+              // no estoque nesse canal (entrada-da-op.ts).
+              canalDestino: 'estoque',
+              prioridade: prioridadeDaSituacao(situacao),
+              status: 'programado',
+              // Sem prazo (Q202): se precisar, o gerente ajusta no quadro.
+              dataPrevistaInicio: null,
+              dataPrevistaFim: null,
+              maquinaId: null,
+              responsavelId: null,
+              // A observação fica no ITEM. A da OP o operador lê no tablet,
+              // e o recado de quem passou pela prateleira não é pra ele.
+              observacoes: null,
+              remessaFullId: null,
+              orcamentoId: null,
+              orcamentoFaltanteChave: null,
+            },
+            { usuarioId: user.id, reposicaoId: itemId },
           )
-        resultado.subiram++
-      } else {
-        resultado.jaNaFila++
+          resultado.ops.push(op.numero)
+        }
       }
+      return true
+    })
+    .catch((erro: unknown) => {
+      if (erro instanceof ReposicaoIndisponivel) return false
+      throw erro
+    })
+  if (!gravou) {
+    return {
+      success: false,
+      error:
+        'Alguma peça mudou na fila enquanto você marcava — nada foi gravado. Atualize a tela.',
     }
-  })
+  }
 
   revalidatePath('/estoque')
   revalidatePath('/dashboard')
+  if (resultado.ops.length > 0) {
+    revalidatePath('/ordens')
+    revalidatePath('/producao')
+  }
 
+  return {
+    success: true,
+    data: resultado,
+    message: mensagemDaMarcacao(resultado),
+  }
+}
+
+// "6 OPs criadas — OP-2026-0190 a 0195 · 1 já estava em produção"
+function mensagemDaMarcacao(r: ResultadoDaMarcacao): string {
   const partes: string[] = []
-  if (resultado.criados > 0) {
+  const semOp = r.criados + r.atualizados - r.ops.length
+  if (r.ops.length > 0) {
     partes.push(
-      resultado.criados === 1
-        ? '1 peça entrou na fila'
-        : `${resultado.criados} peças entraram na fila`,
+      `${r.ops.length === 1 ? '1 OP criada' : `${r.ops.length} OPs criadas`} — ${faixaDeNumeros(r.ops)}`,
     )
   }
-  if (resultado.subiram > 0) {
+  if (semOp > 0) {
     partes.push(
-      resultado.subiram === 1
-        ? '1 passou pra "Acabou"'
-        : `${resultado.subiram} passaram pra "Acabou"`,
+      semOp === 1 ? '1 peça foi pra fila' : `${semOp} peças foram pra fila`,
     )
   }
-  if (resultado.jaNaFila > 0) {
+  if (r.jaEmProducao > 0) {
     partes.push(
-      resultado.jaNaFila === 1
-        ? '1 já estava na fila'
-        : `${resultado.jaNaFila} já estavam na fila`,
+      r.jaEmProducao === 1
+        ? '1 já estava em produção'
+        : `${r.jaEmProducao} já estavam em produção`,
     )
   }
-  return { success: true, data: resultado, message: partes.join(' · ') }
+  if (r.jaPedidos > 0) {
+    partes.push(
+      r.jaPedidos === 1
+        ? '1 já estava pedida ao parceiro'
+        : `${r.jaPedidos} já estavam pedidas ao parceiro`,
+    )
+  }
+  return partes.join(' · ') || 'Nada mudou'
 }
 
 // -----------------------------------------------------------------

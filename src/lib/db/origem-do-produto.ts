@@ -15,7 +15,9 @@ import { erroDeOrigemParaOp } from '@/lib/produtos/origem'
  * direta, passa por qualquer filtro de tela. Por isso TODA action que cria OP
  * chama isto antes de inserir:
  *
- *   - `criarOrdemAction` (Nova OP, reposição → OP e faltante → OP);
+ *   - `criarOrdemAction` (Nova OP, reposição → OP e faltante → OP) e
+ *     `marcarReposicaoAction` com `criarOps` (as OPs do "Marcar peças"),
+ *     as duas por `erroDaPecaDaOp` (src/lib/db/criacao-da-op.ts);
  *   - `atualizarOrdemAction`, quando troca o produto da OP;
  *   - `gerarOpsDoKitAction` (Gerar de kit — diz QUAL componente);
  *   - `importarFullAction` e `criarOpsFullAction` (Full).

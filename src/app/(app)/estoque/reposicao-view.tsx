@@ -129,13 +129,19 @@ export function ReposicaoView({
         <MarcarPecasDialog
           produtos={produtos}
           fila={fila}
+          // Quem decide o que se produz cria as OPs no mesmo diálogo (Q201).
+          criaOps={podeProduzir}
           onClose={() => setMarcando(false)}
         />
       )}
       {produzindo && (
         <NovaOpDialog
           produtos={produtos}
-          reposicao={{ id: produzindo.id, variacaoId: produzindo.variacaoId }}
+          reposicao={{
+            id: produzindo.id,
+            variacaoId: produzindo.variacaoId,
+            quantidade: produzindo.quantidade,
+          }}
           onClose={() => setProduzindo(null)}
         />
       )}
@@ -236,6 +242,14 @@ function ItemDaFila({
           <p className="text-muted-foreground text-xs">{item.variacaoModelo}</p>
         )}
 
+        {/* QUANTAS: o que falta enquanto espera (aberto ou com o parceiro);
+            em produção, a quantidade da OP — que o gerente pode ter mudado. */}
+        {(item.estado === 'aberto' || item.estado === 'pedido_parceiro') &&
+          item.quantidade !== null && (
+            <p className="text-sm font-medium tabular-nums">
+              faltam {item.quantidade}
+            </p>
+          )}
         <p className="text-muted-foreground text-sm">
           Marcado por {item.marcadoPorNome ?? 'alguém'}{' '}
           <HaQuanto desde={item.marcadoEm} />
@@ -245,6 +259,7 @@ function ItemDaFila({
         {item.estado === 'em_producao' && item.opNumero && (
           <p className="text-sm font-medium tabular-nums">
             Em produção · {item.opNumero}
+            {item.opQuantidade !== null && ` · ${item.opQuantidade} peças`}
             {item.opStatus && (
               <span className="text-muted-foreground font-normal">
                 {' · '}
@@ -302,7 +317,9 @@ function ItemDaFila({
               loading={isPending}
               disabled={isPending || item.foraDoCatalogo}
             >
-              Pedir ao parceiro
+              {item.quantidade !== null
+                ? `Pedir ${item.quantidade} ao parceiro`
+                : 'Pedir ao parceiro'}
             </Button>
           ) : (
             <Button

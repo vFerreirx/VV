@@ -19,9 +19,10 @@
 // a quantidade que falta já preenchida (editável), sem prazo.
 //
 // ⚠️ VINDO DA FILA DE REPOSIÇÃO (/estoque), É OUTRO GESTO: a peça e o canal
-// Estoque já vêm escolhidos e TRAVADOS, a quantidade fica em branco (é decisão
-// do gerente) e o diálogo FECHA ao criar — um item da fila vira uma OP, e a
-// action liga as duas na mesma transação.
+// Estoque já vêm escolhidos e TRAVADOS, a quantidade vem a do item (quem
+// marcou já disse quantas — Q200; em branco só nos itens de antes disso), e
+// o diálogo FECHA ao criar — um item da fila vira uma OP, e a action liga as
+// duas na mesma transação.
 
 import { ChevronDown, Search, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
@@ -97,7 +98,7 @@ export function NovaOpDialog({
   produtos: Produto[]
   onClose: () => void
   /** O item da fila de reposição que esta OP vai atender. */
-  reposicao?: { id: string; variacaoId: string }
+  reposicao?: { id: string; variacaoId: string; quantidade: number | null }
   /** O faltante de pedido que esta OP produz. */
   pedido?: {
     orcamentoId: string
@@ -132,7 +133,11 @@ export function NovaOpDialog({
   // guardava, e ele continuava sem produto pra mostrar tamanho e cor.
   const [noCatalogo, setNoCatalogo] = useState({ produtoId: '', variacaoId: '' })
   const [quantidade, setQuantidade] = useState(
-    pedido ? String(pedido.quantidade) : '',
+    pedido
+      ? String(pedido.quantidade)
+      : reposicao?.quantidade
+        ? String(reposicao.quantidade)
+        : '',
   )
 
   // O planejamento — o que se repete de uma OP pra próxima

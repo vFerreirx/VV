@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
+import { integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 import { ordensProducao } from './ordens'
 import { produtos, variacoesProduto } from './produtos'
@@ -26,6 +26,9 @@ export const reposicoesEstoque = pgTable('reposicoes_estoque', {
     .references(() => variacoesProduto.id),
 
   situacao: text().notNull(),
+  // Quantas produzir (75). Nula nas linhas de antes da quantidade existir;
+  // toda marcação nova traz (o validador exige, o CHECK garante >= 1).
+  quantidade: integer(),
   observacao: text(),
   marcadoPor: uuid().references(() => users.id),
   marcadoEm: timestamp({ withTimezone: true }).notNull().defaultNow(),
