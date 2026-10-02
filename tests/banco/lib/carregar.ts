@@ -7,6 +7,7 @@
 export function carregarActions() {
   const ordens: typeof import('@/app/(app)/ordens/actions') = require('@/app/(app)/ordens/actions')
   const producao: typeof import('@/app/(app)/producao/actions') = require('@/app/(app)/producao/actions')
+  const estoque: typeof import('@/app/(app)/estoque/actions') = require('@/app/(app)/estoque/actions')
   const remessas: typeof import('@/app/(app)/remessas/actions') = require('@/app/(app)/remessas/actions')
   const maquinas: typeof import('@/app/(app)/maquinas/actions') = require('@/app/(app)/maquinas/actions')
   const estacoes: typeof import('@/app/(app)/estacoes/actions') = require('@/app/(app)/estacoes/actions')
@@ -20,6 +21,7 @@ export function carregarActions() {
   const pinConferencia: typeof import('@/lib/auth/pin-conferencia') = require('@/lib/auth/pin-conferencia')
   return {
     ordens,
+    estoque,
     producao,
     remessas,
     maquinas,

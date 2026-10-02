@@ -13,6 +13,7 @@ import { cadastroDeMaquina } from './cenarios/cadastro-de-maquina'
 import { estacaoDoTablet } from './cenarios/estacao-do-tablet'
 import { fluxoDaProducao } from './cenarios/fluxo-da-producao'
 import { pinDoOperador } from './cenarios/pin-do-operador'
+import { reposicaoComQuantidade } from './cenarios/reposicao-com-quantidade'
 import { carregarActions } from './lib/carregar'
 import { PassoFalhou, Placar } from './lib/checagem'
 import { abrirConexao } from './lib/conexao'
@@ -28,6 +29,7 @@ const CENARIOS: Cenario[] = [
   estacaoDoTablet,
   cadastroDeMaquina,
   pinDoOperador,
+  reposicaoComQuantidade,
 ]
 
 async function main(): Promise<number> {

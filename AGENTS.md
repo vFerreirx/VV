@@ -48,7 +48,7 @@ derrubou a aba Produção (Date cru dentro de sql``). O `test:banco` chama as
 actions DE VERDADE contra o banco e desfaz tudo no fim. Com o conserto do #15
 desaplicado, ele cai no passo 3 com o erro da consulta.
 
-**O que cobre**, em quatro cenários, cada um na sua transação desfeita:
+**O que cobre**, em cinco cenários, cada um na sua transação desfeita:
 
 - `tests/banco/cenarios/fluxo-da-producao.ts` — o dia da produção, com o
   aparelho na estação "casa": Iniciar e "Peguei errado" pelo tablet, a meta
@@ -76,6 +76,14 @@ desaplicado, ele cai no passo 3 com o erro da consulta.
   tentativa), a conferência da troca de operador aceita o PIN novo, e o
   autoatendimento não recusa o PIN de um colega. O retrato do fim confere
   uma assinatura dos `pin_hash`, pra pegar PIN sobrescrito.
+- `tests/banco/cenarios/reposicao-com-quantidade.ts` — a reposição com
+  quantidade (75, Q200–Q202): a estoquista marca com quantidade e sem OP (e
+  é barrada se pedir `criarOps`); o gerente marca e as OPs saem com canal,
+  quantidade e prioridade certos, ligadas aos itens; peça já em produção não
+  cria nada; produto de parceiro vira item sem OP; quantidade vazia ou 0 é
+  recusada; e, com uma OP do lote recusada no meio, NENHUMA fica. Esse
+  último passo cria um trigger DENTRO da transação do teste (DDL é
+  transacional: some no rollback, e é derrubado logo depois do passo).
 
 As guardas de área usam o nível REAL de cada cargo (`permissoes-db` de
 verdade, lendo `permissoes_acesso`).
@@ -140,6 +148,45 @@ transação). `@/lib/supabase/server` e `/admin` LANÇAM se chamados: chamou,
 existe dentro do Next, o teste quebra no CARREGAMENTO. Aí é pra acrescentar
 o mock, nunca pra contornar. E nenhum arquivo de `tests/banco/` importa action no
 topo, só `import type`: em CJS o `import` carregaria a action antes do mock.
+
+## Reposição: o gerente marca a peça COM A QUANTIDADE, e as OPs saem do mesmo diálogo
+
+Quem passa pelas prateleiras é o gerente, e ele já sabe quantas produzir
+(Q200–Q202, 02/10). Em /estoque → "Marcar peças", cada célula tocada entra
+numa lista com **"Quantas produzir" — OBRIGATÓRIO** (inteiro ≥ 1;
+`reposicoes_estoque.quantidade`, migration 75, nula só nas linhas de antes).
+
+- **Quem escreve em Ordens** (o gerente) aperta "Criar N OPs": NUMA
+  TRANSAÇÃO SÓ, uma OP por peça — canal Estoque, a quantidade digitada,
+  Programado, sem prazo, prioridade pela situação ("Acabou" → alta,
+  "Acabando" → normal), ligada ao item, que fica "Em produção". **Tudo ou
+  nada.** A observação do diálogo fica no ITEM e não vai pra OP (a da OP o
+  operador lê no tablet).
+- **Quem só escreve em Estoque** (a estoquista) manda as peças pra fila com
+  a quantidade, sem OP. O "Produzir" da fila abre a Nova OP já com ela.
+- O que acontece com cada peça é UMA regra pura, `destinoDaMarcacao`
+  (`src/lib/producao/reposicao.ts`), usada pelo diálogo (pra contar o
+  botão) e pela action (pra decidir, com o banco de agora): sem item →
+  item + OP; item aberto → atualiza situação (só sobe) e quantidade, + OP;
+  em produção ou pedido ao parceiro → nada; produto de parceiro → item com
+  a quantidade, sem OP ("Pedir 20 ao parceiro" na fila).
+
+### ⚠️ UM CAMINHO SÓ PRA CRIAR OP AVULSA
+
+A Nova OP (`criarOrdemAction`) e o lote do "Marcar peças"
+(`marcarReposicaoAction` com `criarOps`) passam pelo MESMO núcleo,
+`src/lib/db/criacao-da-op.ts` (server-only, recebe a transação, como
+`gravarBaixa`):
+
+- `erroDaPecaDaOp(produtoId, variacaoIds)` — catálogo, variação do produto
+  e produto de parceiro;
+- `gravarOp(tx, op, { usuarioId, reposicaoId? })` — a OP, o evento "OP
+  criada" e a ligação condicional ao item (só o ABERTO da mesma variação;
+  senão `ReposicaoIndisponivel` desfaz a transação inteira).
+
+Campo novo na OP, guarda nova, efeito novo ao criar: é ali. Uma cópia do
+INSERT numa action nova faria a OP do lote nascer diferente da criada uma a
+uma, sem ninguém perceber.
 
 ## Máquina: o nome sai do NÚMERO — "Máquina 4", nunca "TC-04"
 

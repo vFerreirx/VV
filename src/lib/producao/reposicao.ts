@@ -152,3 +152,128 @@ export function estadoDaReposicaoPelaOp(
   }
   return op.status === 'enviado' ? 'reposto' : 'em_producao'
 }
+
+// -----------------------------------------------------------------
+// Marcar com quantidade, e as OPs saindo do mesmo diálogo (Q200–Q202)
+// -----------------------------------------------------------------
+//
+// Quem passa pelas prateleiras é o GERENTE, e ele já sabe quantas produzir.
+// Cada peça tocada no "Marcar peças" leva a quantidade e, pra quem pode criar
+// OP, "Criar N OPs" cria todas NUMA TRANSAÇÃO SÓ — uma OP por peça, canal
+// Estoque, ligada ao item. Tudo ou nada.
+//
+// O QUE ACONTECE COM CADA PEÇA é esta regra, e não um if na action: o
+// diálogo a usa pra contar o botão ("Criar 6 OPs") e pra mostrar "já em
+// produção", e a action a usa de novo, com o banco de agora, pra decidir.
+
+export type DestinoDaMarcacao =
+  /** Sem item ativo: cria o item e a OP ligada a ele. */
+  | 'criar_item_e_op'
+  /** Item aberto, marcado antes: grava situação e quantidade, e cria a OP. */
+  | 'ligar_op_ao_item'
+  /**
+   * Só o item, com a quantidade: quem marcou não cria OP (a estoquista), ou
+   * o produto é de parceiro, que nunca vira OP. Cria o item ou atualiza o
+   * aberto.
+   */
+  | 'so_item'
+  /** Já tem OP: nada novo. */
+  | 'ja_em_producao'
+  /** Já pedido ao parceiro: nada novo. */
+  | 'ja_pedido_parceiro'
+
+export function destinoDaMarcacao(
+  ativo: { estado: (typeof ESTADOS_ATIVOS_DE_REPOSICAO)[number] } | null,
+  origemDoProduto: string,
+  criaOps: boolean,
+): DestinoDaMarcacao {
+  if (ativo?.estado === 'em_producao') return 'ja_em_producao'
+  if (ativo?.estado === 'pedido_parceiro') return 'ja_pedido_parceiro'
+  if (!criaOps || acaoDaReposicao(origemDoProduto) === 'pedir_parceiro') {
+    return 'so_item'
+  }
+  return ativo === null ? 'criar_item_e_op' : 'ligar_op_ao_item'
+}
+
+/** Os destinos que terminam numa OP nova. */
+export function viraOp(destino: DestinoDaMarcacao): boolean {
+  return destino === 'criar_item_e_op' || destino === 'ligar_op_ao_item'
+}
+
+/** Os destinos em que a peça ganha campo de quantidade no diálogo. */
+export function pedeQuantidade(destino: DestinoDaMarcacao): boolean {
+  return destino !== 'ja_em_producao' && destino !== 'ja_pedido_parceiro'
+}
+
+/**
+ * A situação que o item fica depois de marcado de novo: só SOBE
+ * (`podeSubirSituacao`). Tocar "Acabando" num item "Acabou" mantém "Acabou".
+ */
+export function situacaoDepoisDaMarcacao(
+  atual: SituacaoDeReposicao | null,
+  marcada: SituacaoDeReposicao,
+): SituacaoDeReposicao {
+  if (atual === null) return marcada
+  return podeSubirSituacao(atual, marcada) ? marcada : atual
+}
+
+/**
+ * A prioridade da OP pela situação (Q202): "Acabou" é alta, "Acabando" é
+ * normal. Sem prazo — se precisar, o gerente ajusta no quadro.
+ */
+export function prioridadeDaSituacao(
+  situacao: SituacaoDeReposicao,
+): 'alta' | 'normal' {
+  return situacao === 'acabou' ? 'alta' : 'normal'
+}
+
+/**
+ * O texto do botão do diálogo. `ops` conta só as peças que viram OP;
+ * `parceiro`, as de produto de parceiro (não viram OP); `itens`, as que vão
+ * pra fila sem OP porque quem marca não cria (a estoquista).
+ *
+ * Num diálogo só há um produto, então `ops` e `parceiro` nunca vêm juntos —
+ * mas a frase aguenta, se um dia vierem.
+ */
+export function rotuloDoBotaoDeMarcar({
+  ops,
+  parceiro,
+  itens,
+}: {
+  ops: number
+  parceiro: number
+  itens: number
+}): string {
+  const partes: string[] = []
+  if (ops > 0) partes.push(ops === 1 ? 'Criar 1 OP' : `Criar ${ops} OPs`)
+  if (parceiro > 0) {
+    const pecas = parceiro === 1 ? '1 peça' : `${parceiro} peças`
+    partes.push(partes.length ? `marcar ${pecas} pro parceiro` : `Marcar ${pecas} pro parceiro`)
+  }
+  if (itens > 0) {
+    const pecas = itens === 1 ? '1 peça' : `${itens} peças`
+    partes.push(partes.length ? `marcar ${pecas}` : `Marcar ${pecas}`)
+  }
+  return partes.length ? partes.join(' e ') : 'Toque nas peças'
+}
+
+/**
+ * Os números das OPs criadas, numa faixa: "OP-2026-0190 a 0195". O contador
+ * do banco dá números seguidos numa transação só; se não vierem seguidos
+ * (outra OP criada no meio por outra pessoa), lista um por um.
+ */
+export function faixaDeNumeros(numeros: readonly string[]): string {
+  if (numeros.length === 0) return ''
+  const ordenados = [...numeros].sort()
+  const primeiro = ordenados[0]!
+  if (ordenados.length === 1) return primeiro
+  const partes = ordenados.map((n) => /^(.*-)(\d+)$/.exec(n))
+  const prefixo = partes[0]?.[1]
+  const seguidos =
+    partes.every((m) => m !== null && m[1] === prefixo) &&
+    partes.every(
+      (m, i) => i === 0 || Number(m![2]) === Number(partes[i - 1]![2]) + 1,
+    )
+  if (!seguidos) return ordenados.join(', ')
+  return `${primeiro} a ${partes[partes.length - 1]![2]}`
+}

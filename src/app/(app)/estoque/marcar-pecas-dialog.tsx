@@ -12,6 +12,12 @@
 // agrupado por PRODUTO: quem marca olha a prateleira de uma peça e vê o que
 // falta nela, não uma variação solta.
 //
+// ⚠️ CADA PEÇA LEVA A QUANTIDADE (Q200), e quem pode criar OP cria todas
+// daqui (Q201): "Criar 6 OPs", uma por peça, numa transação só. O que
+// acontece com cada peça — vira OP, vai pra fila, já está em produção — é
+// `destinoDaMarcacao` (reposicao.ts), a MESMA regra que a action usa. Assim
+// o número do botão é o número de OPs que nascem.
+//
 // COM A CAIXA VAZIA, O CATÁLOGO: os produtos agrupados por FAMÍLIA (Peseira,
 // Manta, Capa de Almofada) e, dentro dela, um botão por modelo. É o caminho
 // de quem está de frente pra prateleira e não sabe o nome exato — sem
@@ -33,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { gestoDeToque } from '@/components/ui/foco-no-toque'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -44,11 +51,16 @@ import {
 } from '@/lib/producao/catalogo-op'
 import {
   ROTULO_DA_SITUACAO,
-  podeSubirSituacao,
+  destinoDaMarcacao,
+  rotuloDoBotaoDeMarcar,
+  situacaoDepoisDaMarcacao,
+  viraOp,
+  type DestinoDaMarcacao,
   type SituacaoDeReposicao,
 } from '@/lib/producao/reposicao'
 import { familiaDoProduto } from '@/lib/producao/rotulo-da-op'
 import { cn } from '@/lib/utils'
+import { marcarReposicaoSchema } from '@/lib/validators/reposicao'
 
 type Produto = ProdutoComVariacoesParaForm
 type Variacao = Produto['variacoes'][number]
@@ -58,11 +70,18 @@ const SEM_VALOR = '—'
 export function MarcarPecasDialog({
   produtos,
   fila,
+  criaOps,
   onClose,
 }: {
   produtos: Produto[]
   /** O que já está na fila (aberto ou em produção), pra aparecer na grade. */
   fila: ItemDeReposicao[]
+  /**
+   * Quem marca também cria OP (escrita em Ordens — o gerente): as peças
+   * viram OP ao salvar. Sem isso (a estoquista), vão pra fila com a
+   * quantidade, e o "Produzir" da fila abre a Nova OP já preenchida.
+   */
+  criaOps: boolean
   onClose: () => void
 }) {
   const router = useRouter()
@@ -72,6 +91,10 @@ export function MarcarPecasDialog({
   // O que o próximo toque marca. Trocar o modo não mexe no que já foi tocado.
   const [modo, setModo] = useState<SituacaoDeReposicao>('acabando')
   const [marcadas, setMarcadas] = useState<Map<string, SituacaoDeReposicao>>(
+    () => new Map(),
+  )
+  // "Quantas produzir" de cada peça marcada, como o campo guarda (texto).
+  const [quantidades, setQuantidades] = useState<Map<string, string>>(
     () => new Map(),
   )
   const [observacao, setObservacao] = useState('')
@@ -101,41 +124,85 @@ export function MarcarPecasDialog({
   function trocarProduto() {
     setProdutoId(null)
     setMarcadas(new Map())
+    setQuantidades(new Map())
     setErro(null)
   }
 
   function tocar(variacaoId: string) {
     setErro(null)
-    setMarcadas((prev) => {
-      const next = new Map(prev)
-      const item = naFila.get(variacaoId)
-      // JÁ NA FILA: só dá pra subir de "Acabando" pra "Acabou". O toque liga e
-      // desliga essa subida; nada mais.
-      if (item) {
-        if (!podeSubirSituacao(item.situacao, 'acabou')) return prev
-        if (next.has(variacaoId)) next.delete(variacaoId)
-        else next.set(variacaoId, 'acabou')
-        return next
-      }
-      // Tocar de novo com o mesmo modo desmarca; com o outro, troca.
-      if (next.get(variacaoId) === modo) next.delete(variacaoId)
-      else next.set(variacaoId, modo)
-      return next
-    })
+    const item = naFila.get(variacaoId)
+    // EM PRODUÇÃO OU PEDIDO AO PARCEIRO: nada a marcar — a célula já diz.
+    if (item && item.estado !== 'aberto') return
+    const jaMarcada = marcadas.get(variacaoId)
+    const next = new Map(marcadas)
+    // Tocar de novo com o mesmo modo desmarca; com o outro, troca. Vale
+    // também pro item ABERTO que já estava na fila: marcá-lo é dar a
+    // quantidade (e, pra quem cria OP, criar a OP dele). A situação só sobe
+    // — `situacaoDepoisDaMarcacao`.
+    if (jaMarcada === modo) next.delete(variacaoId)
+    else next.set(variacaoId, modo)
+    setMarcadas(next)
+    if (jaMarcada !== undefined) return
+
+    // Peça nova na lista: o item aberto traz a quantidade que já tinha.
+    setQuantidades((prev) =>
+      new Map(prev).set(
+        variacaoId,
+        item?.quantidade ? String(item.quantidade) : '',
+      ),
+    )
+    // O TECLADO SÓ SOBE NO TOQUE NO CAMPO (#21): com o dedo, o campo fica
+    // com a borda de "falta preencher"; com o mouse, já ganha o foco.
+    if (!gestoDeToque()) {
+      requestAnimationFrame(() =>
+        document.getElementById(idDoCampo(variacaoId))?.focus(),
+      )
+    }
+  }
+
+  // O que acontece com cada peça marcada — a mesma regra da action.
+  const destinos = new Map<string, DestinoDaMarcacao>(
+    [...marcadas.keys()].map((id) => {
+      const item = naFila.get(id)
+      return [
+        id,
+        destinoDaMarcacao(
+          item ? { estado: item.estado as 'aberto' } : null,
+          produto?.origem ?? 'producao',
+          criaOps,
+        ),
+      ]
+    }),
+  )
+  const contagem = { ops: 0, parceiro: 0, itens: 0 }
+  for (const d of destinos.values()) {
+    if (viraOp(d)) contagem.ops++
+    else if (produto?.origem === 'parceiro') contagem.parceiro++
+    else contagem.itens++
   }
 
   function salvar() {
     if (!produto || marcadas.size === 0) return
     setErro(null)
+    const entrada = {
+      produtoId: produto.id,
+      marcacoes: [...marcadas].map(([variacaoId, situacao]) => ({
+        variacaoId,
+        situacao,
+        quantidade: quantidades.get(variacaoId) ?? '',
+      })),
+      observacao,
+      criarOps: criaOps,
+    }
+    // A MESMA VALIDAÇÃO DO SERVIDOR, antes de ir: "diga quantas" aparece
+    // aqui, sem ida e volta.
+    const parsed = marcarReposicaoSchema.safeParse(entrada)
+    if (!parsed.success) {
+      setErro(parsed.error.issues[0]?.message ?? 'Dados inválidos')
+      return
+    }
     startTransition(async () => {
-      const r = await marcarReposicaoAction({
-        produtoId: produto.id,
-        marcacoes: [...marcadas].map(([variacaoId, situacao]) => ({
-          variacaoId,
-          situacao,
-        })),
-        observacao,
-      })
+      const r = await marcarReposicaoAction(entrada)
       if (!r.success) {
         setErro(r.error)
         return
@@ -153,7 +220,9 @@ export function MarcarPecasDialog({
           <DialogTitle>Marcar peças acabando</DialogTitle>
           <DialogDescription>
             {produto
-              ? 'Toque em cada peça que está acabando. Cada uma vira um item da fila.'
+              ? criaOps && produto.origem !== 'parceiro'
+                ? 'Toque em cada peça que está acabando e diga quantas produzir. Cada uma vira uma OP.'
+                : 'Toque em cada peça que está acabando e diga quantas faltam. Cada uma vira um item da fila.'
               : 'Escolha no catálogo, ou busque pelo nome, cor, tamanho ou SKU.'}
           </DialogDescription>
         </DialogHeader>
@@ -251,6 +320,20 @@ export function MarcarPecasDialog({
               <JaNaFila produto={produto} naFila={naFila} />
             </div>
 
+            {marcadas.size > 0 && (
+              <QuantasProduzir
+                produto={produto}
+                marcadas={marcadas}
+                destinos={destinos}
+                naFila={naFila}
+                quantidades={quantidades}
+                onQuantidade={(id, v) =>
+                  setQuantidades((prev) => new Map(prev).set(id, v))
+                }
+                disabled={isPending}
+              />
+            )}
+
             <div className="space-y-1.5">
               <Label htmlFor="reposicao-obs">Observação (opcional)</Label>
               <Textarea
@@ -258,7 +341,7 @@ export function MarcarPecasDialog({
                 rows={2}
                 value={observacao}
                 onChange={(e) => setObservacao(e.target.value)}
-                placeholder="Vale pras peças marcadas agora"
+                placeholder="Vale pras peças marcadas agora. Fica na fila, não vai pra OP."
                 disabled={isPending}
               />
             </div>
@@ -271,11 +354,7 @@ export function MarcarPecasDialog({
                 onClick={salvar}
                 disabled={isPending || marcadas.size === 0}
               >
-                {marcadas.size === 0
-                  ? 'Toque nas peças'
-                  : marcadas.size === 1
-                    ? 'Marcar 1 peça'
-                    : `Marcar ${marcadas.size} peças`}
+                {rotuloDoBotaoDeMarcar(contagem)}
               </Button>
             </div>
           </div>
@@ -426,12 +505,12 @@ function Grade({
                     }
                     const item = naFila.get(v.id)
                     const marcada = marcadas.get(v.id)
-                    // Na fila e sem como subir: só mostra o estado.
+                    // Em produção ou pedido ao parceiro: só mostra o estado.
                     const travada =
-                      item !== undefined &&
-                      !podeSubirSituacao(item.situacao, 'acabou')
-                    const mostra: SituacaoDeReposicao | null =
-                      marcada ?? item?.situacao ?? null
+                      item !== undefined && item.estado !== 'aberto'
+                    const mostra: SituacaoDeReposicao | null = marcada
+                      ? situacaoDepoisDaMarcacao(item?.situacao ?? null, marcada)
+                      : (item?.situacao ?? null)
                     return (
                       <td key={t} className="p-0">
                         <button
@@ -446,9 +525,11 @@ function Grade({
                           }
                           className={cn(
                             'h-11 w-full min-w-16 rounded-md border px-1 text-xs transition-colors',
-                            marcada === 'acabou' &&
+                            marcada &&
+                              mostra === 'acabou' &&
                               'border-destructive bg-destructive text-white',
-                            marcada === 'acabando' &&
+                            marcada &&
+                              mostra === 'acabando' &&
                               'border-amber-500 bg-amber-500 text-white',
                             !marcada &&
                               item &&
@@ -500,21 +581,109 @@ function JaNaFila({
           <li key={i.id}>
             {[i.variacaoCor, i.variacaoTamanho].filter(Boolean).join(' · ')}:{' '}
             {i.estado === 'em_producao'
-              ? `em produção${i.opNumero ? ` (${i.opNumero})` : ''}`
+              ? `já em produção${i.opNumero ? ` (${i.opNumero})` : ''}`
               : i.estado === 'pedido_parceiro'
-                ? 'pedido ao parceiro'
+                ? 'já pedido ao parceiro'
                 : ROTULO_DA_SITUACAO[i.situacao].toLowerCase()}
+            {i.estado !== 'em_producao' &&
+              i.quantidade !== null &&
+              ` · faltam ${i.quantidade}`}
             {' — '}
             {i.marcadoPorNome ?? 'alguém'} em{' '}
             {new Date(i.marcadoEm).toLocaleDateString('pt-BR', {
               day: '2-digit',
               month: '2-digit',
             })}
-            {i.situacao === 'acabando' &&
-              i.estado === 'aberto' &&
-              ' · toque na célula pra passar pra "Acabou"'}
+            {i.estado === 'aberto' && ' · toque na célula pra marcar de novo'}
           </li>
         ))}
+      </ul>
+    </div>
+  )
+}
+
+// O id do campo de quantidade de uma peça — o clique com mouse foca nele.
+function idDoCampo(variacaoId: string) {
+  return `reposicao-qtd-${variacaoId}`
+}
+
+// "QUANTAS PRODUZIR": uma linha por peça marcada, na ordem da grade. O campo
+// é obrigatório (Q200) e numérico; o teclado só sobe quando a pessoa toca
+// nele (#21) — até lá, a borda mostra o que falta.
+function QuantasProduzir({
+  produto,
+  marcadas,
+  destinos,
+  naFila,
+  quantidades,
+  onQuantidade,
+  disabled,
+}: {
+  produto: Produto
+  marcadas: Map<string, SituacaoDeReposicao>
+  destinos: Map<string, DestinoDaMarcacao>
+  naFila: Map<string, ItemDeReposicao>
+  quantidades: Map<string, string>
+  onQuantidade: (variacaoId: string, valor: string) => void
+  disabled: boolean
+}) {
+  const variosModelos = modelosDoProduto(produto).length > 1
+  const linhas = produto.variacoes.filter((v) => marcadas.has(v.id))
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm font-medium">Quantas produzir</p>
+      <ul className="divide-y rounded-lg border">
+        {linhas.map((v) => {
+          const situacao = situacaoDepoisDaMarcacao(
+            naFila.get(v.id)?.situacao ?? null,
+            marcadas.get(v.id)!,
+          )
+          const destino = destinos.get(v.id)!
+          const valor = quantidades.get(v.id) ?? ''
+          const nome = [variosModelos ? v.modelo : null, v.cor, v.tamanho]
+            .filter(Boolean)
+            .join(' · ')
+          return (
+            <li key={v.id} className="flex items-center gap-3 px-3 py-2">
+              <ColorSwatch hex={v.corHex} hex2={v.corHex2} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm">{nome}</p>
+                <p className="text-muted-foreground text-xs">
+                  <span
+                    className={
+                      situacao === 'acabou'
+                        ? 'text-destructive'
+                        : 'text-amber-700 dark:text-amber-400'
+                    }
+                  >
+                    {ROTULO_DA_SITUACAO[situacao]}
+                  </span>
+                  {' · '}
+                  {viraOp(destino)
+                    ? `vira OP${situacao === 'acabou' ? ', prioridade alta' : ''}`
+                    : produto.origem === 'parceiro'
+                      ? 'pro parceiro, sem OP'
+                      : 'vai pra fila'}
+                </p>
+              </div>
+              <Input
+                id={idDoCampo(v.id)}
+                aria-label={`Quantas produzir: ${nome}`}
+                inputMode="numeric"
+                pattern="[0-9]*"
+                autoComplete="off"
+                value={valor}
+                onChange={(e) => onQuantidade(v.id, e.target.value.replace(/\D/g, ''))}
+                placeholder="Qtd."
+                disabled={disabled}
+                className={cn(
+                  'w-20 text-right tabular-nums',
+                  valor === '' && 'border-primary ring-3 ring-primary/30',
+                )}
+              />
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

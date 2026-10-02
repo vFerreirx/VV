@@ -26,6 +26,11 @@ import {
 import { podeEscrever } from '@/lib/auth/permissoes'
 import { recusaSeTabletTravado } from '@/lib/auth/tablet-travado'
 import { gravarBaixa } from '@/lib/db/baixa-da-op'
+import {
+  ReposicaoIndisponivel,
+  erroDaPecaDaOp,
+  gravarOp,
+} from '@/lib/db/criacao-da-op'
 import { marcosDaOp } from '@/lib/db/conclusao-da-op'
 import { sincronizarEntradaDaOp } from '@/lib/db/entrada-da-op'
 import { devolverOpParaFila } from '@/lib/db/devolucao-da-op'
@@ -80,7 +85,6 @@ import {
   type User,
   type VariacaoProduto,
 } from '@/lib/db/schema'
-import { erroDaVariacao } from '@/lib/producao/catalogo-op'
 import { resolverVariacaoDoFaltante } from '@/lib/producao/faltante-para-op'
 import { motivoDeImpedimento } from '@/lib/producao/estado-maquina'
 import { nomeDaMaquina } from '@/lib/producao/nome-da-maquina'
@@ -792,11 +796,6 @@ export async function listarResponsaveis(): Promise<
 // Criar
 // -----------------------------------------------------------------
 
-// O item da fila de reposição que esta OP atende já não está aberto (outra
-// pessoa produziu ou descartou no meio). Classe própria pra desfazer a
-// transação: a OP não pode nascer sem o item que justificou criá-la.
-class ReposicaoIndisponivel extends Error {}
-
 export async function criarOrdemAction(
   input: OrdemInput,
   {
@@ -885,17 +884,11 @@ export async function criarOrdemAction(
     }
   }
 
-  // O catálogo pode mudar entre abrir a tela e salvar. Valida novamente o
-  // produto e a variação no servidor; a FK sozinha aceita variação de outro produto.
-  const catalogo = await db.select({ produtoId: produtos.id, variacaoId: variacoesProduto.id })
-    .from(produtos)
-    .leftJoin(variacoesProduto, and(eq(variacoesProduto.produtoId, produtos.id), isNull(variacoesProduto.deletedAt)))
-    .where(and(eq(produtos.id, data.produtoId), eq(produtos.ativo, true), isNull(produtos.deletedAt)))
-  if (!catalogo.length) return { success: false, error: 'Produto indisponível. Selecione novamente no catálogo.' }
-  // PRODUTO DE PARCEIRO NÃO VIRA OP — vale pra Nova OP, reposição e faltante,
-  // que passam todas por aqui. Ver src/lib/db/origem-do-produto.ts.
-  const erroOrigem = await erroDeProdutoDeParceiro([data.produtoId])
-  if (erroOrigem) return { success: false, error: erroOrigem }
+  // A peça (catálogo, variação, produto de parceiro) — a mesma conferência
+  // do lote de reposição, em src/lib/db/criacao-da-op.ts.
+  const erroDaPeca = await erroDaPecaDaOp(data.produtoId, [data.variacaoId])
+  if (erroDaPeca) return { success: false, error: erroDaPeca }
+  const variacaoId = data.variacaoId!
 
   // FULL SÓ DENTRO DE UMA REMESSA, do mesmo canal. Antes a OP de Full nascia
   // sem conta e sem data de envio. Ver src/lib/db/remessa-da-op.ts.
@@ -903,69 +896,40 @@ export async function criarOrdemAction(
   if ('erro' in remessaValidada) {
     return { success: false, error: remessaValidada.erro }
   }
-  // Variação SEMPRE obrigatória — ver `erroDaVariacao` (catalogo-op.ts).
-  const erroVariacao = erroDaVariacao(data.variacaoId, catalogo.flatMap((v) => v.variacaoId ? [{ id: v.variacaoId }] : []))
-  if (erroVariacao) return { success: false, error: erroVariacao }
 
   const novoId = await db.transaction(async (tx) => {
     // A remessa (criada aqui, se é nova) e o prazo que a OP HERDA dela — o
     // prazo da produção, e não a data do caminhão. Sem remessa, vale o prazo
     // digitado.
     const doFull = await remessaDaTransacao(tx, remessaValidada.ok)
-    const [inserted] = await tx
-      .insert(ordensProducao)
-      .values({
-        // Trigger BEFORE INSERT sobrescreve com 'OP-AAAA-NNNN'.
-        numero: '',
+    // A OP, o evento e a ligação ao item da fila — o mesmo núcleo do lote
+    // de reposição (src/lib/db/criacao-da-op.ts). Item que não está mais
+    // aberto lança `ReposicaoIndisponivel` e desfaz tudo.
+    const inserted = await gravarOp(
+      tx,
+      {
         produtoId: data.produtoId,
-        variacaoId: data.variacaoId,
+        variacaoId,
         quantidade: data.quantidade,
-        maquinaId: data.maquinaId,
+        maquinaId: data.maquinaId ?? null,
         canalDestino: data.canalDestino,
         prioridade: data.prioridade,
         status: data.status,
-        dataPrevistaInicio: data.dataPrevistaInicio,
-        dataPrevistaFim: doFull?.dataPrevistaFim ?? data.dataPrevistaFim,
+        dataPrevistaInicio: data.dataPrevistaInicio ?? null,
+        dataPrevistaFim: doFull?.dataPrevistaFim ?? data.dataPrevistaFim ?? null,
         remessaFullId: doFull?.remessaFullId ?? null,
-        criadoPor: user.id,
-        responsavelId: data.responsavelId,
+        responsavelId: data.responsavelId ?? null,
         observacoes: data.observacoes ?? null,
         // O faltante de pedido que esta OP produz (conferido acima).
         orcamentoId: pedido?.orcamentoId ?? null,
         orcamentoFaltanteChave: pedido?.chave ?? null,
-      })
-      .returning({ id: ordensProducao.id, numero: ordensProducao.numero })
-
-    // Evento inicial no kanban (statusAnterior = null).
-    await tx.insert(eventosKanban).values({
-      ordemId: inserted!.id,
-      statusAnterior: null,
-      statusNovo: data.status,
-      usuarioId: user.id,
-      observacao: 'OP criada',
-    })
-
-    // A OP NASCE LIGADA AO ITEM DA FILA. O UPDATE é condicional: só pega o
-    // item ainda ABERTO e da MESMA variação. Se ninguém casar, a OP é desfeita
-    // junto — nada de OP de reposição sem a reposição.
-    if (reposicaoId !== undefined) {
-      const ligados = await tx
-        .update(reposicoesEstoque)
-        .set({ estado: 'em_producao', ordemId: inserted!.id })
-        .where(
-          and(
-            eq(reposicoesEstoque.id, reposicaoId),
-            eq(reposicoesEstoque.estado, 'aberto'),
-            eq(reposicoesEstoque.variacaoId, data.variacaoId!),
-          ),
-        )
-        .returning({ id: reposicoesEstoque.id })
-      if (ligados.length === 0) throw new ReposicaoIndisponivel()
-    }
+      },
+      { usuarioId: user.id, reposicaoId },
+    )
 
     // A remessa volta junto: criada na hora, a Nova OP passa a escolhê-la
     // pra próxima OP, em vez de criar outra igual a cada "Salvar".
-    return { id: inserted!.id, remessaFullId: doFull?.remessaFullId ?? null }
+    return { id: inserted.id, remessaFullId: doFull?.remessaFullId ?? null }
   }).catch((erro: unknown) => {
     if (erro instanceof ReposicaoIndisponivel) return null
     throw erro
